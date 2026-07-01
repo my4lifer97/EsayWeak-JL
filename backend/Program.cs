@@ -1,0 +1,55 @@
+using System.Text;
+using BarberSaas.Api.Data;
+using BarberSaas.Api.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
+
+builder.Services.AddDbContext<AppDbContext>(opt =>
+    opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+var jwtSecret = builder.Configuration["Jwt:Secret"]!;
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(opt =>
+    {
+        opt.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        };
+    });
+
+builder.Services.AddAuthorization();
+builder.Services.AddScoped<JwtService>();
+builder.Services.AddScoped<AvailabilityService>();
+
+builder.Services.AddCors(opt =>
+    opt.AddDefaultPolicy(p => p
+        .WithOrigins(builder.Configuration["AllowedOrigin"] ?? "http://localhost:5173")
+        .AllowAnyHeader()
+        .AllowAnyMethod()));
+
+var app = builder.Build();
+
+app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+}
+
+app.Run();
