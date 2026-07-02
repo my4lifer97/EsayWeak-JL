@@ -90,23 +90,23 @@ export default function ServicesPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {[['Name (English)', 'nameEn'], ['Name (Arabic)', 'nameAr'], ['Name (Hebrew)', 'nameHe']].map(([label, key]) => (
                 <div key={key}>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
-                  <input type="text" required value={form[key as keyof typeof form]}
+                  <label htmlFor={`service-${key}`} className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
+                  <input id={`service-${key}`} type="text" required value={form[key as keyof typeof form]}
                     onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               ))}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Duration (min)</label>
-                  <select value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}
+                  <label htmlFor="service-duration" className="block text-sm font-medium text-gray-300 mb-1.5">Duration (min)</label>
+                  <select id="service-duration" value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                     {[15, 30, 45, 60, 75, 90, 120].map((v) => <option key={v} value={v}>{v} min</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">Price</label>
-                  <input type="number" required min="0" step="0.01" value={form.price}
+                  <label htmlFor="service-price" className="block text-sm font-medium text-gray-300 mb-1.5">Price</label>
+                  <input id="service-price" type="number" required min="0" step="0.01" value={form.price}
                     onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="25.00"
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>

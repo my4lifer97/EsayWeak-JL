@@ -61,6 +61,22 @@ npx.cmd tsc --noEmit                 # Type check
 
 Both must run simultaneously. Vite dev server proxies `/api/*` to `http://localhost:5280`.
 
+### Frontend tests
+```powershell
+npx.cmd vitest run                   # Unit/component tests (jsdom + React Testing Library)
+npx.cmd playwright test              # E2E — needs both dev servers already running (real API, not mocked)
+```
+- **Unit tests** (`*.test.ts(x)` next to the file they cover): `vitest` + `@testing-library/react`.
+  `vitest` is pinned to `^3.x` — `vitest@4` requires Vite `^6/7/8`, incompatible with the
+  Vite 5 pin above (Node 20.13.1); `jsdom` is pinned to `^25.x` — `jsdom@29` pulls an ESM-only
+  dependency (`@exodus/bytes`) that breaks under `require()` in this toolchain.
+  `ProtectedRoute`/`CustomerProtectedRoute` live in `src/components/` (not inlined in `App.tsx`)
+  specifically so they're testable in isolation with a `MemoryRouter`.
+- **E2E** (`e2e/*.spec.ts`): `@playwright/test`, Chromium only. Each test seeds its own barber via
+  direct API calls (register/login/create-service) rather than relying on existing data, so
+  it's safe to run against the same DB repeatedly. `vite.config.ts`'s `test.exclude` keeps
+  vitest from also picking up these `.spec.ts` files (both tools default to the same glob).
+
 ## Project Structure
 
 ```
@@ -146,7 +162,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `/:slug/appointments/:id?token=<cancelToken>` — view/cancel/reschedule appointment
 
 ### Auth
-JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via request interceptor. 401 responses redirect to `/admin/login`. Admin routes are wrapped in `ProtectedRoute` which checks `useAuth().isAuthenticated`.
+JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via request interceptor. 401 responses redirect to `/admin/login` — **except** a 401 from `/auth/login` itself (wrong password), which must NOT redirect or it wipes `LoginPage`'s own error message via a full page reload before React can render it. Admin routes are wrapped in `ProtectedRoute` (`frontend/src/components/ProtectedRoute.tsx`) which checks `useAuth().isAuthenticated`.
 
 ### i18n (Translations)
 - **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings.  

@@ -1,7 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AuthProvider, useAuth } from './lib/auth'
-import { CustomerAuthProvider, useCustomerAuth } from './lib/customerAuth'
+import { AuthProvider } from './lib/auth'
+import { CustomerAuthProvider } from './lib/customerAuth'
 
 import LoginPage from './pages/admin/LoginPage'
 import RegisterPage from './pages/admin/RegisterPage'
@@ -11,6 +11,8 @@ import SchedulePage from './pages/admin/SchedulePage'
 import ServicesPage from './pages/admin/ServicesPage'
 import SettingsPage from './pages/admin/SettingsPage'
 import AdminLayout from './components/admin/AdminLayout'
+import ProtectedRoute from './components/ProtectedRoute'
+import CustomerProtectedRoute from './components/CustomerProtectedRoute'
 import BarberPage from './pages/public/BarberPage'
 import BookPage from './pages/public/BookPage'
 import AppointmentPage from './pages/public/AppointmentPage'
@@ -21,16 +23,6 @@ import FollowedBarbersPage from './pages/public/FollowedBarbersPage'
 import HomePage from './pages/HomePage'
 
 const queryClient = new QueryClient()
-
-function ProtectedRoute() {
-  const { isAuthenticated } = useAuth()
-  return isAuthenticated ? <Outlet /> : <Navigate to="/admin/login" replace />
-}
-
-function CustomerProtectedRoute() {
-  const { isAuthenticated } = useCustomerAuth()
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
-}
 
 export default function App() {
   return (

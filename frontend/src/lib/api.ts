@@ -11,7 +11,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    // A 401 from /auth/login itself just means "wrong password" — not an expired session.
+    // Redirecting here would hard-navigate away before LoginPage's own catch block can show
+    // the error, wiping its React state via a full page reload.
+    const isLoginRequest = err.config?.url?.includes('/auth/login')
+    if (err.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/admin/login'

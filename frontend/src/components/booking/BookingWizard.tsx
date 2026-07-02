@@ -161,19 +161,19 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
             {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
-                <input type="text" required value={name} onChange={(e) => setName(e.target.value)}
+                <label htmlFor="booking-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
+                <input id="booking-name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'phoneNumber')}</label>
-                <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
+                <label htmlFor="booking-phone" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'phoneNumber')}</label>
+                <input id="booking-phone" type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
                   disabled={isAuthenticated}
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'notes')}</label>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+                <label htmlFor="booking-notes" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'notes')}</label>
+                <textarea id="booking-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
                   placeholder={t(lang, 'notesPlaceholder')}
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
