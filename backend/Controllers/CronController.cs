@@ -17,7 +17,7 @@ public class CronController(AppDbContext db, IConfiguration config) : Controller
     {
         var cronSecret = config["CronSecret"];
         var auth = Request.Headers.Authorization.FirstOrDefault();
-        if (auth != $"Bearer {cronSecret}")
+        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
             return Unauthorized(new { error = "Unauthorized" });
 
         var tomorrow = DateTime.UtcNow.AddDays(1).Date;

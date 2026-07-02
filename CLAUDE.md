@@ -154,10 +154,13 @@ Twilio credentials are stored **per-barber** in the `Barbers` table (`TwilioSid`
 ### Configuration (`backend/appsettings.json`)
 ```
 ConnectionStrings:Default   PostgreSQL connection string (prod: barbersaas)
-Jwt:Secret                  JWT signing key (32+ chars, HS256)
 Jwt:Issuer                  barbersaas-api
 Jwt:Audience                barbersaas-frontend
 AppUrl                      Public frontend URL (used in WhatsApp message links)
 AllowedOrigin               CORS allowed origin (frontend URL)
-CronSecret                  Bearer token for /api/cron/reminders
 ```
+
+`Jwt:Secret` and `CronSecret` are **not** in `appsettings.json` — there's no default, so the app fails fast if they're missing rather than silently falling back to a guessable value.
+- **Local dev**: stored in the `dotnet user-secrets` store for `backend/BarberSaas.Api.csproj` (`UserSecretsId` in the `.csproj`, values live outside the repo at `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `dotnet run` loads them automatically in Development.
+- **Production**: supply both via environment variables (`Jwt__Secret`, `CronSecret`) or `appsettings.Production.json` (gitignored) — never commit real values.
+- Rotating either secret invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug.
