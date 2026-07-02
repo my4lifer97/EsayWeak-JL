@@ -10,7 +10,7 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize]
+[Authorize(Policy = "BarberOnly")]
 public class AdminController(AppDbContext db) : ControllerBase
 {
     private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;

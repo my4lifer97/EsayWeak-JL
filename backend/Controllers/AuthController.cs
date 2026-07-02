@@ -12,7 +12,7 @@ namespace BarberSaas.Api.Controllers;
 public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
 {
     private static readonly string[] ReservedSlugs =
-        ["admin", "api", "login", "register", "cron", "whatsapp", "_next", "favicon"];
+        ["admin", "api", "login", "register", "cron", "whatsapp", "_next", "favicon", "browse", "account"];
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req)

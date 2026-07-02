@@ -12,6 +12,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BlockedSlot> BlockedSlots => Set<BlockedSlot>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<CustomerAccount> CustomerAccounts => Set<CustomerAccount>();
+    public DbSet<Follow> Follows => Set<Follow>();
+    public DbSet<CustomerOtp> CustomerOtps => Set<CustomerOtp>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -28,6 +31,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<Appointment>()
             .HasIndex(x => x.CancelToken).IsUnique();
+
+        b.Entity<CustomerAccount>()
+            .HasIndex(x => x.Phone).IsUnique();
+
+        b.Entity<Follow>()
+            .HasIndex(x => new { x.CustomerAccountId, x.BarberId }).IsUnique();
+
+        b.Entity<CustomerOtp>()
+            .HasIndex(x => new { x.Phone, x.CreatedAt });
 
         b.Entity<Service>()
             .Property(x => x.Price)
@@ -65,6 +77,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Customer>()
             .HasOne(x => x.Barber).WithMany(x => x.Customers)
+            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Customer>()
+            .HasOne(x => x.CustomerAccount).WithMany(x => x.Profiles)
+            .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<Follow>()
+            .HasOne(x => x.CustomerAccount).WithMany(x => x.Follows)
+            .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Follow>()
+            .HasOne(x => x.Barber).WithMany(x => x.Follows)
             .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Appointment>()
             .HasOne(x => x.Barber).WithMany(x => x.Appointments)

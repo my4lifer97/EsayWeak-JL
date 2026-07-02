@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { format, addDays } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
-import { api } from '../../lib/api'
+import { customerApi } from '../../lib/customerApi'
+import { useCustomerAuth } from '../../lib/customerAuth'
 import { t, serviceName } from '../../lib/i18n'
 
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number }
@@ -10,12 +11,13 @@ type Slot = { start: string; end: string }
 type Step = 1 | 2 | 3 | 4 | 5
 
 export default function BookingWizard({ barber }: { barber: BarberInfo }) {
+  const { user, isAuthenticated } = useCustomerAuth()
   const [step, setStep] = useState<Step>(1)
   const [service, setService] = useState<Service | null>(null)
   const [date, setDate] = useState('')
   const [slot, setSlot] = useState<Slot | null>(null)
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
+  const [name, setName] = useState(() => (user ? `${user.name} ${user.familyName}`.trim() : ''))
+  const [phone, setPhone] = useState(() => user?.phone ?? '')
   const [notes, setNotes] = useState('')
   const [slots, setSlots] = useState<Slot[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
@@ -29,7 +31,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
 
   async function fetchSlots(d: string, svc: Service) {
     setSlotsLoading(true); setSlots([])
-    const { data } = await api.get(`/${barber.slug}/availability?date=${d}&serviceId=${svc.id}`)
+    const { data } = await customerApi.get(`/${barber.slug}/availability?date=${d}&serviceId=${svc.id}`)
     setSlots(data.slots ?? [])
     setSlotsLoading(false)
   }
@@ -44,7 +46,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     if (!service || !date || !slot) return
     setConfirmLoading(true); setError('')
     try {
-      const { data } = await api.post(`/${barber.slug}/appointments`, {
+      const { data } = await customerApi.post(`/${barber.slug}/appointments`, {
         serviceId: service.id, date, startTime: slot.start,
         customerName: name, customerPhone: phone, notes: notes || undefined,
       })
@@ -166,7 +168,8 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'phoneNumber')}</label>
                 <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  disabled={isAuthenticated}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'notes')}</label>

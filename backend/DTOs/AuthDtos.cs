@@ -53,4 +53,10 @@ public record ScheduleResponse(
 
 public record PublicBarberDto(
     string Slug, string Name, string? Description, string? Logo,
-    string Language, bool IsRTL, int[] ActiveDays, List<ServiceDto> Services);
+    string Language, bool IsRTL, int[] ActiveDays, List<ServiceDto> Services, bool IsFollowed);
+
+public record BarberSearchResultDto(string Slug, string Name, string? Description, string? Logo, string Language, bool IsFollowed);
+
+public record CustomerAppointmentDto(
+    string Id, string BarberSlug, string BarberName, string Date, string StartTime, string EndTime,
+    string? Notes, string Status, string CancelToken, ServiceSummary Service);

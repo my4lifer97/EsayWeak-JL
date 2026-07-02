@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
@@ -27,9 +28,16 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         var services = barber.Services.Select(s => new ServiceDto(
             s.Id, s.BarberId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive)).ToList();
 
+        var isFollowed = false;
+        if (User.FindFirst("type")?.Value == "customer")
+        {
+            var accountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            isFollowed = await db.Follows.AnyAsync(f => f.CustomerAccountId == accountId && f.BarberId == barber.Id);
+        }
+
         return Ok(new PublicBarberDto(
             barber.Slug, barber.Name, barber.Description, barber.Logo,
-            barber.Language.ToString(), isRTL, activeDays, services));
+            barber.Language.ToString(), isRTL, activeDays, services, isFollowed));
     }
 
     [HttpGet("availability")]
@@ -64,15 +72,27 @@ public class BookingController(AppDbContext db, AvailabilityService availability
 
         var endTime = AvailabilityService.AddMinutes(req.StartTime, service.DurationMinutes);
 
-        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == barber.Id && c.Phone == req.CustomerPhone);
+        // If a logged-in customer token is attached, link the booking to their account and trust
+        // their verified phone over whatever was typed in the form (never let a client override
+        // another account's Customer row via a spoofed phone number).
+        string? customerAccountId = null;
+        var phone = req.CustomerPhone;
+        if (User.FindFirst("type")?.Value == "customer")
+        {
+            customerAccountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            phone = User.FindFirst("phone")?.Value ?? phone;
+        }
+
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == barber.Id && c.Phone == phone);
         if (customer is null)
         {
-            customer = new Customer { Name = req.CustomerName, Phone = req.CustomerPhone, BarberId = barber.Id };
+            customer = new Customer { Name = req.CustomerName, Phone = phone, BarberId = barber.Id, CustomerAccountId = customerAccountId };
             db.Customers.Add(customer);
         }
         else
         {
             customer.Name = req.CustomerName;
+            if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
         }
 
         var appointment = new Appointment

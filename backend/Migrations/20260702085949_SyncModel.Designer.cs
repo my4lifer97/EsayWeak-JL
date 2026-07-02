@@ -3,6 +3,7 @@ using System;
 using BarberSaas.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BarberSaas.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260702085949_SyncModel")]
+    partial class SyncModel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -209,9 +212,6 @@ namespace BarberSaas.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<string>("CustomerAccountId")
-                        .HasColumnType("text");
-
                     b.Property<string>("FamilyName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -225,99 +225,11 @@ namespace BarberSaas.Api.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("CustomerAccountId");
 
                     b.HasIndex("BarberId", "Phone")
                         .IsUnique();
 
                     b.ToTable("Customers");
-                });
-
-            modelBuilder.Entity("BarberSaas.Api.Models.CustomerAccount", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("FamilyName")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("Phone")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Phone")
-                        .IsUnique();
-
-                    b.ToTable("CustomerAccounts");
-                });
-
-            modelBuilder.Entity("BarberSaas.Api.Models.CustomerOtp", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text");
-
-                    b.Property<int>("Attempts")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("CodeHash")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("Consumed")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Phone")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Phone", "CreatedAt");
-
-                    b.ToTable("CustomerOtps");
-                });
-
-            modelBuilder.Entity("BarberSaas.Api.Models.Follow", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text");
-
-                    b.Property<string>("BarberId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("CustomerAccountId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BarberId");
-
-                    b.HasIndex("CustomerAccountId", "BarberId")
-                        .IsUnique();
-
-                    b.ToTable("Follows");
                 });
 
             modelBuilder.Entity("BarberSaas.Api.Models.Service", b =>
@@ -445,33 +357,7 @@ namespace BarberSaas.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("BarberSaas.Api.Models.CustomerAccount", "CustomerAccount")
-                        .WithMany("Profiles")
-                        .HasForeignKey("CustomerAccountId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.Navigation("Barber");
-
-                    b.Navigation("CustomerAccount");
-                });
-
-            modelBuilder.Entity("BarberSaas.Api.Models.Follow", b =>
-                {
-                    b.HasOne("BarberSaas.Api.Models.Barber", "Barber")
-                        .WithMany("Follows")
-                        .HasForeignKey("BarberId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("BarberSaas.Api.Models.CustomerAccount", "CustomerAccount")
-                        .WithMany("Follows")
-                        .HasForeignKey("CustomerAccountId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Barber");
-
-                    b.Navigation("CustomerAccount");
                 });
 
             modelBuilder.Entity("BarberSaas.Api.Models.Service", b =>
@@ -506,8 +392,6 @@ namespace BarberSaas.Api.Migrations
 
                     b.Navigation("Customers");
 
-                    b.Navigation("Follows");
-
                     b.Navigation("Services");
 
                     b.Navigation("WorkingHours");
@@ -516,13 +400,6 @@ namespace BarberSaas.Api.Migrations
             modelBuilder.Entity("BarberSaas.Api.Models.Customer", b =>
                 {
                     b.Navigation("Appointments");
-                });
-
-            modelBuilder.Entity("BarberSaas.Api.Models.CustomerAccount", b =>
-                {
-                    b.Navigation("Follows");
-
-                    b.Navigation("Profiles");
                 });
 
             modelBuilder.Entity("BarberSaas.Api.Models.Service", b =>

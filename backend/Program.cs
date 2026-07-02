@@ -28,9 +28,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(opt =>
+{
+    opt.AddPolicy("CustomerOnly", p => p.RequireClaim("type", "customer"));
+    opt.AddPolicy("BarberOnly", p => p.RequireAssertion(ctx =>
+        ctx.User.FindFirst("type")?.Value != "customer"));
+});
 builder.Services.AddScoped<JwtService>();
+builder.Services.AddScoped<CustomerJwtService>();
 builder.Services.AddScoped<AvailabilityService>();
+builder.Services.AddScoped<IOtpSender, DevOtpSender>();
 
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p

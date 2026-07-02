@@ -30,6 +30,7 @@ public class Barber
     public ICollection<BlockedSlot> BlockedSlots { get; set; } = [];
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<Customer> Customers { get; set; } = [];
+    public ICollection<Follow> Follows { get; set; } = [];
 }
 
 public class Service
@@ -89,8 +90,10 @@ public class Customer
     public string FamilyName { get; set; } = "";
     public string Phone { get; set; } = "";
     public string BarberId { get; set; } = "";
+    public string? CustomerAccountId { get; set; }
 
     public Barber Barber { get; set; } = null!;
+    public CustomerAccount? CustomerAccount { get; set; }
     public ICollection<Appointment> Appointments { get; set; } = [];
 }
 
