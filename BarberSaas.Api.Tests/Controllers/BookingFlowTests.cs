@@ -41,13 +41,31 @@ public class BookingFlowTests : IntegrationTestBase
         return verifyBody!.Token;
     }
 
+    private async Task<List<TimeSlot>> AvailableSlots(string slug, string serviceId, string date = TestDate)
+    {
+        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&serviceId={serviceId}");
+        var body = await resp.Content.ReadFromJsonAsync<AvailabilityResponse>();
+        return body!.Slots;
+    }
+
     private async Task<string> FirstAvailableSlot(string slug, string serviceId)
     {
-        var resp = await Client.GetAsync($"/api/{slug}/availability?date={TestDate}&serviceId={serviceId}");
-        var body = await resp.Content.ReadFromJsonAsync<AvailabilityResponse>();
-        Assert.NotEmpty(body!.Slots);
-        return body.Slots[0].Start;
+        var slots = await AvailableSlots(slug, serviceId);
+        Assert.NotEmpty(slots);
+        return slots[0].Start;
     }
+
+    private async Task SetBookingLimits(string barberToken, int? perDay, int? perWeek)
+    {
+        Authorize(Client, barberToken);
+        var resp = await Client.PatchAsJsonAsync("/api/admin/settings",
+            new UpdateSettingsRequest(null, null, null, null, null, null, null, perDay, perWeek));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Client.DefaultRequestHeaders.Authorization = null;
+    }
+
+    private Task<HttpResponseMessage> Book(string slug, string serviceId, string date, string startTime, string phone) =>
+        Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(serviceId, date, startTime, "Customer", phone, null));
 
     [Fact]
     public async Task GuestBooking_CanBookViewAndCancel_WithoutAuth()
@@ -146,5 +164,73 @@ public class BookingFlowTests : IntegrationTestBase
 
         var ownerCancel = await Client.PostAsync($"/api/customer/appointments/{booked.AppointmentId}/cancel", null);
         Assert.Equal(HttpStatusCode.OK, ownerCancel.StatusCode);
+    }
+
+    [Fact]
+    public async Task NoLimitSet_AllowsMultipleBookingsSameDay()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("nolimit-flow@example.com", "nolimit-flow-shop");
+        var serviceId = await CreateService(barberToken);
+        var slots = await AvailableSlots(slug, serviceId);
+        Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
+
+        var first = await Book(slug, serviceId, TestDate, slots[0].Start, "+15553330010");
+        var second = await Book(slug, serviceId, TestDate, slots[1].Start, "+15553330010");
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task MaxBookingsPerDay_RejectsOnceLimitReached()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("perday-flow@example.com", "perday-flow-shop");
+        var serviceId = await CreateService(barberToken);
+        var slots = await AvailableSlots(slug, serviceId);
+        Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
+        await SetBookingLimits(barberToken, perDay: 1, perWeek: null);
+
+        var first = await Book(slug, serviceId, TestDate, slots[0].Start, "+15553330011");
+        var second = await Book(slug, serviceId, TestDate, slots[1].Start, "+15553330011");
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task MaxBookingsPerWeek_RejectsOnceLimitReachedAcrossDifferentDays()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("perweek-flow@example.com", "perweek-flow-shop");
+        var serviceId = await CreateService(barberToken);
+        const string tuesdaySameWeek = "2026-07-07"; // Monday 2026-07-06's week (Sun 07-05 - Sat 07-11)
+        await SetBookingLimits(barberToken, perDay: null, perWeek: 1);
+
+        var monday = await Book(slug, serviceId, TestDate, (await FirstAvailableSlot(slug, serviceId)), "+15553330012");
+        var tuesday = await Book(slug, serviceId, tuesdaySameWeek, (await FirstAvailableSlot(slug, serviceId)), "+15553330012");
+
+        Assert.Equal(HttpStatusCode.Created, monday.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, tuesday.StatusCode);
+    }
+
+    [Fact]
+    public async Task MaxBookingsPerDay_AppliesRegardlessOfLoginState_MatchedByPhone()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("mixed-flow@example.com", "mixed-flow-shop");
+        var serviceId = await CreateService(barberToken);
+        var slots = await AvailableSlots(slug, serviceId);
+        Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
+        await SetBookingLimits(barberToken, perDay: 1, perWeek: null);
+        const string phone = "+15553330013";
+
+        var customerToken = await GetCustomerToken(phone);
+        Authorize(Client, customerToken);
+        var authenticated = await Book(slug, serviceId, TestDate, slots[0].Start, phone);
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        // Same phone, now booking as a guest — must still count toward the same limit.
+        var guest = await Book(slug, serviceId, TestDate, slots[1].Start, phone);
+
+        Assert.Equal(HttpStatusCode.Created, authenticated.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, guest.StatusCode);
     }
 }

@@ -166,19 +166,44 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — services CRUD
 - `/admin/settings` — business info, Twilio setup
-- `/:slug` — public barber page
-- `/:slug/book` — 5-step booking wizard
-- `/:slug/appointments/:id?token=<cancelToken>` — view/cancel/reschedule appointment
+- `/:slug` — public barber page — **requires customer login** (see below)
+- `/:slug/book` — 5-step booking wizard — **requires customer login**
+- `/:slug/appointments/:id?token=<cancelToken>` — view/cancel/reschedule appointment — public, token-secured, no login (opened directly from a WhatsApp/SMS reminder)
 
 ### Auth
 JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via request interceptor. 401 responses redirect to `/admin/login` — **except** a 401 from `/auth/login` itself (wrong password), which must NOT redirect or it wipes `LoginPage`'s own error message via a full page reload before React can render it. Admin routes are wrapped in `ProtectedRoute` (`frontend/src/components/ProtectedRoute.tsx`) which checks `useAuth().isAuthenticated`.
 
+**Customer routes**: `/:slug`, `/:slug/book`, `/account/bookings`, `/account/following` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor (including one opening a barber's shared link for the first time) is redirected to `/login?next=<the path they tried>`, and `CustomerLoginPage` sends them back there after a successful phone+OTP login. Visiting `/login` directly (no `next`) still lands on `/browse` as before. There is deliberately no guest-browsing fallback for these routes — this reverses the earlier "guest booking must work" decision from the customer-accounts feature. The backend (`BookingController.BookAppointment`) still technically accepts anonymous requests; only the frontend routing enforces login now. `/:slug/appointments/:id` (the magic-link view) is intentionally left outside this guard.
+
 ### i18n (Translations)
 - **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings.  
   Use `t(lang, 'key')` for UI strings and `serviceName(service, lang)` for multilingual service names.  
-  All public pages (BarberPage, BookPage, AppointmentPage, BookingWizard) use this.  
-  RTL layout applied via `dir="rtl"` when `barber.isRTL` is true (AR and HE).
+  **Customer-facing pages** (login/browse/account/*, a barber's public page, the booking wizard) use the
+  customer's own language preference — `useCustomerAuth().language`/`setLang()`, stored under
+  `localStorage['customerLang']`, defaulting to **Hebrew** when unset. This is independent of, and
+  overrides, that specific barber's own configured `language`/`isRTL` (their business's storefront
+  setting) — a customer who picks English sees English everywhere, even on a Hebrew-configured
+  barber's page. RTL is derived from the customer's chosen language (`AR`/`HE` → `rtl`), not the
+  barber's `isRTL` flag. `<LanguageSwitcher />` (`frontend/src/components/customer/`) exposes the
+  picker; it's on `CustomerAccountNav`, `CustomerLoginPage`, `BarberPage`, and `BookingWizard`.
+  **Admin/barber dashboard pages** are unaffected — they still use `useAuth().language`, set from the
+  barber's own `Settings > Language` field, unrelated to any customer's choice.
 - **Backend**: `backend/Services/I18nService.cs` — static `T(lang, key, args)` for WhatsApp/reminder messages.
+
+### Back navigation (customer pages)
+`frontend/src/components/BackButton.tsx` — browser-history back (`navigate(-1)`), not a fixed
+route, so it works regardless of how the customer arrived. Used on every customer-facing page
+(BarberPage, BookPage/BookingWizard step 1, MyBookingsPage, FollowedBarbersPage,
+BrowseBarbersPage, CustomerLoginPage, AppointmentPage). BookingWizard steps 2-4 keep their own
+in-wizard step-back button instead (moving between wizard steps, not pages).
+
+### Per-customer booking limits
+A barber can cap how many times the *same customer* (matched by phone — applies whether they're
+logged in or booking as a guest, so it can't be dodged by not signing in) can book with them:
+`Barber.MaxBookingsPerDay` / `MaxBookingsPerWeek` (nullable int, `null` = unlimited), set via
+`Settings > Booking Limits`. Enforced in `BookingController.BookAppointment` before creating the
+appointment — "per week" means the fixed Sun–Sat calendar week containing the requested date.
+Reschedules are not currently checked against the limit (only new bookings).
 
 ### Database
 EF Core + Npgsql. Dev DB: `barbersaas_dev` (appsettings.Development.json). Prod DB: `barbersaas` (appsettings.json). Auto-migrates in Development on startup.  

@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
-import { useAuth } from '../../lib/auth'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
+import BackButton from '../../components/BackButton'
+import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
 
 type View = 'phone' | 'otp'
 
 export default function CustomerLoginPage() {
-  const { language: lang } = useAuth()
-  const { requestOtp, verifyOtp } = useCustomerAuth()
+  const { language: lang, requestOtp, verifyOtp } = useCustomerAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next') ?? '/browse'
@@ -50,6 +50,10 @@ export default function CustomerLoginPage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
+        <div className="flex items-center justify-between mb-4">
+          <BackButton lang={lang} />
+          <LanguageSwitcher />
+        </div>
         <div className="text-center mb-8">
           <Link to="/" className="text-3xl">✂️</Link>
           <h1 className="text-2xl font-bold text-white mt-3">{t(lang, 'loginTitle')}</h1>
@@ -87,13 +91,13 @@ export default function CustomerLoginPage() {
                 {isNewCustomer && (
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
-                      <input type="text" required autoFocus value={name} onChange={(e) => setName(e.target.value)}
+                      <label htmlFor="login-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
+                      <input id="login-name" type="text" required autoFocus value={name} onChange={(e) => setName(e.target.value)}
                         className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'familyName')}</label>
-                      <input type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
+                      <label htmlFor="login-family-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'familyName')}</label>
+                      <input id="login-family-name" type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
                         className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>

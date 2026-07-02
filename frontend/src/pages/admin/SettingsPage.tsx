@@ -9,6 +9,7 @@ type BarberSettings = {
   name: string; phone: string | null; description: string | null; slug: string
   language: 'EN' | 'AR' | 'HE'; twilioNumber: string | null; twilioSid: string | null
   trialEndsAt: string; subscriptionStatus: string
+  maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
 }
 
 export default function SettingsPage() {
@@ -22,6 +23,7 @@ export default function SettingsPage() {
   const [form, setForm] = useState({
     name: '', phone: '', description: '', language: 'EN' as 'EN' | 'AR' | 'HE',
     twilioNumber: '', twilioSid: '', twilioToken: '',
+    maxBookingsPerDay: '', maxBookingsPerWeek: '',
   })
   const [initialized, setInitialized] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -33,6 +35,8 @@ export default function SettingsPage() {
       name: barber.name, phone: barber.phone ?? '', description: barber.description ?? '',
       language: barber.language, twilioNumber: barber.twilioNumber ?? '',
       twilioSid: barber.twilioSid ?? '', twilioToken: '',
+      maxBookingsPerDay: barber.maxBookingsPerDay?.toString() ?? '',
+      maxBookingsPerWeek: barber.maxBookingsPerWeek?.toString() ?? '',
     })
     setLang(barber.language)
     setInitialized(true)
@@ -40,9 +44,11 @@ export default function SettingsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError('')
-    const payload: Record<string, string | undefined> = {
+    const payload: Record<string, string | number | null | undefined> = {
       name: form.name, phone: form.phone, description: form.description,
       language: form.language, twilioNumber: form.twilioNumber, twilioSid: form.twilioSid,
+      maxBookingsPerDay: form.maxBookingsPerDay ? Number(form.maxBookingsPerDay) : null,
+      maxBookingsPerWeek: form.maxBookingsPerWeek ? Number(form.maxBookingsPerWeek) : null,
     }
     if (form.twilioToken) payload.twilioToken = form.twilioToken
     try {
@@ -107,6 +113,22 @@ export default function SettingsPage() {
               <option value="AR">العربية (Arabic)</option>
               <option value="HE">עברית (Hebrew)</option>
             </select>
+          </div>
+        </div>
+
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-white font-semibold mb-1">{t(lang, 'bookingLimits')}</h2>
+          <p className="text-gray-500 text-sm">{t(lang, 'bookingLimitsHint')}</p>
+          <div className="grid grid-cols-2 gap-4">
+            {[[t(lang, 'maxBookingsPerDay'), 'maxBookingsPerDay'], [t(lang, 'maxBookingsPerWeek'), 'maxBookingsPerWeek']].map(([label, key]) => (
+              <div key={key}>
+                <label htmlFor={`settings-${key}`} className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
+                <input id={`settings-${key}`} type="number" min="1" step="1" value={form[key as 'maxBookingsPerDay' | 'maxBookingsPerWeek']}
+                  placeholder={t(lang, 'unlimited')}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+            ))}
           </div>
         </div>
 

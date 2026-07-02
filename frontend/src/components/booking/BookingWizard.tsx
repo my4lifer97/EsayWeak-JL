@@ -4,6 +4,8 @@ import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t, serviceName } from '../../lib/i18n'
+import BackButton from '../BackButton'
+import LanguageSwitcher from '../customer/LanguageSwitcher'
 
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number }
 type BarberInfo = { slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[] }
@@ -11,13 +13,15 @@ type Slot = { start: string; end: string }
 type Step = 1 | 2 | 3 | 4 | 5
 
 export default function BookingWizard({ barber }: { barber: BarberInfo }) {
-  const { user, isAuthenticated } = useCustomerAuth()
+  const { user, isAuthenticated, language: lang } = useCustomerAuth()
   const [step, setStep] = useState<Step>(1)
   const [service, setService] = useState<Service | null>(null)
   const [date, setDate] = useState('')
   const [slot, setSlot] = useState<Slot | null>(null)
-  const [name, setName] = useState(() => (user ? `${user.name} ${user.familyName}`.trim() : ''))
-  const [phone, setPhone] = useState(() => user?.phone ?? '')
+  const prefillName = () => (user ? `${user.name} ${user.familyName}`.trim() : '')
+  const prefillPhone = () => user?.phone ?? ''
+  const [name, setName] = useState(prefillName)
+  const [phone, setPhone] = useState(prefillPhone)
   const [notes, setNotes] = useState('')
   const [slots, setSlots] = useState<Slot[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
@@ -25,8 +29,9 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const [appointmentId, setAppointmentId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
-  const lang = barber.language
-  const dir = barber.isRTL ? 'rtl' : 'ltr'
+  // The customer's own language choice drives the UI everywhere, overriding this specific
+  // barber's configured storefront language.
+  const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
 
   async function fetchSlots(d: string, svc: Service) {
@@ -70,7 +75,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
           <h1 className="text-2xl font-bold text-white mb-3">{t(lang, 'appointmentConfirmed')}</h1>
           <p className="text-gray-400 mb-2">{service && `${serviceName(service, lang)} — ${date} at ${slot?.start}`}</p>
           <p className="text-gray-500 text-sm mb-8">{t(lang, 'reminderNote')}</p>
-          <button onClick={() => { setStep(1); setService(null); setDate(''); setSlot(null); setName(''); setPhone(''); setNotes(''); setAppointmentId(null) }}
+          <button onClick={() => { setStep(1); setService(null); setDate(''); setSlot(null); setName(prefillName()); setPhone(prefillPhone()); setNotes(''); setAppointmentId(null) }}
             className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-2.5 rounded-xl transition-colors">
             {t(lang, 'bookAnother')}
           </button>
@@ -83,16 +88,19 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     <div className="min-h-screen bg-gray-950 text-white" dir={dir}>
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="flex items-center gap-2 mb-8">
-          {step > 1 && (
+          {step > 1 ? (
             <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-gray-400 hover:text-white text-sm">
               ← {t(lang, 'back')}
             </button>
+          ) : (
+            <BackButton lang={lang} />
           )}
-          <div className="flex gap-1 ms-auto">
+          <div className="flex gap-1 mx-auto">
             {[1, 2, 3, 4].map((s) => (
               <div key={s} className={`h-1.5 w-8 rounded-full transition-colors ${s <= step ? 'bg-blue-500' : 'bg-gray-700'}`} />
             ))}
           </div>
+          <LanguageSwitcher />
         </div>
 
         <h1 className="text-2xl font-bold mb-2">{barber.name}</h1>

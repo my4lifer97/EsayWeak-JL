@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
+import BackButton from '../../components/BackButton'
+import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
 
 type BarberInfo = {
   slug: string; name: string; description: string | null; logo: string | null
@@ -16,7 +18,7 @@ export default function BarberPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { isAuthenticated } = useCustomerAuth()
+  const { isAuthenticated, language: lang } = useCustomerAuth()
   const [followLoading, setFollowLoading] = useState(false)
 
   const { data: barber, isLoading } = useQuery<BarberInfo>({
@@ -24,8 +26,9 @@ export default function BarberPage() {
     queryFn: () => customerApi.get(`/${slug}/info`).then((r) => r.data),
   })
 
-  const lang = barber?.language ?? 'EN'
-  const dir = barber?.isRTL ? 'rtl' : 'ltr'
+  // The customer's own language choice drives the UI everywhere, overriding this specific
+  // barber's configured storefront language (confirmed default behavior for this app).
+  const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
 
   async function toggleFollow() {
     if (!isAuthenticated) { navigate(`/login?next=/${slug}`); return }
@@ -40,14 +43,14 @@ export default function BarberPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-500">{t('EN', 'loading')}</div>
+        <div className="text-gray-500">{t(lang, 'loading')}</div>
       </div>
     )
   }
   if (!barber) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-400">{t('EN', 'barberNotFound')}</div>
+        <div className="text-gray-400">{t(lang, 'barberNotFound')}</div>
       </div>
     )
   }
@@ -55,6 +58,10 @@ export default function BarberPage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white" dir={dir}>
       <div className="max-w-lg mx-auto px-4 py-10">
+        <div className="flex items-center justify-between mb-6">
+          <BackButton lang={lang} />
+          <LanguageSwitcher />
+        </div>
         <div className="text-center mb-8">
           <div className="text-5xl mb-4">✂️</div>
           <h1 className="text-3xl font-bold text-white">{barber.name}</h1>

@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { t, serviceName } from '../../lib/i18n'
+import BackButton from '../../components/BackButton'
 
 type AppointmentDetail = {
   id: string; date: string; startTime: string; endTime: string; status: string; notes: string | null; cancelToken: string
@@ -55,7 +56,8 @@ export default function AppointmentPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-white text-center mb-2">{appt.barber.name}</h1>
+        <BackButton lang={lang} />
+        <h1 className="text-2xl font-bold text-white text-center mb-2 mt-3">{appt.barber.name}</h1>
         <p className="text-gray-400 text-center text-sm mb-8">{t(lang, 'yourAppointment')}</p>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4 mb-6">

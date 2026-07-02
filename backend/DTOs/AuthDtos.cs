@@ -16,11 +16,13 @@ public record CreateBlockedSlotRequest(string Date, string? StartTime, string? E
 public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
     string? Description, string Language, string? TwilioNumber, string? TwilioSid,
-    DateTime TrialEndsAt, string SubscriptionStatus);
+    DateTime TrialEndsAt, string SubscriptionStatus,
+    int? MaxBookingsPerDay, int? MaxBookingsPerWeek);
 
 public record UpdateSettingsRequest(
     string? Name, string? Phone, string? Description, string? Language,
-    string? TwilioNumber, string? TwilioSid, string? TwilioToken);
+    string? TwilioNumber, string? TwilioSid, string? TwilioToken,
+    int? MaxBookingsPerDay, int? MaxBookingsPerWeek);
 
 public record BookAppointmentRequest(
     string ServiceId, string Date, string StartTime,

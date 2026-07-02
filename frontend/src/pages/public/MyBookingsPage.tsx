@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
-import { useAuth } from '../../lib/auth'
+import { useCustomerAuth } from '../../lib/customerAuth'
 import { customerApi } from '../../lib/customerApi'
 import { t, serviceName, type TKey } from '../../lib/i18n'
 import CustomerAccountNav from '../../components/customer/CustomerAccountNav'
+import BackButton from '../../components/BackButton'
 
 type Appointment = {
   id: string; barberSlug: string; barberName: string
@@ -29,7 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function MyBookingsPage() {
-  const { language: lang } = useAuth()
+  const { language: lang } = useCustomerAuth()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('upcoming')
   const [expandedReschedule, setExpandedReschedule] = useState<string | null>(null)
@@ -92,7 +93,8 @@ export default function MyBookingsPage() {
     <div className="min-h-screen bg-gray-950 text-white">
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-white mb-6">{t(lang, 'myBookingsTitle')}</h1>
+        <BackButton lang={lang} />
+        <h1 className="text-2xl font-bold text-white mb-6 mt-3">{t(lang, 'myBookingsTitle')}</h1>
 
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1 border border-gray-800 mb-6 w-fit">
           {FILTERS.map((f) => (

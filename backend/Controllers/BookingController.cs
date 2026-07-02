@@ -71,6 +71,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
             return Conflict(new { error = "Slot no longer available" });
 
         var endTime = AvailabilityService.AddMinutes(req.StartTime, service.DurationMinutes);
+        var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
 
         // If a logged-in customer token is attached, link the booking to their account and trust
         // their verified phone over whatever was typed in the form (never let a client override
@@ -81,6 +82,28 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         {
             customerAccountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             phone = User.FindFirst("phone")?.Value ?? phone;
+        }
+
+        // Per-customer limits (matched by phone, not account, so a guest booking can't dodge
+        // them by simply not logging in). Counts CONFIRMED bookings with this barber only.
+        if (barber.MaxBookingsPerDay is not null || barber.MaxBookingsPerWeek is not null)
+        {
+            var existingDates = await db.Appointments
+                .Where(a => a.BarberId == barber.Id && a.Customer.Phone == phone && a.Status == AppointmentStatus.CONFIRMED)
+                .Select(a => a.Date)
+                .ToListAsync();
+
+            if (barber.MaxBookingsPerDay is not null &&
+                existingDates.Count(d => d == requestedDate) >= barber.MaxBookingsPerDay)
+                return StatusCode(409, new { error = "You've reached the maximum number of bookings allowed per day." });
+
+            if (barber.MaxBookingsPerWeek is not null)
+            {
+                var weekStart = requestedDate.AddDays(-(int)requestedDate.DayOfWeek);
+                var weekEnd = weekStart.AddDays(6);
+                if (existingDates.Count(d => d >= weekStart && d <= weekEnd) >= barber.MaxBookingsPerWeek)
+                    return StatusCode(409, new { error = "You've reached the maximum number of bookings allowed per week." });
+            }
         }
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == barber.Id && c.Phone == phone);
@@ -100,7 +123,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
             BarberId = barber.Id,
             CustomerId = customer.Id,
             ServiceId = service.Id,
-            Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime(),
+            Date = requestedDate,
             StartTime = req.StartTime,
             EndTime = endTime,
             Notes = req.Notes,

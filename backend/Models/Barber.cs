@@ -24,6 +24,10 @@ public class Barber
     public SubStatus SubscriptionStatus { get; set; } = SubStatus.TRIAL;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    // Null means unlimited. Enforced per-customer (matched by phone) in BookingController.
+    public int? MaxBookingsPerDay { get; set; }
+    public int? MaxBookingsPerWeek { get; set; }
+
     public ICollection<Service> Services { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];

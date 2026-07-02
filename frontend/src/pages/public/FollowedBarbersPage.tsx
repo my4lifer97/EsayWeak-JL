@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuth } from '../../lib/auth'
+import { useCustomerAuth } from '../../lib/customerAuth'
 import { customerApi } from '../../lib/customerApi'
 import { t } from '../../lib/i18n'
 import CustomerAccountNav from '../../components/customer/CustomerAccountNav'
+import BackButton from '../../components/BackButton'
 
 type BarberResult = { slug: string; name: string; description: string | null; logo: string | null }
 
 export default function FollowedBarbersPage() {
-  const { language: lang } = useAuth()
+  const { language: lang } = useCustomerAuth()
   const queryClient = useQueryClient()
   const [pending, setPending] = useState<string | null>(null)
 
@@ -31,7 +32,8 @@ export default function FollowedBarbersPage() {
     <div className="min-h-screen bg-gray-950 text-white">
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-white mb-6">{t(lang, 'followedBarbers')}</h1>
+        <BackButton lang={lang} />
+        <h1 className="text-2xl font-bold text-white mb-6 mt-3">{t(lang, 'followedBarbers')}</h1>
 
         {isLoading ? (
           <div className="text-center text-gray-500 py-12">{t(lang, 'loading')}</div>

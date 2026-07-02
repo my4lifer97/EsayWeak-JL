@@ -48,9 +48,11 @@ export default function App() {
               <Route element={<CustomerProtectedRoute />}>
                 <Route path="/account/bookings" element={<MyBookingsPage />} />
                 <Route path="/account/following" element={<FollowedBarbersPage />} />
+                <Route path="/:slug" element={<BarberPage />} />
+                <Route path="/:slug/book" element={<BookPage />} />
               </Route>
-              <Route path="/:slug" element={<BarberPage />} />
-              <Route path="/:slug/book" element={<BookPage />} />
+              {/* Magic-link view stays public and token-secured — opened directly from a
+                  WhatsApp/SMS reminder, must not require login. */}
               <Route path="/:slug/appointments/:id" element={<AppointmentPage />} />
             </Routes>
           </BrowserRouter>

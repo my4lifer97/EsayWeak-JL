@@ -25,7 +25,8 @@ public class AdminController(AppDbContext db) : ControllerBase
         return Ok(new SettingsDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
             b.Description, b.Language.ToString(), b.TwilioNumber, b.TwilioSid,
-            b.TrialEndsAt, b.SubscriptionStatus.ToString()));
+            b.TrialEndsAt, b.SubscriptionStatus.ToString(),
+            b.MaxBookingsPerDay, b.MaxBookingsPerWeek));
     }
 
     [HttpPatch("settings")]
@@ -41,6 +42,10 @@ public class AdminController(AppDbContext db) : ControllerBase
         if (req.TwilioNumber is not null) b.TwilioNumber = req.TwilioNumber;
         if (req.TwilioSid is not null) b.TwilioSid = req.TwilioSid;
         if (req.TwilioToken is not null) b.TwilioToken = req.TwilioToken;
+        // Unlike the fields above, null here is a real value (unlimited), not "omitted" —
+        // the settings form always submits both, so assign unconditionally.
+        b.MaxBookingsPerDay = req.MaxBookingsPerDay;
+        b.MaxBookingsPerWeek = req.MaxBookingsPerWeek;
 
         await db.SaveChangesAsync();
         return Ok(new { b.Id, b.Name, Language = b.Language.ToString() });

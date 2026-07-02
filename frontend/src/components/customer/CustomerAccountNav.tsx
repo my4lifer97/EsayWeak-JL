@@ -1,11 +1,10 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../lib/auth'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
+import LanguageSwitcher from './LanguageSwitcher'
 
 export default function CustomerAccountNav() {
-  const { language: lang } = useAuth()
-  const { isAuthenticated, logout } = useCustomerAuth()
+  const { language: lang, isAuthenticated, logout } = useCustomerAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -38,6 +37,7 @@ export default function CustomerAccountNav() {
           ) : (
             <Link to="/login" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">{t(lang, 'loginTitle')}</Link>
           )}
+          <LanguageSwitcher />
         </div>
       </div>
     </nav>

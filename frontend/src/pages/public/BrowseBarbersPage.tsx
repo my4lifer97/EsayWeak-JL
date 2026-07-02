@@ -1,17 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAuth } from '../../lib/auth'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { customerApi } from '../../lib/customerApi'
 import { t } from '../../lib/i18n'
 import CustomerAccountNav from '../../components/customer/CustomerAccountNav'
+import BackButton from '../../components/BackButton'
 
 type BarberResult = { slug: string; name: string; description: string | null; logo: string | null; isFollowed: boolean }
 
 export default function BrowseBarbersPage() {
-  const { language: lang } = useAuth()
-  const { isAuthenticated } = useCustomerAuth()
+  const { language: lang, isAuthenticated } = useCustomerAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
@@ -37,7 +36,8 @@ export default function BrowseBarbersPage() {
     <div className="min-h-screen bg-gray-950 text-white">
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-white mb-6">{t(lang, 'browseBarbers')}</h1>
+        <BackButton lang={lang} />
+        <h1 className="text-2xl font-bold text-white mb-6 mt-3">{t(lang, 'browseBarbers')}</h1>
 
         <input
           type="text" value={query} onChange={(e) => setQuery(e.target.value)}
