@@ -3,13 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { t, type TKey } from '../../lib/i18n'
+import { t, serviceName, type TKey } from '../../lib/i18n'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
   customer: { name: string; phone: string }
-  service: { nameEn: string }
+  service: { nameEn: string; nameAr: string; nameHe: string }
   price: number
 }
 
@@ -90,7 +90,7 @@ export default function AppointmentsPage() {
                   <td className="px-4 py-3 text-gray-300">{a.startTime}–{a.endTime}</td>
                   <td className="px-4 py-3 text-white font-medium">{a.customer.name}</td>
                   <td className="px-4 py-3 text-gray-300">{a.customer.phone}</td>
-                  <td className="px-4 py-3 text-gray-300">{a.service.nameEn}</td>
+                  <td className="px-4 py-3 text-gray-300">{serviceName(a.service, lang)}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] ?? 'bg-gray-700 text-gray-300'}`}>
                       {STATUS_LABEL[a.status] ? t(lang, STATUS_LABEL[a.status]) : a.status}

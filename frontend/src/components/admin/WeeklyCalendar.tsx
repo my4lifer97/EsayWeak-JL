@@ -3,13 +3,13 @@ import { format, addDays, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
 import { useQueryClient } from '@tanstack/react-query'
-import { t } from '../../lib/i18n'
+import { t, serviceName } from '../../lib/i18n'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
   customer: { name: string; phone: string }
-  service: { nameEn: string; durationMinutes: number }
+  service: { nameEn: string; nameAr: string; nameHe: string; durationMinutes: number }
   price: number
 }
 
@@ -105,8 +105,12 @@ export default function WeeklyCalendar({
                     <button key={appt.id} onClick={() => setSelected(appt)}
                       className={`absolute inset-x-0.5 rounded-md px-1.5 py-1 text-left overflow-hidden ${color} hover:opacity-80 transition-opacity`}
                       style={{ top, height: Math.max(height, 24) }}>
-                      <div className="text-white text-xs font-medium truncate">{appt.customer.name}</div>
-                      <div className="text-white/70 text-xs truncate">{appt.service.nameEn}</div>
+                      {/* One line, not two — a short appointment's block (min 24px) only has
+                          room for a single text-xs line; a second stacked line gets silently
+                          clipped by overflow-hidden, hiding the service name entirely. */}
+                      <div className="text-white text-xs font-medium truncate">
+                        {appt.customer.name} · {serviceName(appt.service, lang)}
+                      </div>
                     </button>
                   )
                 })}
@@ -124,7 +128,7 @@ export default function WeeklyCalendar({
               <button onClick={() => setSelected(null)} className="text-gray-500 hover:text-white text-xl">✕</button>
             </div>
             <div className="space-y-2 text-sm mb-6">
-              <Row label={t(lang, 'service')} value={selected.service.nameEn} />
+              <Row label={t(lang, 'service')} value={serviceName(selected.service, lang)} />
               <Row label={t(lang, 'date')} value={selected.date.slice(0, 10)} />
               <Row label={t(lang, 'time')} value={`${selected.startTime} – ${selected.endTime}`} />
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />

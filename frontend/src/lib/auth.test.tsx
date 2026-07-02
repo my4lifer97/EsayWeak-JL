@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from './auth'
 import { api } from './api'
 
 vi.mock('./api', () => ({
-  api: { post: vi.fn() },
+  api: { post: vi.fn(), get: vi.fn().mockResolvedValue({ data: { language: 'EN' } }) },
 }))
 
 function TestConsumer() {
@@ -77,5 +77,18 @@ describe('AuthProvider', () => {
 
     expect(screen.getByTestId('lang').textContent).toBe('AR')
     expect(localStorage.getItem('lang')).toBe('AR')
+  })
+
+  it('syncs language from /admin/settings on session restore, not just when SettingsPage is visited', async () => {
+    // Regression test: language previously only reached this context when SettingsPage
+    // happened to fetch it and call setLang itself; every other admin page fell back to
+    // stale localStorage (default English) until Settings was opened.
+    vi.mocked(api.get).mockResolvedValue({ data: { language: 'AR' } })
+    localStorage.setItem('user', JSON.stringify({ id: '1', name: 'A', email: 'a@example.com', slug: 'a' }))
+
+    renderWithProvider()
+
+    await waitFor(() => expect(screen.getByTestId('lang').textContent).toBe('AR'))
+    expect(api.get).toHaveBeenCalledWith('/admin/settings')
   })
 })

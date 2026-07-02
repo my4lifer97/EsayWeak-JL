@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from './api'
 
 interface User { id: string; name: string; email: string; slug: string }
@@ -24,6 +24,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('lang', l)
     setLanguage(l)
   }
+
+  // The barber's saved language previously only reached this context when SettingsPage
+  // happened to be visited (it fetches /admin/settings and calls setLang itself) — every
+  // other admin page fell back to whatever was last in localStorage (default English) until
+  // then. Sync it on login and on session restore so it's correct everywhere from the start.
+  useEffect(() => {
+    if (!user) return
+    api.get('/admin/settings').then(({ data }) => setLang(data.language)).catch(() => {})
+  }, [user?.id])
 
   async function login(email: string, password: string) {
     const { data } = await api.post('/auth/login', { email, password })
