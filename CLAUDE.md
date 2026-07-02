@@ -7,6 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Backend**: `backend/` — ASP.NET Core 9 Web API (C#) + Entity Framework Core 9 + PostgreSQL  
 **Frontend**: `frontend/` — Vite 5 + React 18 + TypeScript SPA
 
+## CI
+
+`.github/workflows/ci.yml` runs on every push to `master` and every PR: `dotnet build`/`test`
+for the backend (SQLite in-memory, no Postgres service needed — see backend test docs below)
+and `tsc`/`vitest`/`vite build` for the frontend, on GitHub-hosted runners (Node 22, .NET 9).
+CI-only for now — no deploy step, since there's no production environment yet. Playwright E2E
+is intentionally not in CI: it needs a live backend against a real Postgres instance plus the
+Vite dev server, which is meaningfully more orchestration than the build/test jobs above.
+
 ## Node.js Environment
 
 Two Node.js installs are on this machine:

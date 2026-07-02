@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (build + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        # BarberSaas.Api.Tests references backend/BarberSaas.Api.csproj, so restoring/building/
+        # testing the test project transitively covers the API project too (dotnet restore only
+        # accepts a single project/solution argument, not a list of paths).
+        run: dotnet restore BarberSaas.Api.Tests/BarberSaas.Api.Tests.csproj
+
+      - name: Build
+        run: dotnet build BarberSaas.Api.Tests/BarberSaas.Api.Tests.csproj --no-restore --configuration Release
+
+      - name: Test
+        # Tests run against SQLite in-memory (see BarberSaas.Api.Tests/TestWebApplicationFactory.cs),
+        # not a real Postgres instance, so no database service is needed here.
+        run: dotnet test BarberSaas.Api.Tests/BarberSaas.Api.Tests.csproj --no-restore --configuration Release
+
+  frontend:
+    name: Frontend (typecheck + test + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npx vitest run
+
+      - name: Build
+        run: npx vite build
