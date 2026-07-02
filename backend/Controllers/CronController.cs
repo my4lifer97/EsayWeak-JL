@@ -10,7 +10,7 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/cron")]
-public class CronController(AppDbContext db, IConfiguration config) : ControllerBase
+public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger) : ControllerBase
 {
     [HttpGet("reminders")]
     public async Task<IActionResult> SendReminders()
@@ -66,8 +66,10 @@ public class CronController(AppDbContext db, IConfiguration config) : Controller
                 appt.ReminderSent = true;
                 sent++;
             }
-            catch
+            catch (Exception ex)
             {
+                logger.LogError(ex, "Failed to send WhatsApp reminder for appointment {AppointmentId} (barber {BarberId})",
+                    appt.Id, appt.BarberId);
                 failed++;
             }
         }

@@ -80,6 +80,7 @@ barber-saas/
 │   │   ├── AvailabilityService.cs  # Slot generation + conflict filtering
 │   │   ├── I18nService.cs          # Server-side translations (EN/AR/HE) for WhatsApp messages
 │   │   └── JwtService.cs           # JWT generation (30-day tokens, HS256)
+│   ├── GlobalExceptionHandler.cs     # Catches unhandled exceptions -> { error } JSON + ILogger, never a bare 500
 │   ├── Program.cs                   # App startup, DI registration, middleware pipeline
 │   ├── appsettings.json             # Base config (prod DB, JWT keys, AppUrl, CronSecret)
 │   ├── appsettings.Development.json # Dev overrides (DB = barbersaas_dev, verbose logging)
