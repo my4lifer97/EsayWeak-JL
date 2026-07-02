@@ -30,8 +30,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization(opt =>
 {
-    opt.AddPolicy("CustomerOnly", p => p.RequireClaim("type", "customer"));
-    opt.AddPolicy("BarberOnly", p => p.RequireAssertion(ctx =>
+    opt.AddPolicy("CustomerOnly", p => p.RequireAuthenticatedUser().RequireClaim("type", "customer"));
+    opt.AddPolicy("BarberOnly", p => p.RequireAuthenticatedUser().RequireAssertion(ctx =>
         ctx.User.FindFirst("type")?.Value != "customer"));
 });
 builder.Services.AddScoped<JwtService>();
@@ -56,7 +56,10 @@ if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    if (db.Database.IsNpgsql())
+        db.Database.Migrate();
 }
 
 app.Run();
+
+public partial class Program { }

@@ -34,6 +34,22 @@ dotnet ef migrations add <Name>      # Create EF migration
 dotnet ef database update            # Apply migrations
 ```
 
+### Backend tests (`BarberSaas.Api.Tests/`)
+```powershell
+Set-Location "C:\Users\Jamel\Desktop\EsayWeek_JL\barber-saas\BarberSaas.Api.Tests"
+dotnet test
+```
+xUnit project, sibling to `backend/` (not nested inside it — an SDK-style project's default
+glob would otherwise pull the test `.cs` files into the API's own compilation). Integration
+tests use `WebApplicationFactory<Program>` (`TestWebApplicationFactory.cs`) against a SQLite
+in-memory database (not the EF InMemory provider — `CustomerAuthController` uses
+`ExecuteUpdateAsync`, a relational-only operation InMemory can't execute); `AvailabilityServiceTests`
+unit-tests `Services/AvailabilityService.cs` directly the same way. Test config (Jwt secret,
+CronSecret, etc.) is injected via environment variables in the factory's constructor, not
+`ConfigureAppConfiguration` — the latter applies too late for minimal-API top-level statements
+that read `IConfiguration` before `WebApplicationFactory`'s hook runs, which previously caused
+`JwtService` to sign tokens with a different secret than the bearer middleware validated with.
+
 ### Frontend (React)
 ```powershell
 # Set VS npm in PATH first (see above)

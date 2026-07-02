@@ -3,6 +3,10 @@ backend/bin/
 backend/obj/
 backend/appsettings.Production.json
 
+# Tests
+BarberSaas.Api.Tests/bin/
+BarberSaas.Api.Tests/obj/
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
