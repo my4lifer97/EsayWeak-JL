@@ -53,10 +53,17 @@ public class WhatsAppController(AppDbContext db, IConfiguration config) : Contro
         else if (CancelKeywords.Any(k => incomingMsg.Contains(k)))
         {
             var customer = await db.Customers
-                .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && a.Date >= DateTime.UtcNow))
+                // a.Date is a calendar date (local wall-clock, never UTC-converted), so compare
+                // against local "today" as a date — not DateTime.UtcNow, which is both the wrong
+                // clock and, being a timestamp rather than a date, would already exclude today's
+                // appointments as soon as any time had passed since UTC midnight.
+                .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && a.Date >= DateTime.Now.Date))
                 .FirstOrDefaultAsync(c => c.BarberId == barber.Id && c.Phone == fromPhone);
 
-            var upcoming = customer?.Appointments.OrderBy(a => a.Date).FirstOrDefault();
+            var upcoming = customer?.Appointments
+                .Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED")
+                .OrderBy(a => a.Date)
+                .FirstOrDefault();
             if (upcoming is null)
             {
                 reply = I18nService.T(lang, "whatsapp.noAppointment", new() { ["url"] = bookingUrl });

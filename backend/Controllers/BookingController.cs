@@ -10,7 +10,7 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/{slug}")]
-public class BookingController(AppDbContext db, AvailabilityService availability) : ControllerBase
+public class BookingController(AppDbContext db, AvailabilityService availability, FollowService followService) : ControllerBase
 {
     [HttpGet("info")]
     public async Task<IActionResult> GetBarberInfo(string slug)
@@ -82,6 +82,11 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         {
             customerAccountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             phone = User.FindFirst("phone")?.Value ?? phone;
+
+            // Booking a barber once is enough to follow them — no separate follow click required.
+            // Done as its own save (before any Customer/Appointment tracking below) so FollowService
+            // can safely clear the change tracker if it needs to recover from a concurrent duplicate.
+            await followService.EnsureFollowed(customerAccountId!, barber.Id);
         }
 
         // Per-customer limits (matched by phone, not account, so a guest booking can't dodge
@@ -130,6 +135,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
             Status = AppointmentStatus.CONFIRMED,
         };
         db.Appointments.Add(appointment);
+
         await db.SaveChangesAsync();
 
         return StatusCode(201, new BookAppointmentResponse(appointment.Id, appointment.CancelToken));
@@ -165,6 +171,8 @@ public class BookingController(AppDbContext db, AvailabilityService availability
 
         if (appointment is null) return NotFound(new { error = "Not found" });
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
+        if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
 
         appointment.Status = AppointmentStatus.CANCELLED;
         await db.SaveChangesAsync();
@@ -181,6 +189,8 @@ public class BookingController(AppDbContext db, AvailabilityService availability
 
         if (appointment is null) return NotFound(new { error = "Not found" });
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
+        if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
 
         var slots = await availability.GetAvailableSlots(appointment.BarberId, req.Date, appointment.Service.DurationMinutes);
         if (!slots.Any(s => s.Start == req.StartTime))

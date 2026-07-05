@@ -2,6 +2,7 @@ using System.Security.Claims;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
+using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +11,7 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/barbers")]
-public class BarbersController(AppDbContext db) : ControllerBase
+public class BarbersController(AppDbContext db, FollowService followService) : ControllerBase
 {
     private string? CustomerAccountId =>
         User.FindFirst("type")?.Value == "customer" ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null;
@@ -68,13 +69,7 @@ public class BarbersController(AppDbContext db) : ControllerBase
         var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Slug == slug);
         if (barber is null) return NotFound(new { error = "Not found" });
 
-        var exists = await db.Follows.AnyAsync(f => f.CustomerAccountId == CustomerAccountId && f.BarberId == barber.Id);
-        if (!exists)
-        {
-            db.Follows.Add(new Follow { CustomerAccountId = CustomerAccountId!, BarberId = barber.Id });
-            await db.SaveChangesAsync();
-        }
-
+        await followService.EnsureFollowed(CustomerAccountId!, barber.Id);
         return Ok(new { ok = true });
     }
 

@@ -246,7 +246,9 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
     [HttpGet("dashboard")]
     public async Task<IActionResult> GetDashboard([FromQuery] int week = 0)
     {
-        var now = DateTime.UtcNow;
+        // a.Date is the barber's local wall-clock calendar date, never converted to/from UTC
+        // (see AvailabilityService) — bucket weeks by local "now" or this drifts a day near midnight.
+        var now = DateTime.Now;
         var weekStart = now.AddDays(week * 7 - (int)now.DayOfWeek);
         var weekEnd = weekStart.AddDays(6);
 
@@ -270,7 +272,8 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
     [HttpGet("appointments")]
     public async Task<IActionResult> GetAppointments([FromQuery] string? filter = null)
     {
-        var today = DateTime.UtcNow.Date;
+        // Same local-vs-UTC reasoning as GetDashboard above.
+        var today = DateTime.Now.Date;
         var query = db.Appointments
             .Include(a => a.Customer)
             .Include(a => a.Service)

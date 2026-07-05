@@ -19,7 +19,9 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
     [HttpGet]
     public async Task<IActionResult> GetMyAppointments([FromQuery] string? filter = null, [FromQuery] string? barberSlug = null)
     {
-        var today = DateTime.UtcNow.Date;
+        // a.Date is the barber's local wall-clock calendar date, never converted to/from UTC
+        // (see AvailabilityService) — filter by local "now" or this drifts a day near midnight.
+        var today = DateTime.Now.Date;
         var query = db.Appointments
             .Include(a => a.Service)
             .Include(a => a.Barber)
@@ -51,6 +53,8 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
     {
         var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
+        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
 
         appt.Status = AppointmentStatus.CANCELLED;
         await db.SaveChangesAsync();
@@ -64,6 +68,8 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
             .Include(a => a.Service)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
+        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
 
         var slots = await availability.GetAvailableSlots(appt.BarberId, req.Date, appt.Service.DurationMinutes);
         if (!slots.Any(s => s.Start == req.StartTime))

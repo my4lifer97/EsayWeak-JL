@@ -20,7 +20,10 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
             return Unauthorized(new { error = "Unauthorized" });
 
-        var tomorrow = DateTime.UtcNow.AddDays(1).Date;
+        // a.Date is the barber's local wall-clock calendar date, never converted to/from UTC
+        // (see AvailabilityService) — compute "tomorrow" from local now or this fires reminders
+        // a day early/late near midnight for any barber off UTC.
+        var tomorrow = DateTime.Now.AddDays(1).Date;
 
         var appointments = await db.Appointments
             .Include(a => a.Barber)
