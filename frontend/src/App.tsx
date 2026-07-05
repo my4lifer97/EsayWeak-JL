@@ -19,7 +19,6 @@ import AppointmentPage from './pages/public/AppointmentPage'
 import CustomerLoginPage from './pages/public/CustomerLoginPage'
 import BrowseBarbersPage from './pages/public/BrowseBarbersPage'
 import MyBookingsPage from './pages/public/MyBookingsPage'
-import FollowedBarbersPage from './pages/public/FollowedBarbersPage'
 import HomePage from './pages/HomePage'
 
 const queryClient = new QueryClient()
@@ -47,7 +46,6 @@ export default function App() {
               <Route path="/browse" element={<BrowseBarbersPage />} />
               <Route element={<CustomerProtectedRoute />}>
                 <Route path="/account/bookings" element={<MyBookingsPage />} />
-                <Route path="/account/following" element={<FollowedBarbersPage />} />
                 <Route path="/:slug" element={<BarberPage />} />
                 <Route path="/:slug/book" element={<BookPage />} />
               </Route>

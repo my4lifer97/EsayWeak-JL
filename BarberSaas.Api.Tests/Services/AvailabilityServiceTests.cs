@@ -180,4 +180,28 @@ public class AvailabilityServiceTests : IDisposable
         Assert.Equal(2, slots.Count);
         Assert.Contains(slots, s => s.Start == "09:00");
     }
+
+    [Fact]
+    public async Task ForToday_ExcludesSlotsThatHaveAlreadyStarted()
+    {
+        using var db = NewDb();
+        // WorkingHours/slot times are the barber's local wall-clock hours (never UTC —
+        // see AvailabilityService), so "today"/"now" here must be local server time too,
+        // matching what the service itself compares against.
+        var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
+        var barber = new Barber { Name = "Today Barber", Email = "today@example.com", Slug = "today-barber" };
+        db.Barbers.Add(barber);
+        db.WorkingHours.Add(new WorkingHours
+        {
+            BarberId = barber.Id, DayOfWeek = (int)DateTime.Now.DayOfWeek,
+            StartTime = "00:00", EndTime = "23:30", IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(barber.Id, todayStr, 30);
+
+        var nowTime = DateTime.Now.ToString("HH:mm");
+        Assert.All(slots, s => Assert.True(string.Compare(s.Start, nowTime, StringComparison.Ordinal) > 0,
+            $"slot {s.Start} should be after current time {nowTime}"));
+    }
 }

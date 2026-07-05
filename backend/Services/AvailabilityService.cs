@@ -42,10 +42,22 @@ public class AvailabilityService(AppDbContext db)
 
         var candidates = GenerateSlots(workingHours.StartTime, workingHours.EndTime, 30);
 
+        // For today, don't offer slots that have already started — a customer booking at
+        // 15:00 shouldn't see (or be able to grab) a 10:00 slot. WorkingHours/Appointment
+        // times ("09:00", "17:30", ...) are the barber's local wall-clock hours, never
+        // converted to/from UTC anywhere in this app — so "now" here must be local server
+        // time too, not DateTime.UtcNow, or the comparison is off by the UTC offset (e.g. a
+        // barber/customer 3 hours ahead of UTC would still see slots hours after they'd
+        // actually passed).
+        var now = DateTime.Now;
+        var isToday = DateTime.Parse(dateStr).Date == now.Date;
+        var nowTime = now.ToString("HH:mm");
+
         return candidates.Where(slot =>
         {
             var slotEnd = AddMinutes(slot.Start, serviceDuration);
             if (string.Compare(slotEnd, workingHours.EndTime, StringComparison.Ordinal) > 0) return false;
+            if (isToday && string.Compare(slot.Start, nowTime, StringComparison.Ordinal) <= 0) return false;
             return !blockedPeriods.Any(b => Overlaps(slot.Start, slotEnd, b.Start, b.End));
         }).ToList();
     }

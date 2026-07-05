@@ -1,6 +1,7 @@
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
+using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -261,7 +262,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
 
         return Ok(appointments.Select(a => new DashboardAppointmentDto(
             a.Id, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
-            a.Status.ToString(), a.Notes,
+            AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
             a.Service.Price)));
@@ -291,7 +292,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
 
         return Ok(appointments.Select(a => new DashboardAppointmentDto(
             a.Id, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
-            a.Status.ToString(), a.Notes,
+            AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
             a.Service.Price)));
@@ -300,10 +301,14 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
     [HttpPatch("appointments/{id}")]
     public async Task<IActionResult> UpdateAppointmentStatus(string id, [FromBody] UpdateStatusRequest req)
     {
+        // The barber can only cancel now — "Completed" is computed automatically once an
+        // appointment's end time passes (AppointmentStatusHelper), not manually set.
+        if (req.Status != nameof(AppointmentStatus.CANCELLED))
+            return BadRequest(new { error = "Only cancelling is supported" });
+
         var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
         if (appt is null) return NotFound();
-        if (Enum.TryParse<AppointmentStatus>(req.Status, out var status))
-            appt.Status = status;
+        appt.Status = AppointmentStatus.CANCELLED;
         await db.SaveChangesAsync();
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }

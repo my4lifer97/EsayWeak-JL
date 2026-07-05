@@ -11,7 +11,6 @@ export default function CustomerAccountNav() {
   const links = [
     { to: '/browse', key: 'navBrowse' as const },
     { to: '/account/bookings', key: 'navBookings' as const },
-    { to: '/account/following', key: 'navFollowing' as const },
   ]
 
   function handleSignOut() {

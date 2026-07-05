@@ -118,6 +118,45 @@ public class BookingFlowTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Booking_AutomaticallyFollowsTheBarber_ForAnAuthenticatedCustomer()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("autofollow-flow@example.com", "autofollow-flow-shop");
+        var serviceId = await CreateService(barberToken);
+        var slot = await FirstAvailableSlot(slug, serviceId);
+        var customerToken = await GetCustomerToken("+15553330006");
+
+        Authorize(Client, customerToken);
+        var followedBefore = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        Assert.DoesNotContain(followedBefore!, b => b.Slug == slug);
+
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(serviceId, TestDate, slot, "Auto Follow", "+15553330006", null));
+        Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
+
+        var followedAfter = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        Assert.Contains(followedAfter!, b => b.Slug == slug);
+    }
+
+    [Fact]
+    public async Task GuestBooking_DoesNotCreateAFollow_NoAccountToAttachItTo()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("guestfollow-flow@example.com", "guestfollow-flow-shop");
+        var serviceId = await CreateService(barberToken);
+        var slot = await FirstAvailableSlot(slug, serviceId);
+
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(serviceId, TestDate, slot, "Guest", "+15553330007", null));
+        Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
+
+        // Same phone later creates an account — should NOT have inherited a follow from the
+        // earlier guest booking (there was no account to attach it to at the time).
+        var customerToken = await GetCustomerToken("+15553330007");
+        Authorize(Client, customerToken);
+        var followed = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        Assert.DoesNotContain(followed!, b => b.Slug == slug);
+    }
+
+    [Fact]
     public async Task FollowUnfollow_UpdatesIsFollowedAcrossEndpoints()
     {
         var (_, slug) = await RegisterAndLoginBarber("follow-flow@example.com", "follow-flow-shop");

@@ -98,12 +98,8 @@ export default function AppointmentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {a.status === 'CONFIRMED' && (
-                      <div className="flex gap-2">
-                        <button disabled={loading === a.id} onClick={() => updateStatus(a.id, 'COMPLETED')}
-                          className="text-xs text-green-400 hover:text-green-300 disabled:opacity-50">{t(lang, 'complete')}</button>
-                        <button disabled={loading === a.id} onClick={() => updateStatus(a.id, 'CANCELLED')}
-                          className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">{t(lang, 'cancel')}</button>
-                      </div>
+                      <button disabled={loading === a.id} onClick={() => updateStatus(a.id, 'CANCELLED')}
+                        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">{t(lang, 'cancel')}</button>
                     )}
                   </td>
                 </tr>

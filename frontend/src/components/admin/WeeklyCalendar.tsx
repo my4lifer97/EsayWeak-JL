@@ -137,16 +137,10 @@ export default function WeeklyCalendar({
                 valueClass={selected.status === 'CONFIRMED' ? 'text-blue-400' : selected.status === 'COMPLETED' ? 'text-green-400' : 'text-gray-400'} />
             </div>
             {selected.status === 'CONFIRMED' && (
-              <div className="flex gap-2">
-                <button disabled={actionLoading} onClick={() => updateStatus(selected.id, 'COMPLETED')}
-                  className="flex-1 bg-green-700 hover:bg-green-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-50">
-                  {t(lang, 'markComplete')}
-                </button>
-                <button disabled={actionLoading} onClick={() => updateStatus(selected.id, 'CANCELLED')}
-                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-50">
-                  {t(lang, 'cancel')}
-                </button>
-              </div>
+              <button disabled={actionLoading} onClick={() => updateStatus(selected.id, 'CANCELLED')}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-50">
+                {t(lang, 'cancel')}
+              </button>
             )}
           </div>
         </div>

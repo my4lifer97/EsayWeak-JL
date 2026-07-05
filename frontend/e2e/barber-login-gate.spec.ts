@@ -42,8 +42,11 @@ test('visiting a barber link while logged out redirects to login, then returns t
   await page.getByText('Haircut', { exact: false }).first().click()
 
   await expect(page.getByText('Select a Date')).toBeVisible()
-  // Working hours are Mon-Fri; pick the first enabled date cell.
-  await page.locator('.grid.grid-cols-4 button').first().click()
+  // Pick the *second* enabled date cell, not the first (which may be today) — today's
+  // availability now correctly excludes already-passed times, so if this test runs late in
+  // the business day, today alone could have zero slots left. A different day always has its
+  // full range available regardless of what time this test runs.
+  await page.locator('.grid.grid-cols-4 button').nth(1).click()
 
   await expect(page.getByText('Select a Time')).toBeVisible()
   await page.locator('.grid.grid-cols-3 button').first().click()

@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Stack
 
 **Backend**: `backend/` — ASP.NET Core 9 Web API (C#) + Entity Framework Core 9 + PostgreSQL  
-**Frontend**: `frontend/` — Vite 5 + React 18 + TypeScript SPA
+**Frontend**: `frontend/` — Vite 5 + React 19 + TypeScript SPA
 
 ## CI
 
@@ -92,37 +92,54 @@ npx.cmd playwright test              # E2E — needs both dev servers already ru
 barber-saas/
 ├── backend/
 │   ├── Controllers/
-│   │   ├── AuthController.cs       # POST /api/auth/register|login
-│   │   ├── AdminController.cs      # Protected admin CRUD (JWT required)
-│   │   ├── BookingController.cs    # Public booking API (no auth)
-│   │   ├── WhatsAppController.cs   # Twilio webhook — replies to customer messages
-│   │   └── CronController.cs       # GET /api/cron/reminders — sends 24h WhatsApp reminders
+│   │   ├── AuthController.cs              # POST /api/auth/register|login (barber accounts)
+│   │   ├── AdminController.cs             # Protected admin CRUD (JWT required, BarberOnly policy)
+│   │   ├── BarbersController.cs           # GET /api/barbers/search|followed, POST/DELETE .../follow (CustomerOnly)
+│   │   ├── BookingController.cs           # Public booking API (GetAppointment/etc. accept anonymous)
+│   │   ├── CustomerAuthController.cs      # POST /api/customer/auth/otp|verify — phone+OTP login
+│   │   ├── CustomerAppointmentsController.cs  # GET/PATCH /api/customer/appointments/* (CustomerOnly)
+│   │   ├── WhatsAppController.cs          # Twilio webhook — replies to customer messages
+│   │   └── CronController.cs              # GET /api/cron/reminders — sends 24h WhatsApp reminders
 │   ├── Data/AppDbContext.cs         # EF Core DbContext, indexes, relationships
 │   ├── DTOs/AuthDtos.cs             # All request/response record types
-│   ├── Migrations/                  # EF migrations (InitialCreate applied)
-│   ├── Models/Barber.cs             # All entity classes (Barber, Service, Appointment, etc.)
+│   ├── Migrations/                  # EF migrations
+│   ├── Models/
+│   │   ├── Barber.cs                # Barber, Service, Appointment, WorkingHours, Break, BlockedSlot, Customer, etc.
+│   │   ├── CustomerAccount.cs       # Logged-in customer identity (phone-based)
+│   │   ├── CustomerOtp.cs           # One-time codes for phone verification
+│   │   └── Follow.cs                # CustomerAccount <-> Barber follow relationship
 │   ├── Services/
-│   │   ├── AvailabilityService.cs  # Slot generation + conflict filtering
-│   │   ├── I18nService.cs          # Server-side translations (EN/AR/HE) for WhatsApp messages
-│   │   └── JwtService.cs           # JWT generation (30-day tokens, HS256)
+│   │   ├── AvailabilityService.cs      # Slot generation + conflict filtering
+│   │   ├── AppointmentStatusHelper.cs  # Computes effective COMPLETED status without touching the DB row
+│   │   ├── I18nService.cs              # Server-side translations (EN/AR/HE) for WhatsApp messages
+│   │   ├── JwtService.cs               # Barber JWT generation (30-day tokens, HS256)
+│   │   ├── CustomerJwtService.cs       # Customer JWT generation (separate "type": "customer" claim)
+│   │   ├── PhoneNormalizer.cs          # Normalizes phone numbers to a canonical form for matching
+│   │   ├── IOtpSender.cs / DevOtpSender.cs  # OTP delivery abstraction (dev sender logs/returns the code)
 │   ├── GlobalExceptionHandler.cs     # Catches unhandled exceptions -> { error } JSON + ILogger, never a bare 500
-│   ├── Program.cs                   # App startup, DI registration, middleware pipeline
+│   ├── Program.cs                   # App startup, DI registration, middleware pipeline, BarberOnly/CustomerOnly policies
 │   ├── appsettings.json             # Base config (prod DB, JWT keys, AppUrl, CronSecret)
 │   ├── appsettings.Development.json # Dev overrides (DB = barbersaas_dev, verbose logging)
 │   └── Properties/launchSettings.json  # Port 5280, ASPNETCORE_ENVIRONMENT=Development
 └── frontend/
     └── src/
         ├── components/
-        │   ├── admin/        # AdminLayout, AdminSidebar, WeeklyCalendar
-        │   └── booking/      # BookingWizard (5-step)
+        │   ├── admin/          # AdminLayout, AdminSidebar, WeeklyCalendar
+        │   ├── booking/        # BookingWizard (5-step)
+        │   ├── customer/       # CustomerAccountNav, LanguageSwitcher
+        │   ├── BackButton.tsx           # Browser-history back button, used on all customer pages
+        │   ├── ProtectedRoute.tsx       # Guards /admin/* routes (barber auth)
+        │   └── CustomerProtectedRoute.tsx  # Guards customer routes, preserves ?next= for post-login redirect
         ├── lib/
-        │   ├── api.ts        # Axios instance — baseURL /api, JWT request interceptor, 401 auto-logout
-        │   ├── auth.tsx      # AuthContext + AuthProvider + useAuth hook
-        │   └── i18n.ts       # Client-side translations (EN/AR/HE) + t() + serviceName()
+        │   ├── api.ts          # Axios instance — baseURL /api, JWT request interceptor, 401 auto-logout
+        │   ├── auth.tsx        # AuthContext + AuthProvider + useAuth hook (barber/admin auth)
+        │   ├── customerAuth.tsx  # CustomerAuthProvider + useCustomerAuth hook (customer auth + language pref)
+        │   └── i18n.ts          # Client-side translations (EN/AR/HE) + t() + serviceName()
         └── pages/
             ├── admin/        # LoginPage, RegisterPage, DashboardPage,
             │                 #   AppointmentsPage, ServicesPage, SchedulePage, SettingsPage
-            └── public/       # BarberPage, BookPage, AppointmentPage
+            └── public/       # BarberPage, BookPage, AppointmentPage, CustomerLoginPage,
+                              #   BrowseBarbersPage (search + followed list), MyBookingsPage
 ```
 
 ## Architecture
@@ -135,8 +152,8 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `POST /api/auth/register` — create barber account; auto-creates Mon–Fri 09:00–18:00 working hours
 - `POST /api/auth/login` — returns JWT token (30 days)
 
-**Admin (JWT required — barber ID read from token claims, never from body)**
-- `GET/PATCH /api/admin/settings` — barber profile + Twilio config
+**Admin (JWT required — barber ID read from token claims, never from body, `BarberOnly` policy)**
+- `GET/PATCH /api/admin/settings` — barber profile, Twilio config, language, booking limits
 - `GET/POST /api/admin/services` — services CRUD
 - `PATCH/DELETE /api/admin/services/{id}` — update / soft-delete (IsActive = false)
 - `GET/POST /api/admin/schedule` — working hours (upsert by DayOfWeek)
@@ -144,15 +161,27 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `POST/DELETE /api/admin/schedule/blocked/{id}` — one-off blocked dates/slots
 - `GET /api/admin/dashboard?week=0` — weekly appointments (week offset from current)
 - `GET /api/admin/appointments?filter=today|upcoming|past` — paginated appointment list
-- `PATCH /api/admin/appointments/{id}` — update status (CONFIRMED/COMPLETED/CANCELLED)
+- `PATCH /api/admin/appointments/{id}` — cancel only (`{ status: "CANCELLED" }`); any other status is rejected — see [Appointment status](#appointment-status-no-manual-complete)
 
-**Public (no JWT)**
+**Public booking (no JWT — `{slug}` identifies the tenant)**
 - `GET /api/{slug}/info` — barber name, services, active days, isRTL flag
 - `GET /api/{slug}/availability?date=&serviceId=` — available 30-min slots
-- `POST /api/{slug}/appointments` — book appointment; returns `{ appointmentId, cancelToken }`
-- `GET /api/{slug}/appointments/{id}` — view appointment details
+- `POST /api/{slug}/appointments` — book appointment; returns `{ appointmentId, cancelToken }`; auto-follows the barber if the caller is a logged-in customer
+- `GET /api/{slug}/appointments/{id}` — view appointment details (used by the public magic-link page)
 - `DELETE /api/{slug}/appointments/{id}?token=` — cancel (validated by cancelToken)
 - `PATCH /api/{slug}/appointments/{id}?token=` — reschedule (re-checks availability first)
+
+**Customer auth (no JWT)**
+- `POST /api/customer/auth/otp` — request a login code for a phone number (dev sender logs/returns it instead of sending SMS)
+- `POST /api/customer/auth/verify` — verify the code; returns a customer JWT (`"type": "customer"` claim)
+
+**Barbers directory**
+- `GET /api/barbers/search?query=` — search barbers by name/slug (public, no auth)
+- `GET /api/barbers/followed`, `POST/DELETE /api/barbers/{slug}/follow` — manage followed barbers (customer JWT required, `CustomerOnly` policy)
+
+**Customer account (customer JWT required, `CustomerOnly` policy)**
+- `GET /api/customer/appointments?filter=` — this customer's appointment history across all barbers, matched by phone
+- `POST /api/customer/appointments/{id}/cancel`, `PATCH /api/customer/appointments/{id}/reschedule`, `PATCH /api/customer/appointments/{id}/notes`
 
 **Integrations**
 - `POST /api/whatsapp/webhook` — Twilio webhook; validates X-Twilio-Signature; replies in barber's language to book/cancel/reschedule keywords
@@ -173,7 +202,9 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 ### Auth
 JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via request interceptor. 401 responses redirect to `/admin/login` — **except** a 401 from `/auth/login` itself (wrong password), which must NOT redirect or it wipes `LoginPage`'s own error message via a full page reload before React can render it. Admin routes are wrapped in `ProtectedRoute` (`frontend/src/components/ProtectedRoute.tsx`) which checks `useAuth().isAuthenticated`.
 
-**Customer routes**: `/:slug`, `/:slug/book`, `/account/bookings`, `/account/following` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor (including one opening a barber's shared link for the first time) is redirected to `/login?next=<the path they tried>`, and `CustomerLoginPage` sends them back there after a successful phone+OTP login. Visiting `/login` directly (no `next`) still lands on `/browse` as before. There is deliberately no guest-browsing fallback for these routes — this reverses the earlier "guest booking must work" decision from the customer-accounts feature. The backend (`BookingController.BookAppointment`) still technically accepts anonymous requests; only the frontend routing enforces login now. `/:slug/appointments/:id` (the magic-link view) is intentionally left outside this guard.
+**Customer routes**: `/:slug`, `/:slug/book`, `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor (including one opening a barber's shared link for the first time) is redirected to `/login?next=<the path they tried>`, and `CustomerLoginPage` sends them back there after a successful phone+OTP login. Visiting `/login` directly (no `next`) still lands on `/browse` as before. There is deliberately no guest-browsing fallback for these routes — this reverses the earlier "guest booking must work" decision from the customer-accounts feature. The backend (`BookingController.BookAppointment`) still technically accepts anonymous requests; only the frontend routing enforces login now. `/:slug/appointments/:id` (the magic-link view) is intentionally left outside this guard.
+
+**Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBarbersPage` (`/browse`) fetches `GET /api/barbers/followed` itself and renders a "Barbers You Follow" list right under the search bar, with a "Remove" button per entry. A customer is auto-followed to a barber the moment they book an appointment while logged in (`BookingController.BookAppointment`), not just via an explicit Follow click — guest bookings don't create a follow (no account to attach it to).
 
 ### i18n (Translations)
 - **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings.  
@@ -193,9 +224,9 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
 ### Back navigation (customer pages)
 `frontend/src/components/BackButton.tsx` — browser-history back (`navigate(-1)`), not a fixed
 route, so it works regardless of how the customer arrived. Used on every customer-facing page
-(BarberPage, BookPage/BookingWizard step 1, MyBookingsPage, FollowedBarbersPage,
-BrowseBarbersPage, CustomerLoginPage, AppointmentPage). BookingWizard steps 2-4 keep their own
-in-wizard step-back button instead (moving between wizard steps, not pages).
+(BarberPage, BookPage/BookingWizard step 1, MyBookingsPage, BrowseBarbersPage, CustomerLoginPage,
+AppointmentPage). BookingWizard steps 2-4 keep their own in-wizard step-back button instead
+(moving between wizard steps, not pages).
 
 ### Per-customer booking limits
 A barber can cap how many times the *same customer* (matched by phone — applies whether they're
@@ -211,7 +242,10 @@ All times stored as `"HH:MM"` strings — zero-padded so string comparison is sa
 Migration: `InitialCreate` already applied.
 
 ### Availability Engine
-`Services/AvailabilityService.cs` — generates 30-min slots between working hours start/end, then removes any slot that overlaps with: breaks, blocked slots, or existing CONFIRMED appointments. Also drops slots where `startTime + serviceDuration > workingHours.EndTime`.
+`Services/AvailabilityService.cs` — generates 30-min slots between working hours start/end, then removes any slot that overlaps with: breaks, blocked slots, or existing CONFIRMED appointments. Also drops slots where `startTime + serviceDuration > workingHours.EndTime`. For **today's date specifically**, also drops any slot whose start time is at or before the current time — a customer booking at 15:00 can't grab a 10:00 slot. `WorkingHours`/`Appointment` start/end times (`"09:00"`, `"17:30"`, ...) are the barber's local wall-clock hours and are never converted to/from UTC anywhere in this app, so "now" is taken as `DateTime.Now` (local server time), not `DateTime.UtcNow` — comparing against UTC would be off by the server's UTC offset (this was a real bug: a customer could book a slot that had already passed).
+
+### Appointment status: no manual "Complete"
+The barber can only cancel an appointment now (`AdminController.UpdateAppointmentStatus` rejects any `status` other than `CANCELLED`) — there's no "Mark Complete" button anywhere in the admin UI. Instead, `Services/AppointmentStatusHelper.EffectiveStatus(status, date, endTime)` computes "COMPLETED" automatically for any still-`CONFIRMED` appointment whose end time has passed (compared against `DateTime.Now`, local server time — same reasoning as the Availability Engine above), applied wherever a status is returned to a client: `AdminController` (dashboard + appointments list), `CustomerAppointmentsController.GetMyAppointments`, and `BookingController.GetAppointment` (the magic-link view). `CANCELLED` is never overridden. The stored `AppointmentStatus` column itself stays `CONFIRMED` — only the API response's status string is computed; nothing rewrites the DB row.
 
 ### Twilio / WhatsApp
 Twilio credentials are stored **per-barber** in the `Barbers` table (`TwilioSid`, `TwilioToken`, `TwilioNumber`) — not in appsettings. Barbers configure these in their Settings page.  

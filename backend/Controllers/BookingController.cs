@@ -155,7 +155,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         return Ok(new AppointmentDetailDto(
             appointment.Id, appointment.BarberId, appointment.CustomerId, appointment.ServiceId,
             appointment.Date.ToString("yyyy-MM-dd"), appointment.StartTime, appointment.EndTime,
-            appointment.Notes, appointment.Status.ToString(), appointment.ReminderSent, appointment.CancelToken,
+            appointment.Notes, AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime), appointment.ReminderSent, appointment.CancelToken,
             appointment.CreatedAt,
             new CustomerSummary(appointment.Customer.Id, appointment.Customer.Name, appointment.Customer.FamilyName, appointment.Customer.Phone),
             new ServiceSummary(appointment.Service.Id, appointment.Service.NameEn, appointment.Service.NameAr, appointment.Service.NameHe, appointment.Service.DurationMinutes, appointment.Service.Price),
