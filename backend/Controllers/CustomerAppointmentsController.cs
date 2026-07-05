@@ -17,13 +17,16 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
     private string AccountId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpGet]
-    public async Task<IActionResult> GetMyAppointments([FromQuery] string? filter = null)
+    public async Task<IActionResult> GetMyAppointments([FromQuery] string? filter = null, [FromQuery] string? barberSlug = null)
     {
         var today = DateTime.UtcNow.Date;
         var query = db.Appointments
             .Include(a => a.Service)
             .Include(a => a.Barber)
             .Where(a => a.Customer.CustomerAccountId == AccountId);
+
+        if (!string.IsNullOrEmpty(barberSlug))
+            query = query.Where(a => a.Barber.Slug == barberSlug);
 
         query = filter switch
         {
@@ -35,10 +38,12 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
 
         var appointments = await query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime).ToListAsync();
 
-        return Ok(appointments.Select(a => new CustomerAppointmentDto(
+        var dtos = appointments.Select(a => new CustomerAppointmentDto(
             a.Id, a.Barber.Slug, a.Barber.Name, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
             a.Notes, a.Status.ToString(), a.CancelToken,
-            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price))));
+            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price)));
+
+        return Ok(dtos.OrderBy(d => d.Status == "CONFIRMED" ? 0 : 1));
     }
 
     [HttpPost("{id}/cancel")]

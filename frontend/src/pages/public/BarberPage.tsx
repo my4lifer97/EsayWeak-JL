@@ -6,6 +6,7 @@ import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
+import AppointmentCard, { type Appointment } from '../../components/customer/AppointmentCard'
 
 type BarberInfo = {
   slug: string; name: string; description: string | null; logo: string | null
@@ -20,11 +21,23 @@ export default function BarberPage() {
   const queryClient = useQueryClient()
   const { isAuthenticated, language: lang } = useCustomerAuth()
   const [followLoading, setFollowLoading] = useState(false)
+  const [showAppointments, setShowAppointments] = useState(false)
 
   const { data: barber, isLoading } = useQuery<BarberInfo>({
     queryKey: ['barber', slug],
     queryFn: () => customerApi.get(`/${slug}/info`).then((r) => r.data),
   })
+
+  const { data: myAppointments = [] } = useQuery<Appointment[]>({
+    queryKey: ['barber-appointments', slug],
+    queryFn: () => customerApi.get(`/customer/appointments?filter=all&barberSlug=${slug}`).then((r) => r.data),
+    enabled: isAuthenticated && !!slug,
+  })
+  const activeAppointments = myAppointments.filter((a) => a.status === 'CONFIRMED')
+
+  function invalidateAppointments() {
+    queryClient.invalidateQueries({ queryKey: ['barber-appointments', slug] })
+  }
 
   // The customer's own language choice drives the UI everywhere, overriding this specific
   // barber's configured storefront language (confirmed default behavior for this app).
@@ -63,7 +76,12 @@ export default function BarberPage() {
           <LanguageSwitcher />
         </div>
         <div className="text-center mb-8">
-          <div className="text-5xl mb-4">✂️</div>
+          {barber.logo ? (
+            <img src={barber.logo} alt={barber.name}
+              className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border border-gray-800" />
+          ) : (
+            <div className="text-5xl mb-4">✂️</div>
+          )}
           <h1 className="text-3xl font-bold text-white">{barber.name}</h1>
           {barber.description && (
             <p className="text-gray-400 mt-2 text-sm">{barber.description}</p>
@@ -87,6 +105,14 @@ export default function BarberPage() {
             {barber.isFollowed ? t(lang, 'following') : t(lang, 'followBarber')}
           </button>
 
+          {activeAppointments.length > 0 && (
+            <button
+              onClick={() => setShowAppointments(!showAppointments)}
+              className="w-full font-semibold py-3 rounded-2xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors">
+              {t(lang, 'myBookingsWithBarber')}
+            </button>
+          )}
+
           {isAuthenticated && (
             <Link to="/account/bookings"
               className="block text-center text-gray-500 hover:text-gray-300 text-sm py-2 transition-colors">
@@ -94,6 +120,14 @@ export default function BarberPage() {
             </Link>
           )}
         </div>
+
+        {showAppointments && activeAppointments.length > 0 && (
+          <div className="space-y-3 mt-4">
+            {activeAppointments.map((appt) => (
+              <AppointmentCard key={appt.id} appt={appt} lang={lang} showBarberName={false} onChanged={invalidateAppointments} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

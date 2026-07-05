@@ -2,6 +2,7 @@
 backend/bin/
 backend/obj/
 backend/appsettings.Production.json
+backend/wwwroot/uploads/
 
 # Tests
 BarberSaas.Api.Tests/bin/

@@ -11,9 +11,15 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/admin")]
 [Authorize(Policy = "BarberOnly")]
-public class AdminController(AppDbContext db) : ControllerBase
+public class AdminController(AppDbContext db, IWebHostEnvironment env) : ControllerBase
 {
     private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
+    private static readonly Dictionary<string, string> AllowedLogoTypes = new()
+    {
+        [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".png"] = "image/png", [".webp"] = "image/webp",
+    };
+    private const long MaxLogoBytes = 5 * 1024 * 1024;
 
     // ─── Settings ───────────────────────────────────────────────────────────
 
@@ -24,9 +30,40 @@ public class AdminController(AppDbContext db) : ControllerBase
         if (b is null) return NotFound();
         return Ok(new SettingsDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
-            b.Description, b.Language.ToString(), b.TwilioNumber, b.TwilioSid,
+            b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber, b.TwilioSid,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek));
+    }
+
+    [HttpPost("settings/logo")]
+    [RequestSizeLimit(MaxLogoBytes)]
+    public async Task<IActionResult> UploadLogo(IFormFile file)
+    {
+        var b = await db.Barbers.FindAsync(BarberId);
+        if (b is null) return NotFound();
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (file.Length == 0 || file.Length > MaxLogoBytes
+            || !AllowedLogoTypes.TryGetValue(ext, out var expectedContentType)
+            || file.ContentType != expectedContentType)
+            return BadRequest(new { error = "Please upload a JPG, PNG, or WEBP image up to 5MB." });
+
+        var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "logos");
+        Directory.CreateDirectory(uploadsDir);
+
+        if (!string.IsNullOrEmpty(b.Logo))
+        {
+            var oldPath = Path.Combine(env.ContentRootPath, "wwwroot", b.Logo.Replace("/api/uploads/", "uploads/").Replace('/', Path.DirectorySeparatorChar));
+            if (System.IO.File.Exists(oldPath)) System.IO.File.Delete(oldPath);
+        }
+
+        var fileName = $"{b.Id}{ext}";
+        await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
+            await file.CopyToAsync(stream);
+
+        b.Logo = $"/api/uploads/logos/{fileName}";
+        await db.SaveChangesAsync();
+        return Ok(new { logo = b.Logo });
     }
 
     [HttpPatch("settings")]

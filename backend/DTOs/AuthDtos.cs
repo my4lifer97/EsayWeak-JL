@@ -15,7 +15,7 @@ public record CreateBlockedSlotRequest(string Date, string? StartTime, string? E
 
 public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
-    string? Description, string Language, string? TwilioNumber, string? TwilioSid,
+    string? Description, string? Logo, string Language, string? TwilioNumber, string? TwilioSid,
     DateTime TrialEndsAt, string SubscriptionStatus,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek);
 

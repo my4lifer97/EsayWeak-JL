@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 
 type BarberSettings = {
-  name: string; phone: string | null; description: string | null; slug: string
+  name: string; phone: string | null; description: string | null; slug: string; logo: string | null
   language: 'EN' | 'AR' | 'HE'; twilioNumber: string | null; twilioSid: string | null
   trialEndsAt: string; subscriptionStatus: string
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
@@ -29,6 +29,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoError, setLogoError] = useState('')
 
   if (barber && !initialized) {
     setForm({
@@ -61,6 +65,29 @@ export default function SettingsPage() {
     } finally { setSaving(false) }
   }
 
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLogoFile(file)
+    setLogoPreview(URL.createObjectURL(file))
+    setLogoError('')
+  }
+
+  async function uploadLogo() {
+    if (!logoFile) return
+    setUploadingLogo(true); setLogoError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', logoFile)
+      await api.post('/admin/settings/logo', formData)
+      setLogoFile(null)
+      setLogoPreview(null)
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+    } catch {
+      setLogoError(t(lang, 'photoUploadError'))
+    } finally { setUploadingLogo(false) }
+  }
+
   if (!barber) return <div className="text-gray-500">{t(lang, 'loading')}</div>
 
   const trialDate = parseISO(barber.trialEndsAt)
@@ -90,6 +117,30 @@ export default function SettingsPage() {
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
           <h2 className="text-white font-semibold mb-1">{t(lang, 'businessInfo')}</h2>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'profilePhoto')}</label>
+            <div className="flex items-center gap-4">
+              {logoPreview || barber.logo ? (
+                <img src={logoPreview ?? barber.logo!} alt={barber.name}
+                  className="w-16 h-16 rounded-full object-cover border border-gray-700" />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-2xl">✂️</div>
+              )}
+              <div className="flex-1">
+                <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleLogoChange}
+                  className="block w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gray-800 file:text-gray-300 hover:file:bg-gray-700 file:cursor-pointer cursor-pointer" />
+                {logoFile && (
+                  <button type="button" disabled={uploadingLogo} onClick={uploadLogo}
+                    className="mt-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors">
+                    {uploadingLogo ? t(lang, 'saving') : t(lang, 'uploadPhoto')}
+                  </button>
+                )}
+                {logoError && <p className="text-red-400 text-xs mt-1">{logoError}</p>}
+              </div>
+            </div>
+          </div>
+
           {[[t(lang, 'businessName'), 'name', 'text'], [t(lang, 'phone'), 'phone', 'tel'], [t(lang, 'description'), 'description', 'textarea']].map(([label, key, type]) => (
             <div key={key}>
               <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>

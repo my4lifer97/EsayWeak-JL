@@ -50,7 +50,15 @@ builder.Services.AddCors(opt =>
 
 var app = builder.Build();
 
+var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
+Directory.CreateDirectory(uploadsPath);
+
 app.UseExceptionHandler();
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+    RequestPath = "/api/uploads",
+});
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
