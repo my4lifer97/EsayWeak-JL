@@ -11,6 +11,7 @@ type Appointment = {
   customer: { name: string; phone: string }
   service: { nameEn: string; nameAr: string; nameHe: string; durationMinutes: number }
   price: number
+  photoUrl: string | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -136,6 +137,15 @@ export default function WeeklyCalendar({
               <Row label={t(lang, 'status')} value={selected.status}
                 valueClass={selected.status === 'CONFIRMED' ? 'text-blue-400' : selected.status === 'COMPLETED' ? 'text-green-400' : 'text-gray-400'} />
             </div>
+            {selected.photoUrl && (
+              <div className="mb-6">
+                <div className="text-gray-400 text-sm mb-2">{t(lang, 'referencePhoto')}</div>
+                <a href={selected.photoUrl} target="_blank" rel="noreferrer">
+                  <img src={selected.photoUrl} alt={t(lang, 'referencePhoto')}
+                    className="w-full max-h-64 object-cover rounded-xl border border-gray-700 hover:border-blue-500 transition-colors" />
+                </a>
+              </div>
+            )}
             {selected.status === 'CONFIRMED' && (
               <button disabled={actionLoading} onClick={() => updateStatus(selected.id, 'CANCELLED')}
                 className="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-50">

@@ -192,6 +192,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 **Customer account (customer JWT required, `CustomerOnly` policy)**
 - `GET /api/customer/appointments?filter=` — this customer's appointment history across all barbers, matched by phone
 - `POST /api/customer/appointments/{id}/cancel`, `PATCH /api/customer/appointments/{id}/reschedule`, `PATCH /api/customer/appointments/{id}/notes`
+- `PATCH /api/customer/appointments/{id}/photo` — change a CONFIRMED appointment's reference photo (only for services with `photoMode != None`); same `galleryPhotoId`/`customerPhotoUrl` shape as booking
 
 **Integrations**
 - `POST /api/whatsapp/webhook` — Twilio webhook; validates X-Twilio-Signature; replies in barber's language to book/cancel/reschedule keywords
@@ -255,8 +256,12 @@ device. Both are **required**, not optional, when enabled — `BookingController
 rejects the booking with 400 if the required `galleryPhotoId`/`customerPhotoUrl` is missing (a
 gallery photo ID is also validated to belong to the requested service, not just exist anywhere).
 The resolved photo URL is stored on `Appointment.PhotoUrl` (nullable, `None` mode leaves it null)
-and surfaced back to the barber in the admin appointments table and to both parties in appointment
-detail views. Uploads reuse the same JPG/PNG/WEBP/5MB validation as the barber's own logo upload;
+and surfaced back to the barber in the admin appointments table, the Dashboard's appointment-detail
+modal (`WeeklyCalendar`), and to both parties in appointment detail views. The customer can change
+it later — while the appointment is still CONFIRMED — from either "My Appointments With This
+Business" (`BarberPage`) or "My Bookings" (`MyBookingsPage`); both render the shared
+`AppointmentCard`, whose "Change Photo" action calls `PATCH /api/customer/appointments/{id}/photo`.
+Uploads reuse the same JPG/PNG/WEBP/5MB validation as the barber's own logo upload;
 gallery photos live under `wwwroot/uploads/gallery/{serviceId}/`, customer-uploaded reference
 photos under `wwwroot/uploads/appointment-photos/` — both served via the existing `/api/uploads`
 static file route.

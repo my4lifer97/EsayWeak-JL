@@ -5,11 +5,16 @@ import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { t, serviceName } from '../../lib/i18n'
 
+type GalleryPhoto = { id: string; url: string }
 export type Appointment = {
   id: string; barberSlug: string; barberName: string
   date: string; startTime: string; endTime: string
   notes: string | null; status: string; cancelToken: string
-  service: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number }
+  service: {
+    id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
+    photoMode?: 'None' | 'OwnerGallery' | 'CustomerUpload'; galleryPhotos?: GalleryPhoto[] | null
+  }
+  photoUrl: string | null
 }
 
 type Slot = { start: string; end: string }
@@ -30,9 +35,12 @@ export default function AppointmentCard({
 }) {
   const [expandedReschedule, setExpandedReschedule] = useState(false)
   const [expandedNotes, setExpandedNotes] = useState(false)
+  const [expandedPhoto, setExpandedPhoto] = useState(false)
   const [noteDraft, setNoteDraft] = useState(appt.notes ?? '')
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [busy, setBusy] = useState(false)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoError, setPhotoError] = useState('')
 
   const { data: slots = [], isFetching: loadingSlots } = useQuery<Slot[]>({
     queryKey: ['reschedule-slots', appt.id, rescheduleDate],
@@ -71,6 +79,31 @@ export default function AppointmentCard({
     } finally { setBusy(false) }
   }
 
+  async function pickGalleryPhoto(photoId: string) {
+    setBusy(true); setPhotoError('')
+    try {
+      await customerApi.patch(`/customer/appointments/${appt.id}/photo`, { galleryPhotoId: photoId })
+      setExpandedPhoto(false)
+      onChanged()
+    } catch {
+      setPhotoError(t(lang, 'photoUploadError'))
+    } finally { setBusy(false) }
+  }
+
+  async function uploadAndSetPhoto(file: File) {
+    setPhotoUploading(true); setPhotoError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await customerApi.post(`/${appt.barberSlug}/appointments/photo`, formData)
+      await customerApi.patch(`/customer/appointments/${appt.id}/photo`, { customerPhotoUrl: data.url })
+      setExpandedPhoto(false)
+      onChanged()
+    } catch {
+      setPhotoError(t(lang, 'photoUploadError'))
+    } finally { setPhotoUploading(false) }
+  }
+
   return (
     <div className={`bg-gray-900 border rounded-2xl p-4 ${appt.status !== 'CONFIRMED' ? 'border-gray-800 opacity-60' : 'border-gray-700'}`}>
       <div className="flex items-start justify-between gap-3">
@@ -83,6 +116,12 @@ export default function AppointmentCard({
           </div>
           {appt.notes && !expandedNotes && (
             <div className="text-gray-500 text-sm mt-1 italic">"{appt.notes}"</div>
+          )}
+          {appt.photoUrl && (
+            <a href={appt.photoUrl} target="_blank" rel="noreferrer" className="inline-block mt-2">
+              <img src={appt.photoUrl} alt={t(lang, 'referencePhoto')}
+                className="w-14 h-14 object-cover rounded-lg border border-gray-700 hover:border-blue-500 transition-colors" />
+            </a>
           )}
         </div>
         <span className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[appt.status] ?? STATUS_COLORS.CANCELLED}`}>
@@ -102,12 +141,42 @@ export default function AppointmentCard({
             className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
             {appt.notes ? t(lang, 'editNote') : t(lang, 'addNote')}
           </button>
+          {appt.service.photoMode && appt.service.photoMode !== 'None' && (
+            <button
+              onClick={() => { setExpandedPhoto(!expandedPhoto); setPhotoError('') }}
+              className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
+              {t(lang, 'changePhoto')}
+            </button>
+          )}
           <button
             disabled={busy}
             onClick={cancelAppointment}
             className="flex-1 border border-red-800/60 text-red-400 hover:bg-red-900/30 text-sm font-medium py-2 rounded-xl transition-colors disabled:opacity-50">
             {t(lang, 'cancelAppointment')}
           </button>
+        </div>
+      )}
+
+      {expandedPhoto && (
+        <div className="mt-3 space-y-2">
+          {appt.service.photoMode === 'OwnerGallery' && (
+            <div className="grid grid-cols-4 gap-2">
+              {(appt.service.galleryPhotos ?? []).map((p) => (
+                <button key={p.id} type="button" disabled={busy} onClick={() => pickGalleryPhoto(p.id)}
+                  className="aspect-square rounded-lg overflow-hidden border-2 border-gray-700 hover:border-blue-500 transition-colors disabled:opacity-50">
+                  <img src={p.url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+          {appt.service.photoMode === 'CustomerUpload' && (
+            <label className="inline-block cursor-pointer bg-gray-800 border border-gray-700 hover:border-blue-500 rounded-xl px-4 py-2 text-sm text-gray-300">
+              {photoUploading ? t(lang, 'uploading') : t(lang, 'uploadYourPhoto')}
+              <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={photoUploading}
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadAndSetPhoto(f) }} />
+            </label>
+          )}
+          {photoError && <p className="text-red-400 text-xs">{photoError}</p>}
         </div>
       )}
 

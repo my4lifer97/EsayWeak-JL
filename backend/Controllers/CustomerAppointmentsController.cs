@@ -23,7 +23,7 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
         // (see AvailabilityService) — filter by local "now" or this drifts a day near midnight.
         var today = DateTime.Now.Date;
         var query = db.Appointments
-            .Include(a => a.Service)
+            .Include(a => a.Service).ThenInclude(s => s.GalleryPhotos)
             .Include(a => a.Barber)
             .Where(a => a.Customer.CustomerAccountId == AccountId);
 
@@ -43,7 +43,9 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
         var dtos = appointments.Select(a => new CustomerAppointmentDto(
             a.Id, a.Barber.Slug, a.Barber.Name, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
             a.Notes, AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.CancelToken,
-            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price), a.PhotoUrl));
+            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price,
+                a.Service.PhotoMode.ToString(), a.Service.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList()),
+            a.PhotoUrl));
 
         return Ok(dtos.OrderBy(d => d.Status == "CONFIRMED" ? 0 : 1));
     }
@@ -82,6 +84,39 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
         await db.SaveChangesAsync();
 
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
+    }
+
+    [HttpPatch("{id}/photo")]
+    public async Task<IActionResult> UpdatePhoto(string id, [FromBody] UpdateAppointmentPhotoRequest req)
+    {
+        var appt = await db.Appointments
+            .Include(a => a.Service)
+            .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
+        if (appt is null) return NotFound(new { error = "Not found" });
+        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
+
+        if (appt.Service.PhotoMode == ServicePhotoMode.OwnerGallery)
+        {
+            if (string.IsNullOrWhiteSpace(req.GalleryPhotoId))
+                return BadRequest(new { error = "Please choose a photo for this service." });
+            var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == appt.ServiceId);
+            if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
+            appt.PhotoUrl = photo.Url;
+        }
+        else if (appt.Service.PhotoMode == ServicePhotoMode.CustomerUpload)
+        {
+            if (string.IsNullOrWhiteSpace(req.CustomerPhotoUrl) || !req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+                return BadRequest(new { error = "Please upload a photo for this service." });
+            appt.PhotoUrl = req.CustomerPhotoUrl;
+        }
+        else
+        {
+            return BadRequest(new { error = "This service doesn't use a reference photo." });
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { appt.Id, appt.PhotoUrl });
     }
 
     [HttpPatch("{id}/notes")]

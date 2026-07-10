@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using BarberSaas.Api.Controllers;
 using BarberSaas.Api.DTOs;
 using Xunit;
 
@@ -12,6 +13,17 @@ public class ServicePhotoTests : IntegrationTestBase
     private record RegisterResponse(string? DevCode);
     private record AvailabilityResponse(List<TimeSlot> Slots);
     private record UploadPhotoResponse(string Url);
+    private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
+    private record VerifyOtpResponse(string Token, string CustomerId, string Phone);
+
+    private async Task<string> GetCustomerToken(string phone, string name = "First", string familyName = "Last")
+    {
+        var otpResp = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+        var otpBody = await otpResp.Content.ReadFromJsonAsync<OtpRequestResponse>();
+        var verify = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, otpBody!.DevOtp!, name, familyName));
+        var verifyBody = await verify.Content.ReadFromJsonAsync<VerifyOtpResponse>();
+        return verifyBody!.Token;
+    }
 
     private async Task<(string Token, string Slug)> RegisterAndLoginBarber(string email, string slug)
     {
@@ -40,12 +52,23 @@ public class ServicePhotoTests : IntegrationTestBase
         return content;
     }
 
-    private async Task<string> FirstAvailableSlot(string slug, string serviceId)
+    private async Task<string> FirstAvailableSlot(string slug, string serviceId, string date = TestDate)
     {
-        var resp = await Client.GetAsync($"/api/{slug}/availability?date={TestDate}&serviceId={serviceId}");
+        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&serviceId={serviceId}");
         var body = await resp.Content.ReadFromJsonAsync<AvailabilityResponse>();
         Assert.NotEmpty(body!.Slots);
         return body.Slots[0].Start;
+    }
+
+    // TestDate is a fixed calendar date; the tests below read the appointment's *effective*
+    // status (AppointmentStatusHelper), which auto-flips CONFIRMED -> COMPLETED once its end
+    // time passes real wall-clock time — so unlike the other tests in this file, they need a
+    // date that's still in the future no matter when the suite happens to run.
+    private static string NextWeekdayDate()
+    {
+        var d = DateTime.Now.AddDays(1);
+        while (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) d = d.AddDays(1);
+        return d.ToString("yyyy-MM-dd");
     }
 
     [Fact]
@@ -256,5 +279,141 @@ public class ServicePhotoTests : IntegrationTestBase
 
         var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
         Assert.Null(detail!.PhotoUrl);
+    }
+
+    [Fact]
+    public async Task UpdatePhoto_OwnerGalleryMode_WithValidPhotoId_ChangesPhotoUrl()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-gallery@example.com", "changephoto-gallery-shop");
+        var service = await CreateService(barberToken, "OwnerGallery");
+        Authorize(Client, barberToken);
+        var firstUpload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
+        var firstPhoto = await firstUpload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var secondUpload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
+        var secondPhoto = await secondUpload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        var customerToken = await GetCustomerToken("+15559990101");
+        Authorize(Client, customerToken);
+        var date = NextWeekdayDate();
+        var slot = await FirstAvailableSlot(slug, service.Id, date);
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(service.Id, date, slot, "Customer", "+15559990101", null, GalleryPhotoId: firstPhoto!.Id));
+        var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=all");
+        var apptId = mine!.Single(a => a.CancelToken == booked!.CancelToken).Id;
+
+        var changeResp = await Client.PatchAsJsonAsync($"/api/customer/appointments/{apptId}/photo",
+            new UpdateAppointmentPhotoRequest(secondPhoto!.Id, null));
+        Assert.Equal(HttpStatusCode.OK, changeResp.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        Assert.Equal(secondPhoto.Url, detail!.PhotoUrl);
+    }
+
+    [Fact]
+    public async Task UpdatePhoto_OwnerGalleryMode_WithoutPhotoId_ReturnsBadRequest()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-gallery-missing@example.com", "changephoto-gallery-missing-shop");
+        var service = await CreateService(barberToken, "OwnerGallery");
+        Authorize(Client, barberToken);
+        var upload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
+        var photo = await upload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        var customerToken = await GetCustomerToken("+15559990102");
+        Authorize(Client, customerToken);
+        var date = NextWeekdayDate();
+        var slot = await FirstAvailableSlot(slug, service.Id, date);
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(service.Id, date, slot, "Customer", "+15559990102", null, GalleryPhotoId: photo!.Id));
+        var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=all");
+        var apptId = mine!.Single(a => a.CancelToken == booked!.CancelToken).Id;
+
+        var changeResp = await Client.PatchAsJsonAsync($"/api/customer/appointments/{apptId}/photo",
+            new UpdateAppointmentPhotoRequest(null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, changeResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdatePhoto_CustomerUploadMode_WithNewUpload_ChangesPhotoUrl()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-upload@example.com", "changephoto-upload-shop");
+        var service = await CreateService(barberToken, "CustomerUpload");
+
+        var firstUpload = await Client.PostAsync($"/api/{slug}/appointments/photo", FakeImage());
+        var firstPhoto = await firstUpload.Content.ReadFromJsonAsync<UploadPhotoResponse>();
+
+        var customerToken = await GetCustomerToken("+15559990103");
+        Authorize(Client, customerToken);
+        var date = NextWeekdayDate();
+        var slot = await FirstAvailableSlot(slug, service.Id, date);
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(service.Id, date, slot, "Customer", "+15559990103", null, CustomerPhotoUrl: firstPhoto!.Url));
+        var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=all");
+        var apptId = mine!.Single(a => a.CancelToken == booked!.CancelToken).Id;
+
+        var secondUpload = await Client.PostAsync($"/api/{slug}/appointments/photo", FakeImage());
+        var secondPhoto = await secondUpload.Content.ReadFromJsonAsync<UploadPhotoResponse>();
+        var changeResp = await Client.PatchAsJsonAsync($"/api/customer/appointments/{apptId}/photo",
+            new UpdateAppointmentPhotoRequest(null, secondPhoto!.Url));
+        Assert.Equal(HttpStatusCode.OK, changeResp.StatusCode);
+
+        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        Assert.Equal(secondPhoto.Url, detail!.PhotoUrl);
+    }
+
+    [Fact]
+    public async Task UpdatePhoto_ForAnotherCustomersAppointment_ReturnsNotFound()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-intruder@example.com", "changephoto-intruder-shop");
+        var service = await CreateService(barberToken, "OwnerGallery");
+        Authorize(Client, barberToken);
+        var upload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
+        var photo = await upload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        var ownerToken = await GetCustomerToken("+15559990104");
+        Authorize(Client, ownerToken);
+        var date = NextWeekdayDate();
+        var slot = await FirstAvailableSlot(slug, service.Id, date);
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(service.Id, date, slot, "Customer", "+15559990104", null, GalleryPhotoId: photo!.Id));
+        var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=all");
+        var apptId = mine!.Single(a => a.CancelToken == booked!.CancelToken).Id;
+
+        var intruderToken = await GetCustomerToken("+15559990105");
+        Authorize(Client, intruderToken);
+        var changeResp = await Client.PatchAsJsonAsync($"/api/customer/appointments/{apptId}/photo",
+            new UpdateAppointmentPhotoRequest(photo.Id, null));
+
+        Assert.Equal(HttpStatusCode.NotFound, changeResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdatePhoto_ForNoneModeService_ReturnsBadRequest()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-none@example.com", "changephoto-none-shop");
+        var service = await CreateService(barberToken, "None");
+
+        var customerToken = await GetCustomerToken("+15559990106");
+        Authorize(Client, customerToken);
+        var date = NextWeekdayDate();
+        var slot = await FirstAvailableSlot(slug, service.Id, date);
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(service.Id, date, slot, "Customer", "+15559990106", null));
+        var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=all");
+        var apptId = mine!.Single(a => a.CancelToken == booked!.CancelToken).Id;
+
+        var changeResp = await Client.PatchAsJsonAsync($"/api/customer/appointments/{apptId}/photo",
+            new UpdateAppointmentPhotoRequest("some-id", null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, changeResp.StatusCode);
     }
 }

@@ -47,7 +47,9 @@ public record AppointmentDetailDto(
     CustomerSummary Customer, ServiceSummary Service, BarberSummary Barber, string? PhotoUrl);
 
 public record CustomerSummary(string Id, string Name, string FamilyName, string Phone);
-public record ServiceSummary(string Id, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price);
+public record ServiceSummary(
+    string Id, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price,
+    string PhotoMode = "None", List<ServiceGalleryPhotoDto>? GalleryPhotos = null);
 public record BarberSummary(string Name, string Slug, string Language);
 
 public record DashboardAppointmentDto(
@@ -68,3 +70,5 @@ public record BarberSearchResultDto(string Slug, string Name, string? Descriptio
 public record CustomerAppointmentDto(
     string Id, string BarberSlug, string BarberName, string Date, string StartTime, string EndTime,
     string? Notes, string Status, string CancelToken, ServiceSummary Service, string? PhotoUrl);
+
+public record UpdateAppointmentPhotoRequest(string? GalleryPhotoId, string? CustomerPhotoUrl);
