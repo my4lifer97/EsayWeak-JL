@@ -9,7 +9,7 @@ export default function RegisterPage() {
   const { verifyEmail, resendVerification } = useAuth()
   const navigate = useNavigate()
   const [view, setView] = useState<View>('form')
-  const [form, setForm] = useState({ name: '', email: '', password: '', slug: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', slug: '' })
   const [code, setCode] = useState('')
   const [devCode, setDevCode] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -22,9 +22,14 @@ export default function RegisterPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match')
+      return
+    }
     setLoading(true)
     try {
-      const { data } = await api.post('/auth/register', form)
+      const { name, email, password, slug } = form
+      const { data } = await api.post('/auth/register', { name, email, password, slug })
       if (data.devCode) { setDevCode(data.devCode); setCode(data.devCode) }
       setView('verify')
     } catch (err: unknown) {
@@ -85,6 +90,8 @@ export default function RegisterPage() {
             <input type="email" required value={form.email} onChange={set('email')} placeholder="Email"
               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <input type="password" required value={form.password} onChange={set('password')} placeholder="Password"
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input type="password" required value={form.confirmPassword} onChange={set('confirmPassword')} placeholder="Confirm Password"
               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <div>
               <input type="text" required value={form.slug} onChange={set('slug')} placeholder="booking-url-slug"
