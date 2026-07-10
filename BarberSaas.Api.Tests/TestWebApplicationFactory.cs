@@ -44,6 +44,13 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("CronSecret", CronSecret);
         Environment.SetEnvironmentVariable("AllowedOrigin", "http://localhost:5173");
         Environment.SetEnvironmentVariable("AppUrl", "http://localhost:5173");
+
+        // Force DevEmailSender regardless of the developer's local `dotnet user-secrets` store —
+        // Development-environment user secrets share the same UserSecretsId as the real backend
+        // project and get auto-loaded here too, so a locally-configured Resend:ApiKey would
+        // otherwise leak into the test run and make Program.cs wire up the real ResendEmailSender,
+        // which then fails for test-only addresses instead of returning a devCode.
+        Environment.SetEnvironmentVariable("Resend__ApiKey", "");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

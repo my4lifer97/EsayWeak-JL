@@ -9,7 +9,7 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailSender, IWebHostEnvironment env) : ControllerBase
+public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailSender, IWebHostEnvironment env, ILogger<AuthController> logger) : ControllerBase
 {
     private static readonly string[] ReservedSlugs =
         ["admin", "api", "login", "register", "cron", "whatsapp", "_next", "favicon", "browse", "account"];
@@ -60,7 +60,16 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         });
         db.WorkingHours.AddRange(defaultHours);
 
-        var code = await IssueVerificationCode(req.Email);
+        string code;
+        try
+        {
+            code = await IssueVerificationCode(req.Email);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send verification email to {Email}", req.Email);
+            return StatusCode(502, new { error = "Could not send the verification email. Please check the address and try again." });
+        }
 
         await db.SaveChangesAsync();
 
@@ -102,7 +111,16 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (recent.Count >= EmailOtpMaxPerHour)
             return StatusCode(429, new { error = "Too many requests. Try again later" });
 
-        var code = await IssueVerificationCode(req.Email);
+        string code;
+        try
+        {
+            code = await IssueVerificationCode(req.Email);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send verification email to {Email}", req.Email);
+            return StatusCode(502, new { error = "Could not send the verification email. Please try again shortly." });
+        }
         await db.SaveChangesAsync();
 
         string? devCode = env.IsDevelopment() ? code : null;
