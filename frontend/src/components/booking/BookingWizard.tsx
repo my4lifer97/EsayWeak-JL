@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
@@ -10,10 +11,11 @@ import LanguageSwitcher from '../customer/LanguageSwitcher'
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number }
 type BarberInfo = { slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[] }
 type Slot = { start: string; end: string }
-type Step = 1 | 2 | 3 | 4 | 5
+type Step = 1 | 2 | 3 | 4
 
 export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const { user, isAuthenticated, language: lang } = useCustomerAuth()
+  const navigate = useNavigate()
   const [step, setStep] = useState<Step>(1)
   const [service, setService] = useState<Service | null>(null)
   const [date, setDate] = useState('')
@@ -26,7 +28,6 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const [slots, setSlots] = useState<Slot[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [confirmLoading, setConfirmLoading] = useState(false)
-  const [appointmentId, setAppointmentId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
   // The customer's own language choice drives the UI everywhere, overriding this specific
@@ -51,12 +52,11 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     if (!service || !date || !slot) return
     setConfirmLoading(true); setError('')
     try {
-      const { data } = await customerApi.post(`/${barber.slug}/appointments`, {
+      await customerApi.post(`/${barber.slug}/appointments`, {
         serviceId: service.id, date, startTime: slot.start,
         customerName: name, customerPhone: phone, notes: notes || undefined,
       })
-      setAppointmentId(data.appointmentId)
-      setStep(5)
+      navigate(`/${barber.slug}`)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(msg ?? 'Booking failed. Please try again.')
@@ -66,23 +66,6 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const today = new Date()
   const calDays = Array.from({ length: 60 }, (_, i) => addDays(today, i))
   const availableDays = calDays.filter((d) => barber.activeDays.includes(d.getDay()))
-
-  if (step === 5 && appointmentId) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4" dir={dir}>
-        <div className="text-center max-w-sm">
-          <div className="text-6xl mb-6">✅</div>
-          <h1 className="text-2xl font-bold text-white mb-3">{t(lang, 'appointmentConfirmed')}</h1>
-          <p className="text-gray-400 mb-2">{service && `${serviceName(service, lang)} — ${date} at ${slot?.start}`}</p>
-          <p className="text-gray-500 text-sm mb-8">{t(lang, 'reminderNote')}</p>
-          <button onClick={() => { setStep(1); setService(null); setDate(''); setSlot(null); setName(prefillName()); setPhone(prefillPhone()); setNotes(''); setAppointmentId(null) }}
-            className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-2.5 rounded-xl transition-colors">
-            {t(lang, 'bookAnother')}
-          </button>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white" dir={dir}>

@@ -8,11 +8,13 @@ test('visiting a barber link while logged out redirects to login, then returns t
   const phone = `+1555${Date.now().toString().slice(-7)}`
   const api = await request.newContext()
 
-  await api.post(`${API}/auth/register`, {
+  const register = await api.post(`${API}/auth/register`, {
     data: { name: 'E2E Guest Barber', email, password: 'password123', slug },
   })
-  const login = await api.post(`${API}/auth/login`, { data: { email, password: 'password123' } })
-  const { token } = await login.json()
+  const { devCode } = await register.json()
+  // Registration leaves the barber unverified; verify via API to get a token directly.
+  const verify = await api.post(`${API}/auth/verify-email`, { data: { email, code: devCode } })
+  const { token } = await verify.json()
   await api.post(`${API}/admin/services`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { nameEn: 'Haircut', nameAr: 'Haircut', nameHe: 'Haircut', durationMinutes: 30, price: 40 },
@@ -59,5 +61,8 @@ test('visiting a barber link while logged out redirects to login, then returns t
   await expect(page.locator('#booking-phone')).toBeDisabled()
   await page.getByRole('button', { name: 'Confirm Appointment' }).click()
 
-  await expect(page.getByText('Appointment Confirmed!')).toBeVisible({ timeout: 10000 })
+  // Booking now redirects straight back to the barber's own page instead of showing an
+  // in-wizard confirmation screen.
+  await expect(page).toHaveURL(new RegExp(`/${slug}$`), { timeout: 10000 })
+  await expect(page.getByRole('heading', { name: 'E2E Guest Barber' })).toBeVisible()
 })

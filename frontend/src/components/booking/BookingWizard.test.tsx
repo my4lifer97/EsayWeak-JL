@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import BookingWizard from './BookingWizard'
 import { customerApi } from '../../lib/customerApi'
@@ -30,8 +30,11 @@ function mockAnonymous() {
 
 function renderWizard() {
   return render(
-    <MemoryRouter>
-      <BookingWizard barber={barber} />
+    <MemoryRouter initialEntries={[`/${barber.slug}/book`]}>
+      <Routes>
+        <Route path="/:slug/book" element={<BookingWizard barber={barber} />} />
+        <Route path="/:slug" element={<div>Barber main page</div>} />
+      </Routes>
     </MemoryRouter>
   )
 }
@@ -107,7 +110,7 @@ describe('BookingWizard', () => {
     await waitFor(() => expect(screen.getByText('No available times. Please pick another day.')).toBeInTheDocument())
   })
 
-  it('submits the booking with the entered details and shows the confirmation step', async () => {
+  it('submits the booking with the entered details and redirects to the barber\'s main page', async () => {
     await advanceToStep4()
     vi.mocked(customerApi.post).mockResolvedValue({ data: { appointmentId: 'appt-1', cancelToken: 'tok-1' } })
 
@@ -115,7 +118,7 @@ describe('BookingWizard', () => {
     await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
-    await waitFor(() => expect(screen.getByText('Appointment Confirmed!')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Barber main page')).toBeInTheDocument())
     expect(customerApi.post).toHaveBeenCalledWith('/test-barber/appointments', expect.objectContaining({
       serviceId: 'svc-1',
       startTime: '09:00',
@@ -147,35 +150,6 @@ describe('BookingWizard', () => {
     vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30' }] } })
     const dateButtons = findDateButtons()
     await userEvent.click(dateButtons[0])
-    await waitFor(() => screen.getByText('09:00'))
-    await userEvent.click(screen.getByText('09:00'))
-
-    const phoneInput = await screen.findByLabelText('Phone Number') as HTMLInputElement
-    expect(phoneInput.value).toBe('+15559998888')
-    expect(phoneInput).toBeDisabled()
-    expect((screen.getByLabelText('First Name') as HTMLInputElement).value).toBe('Jane Doe')
-  })
-
-  it('keeps name and phone prefilled after "Book Another" for an authenticated customer', async () => {
-    vi.mocked(useCustomerAuth).mockReturnValue({
-      user: { id: '1', name: 'Jane', familyName: 'Doe', phone: '+15559998888' },
-      isAuthenticated: true, language: 'EN', setLang: vi.fn(),
-    } as ReturnType<typeof useCustomerAuth>)
-    vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30' }] } })
-    vi.mocked(customerApi.post).mockResolvedValue({ data: { appointmentId: 'appt-1', cancelToken: 'tok-1' } })
-
-    renderWizard()
-    await userEvent.click(screen.getByText('Haircut'))
-    await userEvent.click(findDateButtons()[0])
-    await waitFor(() => screen.getByText('09:00'))
-    await userEvent.click(screen.getByText('09:00'))
-    await waitFor(() => screen.getByText('Confirm Appointment'))
-    await userEvent.click(screen.getByText('Confirm Appointment'))
-    await waitFor(() => expect(screen.getByText('Appointment Confirmed!')).toBeInTheDocument())
-
-    await userEvent.click(screen.getByText('Book Another'))
-    await userEvent.click(screen.getByText('Haircut'))
-    await userEvent.click(findDateButtons()[0])
     await waitFor(() => screen.getByText('09:00'))
     await userEvent.click(screen.getByText('09:00'))
 

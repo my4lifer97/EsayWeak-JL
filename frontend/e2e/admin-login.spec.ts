@@ -7,9 +7,13 @@ test('barber can log in and land on the dashboard', async ({ page }) => {
   const email = `${slug}@example.com`
   const api = await request.newContext()
 
-  await api.post(`${API}/auth/register`, {
+  const register = await api.post(`${API}/auth/register`, {
     data: { name: 'E2E Admin Barber', email, password: 'password123', slug },
   })
+  const { devCode } = await register.json()
+  // Registration leaves the barber unverified; verify via API so this test exercises a normal
+  // login, not the separate verify-code UI flow.
+  await api.post(`${API}/auth/verify-email`, { data: { email, code: devCode } })
 
   await page.goto('/admin/login')
   await page.getByPlaceholder('Email').fill(email)
