@@ -34,7 +34,11 @@ public class WhatsAppController(AppDbContext db, IConfiguration config) : Contro
 
         var signature = Request.Headers["X-Twilio-Signature"].FirstOrDefault() ?? "";
         var appUrl = config["AppUrl"] ?? "";
-        var webhookUrl = $"{appUrl}/api/whatsapp/webhook";
+        // AppUrl is the frontend's public URL, reused here on the assumption frontend and backend
+        // share a domain in production. WebhookPublicUrl overrides just the signature-check base
+        // URL for setups where that's not true (e.g. a local ngrok tunnel pointed at the backend
+        // only, while AppUrl keeps pointing at the frontend for booking links in reply text).
+        var webhookUrl = $"{config["WebhookPublicUrl"] ?? appUrl}/api/whatsapp/webhook";
 
         var validator = new RequestValidator(barber.TwilioToken);
         if (!validator.Validate(webhookUrl, parms, signature))
