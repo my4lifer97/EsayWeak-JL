@@ -5,6 +5,7 @@ import { CustomerAuthProvider } from './lib/customerAuth'
 
 import LoginPage from './pages/admin/LoginPage'
 import RegisterPage from './pages/admin/RegisterPage'
+import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import AppointmentsPage from './pages/admin/AppointmentsPage'
 import SchedulePage from './pages/admin/SchedulePage'
@@ -33,6 +34,7 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/admin/login" element={<LoginPage />} />
               <Route path="/admin/register" element={<RegisterPage />} />
+              <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
               <Route element={<ProtectedRoute />}>
                 <Route element={<AdminLayout />}>
                   <Route path="/admin/dashboard" element={<DashboardPage />} />

@@ -159,6 +159,89 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         return Ok(new LoginResponse(token, barber.Id, barber.Name, barber.Email, barber.Slug));
     }
 
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
+    {
+        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (barber is null) return NotFound(new { error = "Not found" });
+
+        var since = DateTime.UtcNow.AddHours(-1);
+        var recent = await db.BarberPasswordResetOtps
+            .Where(o => o.Email == req.Email && o.CreatedAt > since)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync();
+
+        var last = recent.FirstOrDefault();
+        if (last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < EmailOtpCooldownSeconds)
+            return StatusCode(429, new { error = "Please wait before requesting another code" });
+
+        if (recent.Count >= EmailOtpMaxPerHour)
+            return StatusCode(429, new { error = "Too many requests. Try again later" });
+
+        string code;
+        try
+        {
+            code = await IssuePasswordResetCode(req.Email);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send password reset email to {Email}", req.Email);
+            return StatusCode(502, new { error = "Could not send the reset email. Please try again shortly." });
+        }
+        await db.SaveChangesAsync();
+
+        string? devCode = env.IsDevelopment() ? code : null;
+        return Ok(new { devCode });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
+            return BadRequest(new { error = "Password must be at least 6 characters" });
+
+        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (barber is null) return NotFound(new { error = "Not found" });
+
+        var entry = await db.BarberPasswordResetOtps
+            .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
+            .OrderByDescending(o => o.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (entry is null || !BCrypt.Net.BCrypt.Verify(req.Code, entry.CodeHash))
+        {
+            if (entry is not null)
+            {
+                entry.Attempts++;
+                await db.SaveChangesAsync();
+            }
+            return BadRequest(new { error = "Invalid or expired code" });
+        }
+
+        entry.Consumed = true;
+        barber.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        await db.SaveChangesAsync();
+
+        var token = jwt.Generate(barber.Id, barber.Email, barber.Name, barber.Slug);
+        return Ok(new LoginResponse(token, barber.Id, barber.Name, barber.Email, barber.Slug));
+    }
+
+    private async Task<string> IssuePasswordResetCode(string email)
+    {
+        var code = Random.Shared.Next(100000, 999999).ToString();
+        db.BarberPasswordResetOtps.Add(new BarberPasswordResetOtp
+        {
+            Email = email,
+            CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(EmailOtpExpiryMinutes),
+        });
+
+        await emailSender.SendAsync(email, "Reset your EsayWeek password",
+            $"Your password reset code is {code}. It expires in {EmailOtpExpiryMinutes} minutes. If you didn't request this, you can ignore this email.");
+
+        return code;
+    }
+
     private async Task<string> IssueVerificationCode(string email)
     {
         var code = Random.Shared.Next(100000, 999999).ToString();

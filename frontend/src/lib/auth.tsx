@@ -7,6 +7,8 @@ interface AuthCtx {
   login: (email: string, password: string) => Promise<void>
   verifyEmail: (email: string, code: string) => Promise<void>
   resendVerification: (email: string) => Promise<{ devCode?: string }>
+  forgotPassword: (email: string) => Promise<{ devCode?: string }>
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
   language: string
@@ -57,6 +59,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data
   }
 
+  async function forgotPassword(email: string) {
+    const { data } = await api.post('/auth/forgot-password', { email })
+    return data
+  }
+
+  async function resetPassword(email: string, code: string, newPassword: string) {
+    const { data } = await api.post('/auth/reset-password', { email, code, newPassword })
+    localStorage.setItem('token', data.token)
+    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug }
+    localStorage.setItem('user', JSON.stringify(u))
+    setUser(u)
+  }
+
   function logout() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -64,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, logout, isAuthenticated: !!user, language, setLang }}>
+    <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, forgotPassword, resetPassword, logout, isAuthenticated: !!user, language, setLang }}>
       {children}
     </AuthContext.Provider>
   )

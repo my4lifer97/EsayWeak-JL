@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<CustomerOtp> CustomerOtps => Set<CustomerOtp>();
     public DbSet<BarberEmailOtp> BarberEmailOtps => Set<BarberEmailOtp>();
+    public DbSet<BarberPasswordResetOtp> BarberPasswordResetOtps => Set<BarberPasswordResetOtp>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -43,6 +44,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => new { x.Phone, x.CreatedAt });
 
         b.Entity<BarberEmailOtp>()
+            .HasIndex(x => new { x.Email, x.CreatedAt });
+
+        b.Entity<BarberPasswordResetOtp>()
             .HasIndex(x => new { x.Email, x.CreatedAt });
 
         b.Entity<Service>()

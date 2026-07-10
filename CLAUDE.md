@@ -108,6 +108,7 @@ barber-saas/
 │   │   ├── CustomerAccount.cs       # Logged-in customer identity (phone-based)
 │   │   ├── CustomerOtp.cs           # One-time codes for phone verification
 │   │   ├── BarberEmailOtp.cs        # One-time codes for barber email verification (mirrors CustomerOtp)
+│   │   ├── BarberPasswordResetOtp.cs # One-time codes for barber password reset (mirrors BarberEmailOtp)
 │   │   └── Follow.cs                # CustomerAccount <-> Barber follow relationship
 │   ├── Services/
 │   │   ├── AvailabilityService.cs      # Slot generation + conflict filtering
@@ -155,6 +156,8 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `POST /api/auth/login` — returns JWT token (30 days); **403 `{ emailNotVerified: true }`** if the barber hasn't verified their email yet (frontend responds by requesting a fresh code and dropping into the verify-code view)
 - `POST /api/auth/verify-email` — `{ email, code }`; marks the barber verified and returns a JWT (`LoginResponse`), logging them in directly
 - `POST /api/auth/resend-verification` — `{ email }`; 45s cooldown + 5/hour cap, same shape as customer OTP resend
+- `POST /api/auth/forgot-password` — `{ email }`; sends a 6-digit reset code (`devCode` in Development), same cooldown/cap as email verification; 404 if the email isn't registered
+- `POST /api/auth/reset-password` — `{ email, code, newPassword }`; verifies the code, updates the password, and returns a JWT (`LoginResponse`), logging them in directly
 
 **Admin (JWT required — barber ID read from token claims, never from body, `BarberOnly` policy)**
 - `GET/PATCH /api/admin/settings` — barber profile, Twilio config, language, booking limits
@@ -193,7 +196,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 
 ### Frontend Routes
 - `/` — landing/marketing page
-- `/admin/login`, `/admin/register` — auth pages
+- `/admin/login`, `/admin/register`, `/admin/forgot-password` — auth pages
 - `/admin/dashboard` — weekly calendar view
 - `/admin/appointments` — appointments table with filters
 - `/admin/schedule` — working hours, breaks, blocked dates

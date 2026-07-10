@@ -5,6 +5,8 @@ public record LoginRequest(string Email, string Password);
 public record LoginResponse(string Token, string Id, string Name, string Email, string Slug);
 public record VerifyEmailRequest(string Email, string Code);
 public record ResendVerificationRequest(string Email);
+public record ForgotPasswordRequest(string Email);
+public record ResetPasswordRequest(string Email, string Code, string NewPassword);
 
 public record ServiceDto(string Id, string BarberId, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, bool IsActive);
 public record CreateServiceRequest(string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price);

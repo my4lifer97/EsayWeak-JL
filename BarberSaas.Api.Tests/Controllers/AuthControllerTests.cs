@@ -195,4 +195,90 @@ public class AuthControllerTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    private record ForgotPasswordResponse(string? DevCode);
+
+    private async Task<string> RegisterVerifyAndGetResetCode(string email, string slug)
+    {
+        var code = await RegisterAndGetDevCode(email, slug);
+        await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code));
+
+        var resp = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email));
+        var body = await resp.Content.ReadFromJsonAsync<ForgotPasswordResponse>();
+        Assert.NotNull(body?.DevCode);
+        return body!.DevCode!;
+    }
+
+    [Fact]
+    public async Task ForgotPassword_ForUnknownEmail_ReturnsNotFound()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("nobody@example.com"));
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_ImmediateSecondRequest_IsRateLimited()
+    {
+        await RegisterVerifyAndGetResetCode("forgot-cooldown@example.com", "forgot-cooldown-shop");
+
+        var resp = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("forgot-cooldown@example.com"));
+
+        Assert.Equal((HttpStatusCode)429, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithCorrectCode_UpdatesPasswordAndReturnsToken()
+    {
+        var code = await RegisterVerifyAndGetResetCode("reset-ok@example.com", "reset-ok-shop");
+
+        var resp = await Client.PostAsJsonAsync("/api/auth/reset-password",
+            new ResetPasswordRequest("reset-ok@example.com", code, "newpassword456"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.False(string.IsNullOrWhiteSpace(body?.Token));
+
+        var loginResp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("reset-ok@example.com", "newpassword456"));
+        Assert.Equal(HttpStatusCode.OK, loginResp.StatusCode);
+
+        var oldPasswordResp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("reset-ok@example.com", "password123"));
+        Assert.Equal(HttpStatusCode.Unauthorized, oldPasswordResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithWrongCode_ReturnsBadRequest()
+    {
+        await RegisterVerifyAndGetResetCode("reset-wrong@example.com", "reset-wrong-shop");
+
+        var resp = await Client.PostAsJsonAsync("/api/auth/reset-password",
+            new ResetPasswordRequest("reset-wrong@example.com", "000000", "newpassword456"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_ReplayingAConsumedCode_ReturnsBadRequest()
+    {
+        var code = await RegisterVerifyAndGetResetCode("reset-replay@example.com", "reset-replay-shop");
+        var first = await Client.PostAsJsonAsync("/api/auth/reset-password",
+            new ResetPasswordRequest("reset-replay@example.com", code, "newpassword456"));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        var replay = await Client.PostAsJsonAsync("/api/auth/reset-password",
+            new ResetPasswordRequest("reset-replay@example.com", code, "anotherpassword789"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, replay.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithTooShortNewPassword_ReturnsBadRequest()
+    {
+        var code = await RegisterVerifyAndGetResetCode("reset-shortpw@example.com", "reset-shortpw-shop");
+
+        var resp = await Client.PostAsJsonAsync("/api/auth/reset-password",
+            new ResetPasswordRequest("reset-shortpw@example.com", code, "short"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 }
