@@ -5,6 +5,7 @@ namespace BarberSaas.Api.Models;
 public enum Language { EN, AR, HE }
 public enum SubStatus { TRIAL, ACTIVE, EXPIRED }
 public enum AppointmentStatus { CONFIRMED, CANCELLED, COMPLETED }
+public enum ServicePhotoMode { None, OwnerGallery, CustomerUpload }
 
 public class Barber
 {
@@ -48,9 +49,21 @@ public class Service
     public int DurationMinutes { get; set; }
     public decimal Price { get; set; }
     public bool IsActive { get; set; } = true;
+    public ServicePhotoMode PhotoMode { get; set; } = ServicePhotoMode.None;
 
     public Barber Barber { get; set; } = null!;
     public ICollection<Appointment> Appointments { get; set; } = [];
+    public ICollection<ServiceGalleryPhoto> GalleryPhotos { get; set; } = [];
+}
+
+public class ServiceGalleryPhoto
+{
+    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string ServiceId { get; set; } = "";
+    public string Url { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public Service Service { get; set; } = null!;
 }
 
 public class WorkingHours
@@ -112,6 +125,7 @@ public class Appointment
     public string StartTime { get; set; } = "";
     public string EndTime { get; set; } = "";
     public string? Notes { get; set; }
+    public string? PhotoUrl { get; set; }
     public AppointmentStatus Status { get; set; } = AppointmentStatus.CONFIRMED;
     public bool ReminderSent { get; set; } = false;
     public string CancelToken { get; set; } = Guid.NewGuid().ToString("N");

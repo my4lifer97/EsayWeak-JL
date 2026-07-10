@@ -43,7 +43,7 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
         var dtos = appointments.Select(a => new CustomerAppointmentDto(
             a.Id, a.Barber.Slug, a.Barber.Name, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
             a.Notes, AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.CancelToken,
-            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price)));
+            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price), a.PhotoUrl));
 
         return Ok(dtos.OrderBy(d => d.Status == "CONFIRMED" ? 0 : 1));
     }

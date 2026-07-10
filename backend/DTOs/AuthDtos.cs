@@ -8,8 +8,9 @@ public record ResendVerificationRequest(string Email);
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Code, string NewPassword);
 
-public record ServiceDto(string Id, string BarberId, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, bool IsActive);
-public record CreateServiceRequest(string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price);
+public record ServiceGalleryPhotoDto(string Id, string Url);
+public record ServiceDto(string Id, string BarberId, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, bool IsActive, string PhotoMode, List<ServiceGalleryPhotoDto> GalleryPhotos);
+public record CreateServiceRequest(string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, string PhotoMode = "None");
 
 public record WorkingHoursDto(string? Id, int DayOfWeek, string StartTime, string EndTime, bool IsActive);
 public record BreakDto(string Id, int DayOfWeek, string StartTime, string EndTime);
@@ -30,7 +31,8 @@ public record UpdateSettingsRequest(
 
 public record BookAppointmentRequest(
     string ServiceId, string Date, string StartTime,
-    string CustomerName, string CustomerPhone, string? Notes);
+    string CustomerName, string CustomerPhone, string? Notes,
+    string? GalleryPhotoId = null, string? CustomerPhotoUrl = null);
 
 public record BookAppointmentResponse(string AppointmentId, string CancelToken);
 
@@ -42,7 +44,7 @@ public record AppointmentDetailDto(
     string Id, string BarberId, string CustomerId, string ServiceId,
     string Date, string StartTime, string EndTime, string? Notes,
     string Status, bool ReminderSent, string CancelToken, DateTime CreatedAt,
-    CustomerSummary Customer, ServiceSummary Service, BarberSummary Barber);
+    CustomerSummary Customer, ServiceSummary Service, BarberSummary Barber, string? PhotoUrl);
 
 public record CustomerSummary(string Id, string Name, string FamilyName, string Phone);
 public record ServiceSummary(string Id, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price);
@@ -50,7 +52,7 @@ public record BarberSummary(string Name, string Slug, string Language);
 
 public record DashboardAppointmentDto(
     string Id, string Date, string StartTime, string EndTime,
-    string Status, string? Notes, CustomerSummary Customer, ServiceSummary Service, decimal Price);
+    string Status, string? Notes, CustomerSummary Customer, ServiceSummary Service, decimal Price, string? PhotoUrl);
 
 public record ScheduleResponse(
     List<WorkingHoursDto> WorkingHours,
@@ -65,4 +67,4 @@ public record BarberSearchResultDto(string Slug, string Name, string? Descriptio
 
 public record CustomerAppointmentDto(
     string Id, string BarberSlug, string BarberName, string Date, string StartTime, string EndTime,
-    string? Notes, string Status, string CancelToken, ServiceSummary Service);
+    string? Notes, string Status, string CancelToken, ServiceSummary Service, string? PhotoUrl);

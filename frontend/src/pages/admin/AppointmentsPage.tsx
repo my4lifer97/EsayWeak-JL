@@ -11,6 +11,7 @@ type Appointment = {
   customer: { name: string; phone: string }
   service: { nameEn: string; nameAr: string; nameHe: string }
   price: number
+  photoUrl: string | null
 }
 
 const FILTERS: { value: string; key: TKey }[] = [
@@ -78,7 +79,7 @@ export default function AppointmentsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-left">
-                {(['date', 'time', 'colCustomer', 'phone', 'service', 'status', 'colActions'] as TKey[]).map((key) => (
+                {(['date', 'time', 'colCustomer', 'phone', 'service', 'referencePhoto', 'status', 'colActions'] as TKey[]).map((key) => (
                   <th key={key} className="px-4 py-3 font-medium">{t(lang, key)}</th>
                 ))}
               </tr>
@@ -91,6 +92,13 @@ export default function AppointmentsPage() {
                   <td className="px-4 py-3 text-white font-medium">{a.customer.name}</td>
                   <td className="px-4 py-3 text-gray-300">{a.customer.phone}</td>
                   <td className="px-4 py-3 text-gray-300">{serviceName(a.service, lang)}</td>
+                  <td className="px-4 py-3">
+                    {a.photoUrl && (
+                      <a href={a.photoUrl} target="_blank" rel="noreferrer">
+                        <img src={a.photoUrl} alt={t(lang, 'referencePhoto')} className="w-10 h-10 object-cover rounded-lg border border-gray-700 hover:border-blue-500 transition-colors" />
+                      </a>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] ?? 'bg-gray-700 text-gray-300'}`}>
                       {STATUS_LABEL[a.status] ? t(lang, STATUS_LABEL[a.status]) : a.status}

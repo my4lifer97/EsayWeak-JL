@@ -10,13 +10,19 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/{slug}")]
-public class BookingController(AppDbContext db, AvailabilityService availability, FollowService followService) : ControllerBase
+public class BookingController(AppDbContext db, AvailabilityService availability, FollowService followService, IWebHostEnvironment env) : ControllerBase
 {
+    private static readonly Dictionary<string, string> AllowedPhotoTypes = new()
+    {
+        [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".png"] = "image/png", [".webp"] = "image/webp",
+    };
+    private const long MaxPhotoBytes = 5 * 1024 * 1024;
+
     [HttpGet("info")]
     public async Task<IActionResult> GetBarberInfo(string slug)
     {
         var barber = await db.Barbers
-            .Include(b => b.Services.Where(s => s.IsActive))
+            .Include(b => b.Services.Where(s => s.IsActive)).ThenInclude(s => s.GalleryPhotos)
             .Include(b => b.WorkingHours.Where(w => w.IsActive))
             .FirstOrDefaultAsync(b => b.Slug == slug);
 
@@ -26,7 +32,8 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         var activeDays = barber.WorkingHours.Select(w => w.DayOfWeek).ToArray();
 
         var services = barber.Services.Select(s => new ServiceDto(
-            s.Id, s.BarberId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive)).ToList();
+            s.Id, s.BarberId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
+            s.PhotoMode.ToString(), s.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList())).ToList();
 
         var isFollowed = false;
         if (User.FindFirst("type")?.Value == "customer")
@@ -65,6 +72,22 @@ public class BookingController(AppDbContext db, AvailabilityService availability
 
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BarberId == barber.Id && s.IsActive);
         if (service is null) return NotFound(new { error = "Service not found" });
+
+        string? photoUrl = null;
+        if (service.PhotoMode == ServicePhotoMode.OwnerGallery)
+        {
+            if (string.IsNullOrWhiteSpace(req.GalleryPhotoId))
+                return BadRequest(new { error = "Please choose a photo for this service." });
+            var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == service.Id);
+            if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
+            photoUrl = photo.Url;
+        }
+        else if (service.PhotoMode == ServicePhotoMode.CustomerUpload)
+        {
+            if (string.IsNullOrWhiteSpace(req.CustomerPhotoUrl) || !req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+                return BadRequest(new { error = "Please upload a photo for this service." });
+            photoUrl = req.CustomerPhotoUrl;
+        }
 
         var slots = await availability.GetAvailableSlots(barber.Id, req.Date, service.DurationMinutes);
         if (!slots.Any(s => s.Start == req.StartTime))
@@ -132,6 +155,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
             StartTime = req.StartTime,
             EndTime = endTime,
             Notes = req.Notes,
+            PhotoUrl = photoUrl,
             Status = AppointmentStatus.CONFIRMED,
         };
         db.Appointments.Add(appointment);
@@ -139,6 +163,29 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         await db.SaveChangesAsync();
 
         return StatusCode(201, new BookAppointmentResponse(appointment.Id, appointment.CancelToken));
+    }
+
+    [HttpPost("appointments/photo")]
+    [RequestSizeLimit(MaxPhotoBytes)]
+    public async Task<IActionResult> UploadAppointmentPhoto(string slug, IFormFile file)
+    {
+        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Slug == slug);
+        if (barber is null) return NotFound(new { error = "Not found" });
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (file.Length == 0 || file.Length > MaxPhotoBytes
+            || !AllowedPhotoTypes.TryGetValue(ext, out var expectedContentType)
+            || file.ContentType != expectedContentType)
+            return BadRequest(new { error = "Please upload a JPG, PNG, or WEBP image up to 5MB." });
+
+        var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "appointment-photos");
+        Directory.CreateDirectory(uploadsDir);
+
+        var fileName = $"{Guid.NewGuid():N}{ext}";
+        await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
+            await file.CopyToAsync(stream);
+
+        return Ok(new { url = $"/api/uploads/appointment-photos/{fileName}" });
     }
 
     [HttpGet("appointments/{id}")]
@@ -159,7 +206,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
             appointment.CreatedAt,
             new CustomerSummary(appointment.Customer.Id, appointment.Customer.Name, appointment.Customer.FamilyName, appointment.Customer.Phone),
             new ServiceSummary(appointment.Service.Id, appointment.Service.NameEn, appointment.Service.NameAr, appointment.Service.NameHe, appointment.Service.DurationMinutes, appointment.Service.Price),
-            new BarberSummary(appointment.Barber.Name, appointment.Barber.Slug, appointment.Barber.Language.ToString())));
+            new BarberSummary(appointment.Barber.Name, appointment.Barber.Slug, appointment.Barber.Language.ToString()), appointment.PhotoUrl));
     }
 
     [HttpDelete("appointments/{id}")]

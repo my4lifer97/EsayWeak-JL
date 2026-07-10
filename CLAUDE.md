@@ -104,7 +104,7 @@ barber-saas/
 │   ├── DTOs/AuthDtos.cs             # All request/response record types
 │   ├── Migrations/                  # EF migrations
 │   ├── Models/
-│   │   ├── Barber.cs                # Barber, Service, Appointment, WorkingHours, Break, BlockedSlot, Customer, etc.
+│   │   ├── Barber.cs                # Barber, Service, ServiceGalleryPhoto, Appointment, WorkingHours, Break, BlockedSlot, Customer, etc.
 │   │   ├── CustomerAccount.cs       # Logged-in customer identity (phone-based)
 │   │   ├── CustomerOtp.cs           # One-time codes for phone verification
 │   │   ├── BarberEmailOtp.cs        # One-time codes for barber email verification (mirrors CustomerOtp)
@@ -161,8 +161,10 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 
 **Admin (JWT required — barber ID read from token claims, never from body, `BarberOnly` policy)**
 - `GET/PATCH /api/admin/settings` — barber profile, Twilio config, language, booking limits
-- `GET/POST /api/admin/services` — services CRUD
+- `GET/POST /api/admin/services` — services CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/services/{id}` — update / soft-delete (IsActive = false)
+- `POST /api/admin/services/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)
+- `DELETE /api/admin/services/{id}/gallery/{photoId}` — remove a gallery photo
 - `GET/POST /api/admin/schedule` — working hours (upsert by DayOfWeek)
 - `POST/DELETE /api/admin/schedule/breaks/{id}` — recurring breaks
 - `POST/DELETE /api/admin/schedule/blocked/{id}` — one-off blocked dates/slots
@@ -173,7 +175,8 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 **Public booking (no JWT — `{slug}` identifies the tenant)**
 - `GET /api/{slug}/info` — barber name, services, active days, isRTL flag
 - `GET /api/{slug}/availability?date=&serviceId=` — available 30-min slots
-- `POST /api/{slug}/appointments` — book appointment; returns `{ appointmentId, cancelToken }`; auto-follows the barber if the caller is a logged-in customer
+- `POST /api/{slug}/appointments/photo` — upload a reference photo for a `CustomerUpload`-mode service (anonymous, guest booking allowed); returns `{ url }` to pass as `customerPhotoUrl` below
+- `POST /api/{slug}/appointments` — book appointment; returns `{ appointmentId, cancelToken }`; auto-follows the barber if the caller is a logged-in customer; if the service's `photoMode` is `OwnerGallery`/`CustomerUpload`, `galleryPhotoId`/`customerPhotoUrl` respectively is required
 - `GET /api/{slug}/appointments/{id}` — view appointment details (used by the public magic-link page)
 - `DELETE /api/{slug}/appointments/{id}?token=` — cancel (validated by cancelToken)
 - `PATCH /api/{slug}/appointments/{id}?token=` — reschedule (re-checks availability first)
@@ -242,6 +245,21 @@ logged in or booking as a guest, so it can't be dodged by not signing in) can bo
 `Settings > Booking Limits`. Enforced in `BookingController.BookAppointment` before creating the
 appointment — "per week" means the fixed Sun–Sat calendar week containing the requested date.
 Reschedules are not currently checked against the limit (only new bookings).
+
+### Service reference photos
+Each `Service` has a `PhotoMode` (`None` / `OwnerGallery` / `CustomerUpload`), set per-service on
+`Settings > Services`. `OwnerGallery` lets the barber upload a set of style photos
+(`ServiceGalleryPhoto`, cascade-deleted with the service) that the customer picks one of when
+booking; `CustomerUpload` instead lets the customer upload their own reference photo from their
+device. Both are **required**, not optional, when enabled — `BookingController.BookAppointment`
+rejects the booking with 400 if the required `galleryPhotoId`/`customerPhotoUrl` is missing (a
+gallery photo ID is also validated to belong to the requested service, not just exist anywhere).
+The resolved photo URL is stored on `Appointment.PhotoUrl` (nullable, `None` mode leaves it null)
+and surfaced back to the barber in the admin appointments table and to both parties in appointment
+detail views. Uploads reuse the same JPG/PNG/WEBP/5MB validation as the barber's own logo upload;
+gallery photos live under `wwwroot/uploads/gallery/{serviceId}/`, customer-uploaded reference
+photos under `wwwroot/uploads/appointment-photos/` — both served via the existing `/api/uploads`
+static file route.
 
 ### Database
 EF Core + Npgsql. Dev DB: `barbersaas_dev` (appsettings.Development.json). Prod DB: `barbersaas` (appsettings.json). Auto-migrates in Development on startup.  

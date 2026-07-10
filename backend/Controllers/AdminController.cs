@@ -22,6 +22,10 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
     };
     private const long MaxLogoBytes = 5 * 1024 * 1024;
 
+    private static ServiceDto ToServiceDto(Service s) => new(
+        s.Id, s.BarberId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
+        s.PhotoMode.ToString(), s.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList());
+
     // ─── Settings ───────────────────────────────────────────────────────────
 
     [HttpGet("settings")]
@@ -95,11 +99,11 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
     public async Task<IActionResult> GetServices()
     {
         var services = await db.Services
+            .Include(s => s.GalleryPhotos)
             .Where(s => s.BarberId == BarberId && s.IsActive)
             .OrderBy(s => s.NameEn)
-            .Select(s => new ServiceDto(s.Id, s.BarberId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive))
             .ToListAsync();
-        return Ok(services);
+        return Ok(services.Select(ToServiceDto));
     }
 
     [HttpPost("services")]
@@ -109,6 +113,8 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
             return BadRequest(new { error = "All name fields are required" });
         if (req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0)
             return BadRequest(new { error = "Duration must be a multiple of 15 (min 15)" });
+        if (!Enum.TryParse<ServicePhotoMode>(req.PhotoMode, out var photoMode))
+            return BadRequest(new { error = "Invalid photo mode" });
 
         var service = new Service
         {
@@ -118,16 +124,21 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
             NameHe = req.NameHe,
             DurationMinutes = req.DurationMinutes,
             Price = req.Price,
+            PhotoMode = photoMode,
         };
         db.Services.Add(service);
         await db.SaveChangesAsync();
-        return StatusCode(201, new ServiceDto(service.Id, service.BarberId, service.NameEn, service.NameAr, service.NameHe, service.DurationMinutes, service.Price, service.IsActive));
+        return StatusCode(201, ToServiceDto(service));
     }
 
     [HttpPatch("services/{id}")]
     public async Task<IActionResult> UpdateService(string id, [FromBody] CreateServiceRequest req)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
+        if (!Enum.TryParse<ServicePhotoMode>(req.PhotoMode, out var photoMode))
+            return BadRequest(new { error = "Invalid photo mode" });
+
+        var service = await db.Services.Include(s => s.GalleryPhotos)
+            .FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
         if (service is null) return NotFound();
 
         service.NameEn = req.NameEn;
@@ -135,9 +146,10 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
         service.NameHe = req.NameHe;
         service.DurationMinutes = req.DurationMinutes;
         service.Price = req.Price;
+        service.PhotoMode = photoMode;
 
         await db.SaveChangesAsync();
-        return Ok(new ServiceDto(service.Id, service.BarberId, service.NameEn, service.NameAr, service.NameHe, service.DurationMinutes, service.Price, service.IsActive));
+        return Ok(ToServiceDto(service));
     }
 
     [HttpDelete("services/{id}")]
@@ -146,6 +158,54 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
         if (service is null) return NotFound();
         service.IsActive = false;
+        await db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    // ─── Service gallery photos ─────────────────────────────────────────────
+
+    [HttpPost("services/{id}/gallery")]
+    [RequestSizeLimit(MaxLogoBytes)]
+    public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
+    {
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
+        if (service is null) return NotFound();
+
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (file.Length == 0 || file.Length > MaxLogoBytes
+            || !AllowedLogoTypes.TryGetValue(ext, out var expectedContentType)
+            || file.ContentType != expectedContentType)
+            return BadRequest(new { error = "Please upload a JPG, PNG, or WEBP image up to 5MB." });
+
+        var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "gallery", service.Id);
+        Directory.CreateDirectory(uploadsDir);
+
+        var fileName = $"{Guid.NewGuid():N}{ext}";
+        await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
+            await file.CopyToAsync(stream);
+
+        var photo = new ServiceGalleryPhoto
+        {
+            ServiceId = service.Id,
+            Url = $"/api/uploads/gallery/{service.Id}/{fileName}",
+        };
+        db.ServiceGalleryPhotos.Add(photo);
+        await db.SaveChangesAsync();
+
+        return StatusCode(201, new ServiceGalleryPhotoDto(photo.Id, photo.Url));
+    }
+
+    [HttpDelete("services/{id}/gallery/{photoId}")]
+    public async Task<IActionResult> DeleteGalleryPhoto(string id, string photoId)
+    {
+        var photo = await db.ServiceGalleryPhotos
+            .FirstOrDefaultAsync(p => p.Id == photoId && p.ServiceId == id && p.Service.BarberId == BarberId);
+        if (photo is null) return NotFound();
+
+        var path = Path.Combine(env.ContentRootPath, "wwwroot", photo.Url.Replace("/api/uploads/", "uploads/").Replace('/', Path.DirectorySeparatorChar));
+        if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+
+        db.ServiceGalleryPhotos.Remove(photo);
         await db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
@@ -265,7 +325,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price)));
+            a.Service.Price, a.PhotoUrl)));
     }
 
     // ─── Appointments ────────────────────────────────────────────────────────
@@ -295,7 +355,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price)));
+            a.Service.Price, a.PhotoUrl)));
     }
 
     [HttpPatch("appointments/{id}")]

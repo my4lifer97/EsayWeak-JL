@@ -7,6 +7,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<Barber> Barbers => Set<Barber>();
     public DbSet<Service> Services => Set<Service>();
+    public DbSet<ServiceGalleryPhoto> ServiceGalleryPhotos => Set<ServiceGalleryPhoto>();
     public DbSet<WorkingHours> WorkingHours => Set<WorkingHours>();
     public DbSet<Break> Breaks => Set<Break>();
     public DbSet<BlockedSlot> BlockedSlots => Set<BlockedSlot>();
@@ -70,10 +71,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Appointment>()
             .Property(x => x.Status)
             .HasConversion<string>();
+        b.Entity<Service>()
+            .Property(x => x.PhotoMode)
+            .HasConversion<string>();
 
         b.Entity<Service>()
             .HasOne(x => x.Barber).WithMany(x => x.Services)
             .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ServiceGalleryPhoto>()
+            .HasOne(x => x.Service).WithMany(x => x.GalleryPhotos)
+            .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WorkingHours>()
             .HasOne(x => x.Barber).WithMany(x => x.WorkingHours)
             .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);

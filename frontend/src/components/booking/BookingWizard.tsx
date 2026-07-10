@@ -8,7 +8,11 @@ import { t, serviceName } from '../../lib/i18n'
 import BackButton from '../BackButton'
 import LanguageSwitcher from '../customer/LanguageSwitcher'
 
-type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number }
+type GalleryPhoto = { id: string; url: string }
+type Service = {
+  id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
+  photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload'; galleryPhotos: GalleryPhoto[]
+}
 type BarberInfo = { slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[] }
 type Slot = { start: string; end: string }
 type Step = 1 | 2 | 3 | 4
@@ -29,6 +33,10 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [error, setError] = useState('')
+  const [selectedGalleryPhotoId, setSelectedGalleryPhotoId] = useState<string | null>(null)
+  const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState<string | null>(null)
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoError, setPhotoError] = useState('')
 
   // The customer's own language choice drives the UI everywhere, overriding this specific
   // barber's configured storefront language.
@@ -48,13 +56,32 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     setStep(3)
   }
 
+  async function uploadPhoto(file: File) {
+    setPhotoUploading(true); setPhotoError('')
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const { data } = await customerApi.post(`/${barber.slug}/appointments/photo`, formData)
+      setUploadedPhotoUrl(data.url)
+    } catch {
+      setPhotoError(t(lang, 'photoUploadError'))
+    } finally { setPhotoUploading(false) }
+  }
+
+  const photoSatisfied =
+    service?.photoMode === 'OwnerGallery' ? !!selectedGalleryPhotoId
+      : service?.photoMode === 'CustomerUpload' ? !!uploadedPhotoUrl
+      : true
+
   async function confirm() {
-    if (!service || !date || !slot) return
+    if (!service || !date || !slot || !photoSatisfied) return
     setConfirmLoading(true); setError('')
     try {
       await customerApi.post(`/${barber.slug}/appointments`, {
         serviceId: service.id, date, startTime: slot.start,
         customerName: name, customerPhone: phone, notes: notes || undefined,
+        galleryPhotoId: selectedGalleryPhotoId ?? undefined,
+        customerPhotoUrl: uploadedPhotoUrl ?? undefined,
       })
       navigate(`/${barber.slug}`)
     } catch (err: unknown) {
@@ -93,7 +120,9 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
             <p className="text-gray-400 mb-6">{t(lang, 'selectService')}</p>
             <div className="space-y-3">
               {barber.services.map((s) => (
-                <button key={s.id} onClick={() => { setService(s); setStep(2) }}
+                <button key={s.id} onClick={() => {
+                  setService(s); setSelectedGalleryPhotoId(null); setUploadedPhotoUrl(null); setPhotoError(''); setStep(2)
+                }}
                   className="w-full bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-blue-500 rounded-xl px-5 py-4 flex justify-between items-center transition-colors text-start">
                   <div>
                     <div className="font-medium">{serviceName(s, lang)}</div>
@@ -168,6 +197,46 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                   placeholder={t(lang, 'notesPlaceholder')}
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
+              {service?.photoMode === 'OwnerGallery' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'choosePhoto')}</label>
+                  <p className="text-gray-500 text-xs mb-2">{t(lang, 'choosePhotoHint')}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {service.galleryPhotos.map((p) => (
+                      <button key={p.id} type="button" onClick={() => setSelectedGalleryPhotoId(p.id)}
+                        className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
+                          selectedGalleryPhotoId === p.id ? 'border-blue-500' : 'border-gray-700 hover:border-gray-500'
+                        }`}>
+                        <img src={p.url} alt="" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {service?.photoMode === 'CustomerUpload' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'uploadYourPhoto')}</label>
+                  <p className="text-gray-500 text-xs mb-2">{t(lang, 'uploadYourPhotoHint')}</p>
+                  {uploadedPhotoUrl ? (
+                    <div className="relative w-24 h-24">
+                      <img src={uploadedPhotoUrl} alt="" className="w-24 h-24 object-cover rounded-lg border border-gray-700" />
+                      <button type="button" onClick={() => setUploadedPhotoUrl(null)}
+                        className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="inline-block cursor-pointer bg-gray-900 border border-gray-700 hover:border-blue-500 rounded-xl px-4 py-3 text-sm text-gray-300">
+                      {photoUploading ? t(lang, 'uploading') : t(lang, 'uploadYourPhoto')}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={photoUploading}
+                        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadPhoto(f) }} />
+                    </label>
+                  )}
+                  {photoError && <p className="text-red-400 text-xs mt-1">{photoError}</p>}
+                </div>
+              )}
+
               {service && slot && (
                 <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 text-sm space-y-1">
                   <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'service')}</span><span className="text-white">{serviceName(service, lang)}</span></div>
@@ -175,7 +244,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                   <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'time')}</span><span className="text-white">{slot.start} – {slot.end}</span></div>
                 </div>
               )}
-              <button onClick={confirm} disabled={!name || !phone || confirmLoading}
+              <button onClick={confirm} disabled={!name || !phone || !photoSatisfied || confirmLoading}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-4 rounded-2xl transition-colors">
                 {confirmLoading ? '...' : t(lang, 'confirm')}
               </button>
