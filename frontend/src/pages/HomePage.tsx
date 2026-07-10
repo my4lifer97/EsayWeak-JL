@@ -49,7 +49,7 @@ export default function HomePage() {
         <h2 className="text-3xl font-bold mb-4">Simple pricing</h2>
         <p className="text-gray-400 mb-10">One plan, everything included.</p>
         <div className="bg-gray-900 border border-blue-600/40 rounded-2xl p-8">
-          <div className="text-5xl font-bold mb-2">$20<span className="text-xl text-gray-400 font-normal">/month</span></div>
+          <div className="text-5xl font-bold mb-2">₪20<span className="text-xl text-gray-400 font-normal">/month</span></div>
           <p className="text-gray-400 mb-8">per barber</p>
           <ul className="text-start space-y-3 mb-8">
             {['Unlimited appointments','WhatsApp reminders','WhatsApp chatbot','English, Arabic & Hebrew','Online booking page','Admin dashboard','30-day free trial'].map((item) => (

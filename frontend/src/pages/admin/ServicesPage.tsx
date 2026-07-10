@@ -68,7 +68,9 @@ export default function ServicesPage() {
               <div>
                 <div className="text-white font-medium">{s.nameEn}</div>
                 <div className="text-gray-400 text-sm mt-0.5">{s.nameAr} · {s.nameHe}</div>
-                <div className="text-gray-500 text-xs mt-1">{s.durationMinutes} min · ${s.price}</div>
+                <div className="text-gray-500 text-xs mt-1">
+                  <span dir="ltr">{s.durationMinutes} min · ₪{s.price}</span>
+                </div>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => openEdit(s)} className="text-sm text-blue-400 hover:text-blue-300">{t(lang, 'edit')}</button>

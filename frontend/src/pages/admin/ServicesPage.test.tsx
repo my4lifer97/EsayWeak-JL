@@ -39,7 +39,7 @@ describe('ServicesPage', () => {
     renderPage()
 
     expect(await screen.findByText('Haircut')).toBeInTheDocument()
-    expect(screen.getByText('30 min · $50')).toBeInTheDocument()
+    expect(screen.getByText('30 min · ₪50')).toBeInTheDocument()
   })
 
   it('shows an empty state when there are no services', async () => {

@@ -99,7 +99,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                     <div className="font-medium">{serviceName(s, lang)}</div>
                     <div className="text-gray-400 text-sm mt-0.5">{s.durationMinutes} {t(lang, 'min')}</div>
                   </div>
-                  <div className="text-blue-400 font-semibold">${Number(s.price).toFixed(0)}</div>
+                  <div className="text-blue-400 font-semibold">₪{Number(s.price).toFixed(0)}</div>
                 </button>
               ))}
             </div>
