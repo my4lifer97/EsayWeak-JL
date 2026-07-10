@@ -92,7 +92,7 @@ npx.cmd playwright test              # E2E — needs both dev servers already ru
 barber-saas/
 ├── backend/
 │   ├── Controllers/
-│   │   ├── AuthController.cs              # POST /api/auth/register|login (barber accounts)
+│   │   ├── AuthController.cs              # POST /api/auth/register|login|verify-email|resend-verification (barber accounts)
 │   │   ├── AdminController.cs             # Protected admin CRUD (JWT required, BarberOnly policy)
 │   │   ├── BarbersController.cs           # GET /api/barbers/search|followed, POST/DELETE .../follow (CustomerOnly)
 │   │   ├── BookingController.cs           # Public booking API (GetAppointment/etc. accept anonymous)
@@ -107,6 +107,7 @@ barber-saas/
 │   │   ├── Barber.cs                # Barber, Service, Appointment, WorkingHours, Break, BlockedSlot, Customer, etc.
 │   │   ├── CustomerAccount.cs       # Logged-in customer identity (phone-based)
 │   │   ├── CustomerOtp.cs           # One-time codes for phone verification
+│   │   ├── BarberEmailOtp.cs        # One-time codes for barber email verification (mirrors CustomerOtp)
 │   │   └── Follow.cs                # CustomerAccount <-> Barber follow relationship
 │   ├── Services/
 │   │   ├── AvailabilityService.cs      # Slot generation + conflict filtering
@@ -116,6 +117,7 @@ barber-saas/
 │   │   ├── CustomerJwtService.cs       # Customer JWT generation (separate "type": "customer" claim)
 │   │   ├── PhoneNormalizer.cs          # Normalizes phone numbers to a canonical form for matching
 │   │   ├── IOtpSender.cs / DevOtpSender.cs  # OTP delivery abstraction (dev sender logs/returns the code)
+│   │   ├── IEmailSender.cs / DevEmailSender.cs  # Email delivery abstraction (dev sender no-ops; code goes out via devCode in the API response instead)
 │   ├── GlobalExceptionHandler.cs     # Catches unhandled exceptions -> { error } JSON + ILogger, never a bare 500
 │   ├── Program.cs                   # App startup, DI registration, middleware pipeline, BarberOnly/CustomerOnly policies
 │   ├── appsettings.json             # Base config (prod DB, JWT keys, AppUrl, CronSecret)
@@ -149,8 +151,10 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 ### Backend API Routes
 
 **Auth (no JWT)**
-- `POST /api/auth/register` — create barber account; auto-creates Mon–Fri 09:00–18:00 working hours
-- `POST /api/auth/login` — returns JWT token (30 days)
+- `POST /api/auth/register` — create barber account (`EmailVerified = false`); auto-creates Mon–Fri 09:00–18:00 working hours; sends a 6-digit email verification code (`devCode` in the response body in Development, matching `DevOtpSender`'s pattern for customer OTPs)
+- `POST /api/auth/login` — returns JWT token (30 days); **403 `{ emailNotVerified: true }`** if the barber hasn't verified their email yet (frontend responds by requesting a fresh code and dropping into the verify-code view)
+- `POST /api/auth/verify-email` — `{ email, code }`; marks the barber verified and returns a JWT (`LoginResponse`), logging them in directly
+- `POST /api/auth/resend-verification` — `{ email }`; 45s cooldown + 5/hour cap, same shape as customer OTP resend
 
 **Admin (JWT required — barber ID read from token claims, never from body, `BarberOnly` policy)**
 - `GET/PATCH /api/admin/settings` — barber profile, Twilio config, language, booking limits

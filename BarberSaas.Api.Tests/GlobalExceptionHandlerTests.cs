@@ -12,13 +12,15 @@ namespace BarberSaas.Api.Tests;
 public class GlobalExceptionHandlerTests : IntegrationTestBase
 {
     private record ErrorResponse(string Error);
+    private record RegisterResponse(string? DevCode);
 
     [Fact]
     public async Task UnhandledException_ReturnsConsistentJsonErrorShape()
     {
-        await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", "exc-flow@example.com", "password123", "exc-flow-shop"));
-        var login = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("exc-flow@example.com", "password123"));
-        var loginBody = await login.Content.ReadFromJsonAsync<LoginResponse>();
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", "exc-flow@example.com", "password123", "exc-flow-shop"));
+        var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
+        var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("exc-flow@example.com", registerBody!.DevCode!));
+        var loginBody = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         Authorize(Client, loginBody!.Token);
         var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
         var service = await serviceResp.Content.ReadFromJsonAsync<ServiceDto>();

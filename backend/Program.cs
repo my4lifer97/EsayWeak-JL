@@ -42,6 +42,7 @@ builder.Services.AddScoped<CustomerJwtService>();
 builder.Services.AddScoped<AvailabilityService>();
 builder.Services.AddScoped<FollowService>();
 builder.Services.AddScoped<IOtpSender, DevOtpSender>();
+builder.Services.AddScoped<IEmailSender, DevEmailSender>();
 
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p

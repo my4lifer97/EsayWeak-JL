@@ -14,12 +14,14 @@ public class BookingFlowTests : IntegrationTestBase
     private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
     private record VerifyOtpResponse(string Token, string CustomerId, string Phone);
     private record AvailabilityResponse(List<TimeSlot> Slots);
+    private record RegisterResponse(string? DevCode);
 
     private async Task<(string Token, string Slug)> RegisterAndLoginBarber(string email, string slug)
     {
-        await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
-        var login = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "password123"));
-        var body = await login.Content.ReadFromJsonAsync<LoginResponse>();
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
+        var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
+        var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         return (body!.Token, slug);
     }
 

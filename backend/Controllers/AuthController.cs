@@ -9,10 +9,15 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
+public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailSender, IWebHostEnvironment env) : ControllerBase
 {
     private static readonly string[] ReservedSlugs =
         ["admin", "api", "login", "register", "cron", "whatsapp", "_next", "favicon", "browse", "account"];
+
+    private const int EmailOtpCooldownSeconds = 45;
+    private const int EmailOtpMaxPerHour = 5;
+    private const int EmailOtpMaxAttempts = 5;
+    private const int EmailOtpExpiryMinutes = 10;
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req)
@@ -40,6 +45,7 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             Slug = req.Slug,
             TrialEndsAt = DateTime.UtcNow.AddDays(30),
+            EmailVerified = false,
         };
 
         db.Barbers.Add(barber);
@@ -54,9 +60,12 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
         });
         db.WorkingHours.AddRange(defaultHours);
 
+        var code = await IssueVerificationCode(req.Email);
+
         await db.SaveChangesAsync();
 
-        return StatusCode(201, new { barber.Id, barber.Name, barber.Email, barber.Slug });
+        string? devCode = env.IsDevelopment() ? code : null;
+        return StatusCode(201, new { barber.Id, barber.Name, barber.Email, barber.Slug, devCode });
     }
 
     [HttpPost("login")]
@@ -66,7 +75,85 @@ public class AuthController(AppDbContext db, JwtService jwt) : ControllerBase
         if (barber is null || !BCrypt.Net.BCrypt.Verify(req.Password, barber.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 
+        if (!barber.EmailVerified)
+            return StatusCode(403, new { error = "Please verify your email before signing in.", emailNotVerified = true });
+
         var token = jwt.Generate(barber.Id, barber.Email, barber.Name, barber.Slug);
         return Ok(new LoginResponse(token, barber.Id, barber.Name, barber.Email, barber.Slug));
+    }
+
+    [HttpPost("resend-verification")]
+    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req)
+    {
+        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (barber is null) return NotFound(new { error = "Not found" });
+        if (barber.EmailVerified) return BadRequest(new { error = "Email is already verified" });
+
+        var since = DateTime.UtcNow.AddHours(-1);
+        var recent = await db.BarberEmailOtps
+            .Where(o => o.Email == req.Email && o.CreatedAt > since)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync();
+
+        var last = recent.FirstOrDefault();
+        if (last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < EmailOtpCooldownSeconds)
+            return StatusCode(429, new { error = "Please wait before requesting another code" });
+
+        if (recent.Count >= EmailOtpMaxPerHour)
+            return StatusCode(429, new { error = "Too many requests. Try again later" });
+
+        var code = await IssueVerificationCode(req.Email);
+        await db.SaveChangesAsync();
+
+        string? devCode = env.IsDevelopment() ? code : null;
+        return Ok(new { devCode });
+    }
+
+    [HttpPost("verify-email")]
+    public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Code))
+            return BadRequest(new { error = "Email and code are required" });
+
+        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (barber is null) return NotFound(new { error = "Not found" });
+
+        var entry = await db.BarberEmailOtps
+            .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
+            .OrderByDescending(o => o.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (entry is null || !BCrypt.Net.BCrypt.Verify(req.Code, entry.CodeHash))
+        {
+            if (entry is not null)
+            {
+                entry.Attempts++;
+                await db.SaveChangesAsync();
+            }
+            return BadRequest(new { error = "Invalid or expired code" });
+        }
+
+        entry.Consumed = true;
+        barber.EmailVerified = true;
+        await db.SaveChangesAsync();
+
+        var token = jwt.Generate(barber.Id, barber.Email, barber.Name, barber.Slug);
+        return Ok(new LoginResponse(token, barber.Id, barber.Name, barber.Email, barber.Slug));
+    }
+
+    private async Task<string> IssueVerificationCode(string email)
+    {
+        var code = Random.Shared.Next(100000, 999999).ToString();
+        db.BarberEmailOtps.Add(new BarberEmailOtp
+        {
+            Email = email,
+            CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(EmailOtpExpiryMinutes),
+        });
+
+        await emailSender.SendAsync(email, "Verify your BarberBook email",
+            $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.");
+
+        return code;
     }
 }

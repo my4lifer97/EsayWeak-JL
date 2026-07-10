@@ -5,6 +5,8 @@ interface User { id: string; name: string; email: string; slug: string }
 interface AuthCtx {
   user: User | null
   login: (email: string, password: string) => Promise<void>
+  verifyEmail: (email: string, code: string) => Promise<void>
+  resendVerification: (email: string) => Promise<{ devCode?: string }>
   logout: () => void
   isAuthenticated: boolean
   language: string
@@ -42,6 +44,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u)
   }
 
+  async function verifyEmail(email: string, code: string) {
+    const { data } = await api.post('/auth/verify-email', { email, code })
+    localStorage.setItem('token', data.token)
+    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug }
+    localStorage.setItem('user', JSON.stringify(u))
+    setUser(u)
+  }
+
+  async function resendVerification(email: string) {
+    const { data } = await api.post('/auth/resend-verification', { email })
+    return data
+  }
+
   function logout() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
@@ -49,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated: !!user, language, setLang }}>
+    <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, logout, isAuthenticated: !!user, language, setLang }}>
       {children}
     </AuthContext.Provider>
   )

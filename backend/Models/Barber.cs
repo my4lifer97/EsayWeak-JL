@@ -23,6 +23,7 @@ public class Barber
     public DateTime TrialEndsAt { get; set; }
     public SubStatus SubscriptionStatus { get; set; } = SubStatus.TRIAL;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool EmailVerified { get; set; } = false;
 
     // Null means unlimited. Enforced per-customer (matched by phone) in BookingController.
     public int? MaxBookingsPerDay { get; set; }

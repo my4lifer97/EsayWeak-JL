@@ -12,12 +12,14 @@ public class AuthorizationPolicyTests : IntegrationTestBase
 {
     private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
     private record VerifyOtpResponse(string Token);
+    private record RegisterResponse(string? DevCode);
 
     private async Task<string> GetBarberToken()
     {
-        await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", "policy-barber@example.com", "password123", "policy-barber"));
-        var login = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("policy-barber@example.com", "password123"));
-        var body = await login.Content.ReadFromJsonAsync<LoginResponse>();
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", "policy-barber@example.com", "password123", "policy-barber"));
+        var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
+        var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("policy-barber@example.com", registerBody!.DevCode!));
+        var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         return body!.Token;
     }
 

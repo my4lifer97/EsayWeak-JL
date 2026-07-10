@@ -9,13 +9,15 @@ vi.mock('./api', () => ({
 }))
 
 function TestConsumer() {
-  const { user, login, logout, isAuthenticated, language, setLang } = useAuth()
+  const { user, login, verifyEmail, resendVerification, logout, isAuthenticated, language, setLang } = useAuth()
   return (
     <div>
       <div data-testid="authed">{String(isAuthenticated)}</div>
       <div data-testid="user">{user ? user.email : 'none'}</div>
       <div data-testid="lang">{language}</div>
       <button onClick={() => login('a@example.com', 'pw')}>login</button>
+      <button onClick={() => verifyEmail('a@example.com', '123456')}>verify</button>
+      <button onClick={() => resendVerification('a@example.com')}>resend</button>
       <button onClick={logout}>logout</button>
       <button onClick={() => setLang('AR')}>setlang</button>
     </div>
@@ -57,6 +59,26 @@ describe('AuthProvider', () => {
     await waitFor(() => expect(screen.getByTestId('authed').textContent).toBe('true'))
     expect(localStorage.getItem('token')).toBe('t1')
     expect(JSON.parse(localStorage.getItem('user')!).email).toBe('a@example.com')
+  })
+
+  it('verifyEmail stores token/user and updates context', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { token: 't1', id: '1', name: 'A', email: 'a@example.com', slug: 'a' } })
+    renderWithProvider()
+
+    await userEvent.click(screen.getByText('verify'))
+
+    await waitFor(() => expect(screen.getByTestId('authed').textContent).toBe('true'))
+    expect(api.post).toHaveBeenCalledWith('/auth/verify-email', { email: 'a@example.com', code: '123456' })
+    expect(localStorage.getItem('token')).toBe('t1')
+  })
+
+  it('resendVerification posts to the resend endpoint and returns the response', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { devCode: '654321' } })
+    renderWithProvider()
+
+    await userEvent.click(screen.getByText('resend'))
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/auth/resend-verification', { email: 'a@example.com' }))
   })
 
   it('logout clears storage and context', async () => {
