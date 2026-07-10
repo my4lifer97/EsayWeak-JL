@@ -47,7 +47,7 @@ describe('BrowseBarbersPage', () => {
     renderPage()
 
     expect(await screen.findByText('Mo the Barber')).toBeInTheDocument()
-    expect(screen.getByText('Barbers You Follow')).toBeInTheDocument()
+    expect(screen.getByText('Businesses You Follow')).toBeInTheDocument()
   })
 
   it('shows an empty state when there are no follows', async () => {
@@ -59,7 +59,7 @@ describe('BrowseBarbersPage', () => {
 
     renderPage()
 
-    expect(await screen.findByText("You're not following any barbers yet.")).toBeInTheDocument()
+    expect(await screen.findByText("You're not following any businesses yet.")).toBeInTheDocument()
   })
 
   it('does not fetch followed barbers when not authenticated', async () => {
@@ -67,7 +67,7 @@ describe('BrowseBarbersPage', () => {
 
     renderPage()
 
-    await screen.findByText("You're not following any barbers yet.")
+    await screen.findByText("You're not following any businesses yet.")
     expect(customerApi.get).not.toHaveBeenCalledWith('/barbers/followed')
   })
 
@@ -82,7 +82,7 @@ describe('BrowseBarbersPage', () => {
   it('shows search results once a query is typed', async () => {
     renderPage()
 
-    await userEvent.type(screen.getByPlaceholderText('Search barbers...'), 'Joe')
+    await userEvent.type(screen.getByPlaceholderText('Search businesses...'), 'Joe')
 
     expect(await screen.findByText('Joe the Barber')).toBeInTheDocument()
   })
@@ -101,7 +101,7 @@ describe('BrowseBarbersPage', () => {
     vi.mocked(customerApi.post).mockResolvedValue({ data: { ok: true } })
     renderPage()
 
-    await userEvent.type(screen.getByPlaceholderText('Search barbers...'), 'Joe')
+    await userEvent.type(screen.getByPlaceholderText('Search businesses...'), 'Joe')
     await screen.findByText('Joe the Barber')
 
     await userEvent.click(screen.getByText('Follow'))

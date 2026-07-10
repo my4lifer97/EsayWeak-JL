@@ -148,7 +148,7 @@ export default function SettingsPage() {
                 <textarea value={form[key as keyof typeof form]} rows={3}
                   onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                  placeholder="Tell customers about your barbershop..." />
+                  placeholder="Tell customers about your business..." />
               ) : (
                 <input type={type} value={form[key as keyof typeof form]}
                   onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}

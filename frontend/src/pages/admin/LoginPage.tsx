@@ -78,7 +78,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">BarberBook</h1>
+        <h1 className="text-2xl font-bold text-white mb-2 text-center">EsayWeek</h1>
         <p className="text-gray-400 text-center mb-8">
           {view === 'login' ? 'Sign in to your dashboard' : `Enter the code sent to ${email}`}
         </p>

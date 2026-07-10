@@ -151,7 +151,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             ExpiresAt = DateTime.UtcNow.AddMinutes(EmailOtpExpiryMinutes),
         });
 
-        await emailSender.SendAsync(email, "Verify your BarberBook email",
+        await emailSender.SendAsync(email, "Verify your EsayWeek email",
             $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.");
 
         return code;

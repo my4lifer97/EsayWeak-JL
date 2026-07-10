@@ -23,7 +23,7 @@ export default function AdminSidebar({ barberName }: { barberName: string }) {
   return (
     <aside className="w-56 bg-gray-900 border-e border-gray-800 flex flex-col py-6 px-3 shrink-0">
       <div className="px-3 mb-8">
-        <div className="text-white font-bold text-lg">BarberBook</div>
+        <div className="text-white font-bold text-lg">EsayWeek</div>
         <div className="text-gray-400 text-sm mt-0.5 truncate">{barberName}</div>
       </div>
       <nav className="flex-1 space-y-1">
