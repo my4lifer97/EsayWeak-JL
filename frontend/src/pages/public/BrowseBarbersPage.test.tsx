@@ -43,15 +43,14 @@ beforeEach(() => {
 })
 
 describe('BrowseBarbersPage', () => {
-  it('shows the followed barbers list under the search bar', async () => {
+  it('shows the followed barbers list', async () => {
     renderPage()
 
     expect(await screen.findByText('Mo the Barber')).toBeInTheDocument()
     expect(screen.getByText('Barbers You Follow')).toBeInTheDocument()
-    expect(screen.getByText('Joe the Barber')).toBeInTheDocument()
   })
 
-  it('hides the followed section entirely when there are no follows', async () => {
+  it('shows an empty state when there are no follows', async () => {
     vi.mocked(customerApi.get).mockImplementation((url: string) => {
       if (url.startsWith('/barbers/search')) return Promise.resolve({ data: searchResults })
       if (url === '/barbers/followed') return Promise.resolve({ data: [] })
@@ -60,8 +59,7 @@ describe('BrowseBarbersPage', () => {
 
     renderPage()
 
-    await screen.findByText('Joe the Barber')
-    expect(screen.queryByText('Barbers You Follow')).not.toBeInTheDocument()
+    expect(await screen.findByText("You're not following any barbers yet.")).toBeInTheDocument()
   })
 
   it('does not fetch followed barbers when not authenticated', async () => {
@@ -69,8 +67,24 @@ describe('BrowseBarbersPage', () => {
 
     renderPage()
 
-    await screen.findByText('Joe the Barber')
+    await screen.findByText("You're not following any barbers yet.")
     expect(customerApi.get).not.toHaveBeenCalledWith('/barbers/followed')
+  })
+
+  it('does not show search results until the customer types a query', async () => {
+    renderPage()
+
+    await screen.findByText('Mo the Barber')
+    expect(screen.queryByText('Joe the Barber')).not.toBeInTheDocument()
+    expect(customerApi.get).not.toHaveBeenCalledWith(expect.stringContaining('/barbers/search'))
+  })
+
+  it('shows search results once a query is typed', async () => {
+    renderPage()
+
+    await userEvent.type(screen.getByPlaceholderText('Search barbers...'), 'Joe')
+
+    expect(await screen.findByText('Joe the Barber')).toBeInTheDocument()
   })
 
   it('removing a followed barber calls unfollow and refreshes the list', async () => {
@@ -86,6 +100,8 @@ describe('BrowseBarbersPage', () => {
   it('following a barber from search results calls the follow endpoint', async () => {
     vi.mocked(customerApi.post).mockResolvedValue({ data: { ok: true } })
     renderPage()
+
+    await userEvent.type(screen.getByPlaceholderText('Search barbers...'), 'Joe')
     await screen.findByText('Joe the Barber')
 
     await userEvent.click(screen.getByText('Follow'))
