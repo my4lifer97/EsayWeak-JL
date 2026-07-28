@@ -312,9 +312,19 @@ Jwt:Audience                barbersaas-frontend
 AppUrl                      Public frontend URL (used in WhatsApp message links)
 AllowedOrigin               CORS allowed origin (frontend URL)
 RecurringGeneration:HorizonWeeks   How many weeks ahead RecurringAppointmentService keeps generated (optional, defaults to 8)
+Stripe:SecretKey            Stripe secret API key -- billing is disabled (503) until this is set
+Stripe:PublishableKey       Stripe publishable key (currently unused server-side; kept for a future client-side Elements flow)
+Stripe:PriceId              Stripe Price ID for the ₪120/month subscription plan
+Stripe:WebhookSecret        Signing secret for the `/api/billing/webhook` endpoint -- webhook returns 503 until this is set
 ```
 
 `Jwt:Secret` and `CronSecret` are **not** in `appsettings.json` — there's no default, so the app fails fast if they're missing rather than silently falling back to a guessable value.
 - **Local dev**: stored in the `dotnet user-secrets` store for `backend/BarberSaas.Api.csproj` (`UserSecretsId` in the `.csproj`, values live outside the repo at `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `dotnet run` loads them automatically in Development.
 - **Production**: supply both via environment variables (`Jwt__Secret`, `CronSecret`) or `appsettings.Production.json` (gitignored) — never commit real values.
 - Rotating either secret invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug.
+
+### Billing (Stripe)
+`Stripe:SecretKey`/`Stripe:PriceId`/`Stripe:WebhookSecret` ship as empty strings in `appsettings.json` (no Stripe account exists yet) — `BillingController` checks for them and returns `503 { error: "Payments are not yet configured..." }` instead of crashing when they're blank. Once a real Stripe account exists, set all three the same way as `Jwt:Secret`/`CronSecret`: `dotnet user-secrets` locally, environment variables (`Stripe__SecretKey`, `Stripe__PriceId`, `Stripe__WebhookSecret`) in production. `Program.cs` sets the static `Stripe.StripeConfiguration.ApiKey` from `Stripe:SecretKey` at startup if present.
+- `POST /api/billing/checkout-session` (`BarberOnly`) creates a Stripe Checkout Session (`Mode = subscription`, single line item from `Stripe:PriceId`) and returns `{ url }` for the frontend to redirect to.
+- `POST /api/billing/webhook` (anonymous, signature-verified) handles `checkout.session.completed` (sets `Barber.StripeCustomerId`/`StripeSubscriptionId`, flips `SubscriptionStatus` to `ACTIVE`) and `customer.subscription.deleted` / `invoice.payment_failed` (flips it to `EXPIRED`).
+- `SettingsPage.tsx`'s "Subscribe Now" button (shown whenever `subscriptionStatus !== 'ACTIVE'`) calls the checkout-session endpoint and redirects the browser to the returned Stripe URL.

@@ -40,6 +40,8 @@ export default function SettingsPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoError, setLogoError] = useState('')
+  const [billingLoading, setBillingLoading] = useState(false)
+  const [billingError, setBillingError] = useState('')
 
   if (barber && !initialized) {
     setForm({
@@ -99,6 +101,17 @@ export default function SettingsPage() {
     } finally { setUploadingLogo(false) }
   }
 
+  async function handleSubscribe() {
+    setBillingLoading(true); setBillingError('')
+    try {
+      const { data } = await api.post('/billing/checkout-session')
+      window.location.href = data.url
+    } catch {
+      setBillingError(t(lang, 'billingNotConfigured'))
+      setBillingLoading(false)
+    }
+  }
+
   if (!barber) return <div className="text-gray-500">{t(lang, 'loading')}</div>
 
   const trialDate = parseISO(barber.trialEndsAt)
@@ -121,6 +134,15 @@ export default function SettingsPage() {
               : isTrialActive ? `Free trial · ${trialDaysLeft} days left (expires ${format(trialDate, 'MMM d, yyyy')})`
               : t(lang, 'subscriptionExpired')}
           </div>
+          {barber.subscriptionStatus !== 'ACTIVE' && (
+            <div className="mt-4">
+              <button type="button" onClick={handleSubscribe} disabled={billingLoading}
+                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                {billingLoading ? t(lang, 'billingRedirecting') : t(lang, 'billingSubscribeNow')}
+              </button>
+              {billingError && <p className="text-red-400 text-xs mt-2">{billingError}</p>}
+            </div>
+          )}
           <p className="text-gray-500 text-xs mt-2">
             {t(lang, 'bookingUrl')} <span className="text-blue-400">{window.location.origin}/{barber.slug}</span>
           </p>

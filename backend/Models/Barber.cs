@@ -24,6 +24,8 @@ public class Barber
     public string? TwilioToken { get; set; }
     public DateTime TrialEndsAt { get; set; }
     public SubStatus SubscriptionStatus { get; set; } = SubStatus.TRIAL;
+    public string? StripeCustomerId { get; set; }
+    public string? StripeSubscriptionId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool EmailVerified { get; set; } = false;
 

@@ -26,6 +26,11 @@ public class ResendEmailSender(HttpClient http, IConfiguration config) : IEmailS
         });
 
         var response = await http.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new HttpRequestException(
+                $"Resend API returned {(int)response.StatusCode} {response.StatusCode}: {errorBody}");
+        }
     }
 }

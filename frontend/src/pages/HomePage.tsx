@@ -14,6 +14,11 @@ export default function HomePage() {
     { icon: '🌍', title: t(lang, 'homeFeature4Title'), desc: t(lang, 'homeFeature4Desc') },
     { icon: '📱', title: t(lang, 'homeFeature5Title'), desc: t(lang, 'homeFeature5Desc') },
     { icon: '✂️', title: t(lang, 'homeFeature6Title'), desc: t(lang, 'homeFeature6Desc') },
+    { icon: '🔁', title: t(lang, 'homeFeature7Title'), desc: t(lang, 'homeFeature7Desc') },
+    { icon: '⏳', title: t(lang, 'homeFeature8Title'), desc: t(lang, 'homeFeature8Desc') },
+    { icon: '👤', title: t(lang, 'homeFeature9Title'), desc: t(lang, 'homeFeature9Desc') },
+    { icon: '🚫', title: t(lang, 'homeFeature10Title'), desc: t(lang, 'homeFeature10Desc') },
+    { icon: '🔍', title: t(lang, 'homeFeature11Title'), desc: t(lang, 'homeFeature11Desc') },
   ]
 
   const pricingItems = [
@@ -62,7 +67,7 @@ export default function HomePage() {
         <h2 className="text-3xl font-bold mb-4">{t(lang, 'homePricingTitle')}</h2>
         <p className="text-gray-400 mb-10">{t(lang, 'homePricingSubtitle')}</p>
         <div className="bg-gray-900 border border-blue-600/40 rounded-2xl p-8">
-          <div className="text-5xl font-bold mb-2">₪20<span className="text-xl text-gray-400 font-normal">{t(lang, 'homePricingPerMonth')}</span></div>
+          <div className="text-5xl font-bold mb-2">₪120<span className="text-xl text-gray-400 font-normal">{t(lang, 'homePricingPerMonth')}</span></div>
           <p className="text-gray-400 mb-8">{t(lang, 'homePricingPerBarber')}</p>
           <ul className="text-start space-y-3 mb-8">
             {pricingItems.map((item) => (
@@ -75,6 +80,16 @@ export default function HomePage() {
           <Link to="/admin/register" className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors">
             {t(lang, 'homePricingCta')}
           </Link>
+        </div>
+        <div className="flex items-center justify-center gap-3 mt-6 text-gray-500 text-xs">
+          <span>{t(lang, 'homeTrialBadge')}</span>
+        </div>
+        <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
+          {['VISA', 'Mastercard', 'AMEX'].map((brand) => (
+            <span key={brand} className="bg-gray-900 border border-gray-800 text-gray-400 text-xs font-semibold px-3 py-1.5 rounded-lg tracking-wide">
+              {brand}
+            </span>
+          ))}
         </div>
       </section>
 
