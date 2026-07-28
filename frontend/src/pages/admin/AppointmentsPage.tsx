@@ -10,7 +10,7 @@ import CancelOptionsModal from '../../components/admin/CancelOptionsModal'
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
-  customer: { name: string; phone: string }
+  customer: { name: string; familyName: string; phone: string }
   service: { id: string; nameEn: string; nameAr: string; nameHe: string }
   price: number
   photoUrl: string | null
@@ -66,7 +66,11 @@ export default function AppointmentsPage() {
   }
 
   const filtered = appointments.filter((a) => {
-    if (search && !a.customer.name.toLowerCase().includes(search.toLowerCase()) && !a.customer.phone.includes(search)) return false
+    // Match against the concatenated "First Last" rather than just customer.name -- the search
+    // box previously never checked familyName at all, so searching a customer's last name (or
+    // their full name) matched nothing even though they were right there in the list.
+    const fullName = `${a.customer.name} ${a.customer.familyName}`.toLowerCase()
+    if (search && !fullName.includes(search.toLowerCase()) && !a.customer.phone.includes(search)) return false
     if (serviceFilter && a.service.id !== serviceFilter) return false
     if (statusFilter && a.status !== statusFilter) return false
     if (typeFilter === 'recurring' && !a.recurringSeriesId) return false

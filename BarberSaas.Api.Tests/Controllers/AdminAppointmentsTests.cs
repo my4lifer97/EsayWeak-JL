@@ -229,4 +229,25 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
     }
+
+    // ─── Customer search (used by CustomerPicker when booking) ─────────────
+
+    [Fact]
+    public async Task SearchCustomers_FullNameQuery_MatchesAcrossNameAndFamilyName()
+    {
+        var slug = "admin-search-fullname";
+        var token = await RegisterAndLoginBarber("admin-search-fullname@example.com", slug);
+        var (barberId, _, _) = await SeedBarberWithServiceAndAvailability(token, slug);
+
+        using (var db = Db())
+        {
+            db.Customers.Add(new Customer { BarberId = barberId, Name = "John", FamilyName = "Smith", Phone = "+15559990000" });
+            db.SaveChanges();
+        }
+
+        Authorize(Client, token);
+        var results = await Client.GetFromJsonAsync<List<CustomerSummary>>("/api/admin/customers/search?query=John%20Smith");
+
+        Assert.Contains(results!, c => c.Phone == "+15559990000");
+    }
 }

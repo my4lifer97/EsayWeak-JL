@@ -381,7 +381,10 @@ public class AdminController(
         var q = query.Trim().ToLower();
         var customers = await db.Customers
             .Where(c => c.BarberId == BarberId &&
-                (c.Phone.ToLower().Contains(q) || c.Name.ToLower().Contains(q) || c.FamilyName.ToLower().Contains(q)))
+                // Match against the concatenated "First Last" rather than Name/FamilyName
+                // separately -- a full-name search like "John Smith" spans both columns, and
+                // this alone still matches a first-name-only or last-name-only query too.
+                ((c.Name.ToLower() + " " + c.FamilyName.ToLower()).Contains(q) || c.Phone.ToLower().Contains(q)))
             .OrderBy(c => c.Name).Take(20)
             .Select(c => new CustomerSummary(c.Id, c.Name, c.FamilyName, c.Phone))
             .ToListAsync();
