@@ -32,6 +32,10 @@ public class Barber
     public int? MaxBookingsPerWeek { get; set; }
 
     public bool WaitlistEnabled { get; set; } = false;
+    // When true, a customer cancelling doesn't finalize the cancellation immediately -- the slot
+    // is frozen (Appointment.PendingCancellationApproval) and the owner gets a WhatsApp message
+    // to decide (offer to waitlist / cancel silently / replace customer) via the dashboard.
+    public bool RequireApprovalOnCustomerCancel { get; set; } = false;
 
     public ICollection<Service> Services { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
@@ -137,6 +141,10 @@ public class Appointment
     public string CancelToken { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? RecurringSeriesId { get; set; }
+    // Set when a customer cancels and the barber has RequireApprovalOnCustomerCancel on -- Status
+    // deliberately stays CONFIRMED (so the slot keeps blocking availability/booking exactly as
+    // before, no changes needed there) until the owner picks what happens to it.
+    public bool PendingCancellationApproval { get; set; } = false;
 
     public Barber Barber { get; set; } = null!;
     public Customer Customer { get; set; } = null!;

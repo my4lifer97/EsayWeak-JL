@@ -15,6 +15,7 @@ type Appointment = {
   price: number
   photoUrl: string | null
   recurringSeriesId: string | null
+  pendingCancellationApproval: boolean
 }
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string }
 
@@ -159,14 +160,22 @@ export default function AppointmentsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] ?? 'bg-gray-700 text-gray-300'}`}>
-                      {STATUS_LABEL[a.status] ? t(lang, STATUS_LABEL[a.status]) : a.status}
-                    </span>
+                    {a.pendingCancellationApproval ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-900/50 text-amber-300">
+                        ⚠️ {t(lang, 'cancellationRequestedBadge')}
+                      </span>
+                    ) : (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] ?? 'bg-gray-700 text-gray-300'}`}>
+                        {STATUS_LABEL[a.status] ? t(lang, STATUS_LABEL[a.status]) : a.status}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     {a.status === 'CONFIRMED' && (
                       <button onClick={() => setCancelTargetId(a.id)}
-                        className="text-xs text-red-400 hover:text-red-300">{t(lang, 'cancel')}</button>
+                        className={`text-xs ${a.pendingCancellationApproval ? 'text-amber-400 hover:text-amber-300 font-semibold' : 'text-red-400 hover:text-red-300'}`}>
+                        {a.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
+                      </button>
                     )}
                   </td>
                 </tr>

@@ -61,7 +61,7 @@ public class WhatsAppController(AppDbContext db, IConfiguration config, Appointm
                 // against local "today" as a date — not DateTime.UtcNow, which is both the wrong
                 // clock and, being a timestamp rather than a date, would already exclude today's
                 // appointments as soon as any time had passed since UTC midnight.
-                .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && a.Date >= DateTime.Now.Date))
+                .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && a.Date >= DateTime.Now.Date))
                 .FirstOrDefaultAsync(c => c.BarberId == barber.Id && c.Phone == fromPhone);
 
             var upcoming = customer?.Appointments
@@ -74,7 +74,7 @@ public class WhatsAppController(AppDbContext db, IConfiguration config, Appointm
             }
             else
             {
-                await cancellationService.CancelAsync(upcoming, notifyWaitlist: true);
+                await cancellationService.CancelFromCustomerAsync(upcoming);
                 await db.SaveChangesAsync();
                 reply = I18nService.T(lang, "whatsapp.cancelled", new()
                 {

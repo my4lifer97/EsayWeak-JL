@@ -13,6 +13,7 @@ public static class I18nService
             ["whatsapp.noAppointment"] = "I couldn't find an upcoming appointment for your number. To book: {url}",
             ["whatsapp.rescheduleLink"] = "To reschedule, book a new appointment here: {url}",
             ["whatsapp.waitlistSlotOpen"] = "Hi {customerName}! A slot with {barberName} on {date} at {time} for {service} just opened up. Book it here (first come, first served): {url}",
+            ["whatsapp.ownerCancellationApprovalNeeded"] = "Hi! {customerName} just cancelled their appointment on {date} at {time} for {service}. It's on hold until you decide what to do with it — open your dashboard to offer it to the waitlist, cancel it, or assign someone else: {url}",
         },
         ["AR"] = new()
         {
@@ -23,6 +24,7 @@ public static class I18nService
             ["whatsapp.noAppointment"] = "لم أجد موعدًا قادمًا لرقمك. للحجز: {url}",
             ["whatsapp.rescheduleLink"] = "لإعادة الجدولة، احجز موعدًا جديدًا هنا: {url}",
             ["whatsapp.waitlistSlotOpen"] = "مرحبًا {customerName}! أصبح هناك موعد متاح مع {barberName} في {date} الساعة {time} لخدمة {service}. احجزه هنا (الأسبقية للأسرع): {url}",
+            ["whatsapp.ownerCancellationApprovalNeeded"] = "مرحبًا! قام {customerName} للتو بإلغاء موعده في {date} الساعة {time} لخدمة {service}. الموعد معلّق حتى تقرر ماذا تفعل به — افتح لوحة التحكم لعرضه على قائمة الانتظار أو إلغائه أو تعيين شخص آخر: {url}",
         },
         ["HE"] = new()
         {
@@ -33,6 +35,7 @@ public static class I18nService
             ["whatsapp.noAppointment"] = "לא מצאתי תור קרוב למספר שלך. לקביעת תור: {url}",
             ["whatsapp.rescheduleLink"] = "לשינוי תור, קבע תור חדש כאן: {url}",
             ["whatsapp.waitlistSlotOpen"] = "שלום {customerName}! התפנה תור אצל {barberName} בתאריך {date} בשעה {time} לשירות {service}. קבע אותו כאן (הראשון שמזמין זוכה): {url}",
+            ["whatsapp.ownerCancellationApprovalNeeded"] = "שלום! {customerName} זה עתה ביטל את התור בתאריך {date} בשעה {time} לשירות {service}. התור מוקפא עד שתחליט מה לעשות איתו — פתח את לוח הבקרה כדי להציע אותו לרשימת ההמתנה, לבטל אותו, או לשייך מישהו אחר: {url}",
         },
     };
 

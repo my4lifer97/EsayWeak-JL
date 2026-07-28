@@ -222,7 +222,7 @@ public class BookingController(
         return Ok(new AppointmentDetailDto(
             appointment.Id, appointment.BarberId, appointment.CustomerId, appointment.ServiceId,
             appointment.Date.ToString("yyyy-MM-dd"), appointment.StartTime, appointment.EndTime,
-            appointment.Notes, AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime), appointment.ReminderSent, appointment.CancelToken,
+            appointment.Notes, AppointmentStatusHelper.CustomerFacingStatus(appointment.Status, appointment.PendingCancellationApproval, appointment.Date, appointment.EndTime), appointment.ReminderSent, appointment.CancelToken,
             appointment.CreatedAt,
             new CustomerSummary(appointment.Customer.Id, appointment.Customer.Name, appointment.Customer.FamilyName, appointment.Customer.Phone),
             new ServiceSummary(appointment.Service.Id, appointment.Service.NameEn, appointment.Service.NameAr, appointment.Service.NameHe, appointment.Service.DurationMinutes, appointment.Service.Price),
@@ -239,10 +239,10 @@ public class BookingController(
 
         if (appointment is null) return NotFound(new { error = "Not found" });
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
-        if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+        if (appointment.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        await cancellationService.CancelAsync(appointment, notifyWaitlist: true);
+        await cancellationService.CancelFromCustomerAsync(appointment);
         await db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
@@ -257,7 +257,7 @@ public class BookingController(
 
         if (appointment is null) return NotFound(new { error = "Not found" });
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
-        if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+        if (appointment.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         var slots = await availability.GetAvailableSlots(appointment.BarberId, req.Date, appointment.Service.DurationMinutes);

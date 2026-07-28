@@ -39,7 +39,7 @@ public class AdminController(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
             b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber, b.TwilioSid,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
-            b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled));
+            b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel));
     }
 
     [HttpPost("settings/logo")]
@@ -91,6 +91,7 @@ public class AdminController(
         b.MaxBookingsPerDay = req.MaxBookingsPerDay;
         b.MaxBookingsPerWeek = req.MaxBookingsPerWeek;
         b.WaitlistEnabled = req.WaitlistEnabled;
+        b.RequireApprovalOnCustomerCancel = req.RequireApprovalOnCustomerCancel;
 
         await db.SaveChangesAsync();
         return Ok(new { b.Id, b.Name, Language = b.Language.ToString() });
@@ -328,7 +329,7 @@ public class AdminController(
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId)));
+            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
     }
 
     // ─── Appointments ────────────────────────────────────────────────────────
@@ -358,7 +359,7 @@ public class AdminController(
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId)));
+            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
     }
 
     // ─── Manual appointment creation ───────────────────────────────────────
@@ -521,6 +522,9 @@ public class AdminController(
         }
 
         appt.CustomerId = customer.Id;
+        // Un-freezes it if the customer had already tried to cancel and the owner is choosing to
+        // keep the slot filled (with someone else) instead of finalizing that cancellation.
+        appt.PendingCancellationApproval = false;
         await db.SaveChangesAsync();
         return Ok(new { appt.Id, appt.CustomerId });
     }

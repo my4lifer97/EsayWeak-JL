@@ -14,6 +14,7 @@ type Appointment = {
   price: number
   photoUrl: string | null
   recurringSeriesId: string | null
+  pendingCancellationApproval: boolean
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -106,22 +107,26 @@ export default function WeeklyCalendar({
                 {dayAppts.map((appt) => {
                   const top = (timeToMinutes(appt.startTime) - startMinute) * 1.2
                   const height = (timeToMinutes(appt.endTime) - timeToMinutes(appt.startTime)) * 1.2
-                  // Recurring appointments get their own color (instead of the default
-                  // confirmed-blue) so they stand out as "reserved every week" at a glance --
-                  // completed/cancelled still show their own status color regardless.
-                  const color = appt.recurringSeriesId && appt.status === 'CONFIRMED'
+                  // A pending cancellation-approval request takes priority over both the
+                  // recurring-purple and normal status colors -- it needs the owner's attention
+                  // above anything else on the board. Recurring appointments get their own color
+                  // (instead of the default confirmed-blue) so they stand out as "reserved every
+                  // week" at a glance -- completed/cancelled still show their own status color.
+                  const color = appt.pendingCancellationApproval
+                    ? 'bg-amber-500'
+                    : appt.recurringSeriesId && appt.status === 'CONFIRMED'
                     ? 'bg-purple-600'
                     : STATUS_COLORS[appt.status] ?? 'bg-blue-600'
                   return (
                     <button key={appt.id} onClick={() => setSelected(appt)}
-                      title={appt.recurringSeriesId ? t(lang, 'partOfSeries') : undefined}
+                      title={appt.pendingCancellationApproval ? t(lang, 'cancellationRequestedBadge') : appt.recurringSeriesId ? t(lang, 'partOfSeries') : undefined}
                       className={`absolute inset-x-0.5 rounded-md px-1.5 py-1 text-left overflow-hidden ${color} hover:opacity-80 transition-opacity`}
                       style={{ top, height: Math.max(height, 24) }}>
                       {/* One line, not two — a short appointment's block (min 24px) only has
                           room for a single text-xs line; a second stacked line gets silently
                           clipped by overflow-hidden, hiding the service name entirely. */}
                       <div className="text-white text-xs font-medium truncate">
-                        {appt.recurringSeriesId && '🔁 '}{appt.customer.name} · {serviceName(appt.service, lang)}
+                        {appt.pendingCancellationApproval ? '⚠️ ' : appt.recurringSeriesId && '🔁 '}{appt.customer.name} · {serviceName(appt.service, lang)}
                       </div>
                     </button>
                   )
@@ -138,6 +143,9 @@ export default function WeeklyCalendar({
             <div className="flex justify-between items-start mb-4">
               <div>
                 <h2 className="text-white font-semibold text-lg">{selected.customer.name}</h2>
+                {selected.pendingCancellationApproval && (
+                  <div className="text-xs text-amber-400 mt-0.5">⚠️ {t(lang, 'cancellationRequestedBadge')}</div>
+                )}
                 {selected.recurringSeriesId && (
                   <div className="text-xs text-purple-400 mt-0.5">🔁 {t(lang, 'partOfSeries')}</div>
                 )}
@@ -164,8 +172,10 @@ export default function WeeklyCalendar({
             )}
             {selected.status === 'CONFIRMED' && (
               <button onClick={() => setShowCancelOptions(true)}
-                className="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-                {t(lang, 'cancel')}
+                className={`w-full text-white text-sm font-medium py-2 rounded-lg transition-colors ${
+                  selected.pendingCancellationApproval ? 'bg-amber-600 hover:bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'
+                }`}>
+                {selected.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
               </button>
             )}
           </div>

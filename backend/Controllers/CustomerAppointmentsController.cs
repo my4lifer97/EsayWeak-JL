@@ -43,7 +43,7 @@ public class CustomerAppointmentsController(
 
         var dtos = appointments.Select(a => new CustomerAppointmentDto(
             a.Id, a.Barber.Slug, a.Barber.Name, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
-            a.Notes, AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.CancelToken,
+            a.Notes, AppointmentStatusHelper.CustomerFacingStatus(a.Status, a.PendingCancellationApproval, a.Date, a.EndTime), a.CancelToken,
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price,
                 a.Service.PhotoMode.ToString(), a.Service.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList()),
             a.PhotoUrl));
@@ -56,10 +56,10 @@ public class CustomerAppointmentsController(
     {
         var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
-        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+        if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        await cancellationService.CancelAsync(appt, notifyWaitlist: true);
+        await cancellationService.CancelFromCustomerAsync(appt);
         await db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
@@ -71,7 +71,7 @@ public class CustomerAppointmentsController(
             .Include(a => a.Service)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
-        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+        if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         var slots = await availability.GetAvailableSlots(appt.BarberId, req.Date, appt.Service.DurationMinutes);
@@ -97,7 +97,7 @@ public class CustomerAppointmentsController(
             .Include(a => a.Service)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
-        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+        if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         if (appt.Service.PhotoMode == ServicePhotoMode.OwnerGallery)

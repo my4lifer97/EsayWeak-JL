@@ -11,6 +11,7 @@ type BarberSettings = {
   trialEndsAt: string; subscriptionStatus: string
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
   waitlistEnabled: boolean
+  requireApprovalOnCustomerCancel: boolean
 }
 
 export default function SettingsPage() {
@@ -30,6 +31,7 @@ export default function SettingsPage() {
   // form[key as keyof typeof form] in the text-input .map()s below, and mixing in a boolean
   // would widen every one of those reads to `string | boolean`.
   const [waitlistEnabled, setWaitlistEnabled] = useState(false)
+  const [requireApprovalOnCustomerCancel, setRequireApprovalOnCustomerCancel] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -48,6 +50,7 @@ export default function SettingsPage() {
       maxBookingsPerWeek: barber.maxBookingsPerWeek?.toString() ?? '',
     })
     setWaitlistEnabled(barber.waitlistEnabled)
+    setRequireApprovalOnCustomerCancel(barber.requireApprovalOnCustomerCancel)
     setLang(barber.language)
     setInitialized(true)
   }
@@ -60,6 +63,7 @@ export default function SettingsPage() {
       maxBookingsPerDay: form.maxBookingsPerDay ? Number(form.maxBookingsPerDay) : null,
       maxBookingsPerWeek: form.maxBookingsPerWeek ? Number(form.maxBookingsPerWeek) : null,
       waitlistEnabled,
+      requireApprovalOnCustomerCancel,
     }
     if (form.twilioToken) payload.twilioToken = form.twilioToken
     try {
@@ -201,6 +205,28 @@ export default function SettingsPage() {
               <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'waitlistEnabledHint')}</span>
             </span>
           </label>
+
+          <div className="border-t border-gray-800 pt-4">
+            <p className="text-sm font-medium text-gray-200 mb-2">{t(lang, 'customerCancelPolicyTitle')}</p>
+            <label className="flex items-start gap-3 cursor-pointer mb-2">
+              <input type="radio" name="customerCancelPolicy" checked={!requireApprovalOnCustomerCancel}
+                onChange={() => setRequireApprovalOnCustomerCancel(false)}
+                className="mt-1 w-4 h-4 border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+              <span>
+                <span className="block text-sm font-medium text-gray-200">{t(lang, 'customerCancelAutoLabel')}</span>
+                <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'customerCancelAutoHint')}</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="radio" name="customerCancelPolicy" checked={requireApprovalOnCustomerCancel}
+                onChange={() => setRequireApprovalOnCustomerCancel(true)}
+                className="mt-1 w-4 h-4 border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+              <span>
+                <span className="block text-sm font-medium text-gray-200">{t(lang, 'customerCancelApprovalLabel')}</span>
+                <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'customerCancelApprovalHint')}</span>
+              </span>
+            </label>
+          </div>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">

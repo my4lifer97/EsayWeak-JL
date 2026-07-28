@@ -22,12 +22,13 @@ public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
     string? Description, string? Logo, string Language, string? TwilioNumber, string? TwilioSid,
     DateTime TrialEndsAt, string SubscriptionStatus,
-    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled);
+    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel);
 
 public record UpdateSettingsRequest(
     string? Name, string? Phone, string? Description, string? Language,
     string? TwilioNumber, string? TwilioSid, string? TwilioToken,
-    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled = false);
+    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled = false,
+    bool RequireApprovalOnCustomerCancel = false);
 
 public record BookAppointmentRequest(
     string ServiceId, string Date, string StartTime,
@@ -80,7 +81,7 @@ public record BarberSummary(string Name, string Slug, string Language);
 public record DashboardAppointmentDto(
     string Id, string Date, string StartTime, string EndTime,
     string Status, string? Notes, CustomerSummary Customer, ServiceSummary Service, decimal Price, string? PhotoUrl,
-    string? RecurringSeriesId = null);
+    string? RecurringSeriesId = null, bool PendingCancellationApproval = false);
 
 public record ScheduleResponse(
     List<WorkingHoursDto> WorkingHours,
