@@ -4,19 +4,22 @@ import { api } from '../../lib/api'
 import { t } from '../../lib/i18n'
 
 type CustomerSummary = { id: string; name: string; familyName: string; phone: string }
+export type WaitlistEntrySummary = { id: string; name: string; familyName: string; phone: string }
 
 export type CustomerSelection =
   | { customerId: string; label: string }
   | { customerName: string; customerPhone: string }
+  | { waitlistEntryId: string; label: string }
 
 export default function CustomerPicker({
-  lang, value, onChange,
+  lang, value, onChange, waitlistEntries,
 }: {
   lang: string
   value: CustomerSelection | null
   onChange: (selection: CustomerSelection | null) => void
+  waitlistEntries?: WaitlistEntrySummary[]
 }) {
-  const [mode, setMode] = useState<'existing' | 'new'>('existing')
+  const [mode, setMode] = useState<'existing' | 'new' | 'waitlist'>('existing')
   const [query, setQuery] = useState('')
   const [newName, setNewName] = useState('')
   const [newPhone, setNewPhone] = useState('')
@@ -32,7 +35,11 @@ export default function CustomerPicker({
     onChange({ customerId: c.id, label: `${c.name} · ${c.phone}` })
   }
 
-  function switchMode(next: 'existing' | 'new') {
+  function selectFromWaitlist(w: WaitlistEntrySummary) {
+    onChange({ waitlistEntryId: w.id, label: `${w.name} ${w.familyName} · ${w.phone}` })
+  }
+
+  function switchMode(next: 'existing' | 'new' | 'waitlist') {
     setMode(next)
     onChange(null)
     setQuery(''); setNewName(''); setNewPhone('')
@@ -49,9 +56,26 @@ export default function CustomerPicker({
           className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${mode === 'new' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
           {t(lang, 'newCustomerOption')}
         </button>
+        {waitlistEntries && waitlistEntries.length > 0 && (
+          <button type="button" onClick={() => switchMode('waitlist')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${mode === 'waitlist' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}>
+            {t(lang, 'fromWaitlistOption')}
+          </button>
+        )}
       </div>
 
-      {mode === 'existing' ? (
+      {mode === 'waitlist' && waitlistEntries ? (
+        <div className="bg-gray-800 border border-gray-700 rounded-lg max-h-48 overflow-y-auto">
+          {waitlistEntries.map((w) => (
+            <button key={w.id} type="button" onClick={() => selectFromWaitlist(w)}
+              className={`w-full text-start px-3 py-2 text-sm hover:bg-gray-700 ${
+                value && 'waitlistEntryId' in value && value.waitlistEntryId === w.id ? 'bg-gray-700 text-white' : 'text-gray-200'
+              }`}>
+              {w.name} {w.familyName} · {w.phone}
+            </button>
+          ))}
+        </div>
+      ) : mode === 'existing' ? (
         <div className="relative">
           <input type="text" value={query}
             onChange={(e) => { setQuery(e.target.value); onChange(null) }}

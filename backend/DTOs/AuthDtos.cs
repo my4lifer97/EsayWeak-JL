@@ -60,7 +60,9 @@ public record SlotWithBookingInfoDto(string Start, string End, bool Available, s
 
 public record FullAvailabilityResponse(List<SlotWithBookingInfoDto> Slots);
 
-public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, string? CustomerPhone);
+public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, string? CustomerPhone, string? WaitlistEntryId = null);
+
+public record WaitlistEntrySummaryDto(string Id, string CustomerAccountId, string Name, string FamilyName, string Phone, string Status, DateTime CreatedAt);
 
 public record AppointmentDetailDto(
     string Id, string BarberId, string CustomerId, string ServiceId,

@@ -69,7 +69,9 @@ export default function RecurringAppointmentsPage() {
     setSubmitting(true); setError('')
     try {
       await api.post('/admin/recurring', {
-        ...('customerId' in customer ? { customerId: customer.customerId } : { customerName: customer.customerName, customerPhone: customer.customerPhone }),
+        ...('customerId' in customer ? { customerId: customer.customerId }
+          : 'customerName' in customer ? { customerName: customer.customerName, customerPhone: customer.customerPhone }
+          : {}),
         serviceId, dayOfWeek, startTime: slot.start, notes: notes || undefined,
         startDate: effectiveDate,
       })

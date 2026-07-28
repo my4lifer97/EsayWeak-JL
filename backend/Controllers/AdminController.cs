@@ -471,6 +471,26 @@ public class AdminController(
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }
 
+    // ─── Waitlist ───────────────────────────────────────────────────────────
+
+    [HttpGet("appointments/{id}/waitlist")]
+    public async Task<IActionResult> GetWaitlist(string id)
+    {
+        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
+        if (appt is null) return NotFound();
+
+        var entries = await db.WaitlistEntries
+            .Include(w => w.CustomerAccount)
+            .Where(w => w.AppointmentId == id && w.Status != WaitlistEntryStatus.RESOLVED)
+            .OrderBy(w => w.CreatedAt)
+            .Select(w => new WaitlistEntrySummaryDto(
+                w.Id, w.CustomerAccountId, w.CustomerAccount.Name, w.CustomerAccount.FamilyName,
+                w.CustomerAccount.Phone, w.Status.ToString(), w.CreatedAt))
+            .ToListAsync();
+
+        return Ok(entries);
+    }
+
     // ─── Replace Customer (owner-cancel Option 3: swap who the slot belongs to, no cancel) ────
 
     [HttpPatch("appointments/{id}/customer")]
@@ -481,10 +501,26 @@ public class AdminController(
         if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        var (customer, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone);
-        if (error is not null) return error;
+        Customer customer;
+        if (!string.IsNullOrWhiteSpace(req.WaitlistEntryId))
+        {
+            var entry = await db.WaitlistEntries.Include(w => w.CustomerAccount)
+                .FirstOrDefaultAsync(w => w.Id == req.WaitlistEntryId && w.AppointmentId == id && w.BarberId == BarberId);
+            if (entry is null) return NotFound(new { error = "Waitlist entry not found" });
 
-        appt.CustomerId = customer!.Id;
+            customer = await ResolveCustomerFromAccount(entry.CustomerAccount);
+            // They now hold the slot directly -- no longer "waiting" for it. Other entries for
+            // this same appointment are left as-is (still relevant if it's cancelled later).
+            entry.Status = WaitlistEntryStatus.RESOLVED;
+        }
+        else
+        {
+            var (resolved, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone);
+            if (error is not null) return error;
+            customer = resolved!;
+        }
+
+        appt.CustomerId = customer.Id;
         await db.SaveChangesAsync();
         return Ok(new { appt.Id, appt.CustomerId });
     }
@@ -510,6 +546,30 @@ public class AdminController(
         }
         else customer.Name = customerName;
         return (customer, null);
+    }
+
+    // Replace-from-waitlist knows the customer's real account already (phone, name, family
+    // name), unlike ResolveCustomer's typed-in path -- so upsert by phone the same way, but also
+    // link CustomerAccountId and set FamilyName, which the typed-in path has no way to know.
+    private async Task<Customer> ResolveCustomerFromAccount(CustomerAccount account)
+    {
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == account.Phone);
+        if (customer is null)
+        {
+            customer = new Customer
+            {
+                Name = account.Name, FamilyName = account.FamilyName, Phone = account.Phone,
+                BarberId = BarberId, CustomerAccountId = account.Id,
+            };
+            db.Customers.Add(customer);
+        }
+        else
+        {
+            customer.Name = account.Name;
+            customer.FamilyName = account.FamilyName;
+            customer.CustomerAccountId = account.Id;
+        }
+        return customer;
     }
 }
 

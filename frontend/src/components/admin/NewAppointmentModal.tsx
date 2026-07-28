@@ -45,7 +45,9 @@ export default function NewAppointmentModal({
     setSubmitting(true); setError('')
     try {
       await api.post('/admin/appointments', {
-        ...('customerId' in customer ? { customerId: customer.customerId } : { customerName: customer.customerName, customerPhone: customer.customerPhone }),
+        ...('customerId' in customer ? { customerId: customer.customerId }
+          : 'customerName' in customer ? { customerName: customer.customerName, customerPhone: customer.customerPhone }
+          : {}),
         serviceId, date, startTime, notes: notes || undefined, force: showCustomTime ? forceBook : false,
       })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
