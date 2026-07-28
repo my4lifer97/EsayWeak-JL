@@ -10,8 +10,20 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/cron")]
-public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger) : ControllerBase
+public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger, RecurringAppointmentService recurringAppointments) : ControllerBase
 {
+    [HttpGet("generate-recurring")]
+    public async Task<IActionResult> GenerateRecurringAppointments()
+    {
+        var cronSecret = config["CronSecret"];
+        var auth = Request.Headers.Authorization.FirstOrDefault();
+        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
+            return Unauthorized(new { error = "Unauthorized" });
+
+        var (total, created, skipped) = await recurringAppointments.GenerateOccurrences();
+        return Ok(new { total, created, skipped });
+    }
+
     [HttpGet("reminders")]
     public async Task<IActionResult> SendReminders()
     {

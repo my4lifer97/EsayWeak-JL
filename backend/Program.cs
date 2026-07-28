@@ -40,6 +40,7 @@ builder.Services.AddAuthorization(opt =>
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddScoped<CustomerJwtService>();
 builder.Services.AddScoped<AvailabilityService>();
+builder.Services.AddScoped<RecurringAppointmentService>();
 builder.Services.AddScoped<FollowService>();
 builder.Services.AddScoped<IOtpSender, DevOtpSender>();
 // Real email sending via Resend only kicks in once Resend:ApiKey is configured (via

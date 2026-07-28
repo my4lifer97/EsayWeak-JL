@@ -12,7 +12,7 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/admin")]
 [Authorize(Policy = "BarberOnly")]
-public class AdminController(AppDbContext db, IWebHostEnvironment env) : ControllerBase
+public class AdminController(AppDbContext db, IWebHostEnvironment env, AvailabilityService availability) : ControllerBase
 {
     private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -325,7 +325,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price, a.PhotoUrl)));
+            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId)));
     }
 
     // ─── Appointments ────────────────────────────────────────────────────────
@@ -355,7 +355,109 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env) : Control
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price, a.PhotoUrl)));
+            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId)));
+    }
+
+    // ─── Manual appointment creation ───────────────────────────────────────
+
+    [HttpGet("appointments/availability")]
+    public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string serviceId)
+    {
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.BarberId == BarberId && s.IsActive);
+        if (service is null) return NotFound(new { error = "Service not found" });
+
+        var slots = await availability.GetAvailableSlots(BarberId, date, service.DurationMinutes);
+        return Ok(new { slots });
+    }
+
+    [HttpGet("customers/search")]
+    public async Task<IActionResult> SearchCustomers([FromQuery] string query)
+    {
+        if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2) return Ok(Array.Empty<CustomerSummary>());
+        var q = query.Trim().ToLower();
+        var customers = await db.Customers
+            .Where(c => c.BarberId == BarberId &&
+                (c.Phone.ToLower().Contains(q) || c.Name.ToLower().Contains(q) || c.FamilyName.ToLower().Contains(q)))
+            .OrderBy(c => c.Name).Take(20)
+            .Select(c => new CustomerSummary(c.Id, c.Name, c.FamilyName, c.Phone))
+            .ToListAsync();
+        return Ok(customers);
+    }
+
+    [HttpPost("appointments")]
+    public async Task<IActionResult> CreateAppointment([FromBody] CreateAdminAppointmentRequest req)
+    {
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BarberId == BarberId && s.IsActive);
+        if (service is null) return NotFound(new { error = "Service not found" });
+
+        Customer? customer;
+        if (!string.IsNullOrWhiteSpace(req.CustomerId))
+        {
+            customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == req.CustomerId && c.BarberId == BarberId);
+            if (customer is null) return NotFound(new { error = "Customer not found" });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(req.CustomerName) || string.IsNullOrWhiteSpace(req.CustomerPhone))
+                return BadRequest(new { error = "Customer name and phone are required" });
+            customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == req.CustomerPhone);
+            if (customer is null)
+            {
+                customer = new Customer { Name = req.CustomerName, Phone = req.CustomerPhone, BarberId = BarberId };
+                db.Customers.Add(customer);
+            }
+            else customer.Name = req.CustomerName;
+        }
+
+        string? photoUrl = null;
+        if (service.PhotoMode == ServicePhotoMode.OwnerGallery && !string.IsNullOrWhiteSpace(req.GalleryPhotoId))
+        {
+            var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == service.Id);
+            if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
+            photoUrl = photo.Url;
+        }
+        else if (service.PhotoMode == ServicePhotoMode.CustomerUpload && !string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
+        {
+            if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+                return BadRequest(new { error = "Invalid photo reference." });
+            photoUrl = req.CustomerPhotoUrl;
+        }
+
+        var endTime = AvailabilityService.AddMinutes(req.StartTime, service.DurationMinutes);
+
+        if (!req.Force)
+        {
+            var slots = await availability.GetAvailableSlots(BarberId, req.Date, service.DurationMinutes);
+            if (!slots.Any(s => s.Start == req.StartTime))
+                return Conflict(new { error = "Slot not available" });
+        }
+        else if (await availability.HasConflictingAppointment(BarberId, req.Date, req.StartTime, endTime))
+        {
+            return Conflict(new { error = "This time overlaps an existing appointment" });
+        }
+
+        var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
+        var appointment = new Appointment
+        {
+            BarberId = BarberId,
+            CustomerId = customer.Id,
+            ServiceId = service.Id,
+            Date = requestedDate,
+            StartTime = req.StartTime,
+            EndTime = endTime,
+            Notes = req.Notes,
+            PhotoUrl = photoUrl,
+            Status = AppointmentStatus.CONFIRMED,
+        };
+        db.Appointments.Add(appointment);
+        await db.SaveChangesAsync();
+
+        return StatusCode(201, new DashboardAppointmentDto(
+            appointment.Id, req.Date, appointment.StartTime, appointment.EndTime,
+            "CONFIRMED", appointment.Notes,
+            new CustomerSummary(customer.Id, customer.Name, customer.FamilyName, customer.Phone),
+            new ServiceSummary(service.Id, service.NameEn, service.NameAr, service.NameHe, service.DurationMinutes, service.Price),
+            service.Price, appointment.PhotoUrl, appointment.RecurringSeriesId));
     }
 
     [HttpPatch("appointments/{id}")]

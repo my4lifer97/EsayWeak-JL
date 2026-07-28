@@ -18,6 +18,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CustomerOtp> CustomerOtps => Set<CustomerOtp>();
     public DbSet<BarberEmailOtp> BarberEmailOtps => Set<BarberEmailOtp>();
     public DbSet<BarberPasswordResetOtp> BarberPasswordResetOtps => Set<BarberPasswordResetOtp>();
+    public DbSet<RecurringSeries> RecurringSeries => Set<RecurringSeries>();
+    public DbSet<RecurringSkip> RecurringSkips => Set<RecurringSkip>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -50,6 +52,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<BarberPasswordResetOtp>()
             .HasIndex(x => new { x.Email, x.CreatedAt });
 
+        b.Entity<RecurringSeries>()
+            .HasIndex(x => new { x.BarberId, x.IsActive });
+
+        b.Entity<Appointment>()
+            .HasIndex(x => new { x.RecurringSeriesId, x.Date });
+
         b.Entity<Service>()
             .Property(x => x.Price)
             .HasColumnType("decimal(10,2)");
@@ -59,6 +67,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasColumnType("date");
 
         b.Entity<Appointment>()
+            .Property(x => x.Date)
+            .HasColumnType("date");
+
+        b.Entity<RecurringSeries>()
+            .Property(x => x.StartDate)
+            .HasColumnType("date");
+        b.Entity<RecurringSeries>()
+            .Property(x => x.EndDate)
+            .HasColumnType("date");
+        b.Entity<RecurringSeries>()
+            .Property(x => x.LastGeneratedThrough)
+            .HasColumnType("date");
+        b.Entity<RecurringSkip>()
             .Property(x => x.Date)
             .HasColumnType("date");
 
@@ -111,5 +132,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Appointment>()
             .HasOne(x => x.Service).WithMany(x => x.Appointments)
             .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+
+        b.Entity<RecurringSeries>()
+            .HasOne(x => x.Barber).WithMany(x => x.RecurringSeries)
+            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<RecurringSeries>()
+            .HasOne(x => x.Customer).WithMany(x => x.RecurringSeries)
+            .HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<RecurringSeries>()
+            .HasOne(x => x.Service).WithMany(x => x.RecurringSeries)
+            .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<RecurringSkip>()
+            .HasOne(x => x.RecurringSeries).WithMany(x => x.Skips)
+            .HasForeignKey(x => x.RecurringSeriesId).OnDelete(DeleteBehavior.Cascade);
+        // SetNull (not Restrict/Cascade): deleting a series must never touch already-generated
+        // Appointment rows -- per-occurrence independence -- it only unlinks them.
+        b.Entity<Appointment>()
+            .HasOne(x => x.RecurringSeries).WithMany(x => x.Appointments)
+            .HasForeignKey(x => x.RecurringSeriesId).OnDelete(DeleteBehavior.SetNull);
     }
 }

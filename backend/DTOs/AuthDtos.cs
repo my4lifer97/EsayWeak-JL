@@ -36,6 +36,22 @@ public record BookAppointmentRequest(
 
 public record BookAppointmentResponse(string AppointmentId, string CancelToken);
 
+public record CreateAdminAppointmentRequest(
+    string? CustomerId, string? CustomerName, string? CustomerPhone,
+    string ServiceId, string Date, string StartTime, string? Notes,
+    string? GalleryPhotoId = null, string? CustomerPhotoUrl = null, bool Force = false);
+
+public record RecurringSkipDto(string Date, string Reason);
+public record RecurringSeriesDto(
+    string Id, CustomerSummary Customer, ServiceSummary Service,
+    int DayOfWeek, string StartTime, string? Notes, bool IsActive,
+    string StartDate, string? EndDate, string? NextOccurrenceDate,
+    List<RecurringSkipDto> RecentSkips);
+public record CreateRecurringSeriesRequest(
+    string? CustomerId, string? CustomerName, string? CustomerPhone,
+    string ServiceId, int DayOfWeek, string StartTime, string? Notes,
+    string? StartDate = null, string? EndDate = null);
+
 public record TimeSlot(string Start, string End);
 
 public record AvailabilityResponse(List<TimeSlot> Slots);
@@ -44,7 +60,8 @@ public record AppointmentDetailDto(
     string Id, string BarberId, string CustomerId, string ServiceId,
     string Date, string StartTime, string EndTime, string? Notes,
     string Status, bool ReminderSent, string CancelToken, DateTime CreatedAt,
-    CustomerSummary Customer, ServiceSummary Service, BarberSummary Barber, string? PhotoUrl);
+    CustomerSummary Customer, ServiceSummary Service, BarberSummary Barber, string? PhotoUrl,
+    string? RecurringSeriesId = null);
 
 public record CustomerSummary(string Id, string Name, string FamilyName, string Phone);
 public record ServiceSummary(
@@ -54,7 +71,8 @@ public record BarberSummary(string Name, string Slug, string Language);
 
 public record DashboardAppointmentDto(
     string Id, string Date, string StartTime, string EndTime,
-    string Status, string? Notes, CustomerSummary Customer, ServiceSummary Service, decimal Price, string? PhotoUrl);
+    string Status, string? Notes, CustomerSummary Customer, ServiceSummary Service, decimal Price, string? PhotoUrl,
+    string? RecurringSeriesId = null);
 
 public record ScheduleResponse(
     List<WorkingHoursDto> WorkingHours,

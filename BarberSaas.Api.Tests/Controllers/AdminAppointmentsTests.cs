@@ -103,4 +103,130 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
     }
+
+    // ─── Manual (owner-created) appointment booking ────────────────────────
+
+    private async Task<(string BarberId, string ServiceId, DateTime Date)> SeedBarberWithServiceAndAvailability(string token, string slug)
+    {
+        Authorize(Client, token);
+        var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
+        var service = await serviceResp.Content.ReadFromJsonAsync<ServiceDto>();
+
+        // Tomorrow, not today -- avoids the "isToday" cutoff in AvailabilityService rejecting
+        // slots that fall before the current wall-clock time depending on when the test runs.
+        var date = DateTime.Now.Date.AddDays(1);
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
+
+        using var db = Db();
+        var barber = db.Barbers.First(b => b.Slug == slug);
+        return (barber.Id, service!.Id, date);
+    }
+
+    [Fact]
+    public async Task CreateAppointment_ExistingCustomer_Succeeds()
+    {
+        var slug = "admin-book-existing";
+        var token = await RegisterAndLoginBarber("admin-book-existing@example.com", slug);
+        var (barberId, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+
+        string customerId;
+        using (var db = Db())
+        {
+            var customer = new Customer { BarberId = barberId, Name = "Mohamed", Phone = "+15550001111" };
+            db.Customers.Add(customer);
+            db.SaveChanges();
+            customerId = customer.Id;
+        }
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            customerId, null, null, serviceId, date.ToString("yyyy-MM-dd"), "09:00", null));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var dto = await resp.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
+        Assert.Equal("Mohamed", dto!.Customer.Name);
+    }
+
+    [Fact]
+    public async Task CreateAppointment_NewCustomer_UpsertsByPhone()
+    {
+        var slug = "admin-book-new";
+        var token = await RegisterAndLoginBarber("admin-book-new@example.com", slug);
+        var (barberId, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Sara", "+15559998888", serviceId, date.ToString("yyyy-MM-dd"), "09:00", null));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var db = Db();
+        Assert.Single(db.Customers.Where(c => c.BarberId == barberId && c.Phone == "+15559998888"));
+    }
+
+    [Fact]
+    public async Task CreateAppointment_ConflictingSlotWithoutForce_ReturnsConflict()
+    {
+        var slug = "admin-book-conflict";
+        var token = await RegisterAndLoginBarber("admin-book-conflict@example.com", slug);
+        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "A", "+15551110001", serviceId, dateStr, "09:00", null));
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "B", "+15551110002", serviceId, dateStr, "09:00", null));
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateAppointment_ForceTrue_OverridesUnavailableSlot()
+    {
+        var slug = "admin-book-force";
+        var token = await RegisterAndLoginBarber("admin-book-force@example.com", slug);
+        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+
+        Authorize(Client, token);
+        // 19:00 falls outside the 09:00-18:00 working hours seeded above, so a normal
+        // (non-forced) booking at this time would be rejected as unavailable.
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Walkin", "+15551234567", serviceId, date.ToString("yyyy-MM-dd"), "19:00", null, Force: true));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateAppointment_ForceTrue_StillRejectsExactOverlap()
+    {
+        var slug = "admin-book-force-overlap";
+        var token = await RegisterAndLoginBarber("admin-book-force-overlap@example.com", slug);
+        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "A", "+15551110003", serviceId, dateStr, "09:00", null));
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "B", "+15551110004", serviceId, dateStr, "09:00", null, Force: true));
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateAppointment_DoesNotEnforcePerCustomerBookingLimits()
+    {
+        var slug = "admin-book-limits";
+        var token = await RegisterAndLoginBarber("admin-book-limits@example.com", slug);
+        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        Authorize(Client, token);
+        await Client.PatchAsJsonAsync("/api/admin/settings", new { maxBookingsPerDay = 1 });
+
+        const string phone = "+15557778888";
+        var first = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "Same Customer", phone, serviceId, dateStr, "09:00", null));
+        var second = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "Same Customer", phone, serviceId, dateStr, "10:00", null));
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+    }
 }

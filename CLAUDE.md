@@ -98,13 +98,14 @@ barber-saas/
 │   │   ├── BookingController.cs           # Public booking API (GetAppointment/etc. accept anonymous)
 │   │   ├── CustomerAuthController.cs      # POST /api/customer/auth/otp|verify — phone+OTP login
 │   │   ├── CustomerAppointmentsController.cs  # GET/PATCH /api/customer/appointments/* (CustomerOnly)
+│   │   ├── RecurringAppointmentsController.cs # GET/POST/DELETE /api/admin/recurring — owner-managed recurring series
 │   │   ├── WhatsAppController.cs          # Twilio webhook — replies to customer messages
-│   │   └── CronController.cs              # GET /api/cron/reminders — sends 24h WhatsApp reminders
+│   │   └── CronController.cs              # GET /api/cron/reminders, /api/cron/generate-recurring
 │   ├── Data/AppDbContext.cs         # EF Core DbContext, indexes, relationships
 │   ├── DTOs/AuthDtos.cs             # All request/response record types
 │   ├── Migrations/                  # EF migrations
 │   ├── Models/
-│   │   ├── Barber.cs                # Barber, Service, ServiceGalleryPhoto, Appointment, WorkingHours, Break, BlockedSlot, Customer, etc.
+│   │   ├── Barber.cs                # Barber, Service, ServiceGalleryPhoto, Appointment, WorkingHours, Break, BlockedSlot, Customer, RecurringSeries, RecurringSkip, etc.
 │   │   ├── CustomerAccount.cs       # Logged-in customer identity (phone-based)
 │   │   ├── CustomerOtp.cs           # One-time codes for phone verification
 │   │   ├── BarberEmailOtp.cs        # One-time codes for barber email verification (mirrors CustomerOtp)
@@ -112,6 +113,7 @@ barber-saas/
 │   │   └── Follow.cs                # CustomerAccount <-> Barber follow relationship
 │   ├── Services/
 │   │   ├── AvailabilityService.cs      # Slot generation + conflict filtering
+│   │   ├── RecurringAppointmentService.cs  # Generates real Appointment rows for active RecurringSeries (rolling horizon)
 │   │   ├── AppointmentStatusHelper.cs  # Computes effective COMPLETED status without touching the DB row
 │   │   ├── I18nService.cs              # Server-side translations (EN/AR/HE) for WhatsApp messages
 │   │   ├── JwtService.cs               # Barber JWT generation (30-day tokens, HS256)
@@ -127,7 +129,7 @@ barber-saas/
 └── frontend/
     └── src/
         ├── components/
-        │   ├── admin/          # AdminLayout, AdminSidebar, WeeklyCalendar
+        │   ├── admin/          # AdminLayout, AdminSidebar, WeeklyCalendar, CustomerPicker, NewAppointmentModal
         │   ├── booking/        # BookingWizard (5-step)
         │   ├── customer/       # CustomerAccountNav, LanguageSwitcher
         │   ├── BackButton.tsx           # Browser-history back button, used on all customer pages
@@ -140,7 +142,7 @@ barber-saas/
         │   └── i18n.ts          # Client-side translations (EN/AR/HE) + t() + serviceName()
         └── pages/
             ├── admin/        # LoginPage, RegisterPage, DashboardPage,
-            │                 #   AppointmentsPage, ServicesPage, SchedulePage, SettingsPage
+            │                 #   AppointmentsPage, RecurringAppointmentsPage, ServicesPage, SchedulePage, SettingsPage
             └── public/       # BarberPage, BookPage, AppointmentPage, CustomerLoginPage,
                               #   BrowseBarbersPage (search + followed list), MyBookingsPage
 ```
@@ -169,8 +171,14 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `POST/DELETE /api/admin/schedule/breaks/{id}` — recurring breaks
 - `POST/DELETE /api/admin/schedule/blocked/{id}` — one-off blocked dates/slots
 - `GET /api/admin/dashboard?week=0` — weekly appointments (week offset from current)
-- `GET /api/admin/appointments?filter=today|upcoming|past` — paginated appointment list
+- `GET /api/admin/appointments?filter=today|upcoming|past` — appointment list (omit `filter` for all); each row includes `recurringSeriesId` (null for one-off bookings)
 - `PATCH /api/admin/appointments/{id}` — cancel only (`{ status: "CANCELLED" }`); any other status is rejected — see [Appointment status](#appointment-status-no-manual-complete)
+- `GET /api/admin/appointments/availability?date=&serviceId=` — same slot computation as the public `GET /api/{slug}/availability`, but scoped by the JWT's `BarberId` instead of a slug (keeps `AdminController` self-contained); backs both the New Appointment modal's slot grid and the recurring-series form's slot grid
+- `GET /api/admin/customers/search?query=` — search this barber's own `Customer` rows by name/phone (min 2 chars, top 20); backs `CustomerPicker`'s autocomplete
+- `POST /api/admin/appointments` — owner books directly on a customer's behalf (existing `customerId` or new `customerName`+`customerPhone`, upserted by phone same as public booking); `MaxBookingsPerDay/Week` limits are **not** enforced here (they exist to stop customers gaming self-service booking, not to restrict the owner). `force: true` skips the working-hours/breaks/blocked-slot check (for walk-ins) but still hard-rejects an exact overlap with an existing appointment — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
+- `GET /api/admin/recurring` — list this barber's recurring series (active and inactive), each with its 5 most recent `RecurringSkip` entries and a computed `nextOccurrenceDate`
+- `POST /api/admin/recurring` — create a weekly recurring series; immediately generates real `Appointment` rows for the rolling horizon (not just the next one) rather than waiting for the next cron run
+- `DELETE /api/admin/recurring/{id}` — deletes the series **and cancels every not-yet-completed appointment it generated** (frees the slot for other bookings); already-completed appointments are left untouched as history
 
 **Public booking (no JWT — `{slug}` identifies the tenant)**
 - `GET /api/{slug}/info` — barber name, services, active days, isRTL flag
@@ -197,12 +205,14 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 **Integrations**
 - `POST /api/whatsapp/webhook` — Twilio webhook; validates X-Twilio-Signature; replies in barber's language to book/cancel/reschedule keywords
 - `GET /api/cron/reminders` — send 24h WhatsApp reminders; requires `Authorization: Bearer <CronSecret>`
+- `GET /api/cron/generate-recurring` — extends every active `RecurringSeries`' generated `Appointment` rows to the rolling horizon (default 8 weeks, `RecurringGeneration:HorizonWeeks` config); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, created, skipped }`; meant to run daily via an external scheduler — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
 
 ### Frontend Routes
 - `/` — landing/marketing page
 - `/admin/login`, `/admin/register`, `/admin/forgot-password` — auth pages
-- `/admin/dashboard` — weekly calendar view
-- `/admin/appointments` — appointments table with filters
+- `/admin/dashboard` — weekly calendar view; recurring appointments render in purple (instead of the usual confirmed-blue) with a 🔁 badge
+- `/admin/appointments` — appointments table with a two-row filter bar: date range (today/upcoming/past/all, server-side) plus client-side name/phone search, service, status, and recurring-vs-one-time filters (all combinable), a live filtered/total count, and a "Clear Filters" link
+- `/admin/recurring` — manage recurring series: create (service → customer → day-of-week button → real availability slot grid → notes) and delete (no pause/resume — see below)
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — services CRUD
 - `/admin/settings` — business info, Twilio setup
@@ -266,10 +276,22 @@ gallery photos live under `wwwroot/uploads/gallery/{serviceId}/`, customer-uploa
 photos under `wwwroot/uploads/appointment-photos/` — both served via the existing `/api/uploads`
 static file route.
 
+### Owner-created & recurring appointments
+Two ways for the barber to book without the customer using the self-service flow:
+
+- **One-off**: `AdminController.CreateAppointment` (`POST /api/admin/appointments`), triggered from the "New Appointment" button on `DashboardPage`/`AppointmentsPage` (`components/admin/NewAppointmentModal.tsx` + `CustomerPicker.tsx`). Same customer upsert-by-phone logic as public booking, but `MaxBookingsPerDay/Week` is not enforced (that limit exists to stop *customers* gaming self-service booking). A `force: true` flag lets the owner book outside normal availability (walk-ins) by skipping the working-hours/breaks/blocked-slot check in `AvailabilityService.GetAvailableSlots`, while still hard-rejecting an exact double-booking via `AvailabilityService.HasConflictingAppointment`.
+- **Recurring**: `Models/Barber.cs`'s `RecurringSeries` (barber + customer + service + `DayOfWeek` + `StartTime`, no fixed end date in the UI though the model/DTO still accept an optional `EndDate`) plus `RecurringSkip` (append-only log of dates that couldn't be generated). `Appointment.RecurringSeriesId` (nullable FK, `SetNull` on series delete) links a generated occurrence back to its series — each occurrence is otherwise a fully normal, independently-cancelable `Appointment`; cancelling one has no effect on the series or its other occurrences.
+  - **Generation**: `Services/RecurringAppointmentService.GenerateOccurrences()` walks each active series' `LastGeneratedThrough` cursor forward to a rolling horizon (default 8 weeks — `RecurringGeneration:HorizonWeeks`), creating an `Appointment` when `AvailabilityService.GetAvailableSlots` says the slot is free, or logging a `RecurringSkip` (`Reason = "slot_unavailable"`) when it isn't. Generating just-in-time as the cursor reaches each date (not far in advance) is what makes it correctly react to schedule changes made *after* the series was created — e.g. a `BlockedSlot` added 5 weeks out has no `Appointment` row yet, so the occurrence is skipped instead of sitting as a stale conflict. The cursor never moves backward into the past, so resuming/creating after a gap doesn't backfill missed weeks. A series auto-deactivates (`IsActive = false`, logged as a `service_inactive` skip) if its linked `Service` is soft-deleted, or once its `EndDate` (if set) has passed.
+  - **Immediate generation on create**: `RecurringAppointmentsController.Create` calls `RecurringAppointmentService.GenerateForSeriesNow(seriesId)` right after saving the series, so the first occurrence(s) exist and block their slot right away — otherwise nothing would appear on the dashboard, and the slot would stay bookable by others, until the next daily cron run.
+  - **Deleting a series** (`DELETE /api/admin/recurring/{id}`) cancels every not-yet-completed appointment it generated (`Status = CANCELLED`, freeing the slot) before removing the series row; already-completed history is left untouched (its stored `Status` is always `CONFIRMED` — see [Appointment status](#appointment-status-no-manual-complete) — so the cancel loop checks `AppointmentStatusHelper.EffectiveStatus` per row, not the raw column).
+  - **No pause/resume** — deliberately removed; deleting is the only lifecycle action exposed to the owner besides creating. `IsActive` still exists on the model purely for the auto-deactivation cases above.
+  - **Creating a series** (`pages/admin/RecurringAppointmentsPage.tsx`): the owner picks a service, a customer (`CustomerPicker`), then a **day-of-week button** (Sun–Sat, not a raw date picker), then a **time slot from the real availability grid** for the nearest upcoming date on that weekday (same `GET /api/admin/appointments/availability` endpoint the one-off modal uses) — never a free-typed time. That computed date becomes the series' `StartDate`.
+  - `GET /api/cron/generate-recurring` (`CronController`) is the production trigger — same `CronSecret` bearer-auth pattern as `/api/cron/reminders` — meant to run once daily via an external scheduler.
+
 ### Database
 EF Core + Npgsql. Dev DB: `barbersaas_dev` (appsettings.Development.json). Prod DB: `barbersaas` (appsettings.json). Auto-migrates in Development on startup.  
 All times stored as `"HH:MM"` strings — zero-padded so string comparison is safe.  
-Migration: `InitialCreate` already applied.
+Migrations: `InitialCreate` ... `AddRecurringAppointments` (adds `RecurringSeries`, `RecurringSkips`, `Appointments.RecurringSeriesId`) already applied.
 
 ### Availability Engine
 `Services/AvailabilityService.cs` — generates 30-min slots between working hours start/end, then removes any slot that overlaps with: breaks, blocked slots, or existing CONFIRMED appointments. Also drops slots where `startTime + serviceDuration > workingHours.EndTime`. For **today's date specifically**, also drops any slot whose start time is at or before the current time — a customer booking at 15:00 can't grab a 10:00 slot. `WorkingHours`/`Appointment` start/end times (`"09:00"`, `"17:30"`, ...) are the barber's local wall-clock hours and are never converted to/from UTC anywhere in this app, so "now" is taken as `DateTime.Now` (local server time), not `DateTime.UtcNow` — comparing against UTC would be off by the server's UTC offset (this was a real bug: a customer could book a slot that had already passed).
@@ -289,6 +311,7 @@ Jwt:Issuer                  barbersaas-api
 Jwt:Audience                barbersaas-frontend
 AppUrl                      Public frontend URL (used in WhatsApp message links)
 AllowedOrigin               CORS allowed origin (frontend URL)
+RecurringGeneration:HorizonWeeks   How many weeks ahead RecurringAppointmentService keeps generated (optional, defaults to 8)
 ```
 
 `Jwt:Secret` and `CronSecret` are **not** in `appsettings.json` — there's no default, so the app fails fast if they're missing rather than silently falling back to a guessable value.

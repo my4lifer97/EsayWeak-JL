@@ -4,15 +4,18 @@ import { format, parseISO } from 'date-fns'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t, serviceName, type TKey } from '../../lib/i18n'
+import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
   customer: { name: string; phone: string }
-  service: { nameEn: string; nameAr: string; nameHe: string }
+  service: { id: string; nameEn: string; nameAr: string; nameHe: string }
   price: number
   photoUrl: string | null
+  recurringSeriesId: string | null
 }
+type Service = { id: string; nameEn: string; nameAr: string; nameHe: string }
 
 const FILTERS: { value: string; key: TKey }[] = [
   { value: 'upcoming', key: 'upcoming' },
@@ -25,17 +28,28 @@ const STATUS_BADGE: Record<string, string> = {
   COMPLETED: 'bg-green-900/50 text-green-300',
   CANCELLED: 'bg-gray-700/50 text-gray-400',
 }
+const STATUS_OPTIONS: TKey[] = ['statusConfirmed', 'statusCompleted', 'statusCancelled']
+const STATUS_VALUES = ['CONFIRMED', 'COMPLETED', 'CANCELLED']
 
 export default function AppointmentsPage() {
   const { language: lang } = useAuth()
   const [filter, setFilter] = useState<string>('upcoming')
   const [search, setSearch] = useState('')
+  const [serviceFilter, setServiceFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'recurring' | 'onetime'>('all')
   const [loading, setLoading] = useState<string | null>(null)
+  const [showNewAppointment, setShowNewAppointment] = useState(false)
   const queryClient = useQueryClient()
 
   const { data: appointments = [] } = useQuery<Appointment[]>({
     queryKey: ['appointments', filter],
     queryFn: () => api.get(`/admin/appointments?filter=${filter}`).then((r) => r.data),
+  })
+
+  const { data: services = [] } = useQuery<Service[]>({
+    queryKey: ['services'],
+    queryFn: () => api.get('/admin/services').then((r) => r.data),
   })
 
   const STATUS_LABEL: Record<string, TKey> = {
@@ -44,9 +58,19 @@ export default function AppointmentsPage() {
     CANCELLED: 'statusCancelled',
   }
 
-  const filtered = appointments.filter((a) =>
-    !search || a.customer.name.toLowerCase().includes(search.toLowerCase()) || a.customer.phone.includes(search)
-  )
+  const filtered = appointments.filter((a) => {
+    if (search && !a.customer.name.toLowerCase().includes(search.toLowerCase()) && !a.customer.phone.includes(search)) return false
+    if (serviceFilter && a.service.id !== serviceFilter) return false
+    if (statusFilter && a.status !== statusFilter) return false
+    if (typeFilter === 'recurring' && !a.recurringSeriesId) return false
+    if (typeFilter === 'onetime' && a.recurringSeriesId) return false
+    return true
+  })
+
+  const hasActiveFilters = !!search || !!serviceFilter || !!statusFilter || typeFilter !== 'all'
+  function clearFilters() {
+    setSearch(''); setServiceFilter(''); setStatusFilter(''); setTypeFilter('all')
+  }
 
   async function updateStatus(id: string, status: string) {
     setLoading(id)
@@ -55,10 +79,19 @@ export default function AppointmentsPage() {
     queryClient.invalidateQueries({ queryKey: ['appointments'] })
   }
 
+  const selectClass = 'bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white mb-6">{t(lang, 'appointments')}</h1>
-      <div className="flex flex-wrap gap-3 mb-4 items-center">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-white">{t(lang, 'appointments')}</h1>
+        <button onClick={() => setShowNewAppointment(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+          {t(lang, 'newAppointment')}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-3 mb-3 items-center">
         <div className="flex gap-1 bg-gray-900 rounded-xl p-1 border border-gray-800">
           {FILTERS.map((f) => (
             <button key={f.value} onClick={() => setFilter(f.value)}
@@ -70,6 +103,26 @@ export default function AppointmentsPage() {
         </div>
         <input type="text" placeholder={t(lang, 'searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)}
           className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </div>
+
+      <div className="flex flex-wrap gap-3 mb-4 items-center">
+        <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className={selectClass}>
+          <option value="">{t(lang, 'allServices')}</option>
+          {services.map((s) => <option key={s.id} value={s.id}>{serviceName(s, lang)}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
+          <option value="">{t(lang, 'allStatuses')}</option>
+          {STATUS_OPTIONS.map((key, i) => <option key={key} value={STATUS_VALUES[i]}>{t(lang, key)}</option>)}
+        </select>
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} className={selectClass}>
+          <option value="all">{t(lang, 'allTypes')}</option>
+          <option value="recurring">{t(lang, 'recurringOnly')}</option>
+          <option value="onetime">{t(lang, 'oneTimeOnly')}</option>
+        </select>
+        {hasActiveFilters && (
+          <button onClick={clearFilters} className="text-sm text-blue-400 hover:text-blue-300">{t(lang, 'clearFilters')}</button>
+        )}
+        <span className="text-gray-500 text-xs ms-auto">{filtered.length} / {appointments.length} {t(lang, 'appointments')}</span>
       </div>
 
       {filtered.length === 0 ? (
@@ -89,7 +142,9 @@ export default function AppointmentsPage() {
                 <tr key={a.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                   <td className="px-4 py-3 text-white">{format(parseISO(a.date.slice(0, 10)), 'MMM d, yyyy')}</td>
                   <td className="px-4 py-3 text-gray-300">{a.startTime}–{a.endTime}</td>
-                  <td className="px-4 py-3 text-white font-medium">{a.customer.name}</td>
+                  <td className="px-4 py-3 text-white font-medium">
+                    {a.recurringSeriesId && <span title={t(lang, 'partOfSeries')}>🔁 </span>}{a.customer.name}
+                  </td>
                   <td className="px-4 py-3 text-gray-300">{a.customer.phone}</td>
                   <td className="px-4 py-3 text-gray-300">{serviceName(a.service, lang)}</td>
                   <td className="px-4 py-3">
@@ -115,6 +170,9 @@ export default function AppointmentsPage() {
             </tbody>
           </table>
         </div>
+      )}
+      {showNewAppointment && (
+        <NewAppointmentModal lang={lang} onClose={() => setShowNewAppointment(false)} />
       )}
     </div>
   )

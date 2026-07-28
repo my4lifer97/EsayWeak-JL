@@ -46,4 +46,44 @@ public class CronControllerTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
     }
+
+    // ─── generate-recurring: same auth contract as reminders above ─────────
+
+    [Fact]
+    public async Task GenerateRecurring_NoAuthHeader_ReturnsUnauthorized()
+    {
+        var resp = await Client.GetAsync("/api/cron/generate-recurring");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GenerateRecurring_EmptyBearerToken_ReturnsUnauthorized()
+    {
+        Client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", "Bearer ");
+
+        var resp = await Client.GetAsync("/api/cron/generate-recurring");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GenerateRecurring_WrongSecret_ReturnsUnauthorized()
+    {
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "not-the-secret");
+
+        var resp = await Client.GetAsync("/api/cron/generate-recurring");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GenerateRecurring_CorrectSecret_ReturnsOk()
+    {
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+
+        var resp = await Client.GetAsync("/api/cron/generate-recurring");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+    }
 }

@@ -8,6 +8,7 @@ import RegisterPage from './pages/admin/RegisterPage'
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import AppointmentsPage from './pages/admin/AppointmentsPage'
+import RecurringAppointmentsPage from './pages/admin/RecurringAppointmentsPage'
 import SchedulePage from './pages/admin/SchedulePage'
 import ServicesPage from './pages/admin/ServicesPage'
 import SettingsPage from './pages/admin/SettingsPage'
@@ -39,6 +40,7 @@ export default function App() {
                 <Route element={<AdminLayout />}>
                   <Route path="/admin/dashboard" element={<DashboardPage />} />
                   <Route path="/admin/appointments" element={<AppointmentsPage />} />
+                  <Route path="/admin/recurring" element={<RecurringAppointmentsPage />} />
                   <Route path="/admin/schedule" element={<SchedulePage />} />
                   <Route path="/admin/services" element={<ServicesPage />} />
                   <Route path="/admin/settings" element={<SettingsPage />} />

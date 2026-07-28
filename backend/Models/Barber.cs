@@ -37,6 +37,7 @@ public class Barber
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<Customer> Customers { get; set; } = [];
     public ICollection<Follow> Follows { get; set; } = [];
+    public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
 }
 
 public class Service
@@ -54,6 +55,7 @@ public class Service
     public Barber Barber { get; set; } = null!;
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<ServiceGalleryPhoto> GalleryPhotos { get; set; } = [];
+    public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
 }
 
 public class ServiceGalleryPhoto
@@ -113,6 +115,7 @@ public class Customer
     public Barber Barber { get; set; } = null!;
     public CustomerAccount? CustomerAccount { get; set; }
     public ICollection<Appointment> Appointments { get; set; } = [];
+    public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
 }
 
 public class Appointment
@@ -130,8 +133,44 @@ public class Appointment
     public bool ReminderSent { get; set; } = false;
     public string CancelToken { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? RecurringSeriesId { get; set; }
 
     public Barber Barber { get; set; } = null!;
     public Customer Customer { get; set; } = null!;
     public Service Service { get; set; } = null!;
+    public RecurringSeries? RecurringSeries { get; set; }
+}
+
+public class RecurringSeries
+{
+    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string BarberId { get; set; } = "";
+    public string CustomerId { get; set; } = "";
+    public string ServiceId { get; set; } = "";
+    public int DayOfWeek { get; set; }
+    public string StartTime { get; set; } = "";
+    public string? Notes { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    // Rolling cursor: last calendar date the generator has evaluated (created OR skipped) for this rule.
+    public DateTime? LastGeneratedThrough { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public Barber Barber { get; set; } = null!;
+    public Customer Customer { get; set; } = null!;
+    public Service Service { get; set; } = null!;
+    public ICollection<Appointment> Appointments { get; set; } = [];
+    public ICollection<RecurringSkip> Skips { get; set; } = [];
+}
+
+public class RecurringSkip
+{
+    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string RecurringSeriesId { get; set; } = "";
+    public DateTime Date { get; set; }
+    public string Reason { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public RecurringSeries RecurringSeries { get; set; } = null!;
 }
