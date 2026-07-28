@@ -100,3 +100,21 @@ public record CustomerAppointmentDto(
     string? Notes, string Status, string CancelToken, ServiceSummary Service, string? PhotoUrl);
 
 public record UpdateAppointmentPhotoRequest(string? GalleryPhotoId, string? CustomerPhotoUrl);
+
+public record PlatformAdminBootstrapRequest(string Email, string Password, string Name);
+public record PlatformAdminLoginRequest(string Email, string Password);
+public record PlatformAdminLoginResponse(string Token, string Id, string Name, string Email);
+
+public record PlatformAdminBarberSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
+public record PlatformAdminBarberDetailDto(
+    string Id, string Name, string Email, string Slug, string? Phone,
+    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt);
+
+public record PlatformAdminCustomerSummaryDto(string Id, string Name, string FamilyName, string Phone);
+public record PlatformAdminCustomerDetailDto(string Id, string Name, string FamilyName, string Phone, DateTime CreatedAt);
+
+public record PlatformAdminImpersonateResponse(string Token);
+
+public record PlatformAdminActivityLogDto(
+    string Id, string Action, string Description, string Method, string Path,
+    int StatusCode, string? IpAddress, DateTime CreatedAt, bool Impersonated);

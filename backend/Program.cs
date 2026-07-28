@@ -1,6 +1,7 @@
 using System.Text;
 using BarberSaas.Api;
 using BarberSaas.Api.Data;
+using BarberSaas.Api.Filters;
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -8,7 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(opt => opt.Filters.Add<ActivityLogFilter>());
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
@@ -36,9 +37,11 @@ builder.Services.AddAuthorization(opt =>
     opt.AddPolicy("CustomerOnly", p => p.RequireAuthenticatedUser().RequireClaim("type", "customer"));
     opt.AddPolicy("BarberOnly", p => p.RequireAuthenticatedUser().RequireAssertion(ctx =>
         ctx.User.FindFirst("type")?.Value != "customer"));
+    opt.AddPolicy("PlatformAdminOnly", p => p.RequireAuthenticatedUser().RequireClaim("type", "platform_admin"));
 });
 builder.Services.AddScoped<JwtService>();
 builder.Services.AddScoped<CustomerJwtService>();
+builder.Services.AddScoped<PlatformAdminJwtService>();
 builder.Services.AddScoped<AvailabilityService>();
 builder.Services.AddScoped<RecurringAppointmentService>();
 builder.Services.AddScoped<FollowService>();

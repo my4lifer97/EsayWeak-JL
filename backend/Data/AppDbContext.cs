@@ -21,6 +21,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RecurringSeries> RecurringSeries => Set<RecurringSeries>();
     public DbSet<RecurringSkip> RecurringSkips => Set<RecurringSkip>();
     public DbSet<WaitlistEntry> WaitlistEntries => Set<WaitlistEntry>();
+    public DbSet<PlatformAdmin> PlatformAdmins => Set<PlatformAdmin>();
+    public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -61,6 +63,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<WaitlistEntry>()
             .HasIndex(x => new { x.AppointmentId, x.CustomerAccountId }).IsUnique();
+
+        b.Entity<PlatformAdmin>()
+            .HasIndex(x => x.Email).IsUnique();
+
+        b.Entity<ActivityLog>()
+            .HasIndex(x => new { x.BarberId, x.CreatedAt });
+        b.Entity<ActivityLog>()
+            .HasIndex(x => new { x.CustomerAccountId, x.CreatedAt });
 
         // Closes a pre-existing TOCTOU gap (check-then-insert, no DB-level guard): only one
         // CONFIRMED appointment may occupy a given barber/date/start-time slot. Filtered so
@@ -176,5 +186,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<WaitlistEntry>()
             .HasOne(x => x.CustomerAccount).WithMany(x => x.WaitlistEntries)
             .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
+
+        b.Entity<ActivityLog>()
+            .HasOne(x => x.Barber).WithMany()
+            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ActivityLog>()
+            .HasOne(x => x.CustomerAccount).WithMany()
+            .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
+        // SetNull (not Cascade): deleting the admin account that performed an impersonation
+        // must never destroy the target account's own history -- only unlink the attribution.
+        b.Entity<ActivityLog>()
+            .HasOne(x => x.ImpersonatedByPlatformAdmin).WithMany()
+            .HasForeignKey(x => x.ImpersonatedByPlatformAdminId).OnDelete(DeleteBehavior.SetNull);
     }
 }
