@@ -124,7 +124,10 @@ public class PlatformAdminController(
     {
         var query = db.CustomerAccounts.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(c => c.Name.Contains(search) || c.FamilyName.Contains(search) || c.Phone.Contains(search));
+            // Also match the concatenated "First Last" -- Name/FamilyName alone can't match a
+            // full-name search like "Waitlist Customer" since that string spans both columns.
+            query = query.Where(c => c.Name.Contains(search) || c.FamilyName.Contains(search)
+                || (c.Name + " " + c.FamilyName).Contains(search) || c.Phone.Contains(search));
 
         var customers = await query.OrderByDescending(c => c.CreatedAt).Take(50)
             .Select(c => new PlatformAdminCustomerSummaryDto(c.Id, c.Name, c.FamilyName, c.Phone))

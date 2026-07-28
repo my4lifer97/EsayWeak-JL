@@ -114,6 +114,20 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
+    // ─── Search ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SearchCustomers_FullNameQuery_MatchesAcrossNameAndFamilyName()
+    {
+        var adminToken = await BootstrapAdmin();
+        await GetCustomerToken("+15559991111", "Waitlist", "Customer");
+
+        Authorize(Client, adminToken);
+        var results = await Client.GetFromJsonAsync<List<PlatformAdminCustomerSummaryDto>>("/api/platform-admin/customers?search=Waitlist%20Customer");
+
+        Assert.Contains(results!, c => c.Phone == "+15559991111");
+    }
+
     // ─── Impersonation ──────────────────────────────────────────────────────
 
     [Fact]
