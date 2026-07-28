@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { format, addDays, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { t, serviceName } from '../../lib/i18n'
+import CancelOptionsModal from './CancelOptionsModal'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
@@ -35,8 +36,13 @@ export default function WeeklyCalendar({
   onWeekChange: (offset: number) => void; lang: string
 }) {
   const [selected, setSelected] = useState<Appointment | null>(null)
-  const [actionLoading, setActionLoading] = useState(false)
+  const [showCancelOptions, setShowCancelOptions] = useState(false)
   const queryClient = useQueryClient()
+
+  const { data: settings } = useQuery<{ waitlistEnabled: boolean }>({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/admin/settings').then((r) => r.data),
+  })
 
   const weekStartDate = parseISO(weekStart)
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStartDate, i))
@@ -44,11 +50,9 @@ export default function WeeklyCalendar({
   const startMinute = 7 * 60
   const totalMinutes = 14 * 60
 
-  async function updateStatus(id: string, status: string) {
-    setActionLoading(true)
-    await api.patch(`/admin/appointments/${id}`, { status })
+  function onCancelFlowDone() {
+    setShowCancelOptions(false)
     setSelected(null)
-    setActionLoading(false)
     queryClient.invalidateQueries({ queryKey: ['dashboard'] })
   }
 
@@ -159,13 +163,23 @@ export default function WeeklyCalendar({
               </div>
             )}
             {selected.status === 'CONFIRMED' && (
-              <button disabled={actionLoading} onClick={() => updateStatus(selected.id, 'CANCELLED')}
-                className="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-50">
+              <button onClick={() => setShowCancelOptions(true)}
+                className="w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-lg transition-colors">
                 {t(lang, 'cancel')}
               </button>
             )}
           </div>
         </div>
+      )}
+
+      {selected && showCancelOptions && (
+        <CancelOptionsModal
+          lang={lang}
+          appointmentId={selected.id}
+          waitlistEnabled={settings?.waitlistEnabled ?? false}
+          onClose={() => setShowCancelOptions(false)}
+          onDone={onCancelFlowDone}
+        />
       )}
     </div>
   )

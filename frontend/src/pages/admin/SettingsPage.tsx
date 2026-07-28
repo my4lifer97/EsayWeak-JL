@@ -10,6 +10,7 @@ type BarberSettings = {
   language: 'EN' | 'AR' | 'HE'; twilioNumber: string | null; twilioSid: string | null
   trialEndsAt: string; subscriptionStatus: string
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
+  waitlistEnabled: boolean
 }
 
 export default function SettingsPage() {
@@ -25,6 +26,10 @@ export default function SettingsPage() {
     twilioNumber: '', twilioSid: '', twilioToken: '',
     maxBookingsPerDay: '', maxBookingsPerWeek: '',
   })
+  // Kept out of `form` above -- that object's values are read generically via
+  // form[key as keyof typeof form] in the text-input .map()s below, and mixing in a boolean
+  // would widen every one of those reads to `string | boolean`.
+  const [waitlistEnabled, setWaitlistEnabled] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -42,17 +47,19 @@ export default function SettingsPage() {
       maxBookingsPerDay: barber.maxBookingsPerDay?.toString() ?? '',
       maxBookingsPerWeek: barber.maxBookingsPerWeek?.toString() ?? '',
     })
+    setWaitlistEnabled(barber.waitlistEnabled)
     setLang(barber.language)
     setInitialized(true)
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError('')
-    const payload: Record<string, string | number | null | undefined> = {
+    const payload: Record<string, string | number | boolean | null | undefined> = {
       name: form.name, phone: form.phone, description: form.description,
       language: form.language, twilioNumber: form.twilioNumber, twilioSid: form.twilioSid,
       maxBookingsPerDay: form.maxBookingsPerDay ? Number(form.maxBookingsPerDay) : null,
       maxBookingsPerWeek: form.maxBookingsPerWeek ? Number(form.maxBookingsPerWeek) : null,
+      waitlistEnabled,
     }
     if (form.twilioToken) payload.twilioToken = form.twilioToken
     try {
@@ -181,6 +188,19 @@ export default function SettingsPage() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-white font-semibold mb-1">{t(lang, 'waitlistSettings')}</h2>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={waitlistEnabled}
+              onChange={(e) => setWaitlistEnabled(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+            <span>
+              <span className="block text-sm font-medium text-gray-200">{t(lang, 'waitlistEnabledLabel')}</span>
+              <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'waitlistEnabledHint')}</span>
+            </span>
+          </label>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">

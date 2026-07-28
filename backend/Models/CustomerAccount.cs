@@ -12,4 +12,5 @@ public class CustomerAccount
 
     public ICollection<Customer> Profiles { get; set; } = [];
     public ICollection<Follow> Follows { get; set; } = [];
+    public ICollection<WaitlistEntry> WaitlistEntries { get; set; } = [];
 }

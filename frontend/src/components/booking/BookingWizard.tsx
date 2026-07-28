@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
@@ -7,19 +7,24 @@ import { useCustomerAuth } from '../../lib/customerAuth'
 import { t, serviceName } from '../../lib/i18n'
 import BackButton from '../BackButton'
 import LanguageSwitcher from '../customer/LanguageSwitcher'
+import SlotBookedModal from './SlotBookedModal'
 
 type GalleryPhoto = { id: string; url: string }
 type Service = {
   id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
   photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload'; galleryPhotos: GalleryPhoto[]
 }
-type BarberInfo = { slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[] }
-type Slot = { start: string; end: string }
+type BarberInfo = {
+  slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[]
+  waitlistEnabled: boolean
+}
+type Slot = { start: string; end: string; available: boolean; appointmentId?: string }
 type Step = 1 | 2 | 3 | 4
 
 export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const { user, isAuthenticated, language: lang } = useCustomerAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [step, setStep] = useState<Step>(1)
   const [service, setService] = useState<Service | null>(null)
   const [date, setDate] = useState('')
@@ -37,6 +42,9 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState<string | null>(null)
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoError, setPhotoError] = useState('')
+  const [bookedSlot, setBookedSlot] = useState<Slot | null>(null)
+  const [joiningWaitlist, setJoiningWaitlist] = useState(false)
+  const [joinedWaitlist, setJoinedWaitlist] = useState(false)
 
   // The customer's own language choice drives the UI everywhere, overriding this specific
   // barber's configured storefront language.
@@ -45,7 +53,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
 
   async function fetchSlots(d: string, svc: Service) {
     setSlotsLoading(true); setSlots([])
-    const { data } = await customerApi.get(`/${barber.slug}/availability?date=${d}&serviceId=${svc.id}`)
+    const { data } = await customerApi.get(`/${barber.slug}/availability/full?date=${d}&serviceId=${svc.id}`)
     setSlots(data.slots ?? [])
     setSlotsLoading(false)
   }
@@ -55,6 +63,46 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     if (service) fetchSlots(d, service)
     setStep(3)
   }
+
+  function pickSlot(s: Slot) {
+    if (s.available) { setSlot(s); setStep(4); return }
+    setJoinedWaitlist(false)
+    setBookedSlot(s)
+  }
+
+  async function joinWaitlist() {
+    if (!bookedSlot?.appointmentId) return
+    setJoiningWaitlist(true)
+    try {
+      await customerApi.post(`/${barber.slug}/waitlist/${bookedSlot.appointmentId}`)
+      setJoinedWaitlist(true)
+    } finally { setJoiningWaitlist(false) }
+  }
+
+  // Deep-link prefill from a WhatsApp waitlist notification (?serviceId=&date=&time=): jump
+  // straight to the relevant slot instead of making the customer re-pick service/date/time from
+  // scratch. If the slot's already gone by the time they arrive (someone beat them to it), they
+  // just land on step 3 seeing the real current state -- no special-case error needed.
+  useEffect(() => {
+    const prefillServiceId = searchParams.get('serviceId')
+    const prefillDate = searchParams.get('date')
+    const prefillTime = searchParams.get('time')
+    if (!prefillServiceId || !prefillDate) return
+
+    const svc = barber.services.find((s) => s.id === prefillServiceId)
+    if (!svc) return
+
+    setService(svc)
+    setDate(prefillDate)
+    setStep(3)
+    customerApi.get(`/${barber.slug}/availability/full?date=${prefillDate}&serviceId=${svc.id}`).then(({ data }) => {
+      const fetchedSlots: Slot[] = data.slots ?? []
+      setSlots(fetchedSlots)
+      const match = prefillTime && fetchedSlots.find((s) => s.start === prefillTime && s.available)
+      if (match) { setSlot(match); setStep(4) }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function uploadPhoto(file: File) {
     setPhotoUploading(true); setPhotoError('')
@@ -165,9 +213,14 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 {slots.map((s) => (
-                  <button key={s.start} onClick={() => { setSlot(s); setStep(4) }}
-                    className={`bg-gray-900 hover:bg-blue-600 border border-gray-800 hover:border-blue-500 rounded-xl py-3 text-center text-sm font-medium transition-colors ${slot?.start === s.start ? 'bg-blue-600 border-blue-500' : ''}`}>
+                  <button key={s.start} onClick={() => pickSlot(s)}
+                    className={`rounded-xl py-3 text-center text-sm font-medium transition-colors border ${
+                      s.available
+                        ? `bg-gray-900 hover:bg-blue-600 border-gray-800 hover:border-blue-500 ${slot?.start === s.start ? 'bg-blue-600 border-blue-500' : ''}`
+                        : 'bg-gray-900/50 border-gray-800 text-gray-500'
+                    }`}>
                     {s.start}
+                    {!s.available && <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-0.5">{t(lang, 'booked')}</div>}
                   </button>
                 ))}
               </div>
@@ -252,6 +305,18 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
           </div>
         )}
       </div>
+
+      {bookedSlot && (
+        <SlotBookedModal
+          lang={lang}
+          dir={dir}
+          waitlistEnabled={barber.waitlistEnabled}
+          joining={joiningWaitlist}
+          joined={joinedWaitlist}
+          onJoinWaitlist={joinWaitlist}
+          onClose={() => setBookedSlot(null)}
+        />
+      )}
     </div>
   )
 }

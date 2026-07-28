@@ -12,7 +12,8 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/customer/appointments")]
 [Authorize(Policy = "CustomerOnly")]
-public class CustomerAppointmentsController(AppDbContext db, AvailabilityService availability) : ControllerBase
+public class CustomerAppointmentsController(
+    AppDbContext db, AvailabilityService availability, WaitlistService waitlist, AppointmentCancellationService cancellationService) : ControllerBase
 {
     private string AccountId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -58,7 +59,7 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
         if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        appt.Status = AppointmentStatus.CANCELLED;
+        await cancellationService.CancelAsync(appt, notifyWaitlist: true);
         await db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
@@ -81,7 +82,10 @@ public class CustomerAppointmentsController(AppDbContext db, AvailabilityService
         appt.StartTime = req.StartTime;
         appt.EndTime = AvailabilityService.AddMinutes(req.StartTime, appt.Service.DurationMinutes);
         appt.ReminderSent = false;
-        await db.SaveChangesAsync();
+
+        await waitlist.ResolveForRebooking(appt.BarberId, appt.Date, req.StartTime);
+        if (!await availability.TrySaveOrDetectConflict(appt.BarberId, req.Date, req.StartTime, appt.EndTime))
+            return Conflict(new { error = "Slot not available" });
 
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }

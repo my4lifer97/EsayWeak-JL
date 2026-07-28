@@ -9,7 +9,7 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/whatsapp")]
-public class WhatsAppController(AppDbContext db, IConfiguration config) : ControllerBase
+public class WhatsAppController(AppDbContext db, IConfiguration config, AppointmentCancellationService cancellationService) : ControllerBase
 {
     private static readonly string[] BookKeywords = ["book", "שריין", "תור", "موعد", "حجز", "appointment"];
     private static readonly string[] CancelKeywords = ["cancel", "ביטול", "بطل", "إلغاء", "בטל"];
@@ -74,7 +74,7 @@ public class WhatsAppController(AppDbContext db, IConfiguration config) : Contro
             }
             else
             {
-                upcoming.Status = AppointmentStatus.CANCELLED;
+                await cancellationService.CancelAsync(upcoming, notifyWaitlist: true);
                 await db.SaveChangesAsync();
                 reply = I18nService.T(lang, "whatsapp.cancelled", new()
                 {

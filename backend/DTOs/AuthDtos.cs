@@ -22,12 +22,12 @@ public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
     string? Description, string? Logo, string Language, string? TwilioNumber, string? TwilioSid,
     DateTime TrialEndsAt, string SubscriptionStatus,
-    int? MaxBookingsPerDay, int? MaxBookingsPerWeek);
+    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled);
 
 public record UpdateSettingsRequest(
     string? Name, string? Phone, string? Description, string? Language,
     string? TwilioNumber, string? TwilioSid, string? TwilioToken,
-    int? MaxBookingsPerDay, int? MaxBookingsPerWeek);
+    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled = false);
 
 public record BookAppointmentRequest(
     string ServiceId, string Date, string StartTime,
@@ -56,6 +56,12 @@ public record TimeSlot(string Start, string End);
 
 public record AvailabilityResponse(List<TimeSlot> Slots);
 
+public record SlotWithBookingInfoDto(string Start, string End, bool Available, string? AppointmentId);
+
+public record FullAvailabilityResponse(List<SlotWithBookingInfoDto> Slots);
+
+public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, string? CustomerPhone);
+
 public record AppointmentDetailDto(
     string Id, string BarberId, string CustomerId, string ServiceId,
     string Date, string StartTime, string EndTime, string? Notes,
@@ -81,7 +87,8 @@ public record ScheduleResponse(
 
 public record PublicBarberDto(
     string Slug, string Name, string? Description, string? Logo,
-    string Language, bool IsRTL, int[] ActiveDays, List<ServiceDto> Services, bool IsFollowed);
+    string Language, bool IsRTL, int[] ActiveDays, List<ServiceDto> Services, bool IsFollowed,
+    bool WaitlistEnabled);
 
 public record BarberSearchResultDto(string Slug, string Name, string? Description, string? Logo, string Language, bool IsFollowed);
 

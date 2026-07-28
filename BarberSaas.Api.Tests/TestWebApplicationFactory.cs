@@ -1,4 +1,6 @@
 using BarberSaas.Api.Data;
+using BarberSaas.Api.Services;
+using BarberSaas.Api.Tests.Fakes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
@@ -68,6 +70,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 
             services.AddDbContext<AppDbContext>(opt => opt.UseSqlite(_connection));
 
+            // Real Twilio calls would fail/hang in tests (no live creds) -- swap in a fake that
+            // just records what would have been sent, so tests can assert on it directly.
+            services.RemoveAll<IWhatsAppSender>();
+            services.AddSingleton<IWhatsAppSender, FakeWhatsAppSender>();
+
             using var scope = services.BuildServiceProvider().CreateScope();
             scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
         });
@@ -78,6 +85,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         var scope = Services.CreateScope();
         return scope.ServiceProvider.GetRequiredService<AppDbContext>();
     }
+
+    public FakeWhatsAppSender WhatsAppSender => (FakeWhatsAppSender)Services.GetRequiredService<IWhatsAppSender>();
 
     protected override void Dispose(bool disposing)
     {

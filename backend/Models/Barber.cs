@@ -6,6 +6,7 @@ public enum Language { EN, AR, HE }
 public enum SubStatus { TRIAL, ACTIVE, EXPIRED }
 public enum AppointmentStatus { CONFIRMED, CANCELLED, COMPLETED }
 public enum ServicePhotoMode { None, OwnerGallery, CustomerUpload }
+public enum WaitlistEntryStatus { WAITING, NOTIFIED, RESOLVED }
 
 public class Barber
 {
@@ -29,6 +30,8 @@ public class Barber
     // Null means unlimited. Enforced per-customer (matched by phone) in BookingController.
     public int? MaxBookingsPerDay { get; set; }
     public int? MaxBookingsPerWeek { get; set; }
+
+    public bool WaitlistEnabled { get; set; } = false;
 
     public ICollection<Service> Services { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
@@ -139,6 +142,7 @@ public class Appointment
     public Customer Customer { get; set; } = null!;
     public Service Service { get; set; } = null!;
     public RecurringSeries? RecurringSeries { get; set; }
+    public ICollection<WaitlistEntry> WaitlistEntries { get; set; } = [];
 }
 
 public class RecurringSeries
@@ -173,4 +177,19 @@ public class RecurringSkip
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public RecurringSeries RecurringSeries { get; set; } = null!;
+}
+
+public class WaitlistEntry
+{
+    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string AppointmentId { get; set; } = "";
+    public string BarberId { get; set; } = "";
+    public string CustomerAccountId { get; set; } = "";
+    public WaitlistEntryStatus Status { get; set; } = WaitlistEntryStatus.WAITING;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? NotifiedAt { get; set; }
+
+    public Appointment Appointment { get; set; } = null!;
+    public Barber Barber { get; set; } = null!;
+    public CustomerAccount CustomerAccount { get; set; } = null!;
 }

@@ -8,8 +8,29 @@ namespace BarberSaas.Api.Tests.Controllers;
 
 public class BookingFlowTests : IntegrationTestBase
 {
-    // 2026-07-06 is a Monday; AuthController.Register seeds default Mon-Fri 09:00-18:00 hours.
-    private const string TestDate = "2026-07-06";
+    // A Mon-Fri date, always after "today" -- AuthController.Register seeds default Mon-Fri
+    // 09:00-18:00 hours, and a same-day date would be rejected by AvailabilityService's
+    // "isToday" past-time cutoff depending on when the suite happens to run. Computed rather
+    // than hardcoded so this doesn't go stale the way a fixed date eventually would.
+    private static readonly string TestDate = NextWeekday(DateTime.Now.Date.AddDays(1)).ToString("yyyy-MM-dd");
+
+    private static DateTime NextWeekday(DateTime from)
+    {
+        var d = from;
+        while (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) d = d.AddDays(1);
+        return d;
+    }
+
+    // Two Mon-Fri dates in the same Sun-Sat calendar week, both strictly after "today" --
+    // anchored on the next future Monday (rather than TestDate above) so there's always a
+    // Tuesday afterward in that same week regardless of which weekday TestDate lands on.
+    private static (string First, string Second) TwoWeekdaysInSameFutureWeek()
+    {
+        var tomorrow = DateTime.Now.Date.AddDays(1);
+        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)tomorrow.DayOfWeek + 7) % 7;
+        var monday = tomorrow.AddDays(daysUntilMonday);
+        return (monday.ToString("yyyy-MM-dd"), monday.AddDays(1).ToString("yyyy-MM-dd"));
+    }
 
     private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
     private record VerifyOtpResponse(string Token, string CustomerId, string Phone);
@@ -43,16 +64,17 @@ public class BookingFlowTests : IntegrationTestBase
         return verifyBody!.Token;
     }
 
-    private async Task<List<TimeSlot>> AvailableSlots(string slug, string serviceId, string date = TestDate)
+    private async Task<List<TimeSlot>> AvailableSlots(string slug, string serviceId, string? date = null)
     {
+        date ??= TestDate;
         var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&serviceId={serviceId}");
         var body = await resp.Content.ReadFromJsonAsync<AvailabilityResponse>();
         return body!.Slots;
     }
 
-    private async Task<string> FirstAvailableSlot(string slug, string serviceId)
+    private async Task<string> FirstAvailableSlot(string slug, string serviceId, string? date = null)
     {
-        var slots = await AvailableSlots(slug, serviceId);
+        var slots = await AvailableSlots(slug, serviceId, date);
         Assert.NotEmpty(slots);
         return slots[0].Start;
     }
@@ -243,11 +265,11 @@ public class BookingFlowTests : IntegrationTestBase
     {
         var (barberToken, slug) = await RegisterAndLoginBarber("perweek-flow@example.com", "perweek-flow-shop");
         var serviceId = await CreateService(barberToken);
-        const string tuesdaySameWeek = "2026-07-07"; // Monday 2026-07-06's week (Sun 07-05 - Sat 07-11)
+        var (mondayDate, tuesdaySameWeek) = TwoWeekdaysInSameFutureWeek();
         await SetBookingLimits(barberToken, perDay: null, perWeek: 1);
 
-        var monday = await Book(slug, serviceId, TestDate, (await FirstAvailableSlot(slug, serviceId)), "+15553330012");
-        var tuesday = await Book(slug, serviceId, tuesdaySameWeek, (await FirstAvailableSlot(slug, serviceId)), "+15553330012");
+        var monday = await Book(slug, serviceId, mondayDate, (await FirstAvailableSlot(slug, serviceId, mondayDate)), "+15553330012");
+        var tuesday = await Book(slug, serviceId, tuesdaySameWeek, (await FirstAvailableSlot(slug, serviceId, tuesdaySameWeek)), "+15553330012");
 
         Assert.Equal(HttpStatusCode.Created, monday.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, tuesday.StatusCode);

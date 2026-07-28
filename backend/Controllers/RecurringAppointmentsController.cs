@@ -13,7 +13,7 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/admin/recurring")]
 [Authorize(Policy = "BarberOnly")]
-public class RecurringAppointmentsController(AppDbContext db, RecurringAppointmentService recurringAppointments) : ControllerBase
+public class RecurringAppointmentsController(AppDbContext db, RecurringAppointmentService recurringAppointments, AppointmentCancellationService cancellationService) : ControllerBase
 {
     private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -135,7 +135,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         foreach (var appt in linkedAppointments)
         {
             if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED")
-                appt.Status = AppointmentStatus.CANCELLED;
+                await cancellationService.CancelAsync(appt, notifyWaitlist: true);
         }
 
         db.RecurringSeries.Remove(series);

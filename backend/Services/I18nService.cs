@@ -12,6 +12,7 @@ public static class I18nService
             ["whatsapp.cancelled"] = "Your appointment on {date} at {time} has been cancelled. ✓",
             ["whatsapp.noAppointment"] = "I couldn't find an upcoming appointment for your number. To book: {url}",
             ["whatsapp.rescheduleLink"] = "To reschedule, book a new appointment here: {url}",
+            ["whatsapp.waitlistSlotOpen"] = "Hi {customerName}! A slot with {barberName} on {date} at {time} for {service} just opened up. Book it here (first come, first served): {url}",
         },
         ["AR"] = new()
         {
@@ -21,6 +22,7 @@ public static class I18nService
             ["whatsapp.cancelled"] = "تم إلغاء موعدك في {date} الساعة {time}. ✓",
             ["whatsapp.noAppointment"] = "لم أجد موعدًا قادمًا لرقمك. للحجز: {url}",
             ["whatsapp.rescheduleLink"] = "لإعادة الجدولة، احجز موعدًا جديدًا هنا: {url}",
+            ["whatsapp.waitlistSlotOpen"] = "مرحبًا {customerName}! أصبح هناك موعد متاح مع {barberName} في {date} الساعة {time} لخدمة {service}. احجزه هنا (الأسبقية للأسرع): {url}",
         },
         ["HE"] = new()
         {
@@ -30,6 +32,7 @@ public static class I18nService
             ["whatsapp.cancelled"] = "התור שלך ב-{date} בשעה {time} בוטל. ✓",
             ["whatsapp.noAppointment"] = "לא מצאתי תור קרוב למספר שלך. לקביעת תור: {url}",
             ["whatsapp.rescheduleLink"] = "לשינוי תור, קבע תור חדש כאן: {url}",
+            ["whatsapp.waitlistSlotOpen"] = "שלום {customerName}! התפנה תור אצל {barberName} בתאריך {date} בשעה {time} לשירות {service}. קבע אותו כאן (הראשון שמזמין זוכה): {url}",
         },
     };
 

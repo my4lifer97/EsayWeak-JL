@@ -3,14 +3,12 @@ using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Twilio;
-using Twilio.Rest.Api.V2010.Account;
 
 namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/cron")]
-public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger, RecurringAppointmentService recurringAppointments) : ControllerBase
+public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger, RecurringAppointmentService recurringAppointments, IWhatsAppSender whatsAppSender) : ControllerBase
 {
     [HttpGet("generate-recurring")]
     public async Task<IActionResult> GenerateRecurringAppointments()
@@ -72,11 +70,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
                     ["cancelUrl"] = cancelUrl,
                 });
 
-                TwilioClient.Init(appt.Barber.TwilioSid, appt.Barber.TwilioToken);
-                await MessageResource.CreateAsync(
-                    from: new Twilio.Types.PhoneNumber($"whatsapp:{appt.Barber.TwilioNumber}"),
-                    to: new Twilio.Types.PhoneNumber($"whatsapp:{appt.Customer.Phone}"),
-                    body: message);
+                await whatsAppSender.SendAsync(appt.Barber, appt.Customer.Phone, message);
 
                 appt.ReminderSent = true;
                 sent++;

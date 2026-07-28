@@ -8,7 +8,11 @@ import BookingWizard from '../../components/booking/BookingWizard'
 type BarberInfo = {
   slug: string; name: string; description: string | null; logo: string | null
   language: string; isRTL: boolean; activeDays: number[]
-  services: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number }[]
+  services: {
+    id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
+    photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload'; galleryPhotos: { id: string; url: string }[]
+  }[]
+  waitlistEnabled: boolean
 }
 
 export default function BookPage() {

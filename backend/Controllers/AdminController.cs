@@ -12,7 +12,9 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/admin")]
 [Authorize(Policy = "BarberOnly")]
-public class AdminController(AppDbContext db, IWebHostEnvironment env, AvailabilityService availability) : ControllerBase
+public class AdminController(
+    AppDbContext db, IWebHostEnvironment env, AvailabilityService availability,
+    WaitlistService waitlist, AppointmentCancellationService cancellationService) : ControllerBase
 {
     private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -37,7 +39,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env, Availabil
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
             b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber, b.TwilioSid,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
-            b.MaxBookingsPerDay, b.MaxBookingsPerWeek));
+            b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled));
     }
 
     [HttpPost("settings/logo")]
@@ -88,6 +90,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env, Availabil
         // the settings form always submits both, so assign unconditionally.
         b.MaxBookingsPerDay = req.MaxBookingsPerDay;
         b.MaxBookingsPerWeek = req.MaxBookingsPerWeek;
+        b.WaitlistEnabled = req.WaitlistEnabled;
 
         await db.SaveChangesAsync();
         return Ok(new { b.Id, b.Name, Language = b.Language.ToString() });
@@ -390,24 +393,8 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env, Availabil
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BarberId == BarberId && s.IsActive);
         if (service is null) return NotFound(new { error = "Service not found" });
 
-        Customer? customer;
-        if (!string.IsNullOrWhiteSpace(req.CustomerId))
-        {
-            customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == req.CustomerId && c.BarberId == BarberId);
-            if (customer is null) return NotFound(new { error = "Customer not found" });
-        }
-        else
-        {
-            if (string.IsNullOrWhiteSpace(req.CustomerName) || string.IsNullOrWhiteSpace(req.CustomerPhone))
-                return BadRequest(new { error = "Customer name and phone are required" });
-            customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == req.CustomerPhone);
-            if (customer is null)
-            {
-                customer = new Customer { Name = req.CustomerName, Phone = req.CustomerPhone, BarberId = BarberId };
-                db.Customers.Add(customer);
-            }
-            else customer.Name = req.CustomerName;
-        }
+        var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone);
+        if (customerError is not null) return customerError;
 
         string? photoUrl = null;
         if (service.PhotoMode == ServicePhotoMode.OwnerGallery && !string.IsNullOrWhiteSpace(req.GalleryPhotoId))
@@ -440,7 +427,7 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env, Availabil
         var appointment = new Appointment
         {
             BarberId = BarberId,
-            CustomerId = customer.Id,
+            CustomerId = customer!.Id,
             ServiceId = service.Id,
             Date = requestedDate,
             StartTime = req.StartTime,
@@ -450,7 +437,10 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env, Availabil
             Status = AppointmentStatus.CONFIRMED,
         };
         db.Appointments.Add(appointment);
-        await db.SaveChangesAsync();
+
+        await waitlist.ResolveForRebooking(BarberId, requestedDate, req.StartTime);
+        if (!await availability.TrySaveOrDetectConflict(BarberId, req.Date, req.StartTime, endTime))
+            return Conflict(new { error = "Slot no longer available" });
 
         return StatusCode(201, new DashboardAppointmentDto(
             appointment.Id, req.Date, appointment.StartTime, appointment.EndTime,
@@ -470,10 +460,57 @@ public class AdminController(AppDbContext db, IWebHostEnvironment env, Availabil
 
         var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
         if (appt is null) return NotFound();
-        appt.Status = AppointmentStatus.CANCELLED;
+
+        // The owner can cancel regardless of effective status (e.g. correcting a past/completed
+        // appointment after the fact) -- unlike the customer-facing cancel endpoints. Only ask
+        // WaitlistService to notify if it's actually still effectively CONFIRMED, since offering
+        // an already-passed slot to the waitlist would be a meaningless notification.
+        var stillConfirmed = AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED";
+        await cancellationService.CancelAsync(appt, notifyWaitlist: req.NotifyWaitlist && stillConfirmed);
         await db.SaveChangesAsync();
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }
+
+    // ─── Replace Customer (owner-cancel Option 3: swap who the slot belongs to, no cancel) ────
+
+    [HttpPatch("appointments/{id}/customer")]
+    public async Task<IActionResult> ReplaceCustomer(string id, [FromBody] ReplaceCustomerRequest req)
+    {
+        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
+        if (appt is null) return NotFound();
+        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
+
+        var (customer, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone);
+        if (error is not null) return error;
+
+        appt.CustomerId = customer!.Id;
+        await db.SaveChangesAsync();
+        return Ok(new { appt.Id, appt.CustomerId });
+    }
+
+    // Shared by CreateAppointment and ReplaceCustomer: resolve an existing customer by id, or
+    // upsert one by phone (same as public booking's upsert-by-phone logic).
+    private async Task<(Customer? Customer, IActionResult? Error)> ResolveCustomer(string? customerId, string? customerName, string? customerPhone)
+    {
+        if (!string.IsNullOrWhiteSpace(customerId))
+        {
+            var existing = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId && c.BarberId == BarberId);
+            return existing is null ? (null, NotFound(new { error = "Customer not found" })) : (existing, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerPhone))
+            return (null, BadRequest(new { error = "Customer name and phone are required" }));
+
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == customerPhone);
+        if (customer is null)
+        {
+            customer = new Customer { Name = customerName, Phone = customerPhone, BarberId = BarberId };
+            db.Customers.Add(customer);
+        }
+        else customer.Name = customerName;
+        return (customer, null);
+    }
 }
 
-public record UpdateStatusRequest(string Status);
+public record UpdateStatusRequest(string Status, bool NotifyWaitlist = false);

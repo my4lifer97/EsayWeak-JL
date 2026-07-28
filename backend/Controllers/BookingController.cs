@@ -10,7 +10,9 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/{slug}")]
-public class BookingController(AppDbContext db, AvailabilityService availability, FollowService followService, IWebHostEnvironment env) : ControllerBase
+public class BookingController(
+    AppDbContext db, AvailabilityService availability, FollowService followService, IWebHostEnvironment env,
+    WaitlistService waitlist, AppointmentCancellationService cancellationService) : ControllerBase
 {
     private static readonly Dictionary<string, string> AllowedPhotoTypes = new()
     {
@@ -44,7 +46,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
 
         return Ok(new PublicBarberDto(
             barber.Slug, barber.Name, barber.Description, barber.Logo,
-            barber.Language.ToString(), isRTL, activeDays, services, isFollowed));
+            barber.Language.ToString(), isRTL, activeDays, services, isFollowed, barber.WaitlistEnabled));
     }
 
     [HttpGet("availability")]
@@ -57,6 +59,22 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         if (service is null) return NotFound(new { error = "Service not found" });
 
         var slots = await availability.GetAvailableSlots(barber.Id, date, service.DurationMinutes);
+        return Ok(new { slots });
+    }
+
+    // Same as availability above, but includes booked slots (flagged, not hidden) so the
+    // waitlist feature can let a customer see and join the waitlist for an already-booked slot
+    // instead of it just disappearing from the schedule.
+    [HttpGet("availability/full")]
+    public async Task<IActionResult> GetFullAvailability(string slug, [FromQuery] string date, [FromQuery] string serviceId)
+    {
+        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Slug == slug);
+        if (barber is null) return NotFound(new { error = "Not found" });
+
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.BarberId == barber.Id && s.IsActive);
+        if (service is null) return NotFound(new { error = "Service not found" });
+
+        var slots = await availability.GetSlotsWithBookingInfo(barber.Id, date, service.DurationMinutes);
         return Ok(new { slots });
     }
 
@@ -160,7 +178,9 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         };
         db.Appointments.Add(appointment);
 
-        await db.SaveChangesAsync();
+        await waitlist.ResolveForRebooking(barber.Id, requestedDate, req.StartTime);
+        if (!await availability.TrySaveOrDetectConflict(barber.Id, req.Date, req.StartTime, endTime))
+            return Conflict(new { error = "Slot no longer available" });
 
         return StatusCode(201, new BookAppointmentResponse(appointment.Id, appointment.CancelToken));
     }
@@ -206,7 +226,8 @@ public class BookingController(AppDbContext db, AvailabilityService availability
             appointment.CreatedAt,
             new CustomerSummary(appointment.Customer.Id, appointment.Customer.Name, appointment.Customer.FamilyName, appointment.Customer.Phone),
             new ServiceSummary(appointment.Service.Id, appointment.Service.NameEn, appointment.Service.NameAr, appointment.Service.NameHe, appointment.Service.DurationMinutes, appointment.Service.Price),
-            new BarberSummary(appointment.Barber.Name, appointment.Barber.Slug, appointment.Barber.Language.ToString()), appointment.PhotoUrl));
+            new BarberSummary(appointment.Barber.Name, appointment.Barber.Slug, appointment.Barber.Language.ToString()), appointment.PhotoUrl,
+            appointment.RecurringSeriesId));
     }
 
     [HttpDelete("appointments/{id}")]
@@ -221,7 +242,7 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        appointment.Status = AppointmentStatus.CANCELLED;
+        await cancellationService.CancelAsync(appointment, notifyWaitlist: true);
         await db.SaveChangesAsync();
         return Ok(new { ok = true });
     }
@@ -247,7 +268,10 @@ public class BookingController(AppDbContext db, AvailabilityService availability
         appointment.StartTime = req.StartTime;
         appointment.EndTime = AvailabilityService.AddMinutes(req.StartTime, appointment.Service.DurationMinutes);
         appointment.ReminderSent = false;
-        await db.SaveChangesAsync();
+
+        await waitlist.ResolveForRebooking(appointment.BarberId, appointment.Date, req.StartTime);
+        if (!await availability.TrySaveOrDetectConflict(appointment.BarberId, req.Date, req.StartTime, appointment.EndTime))
+            return Conflict(new { error = "Slot not available" });
 
         return Ok(new { appointment.Id, Status = appointment.Status.ToString() });
     }

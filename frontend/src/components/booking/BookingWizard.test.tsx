@@ -19,6 +19,7 @@ const barber = {
   language: 'EN',
   isRTL: false,
   activeDays: [0, 1, 2, 3, 4, 5, 6], // every day active — deterministic regardless of "today"
+  waitlistEnabled: true,
   services: [
     { id: 'svc-1', nameEn: 'Haircut', nameAr: 'قصة شعر', nameHe: 'תספורת', durationMinutes: 30, price: 50, photoMode: 'None' as const, galleryPhotos: [] },
     {
@@ -30,12 +31,15 @@ const barber = {
 }
 
 function mockAnonymous() {
-  vi.mocked(useCustomerAuth).mockReturnValue({ user: null, isAuthenticated: false, language: 'EN', setLang: vi.fn() } as ReturnType<typeof useCustomerAuth>)
+  vi.mocked(useCustomerAuth).mockReturnValue({
+    user: null, isAuthenticated: false, language: 'EN', setLang: vi.fn(),
+    requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
+  } as ReturnType<typeof useCustomerAuth>)
 }
 
-function renderWizard() {
+function renderWizard(initialPath = `/${barber.slug}/book`) {
   return render(
-    <MemoryRouter initialEntries={[`/${barber.slug}/book`]}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/:slug/book" element={<BookingWizard barber={barber} />} />
         <Route path="/:slug" element={<div>Barber main page</div>} />
@@ -60,7 +64,7 @@ async function advanceToStep4(serviceLabel = 'Haircut') {
 
   await userEvent.click(screen.getByText(serviceLabel))
 
-  vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30' }] } })
+  vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30', available: true }] } })
   await userEvent.click(findDateButtons()[0])
 
   await waitFor(() => expect(screen.getByText('09:00')).toBeInTheDocument())
@@ -95,12 +99,12 @@ describe('BookingWizard', () => {
     renderWizard()
     await userEvent.click(screen.getByText('Haircut'))
 
-    vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30' }] } })
+    vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30', available: true }] } })
     const dateButtons = findDateButtons()
     await userEvent.click(dateButtons[0])
 
     expect(screen.getByText('Select a Time')).toBeInTheDocument()
-    await waitFor(() => expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-barber/availability?date=')))
+    await waitFor(() => expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-barber/availability/full?date=')))
     await waitFor(() => expect(screen.getByText('09:00')).toBeInTheDocument())
   })
 
@@ -148,11 +152,12 @@ describe('BookingWizard', () => {
     vi.mocked(useCustomerAuth).mockReturnValue({
       user: { id: '1', name: 'Jane', familyName: 'Doe', phone: '+15559998888' },
       isAuthenticated: true, language: 'EN', setLang: vi.fn(),
+      requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
     } as ReturnType<typeof useCustomerAuth>)
 
     renderWizard()
     await userEvent.click(screen.getByText('Haircut'))
-    vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30' }] } })
+    vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30', available: true }] } })
     const dateButtons = findDateButtons()
     await userEvent.click(dateButtons[0])
     await waitFor(() => screen.getByText('09:00'))
@@ -207,5 +212,52 @@ describe('BookingWizard', () => {
     await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-barber/appointments', expect.objectContaining({
       serviceId: 'svc-upload', customerPhotoUrl: '/api/uploads/appointment-photos/uploaded.jpg',
     })))
+  })
+
+  it('marks a booked slot as unavailable and offers a waitlist modal instead of advancing', async () => {
+    renderWizard()
+    await userEvent.click(screen.getByText('Haircut'))
+    vi.mocked(customerApi.get).mockResolvedValue({
+      data: { slots: [{ start: '09:00', end: '09:30', available: false, appointmentId: 'appt-booked' }] },
+    })
+    await userEvent.click(findDateButtons()[0])
+
+    await waitFor(() => expect(screen.getByText('Booked')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('09:00'))
+
+    expect(screen.getByText('Already Booked')).toBeInTheDocument()
+    // Clicking a booked slot must not silently advance the wizard like an open slot would.
+    expect(screen.queryByText('Your Details')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Choose Another Appointment'))
+    expect(screen.queryByText('Already Booked')).not.toBeInTheDocument()
+  })
+
+  it('joining the waitlist posts to the waitlist endpoint and shows a confirmation', async () => {
+    renderWizard()
+    await userEvent.click(screen.getByText('Haircut'))
+    vi.mocked(customerApi.get).mockResolvedValue({
+      data: { slots: [{ start: '09:00', end: '09:30', available: false, appointmentId: 'appt-booked' }] },
+    })
+    await userEvent.click(findDateButtons()[0])
+    await waitFor(() => screen.getByText('Booked'))
+    await userEvent.click(screen.getByText('09:00'))
+
+    vi.mocked(customerApi.post).mockResolvedValue({ data: { ok: true } })
+    await userEvent.click(screen.getByText('Join Waitlist'))
+
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-barber/waitlist/appt-booked'))
+    await waitFor(() => expect(screen.getByText(/You're on the waitlist/)).toBeInTheDocument())
+  })
+
+  it('deep-links from a waitlist notification straight to the confirm step when the slot is still open', async () => {
+    vi.mocked(customerApi.get).mockResolvedValue({
+      data: { slots: [{ start: '09:00', end: '09:30', available: true }] },
+    })
+
+    renderWizard('/test-barber/book?serviceId=svc-1&date=2026-08-10&time=09:00')
+
+    await waitFor(() => expect(screen.getByText('Your Details')).toBeInTheDocument())
+    expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-barber/availability/full?date=2026-08-10&serviceId=svc-1'))
   })
 })

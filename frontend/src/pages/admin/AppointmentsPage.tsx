@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t, serviceName, type TKey } from '../../lib/i18n'
 import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
+import CancelOptionsModal from '../../components/admin/CancelOptionsModal'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
@@ -38,8 +39,8 @@ export default function AppointmentsPage() {
   const [serviceFilter, setServiceFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | 'recurring' | 'onetime'>('all')
-  const [loading, setLoading] = useState<string | null>(null)
   const [showNewAppointment, setShowNewAppointment] = useState(false)
+  const [cancelTargetId, setCancelTargetId] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
   const { data: appointments = [] } = useQuery<Appointment[]>({
@@ -50,6 +51,11 @@ export default function AppointmentsPage() {
   const { data: services = [] } = useQuery<Service[]>({
     queryKey: ['services'],
     queryFn: () => api.get('/admin/services').then((r) => r.data),
+  })
+
+  const { data: settings } = useQuery<{ waitlistEnabled: boolean }>({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/admin/settings').then((r) => r.data),
   })
 
   const STATUS_LABEL: Record<string, TKey> = {
@@ -72,10 +78,8 @@ export default function AppointmentsPage() {
     setSearch(''); setServiceFilter(''); setStatusFilter(''); setTypeFilter('all')
   }
 
-  async function updateStatus(id: string, status: string) {
-    setLoading(id)
-    await api.patch(`/admin/appointments/${id}`, { status })
-    setLoading(null)
+  function onCancelFlowDone() {
+    setCancelTargetId(null)
     queryClient.invalidateQueries({ queryKey: ['appointments'] })
   }
 
@@ -161,8 +165,8 @@ export default function AppointmentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {a.status === 'CONFIRMED' && (
-                      <button disabled={loading === a.id} onClick={() => updateStatus(a.id, 'CANCELLED')}
-                        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50">{t(lang, 'cancel')}</button>
+                      <button onClick={() => setCancelTargetId(a.id)}
+                        className="text-xs text-red-400 hover:text-red-300">{t(lang, 'cancel')}</button>
                     )}
                   </td>
                 </tr>
@@ -173,6 +177,15 @@ export default function AppointmentsPage() {
       )}
       {showNewAppointment && (
         <NewAppointmentModal lang={lang} onClose={() => setShowNewAppointment(false)} />
+      )}
+      {cancelTargetId && (
+        <CancelOptionsModal
+          lang={lang}
+          appointmentId={cancelTargetId}
+          waitlistEnabled={settings?.waitlistEnabled ?? false}
+          onClose={() => setCancelTargetId(null)}
+          onDone={onCancelFlowDone}
+        />
       )}
     </div>
   )
