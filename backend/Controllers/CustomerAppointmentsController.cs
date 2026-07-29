@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
+using BarberSaas.Api.Filters;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -54,13 +55,23 @@ public class CustomerAppointmentsController(
     [HttpPost("{id}/cancel")]
     public async Task<IActionResult> Cancel(string id)
     {
-        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
+        var appt = await db.Appointments
+            .Include(a => a.Service).Include(a => a.Barber)
+            .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         await cancellationService.CancelFromCustomerAsync(appt);
         await db.SaveChangesAsync();
+
+        // CancelFromCustomerAsync doesn't always finalize the cancellation -- if the barber
+        // requires approval and can be reached, it just freezes the slot (PendingCancellationApproval
+        // = true, Status stays CONFIRMED) and texts them instead. Reflect whichever actually happened.
+        var verb = appt.PendingCancellationApproval ? "Requested cancellation (awaiting owner approval)" : "Cancelled appointment";
+        this.SetActivityDetail(
+            $"{verb}: {appt.Service.NameEn} with {appt.Barber.Name} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
+
         return Ok(new { ok = true });
     }
 
@@ -68,7 +79,7 @@ public class CustomerAppointmentsController(
     public async Task<IActionResult> Reschedule(string id, [FromBody] RescheduleRequest req)
     {
         var appt = await db.Appointments
-            .Include(a => a.Service)
+            .Include(a => a.Service).Include(a => a.Barber)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
@@ -86,6 +97,9 @@ public class CustomerAppointmentsController(
         await waitlist.ResolveForRebooking(appt.BarberId, appt.Date, req.StartTime);
         if (!await availability.TrySaveOrDetectConflict(appt.BarberId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
+
+        this.SetActivityDetail(
+            $"Rescheduled appointment: {appt.Service.NameEn} with {appt.Barber.Name} to {req.Date} at {req.StartTime}");
 
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }

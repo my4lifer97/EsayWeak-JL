@@ -1,5 +1,6 @@
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
+using BarberSaas.Api.Filters;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -79,6 +80,20 @@ public class AdminController(
         var b = await db.Barbers.FindAsync(BarberId);
         if (b is null) return NotFound();
 
+        // Captured before assignment so we can report only the fields that actually changed --
+        // the settings form always submits every field on every save, so "field is present in
+        // the request" alone would make virtually every save claim to change everything.
+        var oldName = b.Name;
+        var oldPhone = b.Phone;
+        var oldDescription = b.Description;
+        var oldLanguage = b.Language;
+        var oldTwilioNumber = b.TwilioNumber;
+        var oldTwilioSid = b.TwilioSid;
+        var oldMaxBookingsPerDay = b.MaxBookingsPerDay;
+        var oldMaxBookingsPerWeek = b.MaxBookingsPerWeek;
+        var oldWaitlistEnabled = b.WaitlistEnabled;
+        var oldRequireApprovalOnCustomerCancel = b.RequireApprovalOnCustomerCancel;
+
         if (req.Name is not null) b.Name = req.Name;
         if (req.Phone is not null) b.Phone = req.Phone;
         if (req.Description is not null) b.Description = req.Description;
@@ -94,6 +109,26 @@ public class AdminController(
         b.RequireApprovalOnCustomerCancel = req.RequireApprovalOnCustomerCancel;
 
         await db.SaveChangesAsync();
+
+        var changes = new List<string>();
+        if (b.Name != oldName) changes.Add($"name: \"{oldName}\" → \"{b.Name}\"");
+        if (b.Phone != oldPhone) changes.Add($"phone: \"{oldPhone}\" → \"{b.Phone}\"");
+        if (b.Description != oldDescription) changes.Add("description");
+        if (b.Language != oldLanguage) changes.Add($"language: {oldLanguage} → {b.Language}");
+        if (b.TwilioNumber != oldTwilioNumber) changes.Add($"WhatsApp number: \"{oldTwilioNumber}\" → \"{b.TwilioNumber}\"");
+        if (b.TwilioSid != oldTwilioSid) changes.Add("Twilio SID");
+        // Never log the token's actual value, before or after -- it's a live credential.
+        if (req.TwilioToken is not null) changes.Add("Twilio auth token");
+        if (b.MaxBookingsPerDay != oldMaxBookingsPerDay)
+            changes.Add($"max bookings/day: {oldMaxBookingsPerDay?.ToString() ?? "unlimited"} → {b.MaxBookingsPerDay?.ToString() ?? "unlimited"}");
+        if (b.MaxBookingsPerWeek != oldMaxBookingsPerWeek)
+            changes.Add($"max bookings/week: {oldMaxBookingsPerWeek?.ToString() ?? "unlimited"} → {b.MaxBookingsPerWeek?.ToString() ?? "unlimited"}");
+        if (b.WaitlistEnabled != oldWaitlistEnabled) changes.Add($"waitlist {(b.WaitlistEnabled ? "enabled" : "disabled")}");
+        if (b.RequireApprovalOnCustomerCancel != oldRequireApprovalOnCustomerCancel)
+            changes.Add($"cancellation approval {(b.RequireApprovalOnCustomerCancel ? "required" : "not required")}");
+
+        this.SetActivityDetail(changes.Count > 0 ? $"Updated settings: {string.Join(", ", changes)}" : "Updated settings (no fields changed)");
+
         return Ok(new { b.Id, b.Name, Language = b.Language.ToString() });
     }
 
@@ -132,6 +167,7 @@ public class AdminController(
         };
         db.Services.Add(service);
         await db.SaveChangesAsync();
+        this.SetActivityDetail($"Created service: {service.NameEn}");
         return StatusCode(201, ToServiceDto(service));
     }
 
@@ -153,6 +189,7 @@ public class AdminController(
         service.PhotoMode = photoMode;
 
         await db.SaveChangesAsync();
+        this.SetActivityDetail($"Updated service: {service.NameEn}");
         return Ok(ToServiceDto(service));
     }
 
@@ -163,6 +200,7 @@ public class AdminController(
         if (service is null) return NotFound();
         service.IsActive = false;
         await db.SaveChangesAsync();
+        this.SetActivityDetail($"Deleted service: {service.NameEn}");
         return Ok(new { ok = true });
     }
 
@@ -446,6 +484,8 @@ public class AdminController(
         if (!await availability.TrySaveOrDetectConflict(BarberId, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
+        this.SetActivityDetail($"Booked appointment: {service.NameEn} for {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} on {req.Date} at {req.StartTime}");
+
         return StatusCode(201, new DashboardAppointmentDto(
             appointment.Id, req.Date, appointment.StartTime, appointment.EndTime,
             "CONFIRMED", appointment.Notes,
@@ -462,16 +502,26 @@ public class AdminController(
         if (req.Status != nameof(AppointmentStatus.CANCELLED))
             return BadRequest(new { error = "Only cancelling is supported" });
 
-        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
+        var appt = await db.Appointments
+            .Include(a => a.Customer).Include(a => a.Service)
+            .FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
         if (appt is null) return NotFound();
 
         // The owner can cancel regardless of effective status (e.g. correcting a past/completed
         // appointment after the fact) -- unlike the customer-facing cancel endpoints. Only ask
         // WaitlistService to notify if it's actually still effectively CONFIRMED, since offering
         // an already-passed slot to the waitlist would be a meaningless notification.
+        var wasPendingApproval = appt.PendingCancellationApproval;
         var stillConfirmed = AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED";
-        await cancellationService.CancelAsync(appt, notifyWaitlist: req.NotifyWaitlist && stillConfirmed);
+        var offeredToWaitlist = req.NotifyWaitlist && stillConfirmed;
+        await cancellationService.CancelAsync(appt, notifyWaitlist: offeredToWaitlist);
         await db.SaveChangesAsync();
+
+        var verb = wasPendingApproval ? "Resolved cancellation request" : "Cancelled appointment";
+        var suffix = offeredToWaitlist ? " (offered to waitlist)" : "";
+        this.SetActivityDetail(
+            $"{verb}{suffix}: {appt.Service.NameEn} for {ActivityDetailExtensions.FullName(appt.Customer.Name, appt.Customer.FamilyName)} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
+
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }
 
@@ -500,7 +550,8 @@ public class AdminController(
     [HttpPatch("appointments/{id}/customer")]
     public async Task<IActionResult> ReplaceCustomer(string id, [FromBody] ReplaceCustomerRequest req)
     {
-        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
+        var appt = await db.Appointments.Include(a => a.Service)
+            .FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
         if (appt is null) return NotFound();
         if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
@@ -524,11 +575,18 @@ public class AdminController(
             customer = resolved!;
         }
 
+        var wasPendingApproval = appt.PendingCancellationApproval;
         appt.CustomerId = customer.Id;
         // Un-freezes it if the customer had already tried to cancel and the owner is choosing to
         // keep the slot filled (with someone else) instead of finalizing that cancellation.
         appt.PendingCancellationApproval = false;
         await db.SaveChangesAsync();
+
+        var verb = wasPendingApproval ? "Resolved cancellation request by replacing customer on appointment"
+            : "Replaced customer on appointment";
+        this.SetActivityDetail(
+            $"{verb}: {appt.Service.NameEn} on {appt.Date:yyyy-MM-dd} at {appt.StartTime} — now {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)}");
+
         return Ok(new { appt.Id, appt.CustomerId });
     }
 

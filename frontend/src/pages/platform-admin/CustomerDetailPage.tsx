@@ -2,13 +2,9 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
-import { ActivityLogTable } from './BarberDetailPage'
+import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
 
 type CustomerDetail = { id: string; name: string; familyName: string; phone: string; createdAt: string }
-type ActivityLogEntry = {
-  id: string; action: string; description: string; method: string; path: string
-  statusCode: number; ipAddress: string | null; createdAt: string; impersonated: boolean
-}
 
 export default function PlatformAdminCustomerDetailPage() {
   const { id } = useParams<{ id: string }>()

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
+using BarberSaas.Api.Filters;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -187,6 +188,8 @@ public class BookingController(
         if (!await availability.TrySaveOrDetectConflict(barber.Id, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
+        this.SetActivityDetail($"Booked appointment: {service.NameEn} with {barber.Name} on {req.Date} at {req.StartTime}");
+
         return StatusCode(201, new BookAppointmentResponse(appointment.Id, appointment.CancelToken));
     }
 
@@ -239,7 +242,7 @@ public class BookingController(
     public async Task<IActionResult> CancelAppointment(string slug, string id, [FromQuery] string token)
     {
         var appointment = await db.Appointments
-            .Include(a => a.Barber)
+            .Include(a => a.Barber).Include(a => a.Service)
             .FirstOrDefaultAsync(a => a.Id == id && a.Barber.Slug == slug);
 
         if (appointment is null) return NotFound(new { error = "Not found" });
@@ -249,6 +252,13 @@ public class BookingController(
 
         await cancellationService.CancelFromCustomerAsync(appointment);
         await db.SaveChangesAsync();
+
+        // See the equivalent note in CustomerAppointmentsController.Cancel -- this doesn't always
+        // finalize the cancellation; it may just freeze the slot pending owner approval instead.
+        var verb = appointment.PendingCancellationApproval ? "Requested cancellation (awaiting owner approval)" : "Cancelled appointment";
+        this.SetActivityDetail(
+            $"{verb}: {appointment.Service.NameEn} with {appointment.Barber.Name} on {appointment.Date:yyyy-MM-dd} at {appointment.StartTime}");
+
         return Ok(new { ok = true });
     }
 
@@ -277,6 +287,9 @@ public class BookingController(
         await waitlist.ResolveForRebooking(appointment.BarberId, appointment.Date, req.StartTime);
         if (!await availability.TrySaveOrDetectConflict(appointment.BarberId, req.Date, req.StartTime, appointment.EndTime))
             return Conflict(new { error = "Slot not available" });
+
+        this.SetActivityDetail(
+            $"Rescheduled appointment: {appointment.Service.NameEn} with {appointment.Barber.Name} to {req.Date} at {req.StartTime}");
 
         return Ok(new { appointment.Id, Status = appointment.Status.ToString() });
     }

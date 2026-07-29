@@ -1,5 +1,6 @@
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
+using BarberSaas.Api.Filters;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -123,14 +124,23 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         var created = await db.RecurringSeries
             .Include(s => s.Customer).Include(s => s.Service).Include(s => s.Skips)
             .FirstAsync(s => s.Id == series.Id);
+
+        this.SetActivityDetail(
+            $"Created recurring series: {service.NameEn} with {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} — every {(DayOfWeek)req.DayOfWeek}s at {req.StartTime}");
+
         return StatusCode(201, ToDto(created));
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
-        var series = await db.RecurringSeries.FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
+        var series = await db.RecurringSeries
+            .Include(s => s.Customer).Include(s => s.Service)
+            .FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
         if (series is null) return NotFound();
+
+        this.SetActivityDetail(
+            $"Deleted recurring series: {series.Service.NameEn} with {ActivityDetailExtensions.FullName(series.Customer.Name, series.Customer.FamilyName)} — every {(DayOfWeek)series.DayOfWeek}s at {series.StartTime}");
 
         // Deleting a series means the customer no longer has these slots reserved --
         // cancel every occurrence that hasn't happened yet, freeing the slot for others.

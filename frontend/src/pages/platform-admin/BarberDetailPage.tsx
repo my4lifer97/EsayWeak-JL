@@ -2,14 +2,11 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
+import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
 
 type BarberDetail = {
   id: string; name: string; email: string; slug: string; phone: string | null
   trialEndsAt: string; subscriptionStatus: string; createdAt: string
-}
-type ActivityLogEntry = {
-  id: string; action: string; description: string; method: string; path: string
-  statusCode: number; ipAddress: string | null; createdAt: string; impersonated: boolean
 }
 
 export default function PlatformAdminBarberDetailPage() {
@@ -77,39 +74,6 @@ export default function PlatformAdminBarberDetailPage() {
           <ActivityLogTable entries={activity} />
         </div>
       </div>
-    </div>
-  )
-}
-
-export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | undefined }) {
-  if (!entries) return <p className="text-gray-500 text-sm">Loading...</p>
-  if (entries.length === 0) return <p className="text-gray-500 text-sm">No activity recorded yet.</p>
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-gray-500 border-b border-gray-800">
-            <th className="py-2 pr-4 font-medium">Action</th>
-            <th className="py-2 pr-4 font-medium">Status</th>
-            <th className="py-2 pr-4 font-medium">When</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((e) => (
-            <tr key={e.id} className="border-b border-gray-800/60">
-              <td className="py-2 pr-4">
-                {e.description}
-                {e.impersonated && (
-                  <span className="ml-2 text-xs text-yellow-400/80">(via impersonation)</span>
-                )}
-              </td>
-              <td className="py-2 pr-4 text-gray-400">{e.method} {e.statusCode}</td>
-              <td className="py-2 pr-4 text-gray-500">{new Date(e.createdAt).toLocaleString()}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   )
 }

@@ -2,10 +2,25 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Models;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace BarberSaas.Api.Filters;
+
+// Lets an action attach a ready-made, human-readable sentence (naming the customer/service/
+// appointment it actually acted on) for ActivityLogFilter to use instead of the generic
+// Prettify(actionName) fallback. Opt-in per action -- call right before returning.
+public static class ActivityDetailExtensions
+{
+    public static void SetActivityDetail(this ControllerBase controller, string detail) =>
+        controller.HttpContext.Items["ActivityDetail"] = detail;
+
+    // Avoids a dangling double space in a detail sentence when FamilyName is blank (common for
+    // owner-created walk-in customers who only enter a first name).
+    public static string FullName(string name, string familyName) =>
+        string.IsNullOrWhiteSpace(familyName) ? name : $"{name} {familyName}";
+}
 
 // Logs every authenticated write request (POST/PUT/PATCH/DELETE) against the acting barber or
 // customer account, purely from claims every request already carries -- no existing controller
@@ -34,10 +49,12 @@ public class ActivityLogFilter(AppDbContext db) : IAsyncResultFilter
         var descriptor = context.ActionDescriptor as ControllerActionDescriptor;
         var action = descriptor is null ? request.Path.ToString() : $"{descriptor.ControllerName}.{descriptor.ActionName}";
 
+        var detail = context.HttpContext.Items["ActivityDetail"] as string;
+
         var log = new ActivityLog
         {
             Action = action,
-            Description = Prettify(descriptor?.ActionName ?? request.Path.ToString()),
+            Description = detail ?? Prettify(descriptor?.ActionName ?? request.Path.ToString()),
             Method = request.Method,
             Path = request.Path.ToString(),
             StatusCode = context.HttpContext.Response.StatusCode,
