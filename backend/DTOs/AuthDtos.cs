@@ -33,14 +33,15 @@ public record UpdateSettingsRequest(
 public record BookAppointmentRequest(
     string ServiceId, string Date, string StartTime,
     string CustomerName, string CustomerPhone, string? Notes,
-    string? GalleryPhotoId = null, string? CustomerPhotoUrl = null);
+    string? GalleryPhotoId = null, string? CustomerPhotoUrl = null, string? CustomerFamilyName = null);
 
 public record BookAppointmentResponse(string AppointmentId, string CancelToken);
 
 public record CreateAdminAppointmentRequest(
     string? CustomerId, string? CustomerName, string? CustomerPhone,
     string ServiceId, string Date, string StartTime, string? Notes,
-    string? GalleryPhotoId = null, string? CustomerPhotoUrl = null, bool Force = false);
+    string? GalleryPhotoId = null, string? CustomerPhotoUrl = null, bool Force = false,
+    string? CustomerFamilyName = null);
 
 public record RecurringSkipDto(string Date, string Reason);
 public record RecurringSeriesDto(
@@ -51,7 +52,7 @@ public record RecurringSeriesDto(
 public record CreateRecurringSeriesRequest(
     string? CustomerId, string? CustomerName, string? CustomerPhone,
     string ServiceId, int DayOfWeek, string StartTime, string? Notes,
-    string? StartDate = null, string? EndDate = null);
+    string? StartDate = null, string? EndDate = null, string? CustomerFamilyName = null);
 
 public record TimeSlot(string Start, string End);
 
@@ -61,7 +62,7 @@ public record SlotWithBookingInfoDto(string Start, string End, bool Available, s
 
 public record FullAvailabilityResponse(List<SlotWithBookingInfoDto> Slots);
 
-public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, string? CustomerPhone, string? WaitlistEntryId = null);
+public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, string? CustomerPhone, string? WaitlistEntryId = null, string? CustomerFamilyName = null);
 
 public record WaitlistEntrySummaryDto(string Id, string CustomerAccountId, string Name, string FamilyName, string Phone, string Status, DateTime CreatedAt);
 

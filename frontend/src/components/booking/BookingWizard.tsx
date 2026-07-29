@@ -29,9 +29,11 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const [service, setService] = useState<Service | null>(null)
   const [date, setDate] = useState('')
   const [slot, setSlot] = useState<Slot | null>(null)
-  const prefillName = () => (user ? `${user.name} ${user.familyName}`.trim() : '')
+  const prefillName = () => user?.name ?? ''
+  const prefillFamilyName = () => user?.familyName ?? ''
   const prefillPhone = () => user?.phone ?? ''
   const [name, setName] = useState(prefillName)
+  const [familyName, setFamilyName] = useState(prefillFamilyName)
   const [phone, setPhone] = useState(prefillPhone)
   const [notes, setNotes] = useState('')
   const [slots, setSlots] = useState<Slot[]>([])
@@ -127,7 +129,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     try {
       await customerApi.post(`/${barber.slug}/appointments`, {
         serviceId: service.id, date, startTime: slot.start,
-        customerName: name, customerPhone: phone, notes: notes || undefined,
+        customerName: name, customerFamilyName: familyName, customerPhone: phone, notes: notes || undefined,
         galleryPhotoId: selectedGalleryPhotoId ?? undefined,
         customerPhotoUrl: uploadedPhotoUrl ?? undefined,
       })
@@ -239,6 +241,11 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
+                <label htmlFor="booking-family-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'familyName')}</label>
+                <input id="booking-family-name" type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              </div>
+              <div>
                 <label htmlFor="booking-phone" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'phoneNumber')}</label>
                 <input id="booking-phone" type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
                   disabled={isAuthenticated}
@@ -297,7 +304,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                   <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'time')}</span><span className="text-white">{slot.start} – {slot.end}</span></div>
                 </div>
               )}
-              <button onClick={confirm} disabled={!name || !phone || !photoSatisfied || confirmLoading}
+              <button onClick={confirm} disabled={!name || !familyName || !phone || !photoSatisfied || confirmLoading}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-4 rounded-2xl transition-colors">
                 {confirmLoading ? '...' : t(lang, 'confirm')}
               </button>

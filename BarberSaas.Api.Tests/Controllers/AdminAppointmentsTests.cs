@@ -165,6 +165,24 @@ public class AdminAppointmentsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task CreateAppointment_NewCustomer_StoresFirstAndFamilyNameSeparately()
+    {
+        var slug = "admin-book-split-name";
+        var token = await RegisterAndLoginBarber("admin-book-split-name@example.com", slug);
+        var (barberId, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Sara", "+15559997777", serviceId, date.ToString("yyyy-MM-dd"), "09:00", null, CustomerFamilyName: "Connor"));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var db = Db();
+        var customer = db.Customers.Single(c => c.BarberId == barberId && c.Phone == "+15559997777");
+        Assert.Equal("Sara", customer.Name);
+        Assert.Equal("Connor", customer.FamilyName);
+    }
+
+    [Fact]
     public async Task CreateAppointment_ConflictingSlotWithoutForce_ReturnsConflict()
     {
         var slug = "admin-book-conflict";

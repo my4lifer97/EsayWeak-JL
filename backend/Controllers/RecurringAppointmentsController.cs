@@ -69,10 +69,17 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == req.CustomerPhone);
             if (customer is null)
             {
-                customer = new Customer { Name = req.CustomerName, Phone = req.CustomerPhone, BarberId = BarberId };
+                customer = new Customer
+                {
+                    Name = req.CustomerName, FamilyName = req.CustomerFamilyName ?? "", Phone = req.CustomerPhone, BarberId = BarberId,
+                };
                 db.Customers.Add(customer);
             }
-            else customer.Name = req.CustomerName;
+            else
+            {
+                customer.Name = req.CustomerName;
+                customer.FamilyName = req.CustomerFamilyName ?? "";
+            }
         }
 
         var today = DateTime.Now.Date;

@@ -155,12 +155,17 @@ public class BookingController(
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == barber.Id && c.Phone == phone);
         if (customer is null)
         {
-            customer = new Customer { Name = req.CustomerName, Phone = phone, BarberId = barber.Id, CustomerAccountId = customerAccountId };
+            customer = new Customer
+            {
+                Name = req.CustomerName, FamilyName = req.CustomerFamilyName ?? "", Phone = phone,
+                BarberId = barber.Id, CustomerAccountId = customerAccountId,
+            };
             db.Customers.Add(customer);
         }
         else
         {
             customer.Name = req.CustomerName;
+            customer.FamilyName = req.CustomerFamilyName ?? "";
             if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
         }
 

@@ -8,7 +8,7 @@ export type WaitlistEntrySummary = { id: string; name: string; familyName: strin
 
 export type CustomerSelection =
   | { customerId: string; label: string }
-  | { customerName: string; customerPhone: string }
+  | { customerName: string; customerFamilyName: string; customerPhone: string }
   | { waitlistEntryId: string; label: string }
 
 export default function CustomerPicker({
@@ -22,6 +22,7 @@ export default function CustomerPicker({
   const [mode, setMode] = useState<'existing' | 'new' | 'waitlist'>('existing')
   const [query, setQuery] = useState('')
   const [newName, setNewName] = useState('')
+  const [newFamilyName, setNewFamilyName] = useState('')
   const [newPhone, setNewPhone] = useState('')
 
   const { data: results = [], isFetching } = useQuery<CustomerSummary[]>({
@@ -42,7 +43,7 @@ export default function CustomerPicker({
   function switchMode(next: 'existing' | 'new' | 'waitlist') {
     setMode(next)
     onChange(null)
-    setQuery(''); setNewName(''); setNewPhone('')
+    setQuery(''); setNewName(''); setNewFamilyName(''); setNewPhone('')
   }
 
   return (
@@ -101,11 +102,15 @@ export default function CustomerPicker({
       ) : (
         <div className="space-y-2">
           <input type="text" required value={newName}
-            onChange={(e) => { setNewName(e.target.value); onChange({ customerName: e.target.value, customerPhone: newPhone }) }}
+            onChange={(e) => { setNewName(e.target.value); onChange({ customerName: e.target.value, customerFamilyName: newFamilyName, customerPhone: newPhone }) }}
             placeholder={t(lang, 'customerName')}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input type="text" required value={newFamilyName}
+            onChange={(e) => { setNewFamilyName(e.target.value); onChange({ customerName: newName, customerFamilyName: e.target.value, customerPhone: newPhone }) }}
+            placeholder={t(lang, 'familyName')}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <input type="tel" required value={newPhone}
-            onChange={(e) => { setNewPhone(e.target.value); onChange({ customerName: newName, customerPhone: e.target.value }) }}
+            onChange={(e) => { setNewPhone(e.target.value); onChange({ customerName: newName, customerFamilyName: newFamilyName, customerPhone: e.target.value }) }}
             placeholder={t(lang, 'phoneNumber')}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>

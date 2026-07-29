@@ -70,7 +70,7 @@ export default function RecurringAppointmentsPage() {
     try {
       await api.post('/admin/recurring', {
         ...('customerId' in customer ? { customerId: customer.customerId }
-          : 'customerName' in customer ? { customerName: customer.customerName, customerPhone: customer.customerPhone }
+          : 'customerName' in customer ? { customerName: customer.customerName, customerFamilyName: customer.customerFamilyName, customerPhone: customer.customerPhone }
           : {}),
         serviceId, dayOfWeek, startTime: slot.start, notes: notes || undefined,
         startDate: effectiveDate,

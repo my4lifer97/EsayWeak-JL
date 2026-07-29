@@ -124,6 +124,7 @@ describe('BookingWizard', () => {
     vi.mocked(customerApi.post).mockResolvedValue({ data: { appointmentId: 'appt-1', cancelToken: 'tok-1' } })
 
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane')
+    await userEvent.type(screen.getByLabelText('Family Name'), 'Doe')
     await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
@@ -132,6 +133,7 @@ describe('BookingWizard', () => {
       serviceId: 'svc-1',
       startTime: '09:00',
       customerName: 'Jane',
+      customerFamilyName: 'Doe',
       customerPhone: '+15551234567',
     }))
   })
@@ -141,6 +143,7 @@ describe('BookingWizard', () => {
     vi.mocked(customerApi.post).mockRejectedValue({ response: { data: { error: 'Slot no longer available' } } })
 
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane')
+    await userEvent.type(screen.getByLabelText('Family Name'), 'Doe')
     await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
@@ -166,12 +169,14 @@ describe('BookingWizard', () => {
     const phoneInput = await screen.findByLabelText('Phone Number') as HTMLInputElement
     expect(phoneInput.value).toBe('+15559998888')
     expect(phoneInput).toBeDisabled()
-    expect((screen.getByLabelText('First Name') as HTMLInputElement).value).toBe('Jane Doe')
+    expect((screen.getByLabelText('First Name') as HTMLInputElement).value).toBe('Jane')
+    expect((screen.getByLabelText('Family Name') as HTMLInputElement).value).toBe('Doe')
   })
 
   it('requires picking a gallery photo before confirming, for a service in gallery mode', async () => {
     await advanceToStep4('Gallery Cut')
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane')
+    await userEvent.type(screen.getByLabelText('Family Name'), 'Doe')
     await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
 
     expect(screen.getByText('Confirm Appointment')).toBeDisabled()
@@ -194,6 +199,7 @@ describe('BookingWizard', () => {
   it('requires uploading a photo before confirming, for a service in customer-upload mode', async () => {
     await advanceToStep4('Upload Cut')
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane')
+    await userEvent.type(screen.getByLabelText('Family Name'), 'Doe')
     await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
 
     expect(screen.getByText('Confirm Appointment')).toBeDisabled()

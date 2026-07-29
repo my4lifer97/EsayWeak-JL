@@ -37,7 +37,7 @@ export default function CancelOptionsModal({
       await api.patch(`/admin/appointments/${appointmentId}/customer`,
         'waitlistEntryId' in replaceSelection ? { waitlistEntryId: replaceSelection.waitlistEntryId }
           : 'customerId' in replaceSelection ? { customerId: replaceSelection.customerId }
-          : { customerName: replaceSelection.customerName, customerPhone: replaceSelection.customerPhone })
+          : { customerName: replaceSelection.customerName, customerFamilyName: replaceSelection.customerFamilyName, customerPhone: replaceSelection.customerPhone })
       onDone()
     } finally { setLoading(false) }
   }

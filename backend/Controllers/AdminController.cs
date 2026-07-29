@@ -397,7 +397,7 @@ public class AdminController(
         var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BarberId == BarberId && s.IsActive);
         if (service is null) return NotFound(new { error = "Service not found" });
 
-        var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone);
+        var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
         if (customerError is not null) return customerError;
 
         string? photoUrl = null;
@@ -519,7 +519,7 @@ public class AdminController(
         }
         else
         {
-            var (resolved, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone);
+            var (resolved, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
             if (error is not null) return error;
             customer = resolved!;
         }
@@ -534,7 +534,8 @@ public class AdminController(
 
     // Shared by CreateAppointment and ReplaceCustomer: resolve an existing customer by id, or
     // upsert one by phone (same as public booking's upsert-by-phone logic).
-    private async Task<(Customer? Customer, IActionResult? Error)> ResolveCustomer(string? customerId, string? customerName, string? customerPhone)
+    private async Task<(Customer? Customer, IActionResult? Error)> ResolveCustomer(
+        string? customerId, string? customerName, string? customerPhone, string? customerFamilyName = null)
     {
         if (!string.IsNullOrWhiteSpace(customerId))
         {
@@ -548,10 +549,14 @@ public class AdminController(
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == customerPhone);
         if (customer is null)
         {
-            customer = new Customer { Name = customerName, Phone = customerPhone, BarberId = BarberId };
+            customer = new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BarberId = BarberId };
             db.Customers.Add(customer);
         }
-        else customer.Name = customerName;
+        else
+        {
+            customer.Name = customerName;
+            customer.FamilyName = customerFamilyName ?? "";
+        }
         return (customer, null);
     }
 

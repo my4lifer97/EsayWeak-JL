@@ -46,7 +46,7 @@ export default function NewAppointmentModal({
     try {
       await api.post('/admin/appointments', {
         ...('customerId' in customer ? { customerId: customer.customerId }
-          : 'customerName' in customer ? { customerName: customer.customerName, customerPhone: customer.customerPhone }
+          : 'customerName' in customer ? { customerName: customer.customerName, customerFamilyName: customer.customerFamilyName, customerPhone: customer.customerPhone }
           : {}),
         serviceId, date, startTime, notes: notes || undefined, force: showCustomTime ? forceBook : false,
       })

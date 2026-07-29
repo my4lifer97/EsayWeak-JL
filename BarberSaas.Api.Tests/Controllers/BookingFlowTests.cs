@@ -92,6 +92,23 @@ public class BookingFlowTests : IntegrationTestBase
         Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(serviceId, date, startTime, "Customer", phone, null));
 
     [Fact]
+    public async Task Booking_StoresFirstAndFamilyNameSeparately()
+    {
+        var (barberToken, slug) = await RegisterAndLoginBarber("split-name-flow@example.com", "split-name-flow-shop");
+        var serviceId = await CreateService(barberToken);
+        var slot = await FirstAvailableSlot(slug, serviceId);
+
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(
+            serviceId, TestDate, slot, "Jane", "+15553330099", null, CustomerFamilyName: "Doe"));
+        Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
+        var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        var detail = await (await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}")).Content.ReadFromJsonAsync<AppointmentDetailDto>();
+        Assert.Equal("Jane", detail!.Customer.Name);
+        Assert.Equal("Doe", detail.Customer.FamilyName);
+    }
+
+    [Fact]
     public async Task GuestBooking_CanBookViewAndCancel_WithoutAuth()
     {
         var (barberToken, slug) = await RegisterAndLoginBarber("guest-flow@example.com", "guest-flow-shop");

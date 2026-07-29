@@ -68,13 +68,14 @@ describe('CancelOptionsModal', () => {
     await userEvent.click(screen.getByText('Replace Customer'))
     await userEvent.click(screen.getByText('New Customer'))
     await userEvent.type(screen.getByPlaceholderText('Customer Name'), 'Sam')
+    await userEvent.type(screen.getByPlaceholderText('Family Name'), 'Adams')
     await userEvent.type(screen.getByPlaceholderText('Phone Number'), '+15550001111')
     // The options-list "Replace Customer" button is gone once we're in the replace sub-view --
     // only the confirm button shares that label now, so this is unambiguous.
     await userEvent.click(screen.getByText('Replace Customer'))
 
     expect(api.patch).toHaveBeenCalledWith('/admin/appointments/appt-1/customer', {
-      customerName: 'Sam', customerPhone: '+15550001111',
+      customerName: 'Sam', customerFamilyName: 'Adams', customerPhone: '+15550001111',
     })
     expect(onDone).toHaveBeenCalledTimes(1)
   })
