@@ -57,12 +57,7 @@ if (!string.IsNullOrEmpty(builder.Configuration["Resend:ApiKey"]))
 else
     builder.Services.AddScoped<IEmailSender, DevEmailSender>();
 
-// Stripe.net reads the API key off this static property rather than via DI. Left unset (empty
-// string) until a real Stripe account exists -- BillingController checks for that and returns
-// 503 instead of letting the SDK throw on every call.
-var stripeSecretKey = builder.Configuration["Stripe:SecretKey"];
-if (!string.IsNullOrEmpty(stripeSecretKey))
-    Stripe.StripeConfiguration.ApiKey = stripeSecretKey;
+builder.Services.AddHttpClient<ICardcomService, CardcomService>();
 
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p

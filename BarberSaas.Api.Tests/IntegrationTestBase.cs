@@ -10,9 +10,11 @@ public abstract class IntegrationTestBase : IDisposable
     protected readonly TestWebApplicationFactory Factory;
     protected readonly HttpClient Client;
 
-    protected IntegrationTestBase()
+    protected IntegrationTestBase() : this(configureCardcom: false) { }
+
+    protected IntegrationTestBase(bool configureCardcom)
     {
-        Factory = new TestWebApplicationFactory();
+        Factory = new TestWebApplicationFactory(configureCardcom);
         Client = Factory.CreateClient();
     }
 

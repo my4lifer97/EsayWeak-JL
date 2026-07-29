@@ -8,8 +8,57 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/cron")]
-public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger, RecurringAppointmentService recurringAppointments, IWhatsAppSender whatsAppSender) : ControllerBase
+public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger, RecurringAppointmentService recurringAppointments, IWhatsAppSender whatsAppSender, ICardcomService cardcom) : ControllerBase
 {
+    [HttpGet("charge-subscriptions")]
+    public async Task<IActionResult> ChargeSubscriptions()
+    {
+        var cronSecret = config["CronSecret"];
+        var auth = Request.Headers.Authorization.FirstOrDefault();
+        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
+            return Unauthorized(new { error = "Unauthorized" });
+
+        var amount = decimal.Parse(config["Cardcom:MonthlyAmount"] ?? "120");
+        var now = DateTime.UtcNow;
+
+        var due = await db.Barbers
+            .Where(b => b.SubscriptionStatus == SubStatus.ACTIVE
+                && b.CardcomToken != null
+                && b.CardcomNextChargeAt != null
+                && b.CardcomNextChargeAt <= now)
+            .ToListAsync();
+
+        int charged = 0, failed = 0;
+        foreach (var barber in due)
+        {
+            try
+            {
+                var result = await cardcom.ChargeByTokenAsync(barber.CardcomToken!, amount, "Barber SaaS Monthly Subscription");
+                if (result.ResponseCode == 0)
+                {
+                    barber.CardcomNextChargeAt = barber.CardcomNextChargeAt!.Value.AddMonths(1);
+                    charged++;
+                }
+                else
+                {
+                    logger.LogWarning("Cardcom recurring charge failed for barber {BarberId}: {Code} {Description}",
+                        barber.Id, result.ResponseCode, result.Description);
+                    barber.SubscriptionStatus = SubStatus.EXPIRED;
+                    failed++;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Cardcom recurring charge threw for barber {BarberId}", barber.Id);
+                barber.SubscriptionStatus = SubStatus.EXPIRED;
+                failed++;
+            }
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { total = due.Count, charged, failed });
+    }
+
     [HttpGet("generate-recurring")]
     public async Task<IActionResult> GenerateRecurringAppointments()
     {

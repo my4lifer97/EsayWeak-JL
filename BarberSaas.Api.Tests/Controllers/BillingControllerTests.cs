@@ -5,9 +5,10 @@ using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
 
-// Stripe:SecretKey/PriceId/WebhookSecret ship as empty strings in appsettings.json (no Stripe
-// account exists yet) and TestWebApplicationFactory doesn't set them either -- these tests lock
-// in that the endpoints fail gracefully (503) rather than letting the Stripe SDK throw.
+// Cardcom:TerminalNumber/ApiName/ApiPassword ship as empty strings in appsettings.json (no
+// Cardcom account exists yet) and TestWebApplicationFactory only sets them when a test class
+// explicitly opts in via `: base(configureCardcom: true)` -- these tests lock in that the
+// endpoints fail gracefully (503) rather than attempting a Cardcom call.
 public class BillingControllerTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
@@ -30,7 +31,7 @@ public class BillingControllerTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task CheckoutSession_StripeNotConfigured_ReturnsServiceUnavailable()
+    public async Task CheckoutSession_CardcomNotConfigured_ReturnsServiceUnavailable()
     {
         var token = await RegisterAndLoginBarber("billing-unconfigured@example.com", "billing-unconfigured-shop");
         Authorize(Client, token);

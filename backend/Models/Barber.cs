@@ -24,8 +24,15 @@ public class Barber
     public string? TwilioToken { get; set; }
     public DateTime TrialEndsAt { get; set; }
     public SubStatus SubscriptionStatus { get; set; } = SubStatus.TRIAL;
-    public string? StripeCustomerId { get; set; }
-    public string? StripeSubscriptionId { get; set; }
+    // Cardcom's reusable charge token (from LowProfile/Create with Operation=ChargeAndCreateToken).
+    // Null until the barber's first successful payment.
+    public string? CardcomToken { get; set; }
+    // Latest Cardcom LowProfileId whose result has been processed -- webhook idempotency guard,
+    // since Cardcom's webhook may redeliver the same notification.
+    public string? CardcomLastLowProfileId { get; set; }
+    // Drives the recurring-charge cron job (GET /api/cron/charge-subscriptions): null until the
+    // first successful charge, then bumped by exactly 1 month on each successful recurring charge.
+    public DateTime? CardcomNextChargeAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool EmailVerified { get; set; } = false;
 

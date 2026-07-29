@@ -100,7 +100,7 @@ barber-saas/
 │   │   ├── CustomerAppointmentsController.cs  # GET/PATCH /api/customer/appointments/* (CustomerOnly)
 │   │   ├── RecurringAppointmentsController.cs # GET/POST/DELETE /api/admin/recurring — owner-managed recurring series
 │   │   ├── WhatsAppController.cs          # Twilio webhook — replies to customer messages
-│   │   └── CronController.cs              # GET /api/cron/reminders, /api/cron/generate-recurring
+│   │   └── CronController.cs              # GET /api/cron/reminders, /api/cron/generate-recurring, /api/cron/charge-subscriptions
 │   ├── Data/AppDbContext.cs         # EF Core DbContext, indexes, relationships
 │   ├── DTOs/AuthDtos.cs             # All request/response record types
 │   ├── Migrations/                  # EF migrations
@@ -206,6 +206,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `POST /api/whatsapp/webhook` — Twilio webhook; validates X-Twilio-Signature; replies in barber's language to book/cancel/reschedule keywords
 - `GET /api/cron/reminders` — send 24h WhatsApp reminders; requires `Authorization: Bearer <CronSecret>`
 - `GET /api/cron/generate-recurring` — extends every active `RecurringSeries`' generated `Appointment` rows to the rolling horizon (default 8 weeks, `RecurringGeneration:HorizonWeeks` config); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, created, skipped }`; meant to run daily via an external scheduler — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
+- `GET /api/cron/charge-subscriptions` — charges every `ACTIVE` barber with a stored `CardcomToken` whose `CardcomNextChargeAt` has passed, via Cardcom's token-charge API; same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, charged, failed }`; a successful charge bumps `CardcomNextChargeAt` by 1 month, a failed one sets `SubscriptionStatus = EXPIRED` — see [Billing (Cardcom)](#billing-cardcom)
 
 ### Frontend Routes
 - `/` — landing/marketing page
@@ -312,10 +313,11 @@ Jwt:Audience                barbersaas-frontend
 AppUrl                      Public frontend URL (used in WhatsApp message links)
 AllowedOrigin               CORS allowed origin (frontend URL)
 RecurringGeneration:HorizonWeeks   How many weeks ahead RecurringAppointmentService keeps generated (optional, defaults to 8)
-Stripe:SecretKey            Stripe secret API key -- billing is disabled (503) until this is set
-Stripe:PublishableKey       Stripe publishable key (currently unused server-side; kept for a future client-side Elements flow)
-Stripe:PriceId              Stripe Price ID for the ₪120/month subscription plan
-Stripe:WebhookSecret        Signing secret for the `/api/billing/webhook` endpoint -- webhook returns 503 until this is set
+BackendUrl                  Public backend URL (used to build Cardcom's WebHookUrl callback -- must be a URL Cardcom's servers can reach, unlike AppUrl which points at the frontend)
+Cardcom:TerminalNumber      Cardcom terminal number -- billing is disabled (503) until this is set
+Cardcom:ApiName             Cardcom API name (sent on LowProfile/Create and GetLpResult)
+Cardcom:ApiPassword         Cardcom API password (sent on the recurring token-charge call only, not on LowProfile/Create)
+Cardcom:MonthlyAmount       Subscription amount in ILS, as a string (default "120")
 ```
 
 `Jwt:Secret` and `CronSecret` are **not** in `appsettings.json` — there's no default, so the app fails fast if they're missing rather than silently falling back to a guessable value.
@@ -323,8 +325,12 @@ Stripe:WebhookSecret        Signing secret for the `/api/billing/webhook` endpoi
 - **Production**: supply both via environment variables (`Jwt__Secret`, `CronSecret`) or `appsettings.Production.json` (gitignored) — never commit real values.
 - Rotating either secret invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug.
 
-### Billing (Stripe)
-`Stripe:SecretKey`/`Stripe:PriceId`/`Stripe:WebhookSecret` ship as empty strings in `appsettings.json` (no Stripe account exists yet) — `BillingController` checks for them and returns `503 { error: "Payments are not yet configured..." }` instead of crashing when they're blank. Once a real Stripe account exists, set all three the same way as `Jwt:Secret`/`CronSecret`: `dotnet user-secrets` locally, environment variables (`Stripe__SecretKey`, `Stripe__PriceId`, `Stripe__WebhookSecret`) in production. `Program.cs` sets the static `Stripe.StripeConfiguration.ApiKey` from `Stripe:SecretKey` at startup if present.
-- `POST /api/billing/checkout-session` (`BarberOnly`) creates a Stripe Checkout Session (`Mode = subscription`, single line item from `Stripe:PriceId`) and returns `{ url }` for the frontend to redirect to.
-- `POST /api/billing/webhook` (anonymous, signature-verified) handles `checkout.session.completed` (sets `Barber.StripeCustomerId`/`StripeSubscriptionId`, flips `SubscriptionStatus` to `ACTIVE`) and `customer.subscription.deleted` / `invoice.payment_failed` (flips it to `EXPIRED`).
-- `SettingsPage.tsx`'s "Subscribe Now" button (shown whenever `subscriptionStatus !== 'ACTIVE'`) calls the checkout-session endpoint and redirects the browser to the returned Stripe URL.
+### Billing (Cardcom)
+Billed via Cardcom (an Israeli payment gateway) using its "Low Profile" hosted-payment-page API (v11: `https://secure.cardcom.solutions/api/v11/...`), through `Services/ICardcomService`/`CardcomService.cs` (hand-rolled `HttpClient` wrapper -- Cardcom has no official .NET SDK, unlike Stripe.net which this replaced). `Cardcom:TerminalNumber`/`ApiName`/`ApiPassword` ship as empty strings in `appsettings.json` (no Cardcom account exists yet) — `BillingController` checks for `TerminalNumber`/`ApiName` and returns `503 { error: "Payments are not yet configured..." }` instead of attempting a call when they're blank. Once a real Cardcom account exists, set all three the same way as `Jwt:Secret`/`CronSecret`: `dotnet user-secrets` locally, environment variables (`Cardcom__TerminalNumber`, `Cardcom__ApiName`, `Cardcom__ApiPassword`) in production.
+
+Unlike Stripe, Cardcom has no server-side "Subscription" object that auto-recurs — the initial payment (`Operation=ChargeAndCreateToken`) also mints a reusable charge token, which the app's own cron job (`GET /api/cron/charge-subscriptions`, see above) charges again every billing cycle.
+
+- `POST /api/billing/checkout-session` (`BarberOnly`) calls `CreateLowProfileAsync` (`ReturnValue = barber.Id`, so the webhook can resolve the barber directly instead of scanning by a stored customer id) and returns `{ url }` — the Cardcom-hosted payment page — for the frontend to redirect to. Redirects land back on `?billing=success`/`?billing=cancelled`.
+- `POST /api/billing/webhook` (anonymous) — Cardcom's webhook has no HMAC signature like Stripe's, so the inbound POST is treated only as a trigger carrying a `LowProfileId`; the handler then calls `GetLowProfileResultAsync` server-to-server to fetch the **verified** result and only acts on that, never on fields taken directly from the webhook body. On a verified result with a `TokenNumber`, sets `Barber.CardcomToken`/`CardcomNextChargeAt` (+1 month) and flips `SubscriptionStatus` to `ACTIVE`. `Barber.CardcomLastLowProfileId` guards against a duplicate webhook redelivery re-processing the same `LowProfileId`.
+- `SettingsPage.tsx`'s "Subscribe Now" button (shown whenever `subscriptionStatus !== 'ACTIVE'`) calls the checkout-session endpoint and redirects the browser to the returned Cardcom URL; on return with `?billing=success` it shows a brief banner and refetches settings (immediately and again ~3s later) since `ACTIVE` arrives asynchronously via the webhook, not synchronously on redirect.
+- Several exact Cardcom JSON field/endpoint names (`GetLpResult`'s path, the recurring token-charge call's shape) are best-effort reconstructions flagged with comments in `CardcomService.cs` — Cardcom's docs are a JS-rendered SPA that couldn't be scraped when this was built. Verify against `https://secure.cardcom.solutions/Api/v11/Docs` or their Postman collection, and smoke-test against their public sandbox (Terminal `1000`, ApiName `demo`, card `4580000000000000`), before relying on this in production.

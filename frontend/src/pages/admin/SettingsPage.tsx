@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { api } from '../../lib/api'
@@ -42,6 +43,26 @@ export default function SettingsPage() {
   const [logoError, setLogoError] = useState('')
   const [billingLoading, setBillingLoading] = useState(false)
   const [billingError, setBillingError] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [showBillingSuccessBanner, setShowBillingSuccessBanner] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('billing') !== 'success') return
+    // SubscriptionStatus flips to ACTIVE asynchronously via the Cardcom webhook, not
+    // synchronously on redirect -- refetch once immediately and again ~3s later to catch the
+    // common case where the webhook lands within a couple seconds of the redirect. The banner
+    // stays up for that same window rather than disappearing the instant the ?billing= param
+    // is stripped from the URL below.
+    setShowBillingSuccessBanner(true)
+    queryClient.invalidateQueries({ queryKey: ['settings'] })
+    const timer = setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] })
+      setShowBillingSuccessBanner(false)
+    }, 3000)
+    setSearchParams((prev) => { prev.delete('billing'); return prev }, { replace: true })
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (barber && !initialized) {
     setForm({
@@ -123,6 +144,11 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-bold text-white mb-6">{t(lang, 'settings')}</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
         {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">{error}</div>}
+        {showBillingSuccessBanner && (
+          <div className="bg-blue-900/40 border border-blue-700 text-blue-300 text-sm rounded-lg px-4 py-3">
+            {t(lang, 'billingRedirecting')}
+          </div>
+        )}
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
           <h2 className="text-white font-semibold mb-3">{t(lang, 'subscription')}</h2>

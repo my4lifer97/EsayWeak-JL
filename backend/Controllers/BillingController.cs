@@ -1,17 +1,15 @@
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Models;
+using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Stripe;
-using Stripe.Checkout;
 using System.Security.Claims;
 
 namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/billing")]
-public class BillingController(AppDbContext db, IConfiguration config, ILogger<BillingController> logger) : ControllerBase
+public class BillingController(AppDbContext db, IConfiguration config, ICardcomService cardcom, ILogger<BillingController> logger) : ControllerBase
 {
     private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -19,106 +17,78 @@ public class BillingController(AppDbContext db, IConfiguration config, ILogger<B
     [Authorize(Policy = "BarberOnly")]
     public async Task<IActionResult> CreateCheckoutSession()
     {
-        var secretKey = config["Stripe:SecretKey"];
-        var priceId = config["Stripe:PriceId"];
-        if (string.IsNullOrEmpty(secretKey) || string.IsNullOrEmpty(priceId))
+        var terminalNumber = config["Cardcom:TerminalNumber"];
+        var apiName = config["Cardcom:ApiName"];
+        if (string.IsNullOrEmpty(terminalNumber) || string.IsNullOrEmpty(apiName))
             return StatusCode(503, new { error = "Payments are not yet configured. Please contact support." });
 
         var barber = await db.Barbers.FindAsync(BarberId);
         if (barber is null) return NotFound();
 
         var appUrl = config["AppUrl"] ?? "";
-        var options = new SessionCreateOptions
-        {
-            Mode = "subscription",
-            LineItems = [new SessionLineItemOptions { Price = priceId, Quantity = 1 }],
-            SuccessUrl = $"{appUrl}/admin/settings?billing=success",
-            CancelUrl = $"{appUrl}/admin/settings?billing=cancelled",
-            ClientReferenceId = barber.Id,
-        };
-        // Reuse the existing Stripe customer on repeat visits instead of letting Stripe create a
-        // new one every time the barber clicks "Subscribe Now" (e.g. after cancelling checkout).
-        if (barber.StripeCustomerId is not null)
-            options.Customer = barber.StripeCustomerId;
-        else
-            options.CustomerEmail = barber.Email;
+        var backendUrl = config["BackendUrl"] ?? "";
+        var amount = decimal.Parse(config["Cardcom:MonthlyAmount"] ?? "120");
 
-        var session = await new SessionService().CreateAsync(options);
-        return Ok(new { url = session.Url });
+        var result = await cardcom.CreateLowProfileAsync(new CardcomLowProfileCreateParams(
+            Amount: amount,
+            ProductName: "Barber SaaS Monthly Subscription",
+            SuccessRedirectUrl: $"{appUrl}/admin/settings?billing=success",
+            FailedRedirectUrl: $"{appUrl}/admin/settings?billing=cancelled",
+            WebHookUrl: $"{backendUrl}/api/billing/webhook",
+            ReturnValue: barber.Id));
+
+        if (result.ResponseCode != 0 || string.IsNullOrEmpty(result.Url))
+        {
+            logger.LogError("Cardcom LowProfile/Create failed: {Code} {Description}", result.ResponseCode, result.Description);
+            return StatusCode(502, new { error = "Could not start checkout. Please try again." });
+        }
+
+        return Ok(new { url = result.Url });
     }
 
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook()
     {
-        var webhookSecret = config["Stripe:WebhookSecret"];
-        if (string.IsNullOrEmpty(webhookSecret))
+        var terminalNumber = config["Cardcom:TerminalNumber"];
+        if (string.IsNullOrEmpty(terminalNumber))
             return StatusCode(503, new { error = "Webhook is not yet configured." });
 
-        var json = await new StreamReader(Request.Body).ReadToEndAsync();
-        Event stripeEvent;
-        try
+        // Cardcom's webhook isn't HMAC-signed like Stripe's, so the inbound POST is treated purely
+        // as a trigger ("something happened for this LowProfileId") -- exact delivery shape
+        // (query string vs. form field) is a best guess, checked both ways below. The handler
+        // never acts on fields taken directly from this request; it re-fetches the verified
+        // result from Cardcom server-to-server before mutating any billing state.
+        var lowProfileId = Request.Query["LowProfileId"].FirstOrDefault()
+            ?? Request.Form["LowProfileId"].FirstOrDefault();
+        if (string.IsNullOrEmpty(lowProfileId))
         {
-            stripeEvent = EventUtility.ConstructEvent(json, Request.Headers["Stripe-Signature"], webhookSecret);
-        }
-        catch (StripeException ex)
-        {
-            logger.LogWarning(ex, "Stripe webhook signature verification failed");
-            return BadRequest();
+            logger.LogWarning("Cardcom webhook received without a LowProfileId");
+            return Ok(); // ack anyway -- nothing we can look up
         }
 
-        switch (stripeEvent.Type)
+        var verified = await cardcom.GetLowProfileResultAsync(lowProfileId);
+        if (verified.ResponseCode != 0 || string.IsNullOrEmpty(verified.ReturnValue))
         {
-            case "checkout.session.completed":
-            {
-                if (stripeEvent.Data.Object is Session session)
-                {
-                    var barber = await ResolveBarber(session.ClientReferenceId, session.CustomerId);
-                    if (barber is not null)
-                    {
-                        barber.StripeCustomerId = session.CustomerId;
-                        barber.StripeSubscriptionId = session.SubscriptionId;
-                        barber.SubscriptionStatus = SubStatus.ACTIVE;
-                        await db.SaveChangesAsync();
-                    }
-                }
-                break;
-            }
-            case "customer.subscription.deleted":
-            case "invoice.payment_failed":
-            {
-                var customerId = stripeEvent.Data.Object switch
-                {
-                    Subscription sub => sub.CustomerId,
-                    Invoice inv => inv.CustomerId,
-                    _ => null,
-                };
-                if (customerId is not null)
-                {
-                    var barber = await db.Barbers.FirstOrDefaultAsync(b => b.StripeCustomerId == customerId);
-                    if (barber is not null)
-                    {
-                        barber.SubscriptionStatus = SubStatus.EXPIRED;
-                        await db.SaveChangesAsync();
-                    }
-                }
-                break;
-            }
-            // Any other event type: acknowledge with 2xx so Stripe doesn't retry -- we simply
-            // don't act on it.
+            logger.LogWarning("Cardcom LowProfile {Id} verification failed or had no ReturnValue: {Code} {Description}",
+                lowProfileId, verified.ResponseCode, verified.Description);
+            return Ok();
         }
+
+        var barber = await db.Barbers.FindAsync(verified.ReturnValue);
+        if (barber is null) return Ok();
+
+        // Idempotency: ignore a duplicate webhook delivery for a LowProfileId already processed.
+        if (barber.CardcomLastLowProfileId == lowProfileId) return Ok();
+
+        if (!string.IsNullOrEmpty(verified.TokenNumber))
+        {
+            barber.CardcomToken = verified.TokenNumber;
+            barber.SubscriptionStatus = SubStatus.ACTIVE;
+            barber.CardcomNextChargeAt = DateTime.UtcNow.AddMonths(1);
+        }
+        barber.CardcomLastLowProfileId = lowProfileId;
+        await db.SaveChangesAsync();
 
         return Ok();
-    }
-
-    private async Task<Barber?> ResolveBarber(string? clientReferenceId, string? customerId)
-    {
-        if (!string.IsNullOrEmpty(clientReferenceId))
-        {
-            var barber = await db.Barbers.FindAsync(clientReferenceId);
-            if (barber is not null) return barber;
-        }
-        if (!string.IsNullOrEmpty(customerId))
-            return await db.Barbers.FirstOrDefaultAsync(b => b.StripeCustomerId == customerId);
-        return null;
     }
 }

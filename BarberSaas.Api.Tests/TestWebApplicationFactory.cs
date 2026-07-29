@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -23,14 +24,25 @@ namespace BarberSaas.Api.Tests;
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
+    private readonly bool _configureCardcom;
 
     public const string JwtSecret = "test-jwt-signing-secret-at-least-32-chars-long";
     public const string JwtIssuer = "barbersaas-api-test";
     public const string JwtAudience = "barbersaas-frontend-test";
     public const string CronSecret = "test-cron-secret";
+    public const string CardcomTerminalNumber = "1000";
+    public const string CardcomApiName = "test-api-name";
+    public const string CardcomApiPassword = "test-api-password";
 
-    public TestWebApplicationFactory()
+    // configureCardcom: opt-in per test class (default false) so the existing "Cardcom not
+    // configured -> 503" tests keep exercising that path by default, while tests that need a
+    // working checkout/webhook/cron flow can request Cardcom:* config via
+    // ConfigureAppConfiguration below -- read lazily per-request by BillingController/
+    // CronController (unlike Jwt:Secret), so this timing is safe (see the ConfigureAppConfiguration
+    // note further down).
+    public TestWebApplicationFactory(bool configureCardcom = false)
     {
+        _configureCardcom = configureCardcom;
         _connection.Open();
 
         // Program.cs reads Jwt:Secret into a plain variable at the top of its top-level
@@ -59,6 +71,16 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Development");
 
+        if (_configureCardcom)
+        {
+            builder.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Cardcom:TerminalNumber"] = CardcomTerminalNumber,
+                ["Cardcom:ApiName"] = CardcomApiName,
+                ["Cardcom:ApiPassword"] = CardcomApiPassword,
+            }));
+        }
+
         builder.ConfigureServices(services =>
         {
             // AddDbContext registers its options-configuration delegate additively
@@ -75,6 +97,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IWhatsAppSender>();
             services.AddSingleton<IWhatsAppSender, FakeWhatsAppSender>();
 
+            // Real Cardcom calls would dial out to the real gateway -- always use the fake
+            // regardless of _configureCardcom, which only controls whether Cardcom:* config keys
+            // are present (i.e. whether BillingController/CronController even attempt a call).
+            services.RemoveAll<ICardcomService>();
+            services.AddSingleton<ICardcomService, FakeCardcomService>();
+
             using var scope = services.BuildServiceProvider().CreateScope();
             scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
         });
@@ -87,6 +115,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     public FakeWhatsAppSender WhatsAppSender => (FakeWhatsAppSender)Services.GetRequiredService<IWhatsAppSender>();
+    public FakeCardcomService Cardcom => (FakeCardcomService)Services.GetRequiredService<ICardcomService>();
 
     protected override void Dispose(bool disposing)
     {
