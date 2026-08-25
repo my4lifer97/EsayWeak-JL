@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "start": "serve -s dist -l $PORT",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
@@ -20,7 +21,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-i18next": "^17.0.8",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.0",
+    "serve": "^14.2.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
