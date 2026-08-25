@@ -71,6 +71,7 @@ public class AdminController(
 
         b.Logo = $"/api/uploads/logos/{fileName}";
         await db.SaveChangesAsync();
+        this.SetActivityDetail("Uploaded business logo");
         return Ok(new { logo = b.Logo });
     }
 
@@ -167,7 +168,7 @@ public class AdminController(
         };
         db.Services.Add(service);
         await db.SaveChangesAsync();
-        this.SetActivityDetail($"Created service: {service.NameEn}");
+        this.SetActivityDetail($"Created service: {service.NameEn} ({service.DurationMinutes} min, ₪{service.Price:F2}, {DescribePhotoMode(service.PhotoMode)})");
         return StatusCode(201, ToServiceDto(service));
     }
 
@@ -181,6 +182,15 @@ public class AdminController(
             .FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
         if (service is null) return NotFound();
 
+        // Captured before assignment so we can report only the fields that actually changed,
+        // same approach as UpdateSettings/SaveWorkingHours above.
+        var oldNameEn = service.NameEn;
+        var oldNameAr = service.NameAr;
+        var oldNameHe = service.NameHe;
+        var oldDuration = service.DurationMinutes;
+        var oldPrice = service.Price;
+        var oldPhotoMode = service.PhotoMode;
+
         service.NameEn = req.NameEn;
         service.NameAr = req.NameAr;
         service.NameHe = req.NameHe;
@@ -189,7 +199,18 @@ public class AdminController(
         service.PhotoMode = photoMode;
 
         await db.SaveChangesAsync();
-        this.SetActivityDetail($"Updated service: {service.NameEn}");
+
+        var changes = new List<string>();
+        if (service.NameEn != oldNameEn) changes.Add($"name: \"{oldNameEn}\" → \"{service.NameEn}\"");
+        if (service.NameAr != oldNameAr || service.NameHe != oldNameHe) changes.Add("translated names");
+        if (service.DurationMinutes != oldDuration) changes.Add($"duration: {oldDuration} min → {service.DurationMinutes} min");
+        if (service.Price != oldPrice) changes.Add($"price: ₪{oldPrice:F2} → ₪{service.Price:F2}");
+        if (service.PhotoMode != oldPhotoMode) changes.Add($"photo mode: {DescribePhotoMode(oldPhotoMode)} → {DescribePhotoMode(service.PhotoMode)}");
+
+        this.SetActivityDetail(changes.Count > 0
+            ? $"Updated service: {string.Join(", ", changes)}"
+            : $"Updated service: {service.NameEn} (no changes)");
+
         return Ok(ToServiceDto(service));
     }
 
@@ -200,9 +221,17 @@ public class AdminController(
         if (service is null) return NotFound();
         service.IsActive = false;
         await db.SaveChangesAsync();
-        this.SetActivityDetail($"Deleted service: {service.NameEn}");
+        this.SetActivityDetail($"Deleted service: {service.NameEn} ({service.DurationMinutes} min, ₪{service.Price:F2})");
         return Ok(new { ok = true });
     }
+
+    private static string DescribePhotoMode(ServicePhotoMode mode) => mode switch
+    {
+        ServicePhotoMode.OwnerGallery => "owner gallery photos",
+        ServicePhotoMode.CustomerUpload => "customer-uploaded photo",
+        ServicePhotoMode.Both => "owner gallery or customer-uploaded photo",
+        _ => "no reference photo",
+    };
 
     // ─── Service gallery photos ─────────────────────────────────────────────
 
@@ -234,13 +263,15 @@ public class AdminController(
         db.ServiceGalleryPhotos.Add(photo);
         await db.SaveChangesAsync();
 
+        this.SetActivityDetail($"Uploaded gallery photo for service: {service.NameEn}");
+
         return StatusCode(201, new ServiceGalleryPhotoDto(photo.Id, photo.Url));
     }
 
     [HttpDelete("services/{id}/gallery/{photoId}")]
     public async Task<IActionResult> DeleteGalleryPhoto(string id, string photoId)
     {
-        var photo = await db.ServiceGalleryPhotos
+        var photo = await db.ServiceGalleryPhotos.Include(p => p.Service)
             .FirstOrDefaultAsync(p => p.Id == photoId && p.ServiceId == id && p.Service.BarberId == BarberId);
         if (photo is null) return NotFound();
 
@@ -249,6 +280,9 @@ public class AdminController(
 
         db.ServiceGalleryPhotos.Remove(photo);
         await db.SaveChangesAsync();
+
+        this.SetActivityDetail($"Deleted gallery photo for service: {photo.Service.NameEn}");
+
         return Ok(new { ok = true });
     }
 
@@ -273,6 +307,11 @@ public class AdminController(
     [HttpPost("schedule")]
     public async Task<IActionResult> SaveWorkingHours([FromBody] List<WorkingHoursDto> hours)
     {
+        // Captured before assignment so we can report only the days that actually changed --
+        // the schedule form always submits all 7 days on every save, mirroring UpdateSettings.
+        var oldByDay = await db.WorkingHours.Where(w => w.BarberId == BarberId)
+            .ToDictionaryAsync(w => w.DayOfWeek, w => (w.StartTime, w.EndTime, w.IsActive));
+
         foreach (var h in hours)
         {
             var existing = await db.WorkingHours
@@ -296,6 +335,24 @@ public class AdminController(
             }
         }
         await db.SaveChangesAsync();
+
+        var changes = new List<string>();
+        foreach (var h in hours.OrderBy(h => h.DayOfWeek))
+        {
+            var dayName = ((DayOfWeek)h.DayOfWeek).ToString();
+            if (!oldByDay.TryGetValue(h.DayOfWeek, out var old))
+            {
+                if (h.IsActive) changes.Add($"{dayName}: enabled ({h.StartTime}–{h.EndTime})");
+                continue;
+            }
+            if (old.IsActive != h.IsActive)
+                changes.Add(h.IsActive ? $"{dayName}: enabled ({h.StartTime}–{h.EndTime})" : $"{dayName}: disabled");
+            else if (h.IsActive && (old.StartTime != h.StartTime || old.EndTime != h.EndTime))
+                changes.Add($"{dayName}: {old.StartTime}–{old.EndTime} → {h.StartTime}–{h.EndTime}");
+        }
+
+        this.SetActivityDetail(changes.Count > 0 ? $"Updated working hours: {string.Join(", ", changes)}" : "Updated working hours (no changes)");
+
         return Ok(new { ok = true });
     }
 
@@ -305,6 +362,7 @@ public class AdminController(
         var br = new Break { BarberId = BarberId, DayOfWeek = req.DayOfWeek, StartTime = req.StartTime, EndTime = req.EndTime };
         db.Breaks.Add(br);
         await db.SaveChangesAsync();
+        this.SetActivityDetail($"Added break: {(DayOfWeek)br.DayOfWeek}s {br.StartTime}–{br.EndTime}");
         return StatusCode(201, new BreakDto(br.Id, br.DayOfWeek, br.StartTime, br.EndTime));
     }
 
@@ -315,6 +373,7 @@ public class AdminController(
         if (br is null) return NotFound();
         db.Breaks.Remove(br);
         await db.SaveChangesAsync();
+        this.SetActivityDetail($"Deleted break: {(DayOfWeek)br.DayOfWeek}s {br.StartTime}–{br.EndTime}");
         return Ok(new { ok = true });
     }
 
@@ -331,6 +390,11 @@ public class AdminController(
         };
         db.BlockedSlots.Add(slot);
         await db.SaveChangesAsync();
+
+        var timeRange = slot.StartTime is not null && slot.EndTime is not null ? $" {slot.StartTime}–{slot.EndTime}" : " (full day)";
+        var reasonSuffix = string.IsNullOrWhiteSpace(slot.Reason) ? "" : $" — {slot.Reason}";
+        this.SetActivityDetail($"Blocked {req.Date}{timeRange}{reasonSuffix}");
+
         return StatusCode(201, new BlockedSlotDto(slot.Id, req.Date, slot.StartTime, slot.EndTime, slot.Reason));
     }
 
@@ -341,6 +405,10 @@ public class AdminController(
         if (slot is null) return NotFound();
         db.BlockedSlots.Remove(slot);
         await db.SaveChangesAsync();
+
+        var timeRange = slot.StartTime is not null && slot.EndTime is not null ? $" {slot.StartTime}–{slot.EndTime}" : " (full day)";
+        this.SetActivityDetail($"Unblocked {slot.Date:yyyy-MM-dd}{timeRange}");
+
         return Ok(new { ok = true });
     }
 
@@ -439,13 +507,13 @@ public class AdminController(
         if (customerError is not null) return customerError;
 
         string? photoUrl = null;
-        if (service.PhotoMode == ServicePhotoMode.OwnerGallery && !string.IsNullOrWhiteSpace(req.GalleryPhotoId))
+        if ((service.PhotoMode == ServicePhotoMode.OwnerGallery || service.PhotoMode == ServicePhotoMode.Both) && !string.IsNullOrWhiteSpace(req.GalleryPhotoId))
         {
             var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == service.Id);
             if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
             photoUrl = photo.Url;
         }
-        else if (service.PhotoMode == ServicePhotoMode.CustomerUpload && !string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
+        else if ((service.PhotoMode == ServicePhotoMode.CustomerUpload || service.PhotoMode == ServicePhotoMode.Both) && !string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
         {
             if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
                 return BadRequest(new { error = "Invalid photo reference." });

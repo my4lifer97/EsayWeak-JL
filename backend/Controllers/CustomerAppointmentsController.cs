@@ -89,6 +89,9 @@ public class CustomerAppointmentsController(
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 
+        var oldDate = appt.Date.ToString("yyyy-MM-dd");
+        var oldStartTime = appt.StartTime;
+
         appt.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         appt.StartTime = req.StartTime;
         appt.EndTime = AvailabilityService.AddMinutes(req.StartTime, appt.Service.DurationMinutes);
@@ -99,7 +102,7 @@ public class CustomerAppointmentsController(
             return Conflict(new { error = "Slot not available" });
 
         this.SetActivityDetail(
-            $"Rescheduled appointment: {appt.Service.NameEn} with {appt.Barber.Name} to {req.Date} at {req.StartTime}");
+            $"Rescheduled appointment: {appt.Service.NameEn} with {appt.Barber.Name} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
 
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }
@@ -108,7 +111,7 @@ public class CustomerAppointmentsController(
     public async Task<IActionResult> UpdatePhoto(string id, [FromBody] UpdateAppointmentPhotoRequest req)
     {
         var appt = await db.Appointments
-            .Include(a => a.Service)
+            .Include(a => a.Service).Include(a => a.Barber)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
@@ -128,23 +131,52 @@ public class CustomerAppointmentsController(
                 return BadRequest(new { error = "Please upload a photo for this service." });
             appt.PhotoUrl = req.CustomerPhotoUrl;
         }
+        else if (appt.Service.PhotoMode == ServicePhotoMode.Both)
+        {
+            if (!string.IsNullOrWhiteSpace(req.GalleryPhotoId))
+            {
+                var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == appt.ServiceId);
+                if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
+                appt.PhotoUrl = photo.Url;
+            }
+            else if (!string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
+            {
+                if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+                    return BadRequest(new { error = "Invalid photo reference." });
+                appt.PhotoUrl = req.CustomerPhotoUrl;
+            }
+            else
+            {
+                return BadRequest(new { error = "Please choose or upload a photo for this service." });
+            }
+        }
         else
         {
             return BadRequest(new { error = "This service doesn't use a reference photo." });
         }
 
         await db.SaveChangesAsync();
+
+        this.SetActivityDetail($"Changed reference photo for appointment: {appt.Service.NameEn} with {appt.Barber.Name} on {appt.Date:yyyy-MM-dd}");
+
         return Ok(new { appt.Id, appt.PhotoUrl });
     }
 
     [HttpPatch("{id}/notes")]
     public async Task<IActionResult> UpdateNotes(string id, [FromBody] UpdateNotesRequest req)
     {
-        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
+        var appt = await db.Appointments
+            .Include(a => a.Service).Include(a => a.Barber)
+            .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
 
         appt.Notes = req.Notes;
         await db.SaveChangesAsync();
+
+        // Content deliberately never logged -- notes are free text a customer writes, same
+        // "metadata only" principle as everywhere else in ActivityLogFilter.
+        this.SetActivityDetail($"Updated appointment notes: {appt.Service.NameEn} with {appt.Barber.Name} on {appt.Date:yyyy-MM-dd}");
+
         return Ok(new { appt.Id, appt.Notes });
     }
 }

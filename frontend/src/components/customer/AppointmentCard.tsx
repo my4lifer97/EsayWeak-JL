@@ -12,7 +12,7 @@ export type Appointment = {
   notes: string | null; status: string; cancelToken: string
   service: {
     id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
-    photoMode?: 'None' | 'OwnerGallery' | 'CustomerUpload'; galleryPhotos?: GalleryPhoto[] | null
+    photoMode?: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; galleryPhotos?: GalleryPhoto[] | null
   }
   photoUrl: string | null
 }
@@ -159,7 +159,7 @@ export default function AppointmentCard({
 
       {expandedPhoto && (
         <div className="mt-3 space-y-2">
-          {appt.service.photoMode === 'OwnerGallery' && (
+          {(appt.service.photoMode === 'OwnerGallery' || appt.service.photoMode === 'Both') && (
             <div className="grid grid-cols-4 gap-2">
               {(appt.service.galleryPhotos ?? []).map((p) => (
                 <button key={p.id} type="button" disabled={busy} onClick={() => pickGalleryPhoto(p.id)}
@@ -169,7 +169,7 @@ export default function AppointmentCard({
               ))}
             </div>
           )}
-          {appt.service.photoMode === 'CustomerUpload' && (
+          {(appt.service.photoMode === 'CustomerUpload' || appt.service.photoMode === 'Both') && (
             <label className="inline-block cursor-pointer bg-gray-800 border border-gray-700 hover:border-blue-500 rounded-xl px-4 py-2 text-sm text-gray-300">
               {photoUploading ? t(lang, 'uploading') : t(lang, 'uploadYourPhoto')}
               <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={photoUploading}

@@ -5,7 +5,7 @@ namespace BarberSaas.Api.Models;
 public enum Language { EN, AR, HE }
 public enum SubStatus { TRIAL, ACTIVE, EXPIRED }
 public enum AppointmentStatus { CONFIRMED, CANCELLED, COMPLETED }
-public enum ServicePhotoMode { None, OwnerGallery, CustomerUpload }
+public enum ServicePhotoMode { None, OwnerGallery, CustomerUpload, Both }
 public enum WaitlistEntryStatus { WAITING, NOTIFIED, RESOLVED }
 
 public class Barber

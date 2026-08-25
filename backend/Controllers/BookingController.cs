@@ -107,6 +107,25 @@ public class BookingController(
                 return BadRequest(new { error = "Please upload a photo for this service." });
             photoUrl = req.CustomerPhotoUrl;
         }
+        else if (service.PhotoMode == ServicePhotoMode.Both)
+        {
+            if (!string.IsNullOrWhiteSpace(req.GalleryPhotoId))
+            {
+                var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == service.Id);
+                if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
+                photoUrl = photo.Url;
+            }
+            else if (!string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
+            {
+                if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+                    return BadRequest(new { error = "Invalid photo reference." });
+                photoUrl = req.CustomerPhotoUrl;
+            }
+            else
+            {
+                return BadRequest(new { error = "Please choose or upload a photo for this service." });
+            }
+        }
 
         var slots = await availability.GetAvailableSlots(barber.Id, req.Date, service.DurationMinutes);
         if (!slots.Any(s => s.Start == req.StartTime))
@@ -279,6 +298,9 @@ public class BookingController(
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 
+        var oldDate = appointment.Date.ToString("yyyy-MM-dd");
+        var oldStartTime = appointment.StartTime;
+
         appointment.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         appointment.StartTime = req.StartTime;
         appointment.EndTime = AvailabilityService.AddMinutes(req.StartTime, appointment.Service.DurationMinutes);
@@ -289,7 +311,7 @@ public class BookingController(
             return Conflict(new { error = "Slot not available" });
 
         this.SetActivityDetail(
-            $"Rescheduled appointment: {appointment.Service.NameEn} with {appointment.Barber.Name} to {req.Date} at {req.StartTime}");
+            $"Rescheduled appointment: {appointment.Service.NameEn} with {appointment.Barber.Name} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
 
         return Ok(new { appointment.Id, Status = appointment.Status.ToString() });
     }

@@ -5,7 +5,7 @@ import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 
 type GalleryPhoto = { id: string; url: string }
-type PhotoMode = 'None' | 'OwnerGallery' | 'CustomerUpload'
+type PhotoMode = 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'
 type Service = {
   id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
   photoMode: PhotoMode; galleryPhotos: GalleryPhoto[]
@@ -40,6 +40,7 @@ export default function ServicesPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setLoading(true); setError('')
+    const wasCreating = !editing
     try {
       const payload = { ...form, durationMinutes: Number(form.durationMinutes), price: Number(form.price) }
       if (editing) {
@@ -49,9 +50,10 @@ export default function ServicesPage() {
         const { data } = await api.post('/admin/services', payload)
         setEditing(data)
       }
-      // Keep the modal open when gallery photos still need to be added; otherwise close it,
-      // matching the pre-photo-feature behavior of closing right after a successful save.
-      if (form.photoMode !== 'OwnerGallery') setShowForm(false)
+      // On first creation of a gallery/both-mode service, keep the modal open so gallery photos
+      // can be added right away (the service has to exist first); on every later save, close it.
+      const needsGallerySetup = wasCreating && (form.photoMode === 'OwnerGallery' || form.photoMode === 'Both')
+      if (!needsGallerySetup) setShowForm(false)
       queryClient.invalidateQueries({ queryKey: ['services'] })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -111,7 +113,9 @@ export default function ServicesPage() {
                 </div>
                 {s.photoMode !== 'None' && (
                   <div className="text-xs text-blue-400 mt-1">
-                    {s.photoMode === 'OwnerGallery' ? t(lang, 'photoModeGallery') : t(lang, 'photoModeUpload')}
+                    {s.photoMode === 'OwnerGallery' ? t(lang, 'photoModeGallery')
+                      : s.photoMode === 'CustomerUpload' ? t(lang, 'photoModeUpload')
+                      : t(lang, 'photoModeBoth')}
                   </div>
                 )}
               </div>
@@ -164,10 +168,11 @@ export default function ServicesPage() {
                   <option value="None">{t(lang, 'photoModeNone')}</option>
                   <option value="OwnerGallery">{t(lang, 'photoModeGallery')}</option>
                   <option value="CustomerUpload">{t(lang, 'photoModeUpload')}</option>
+                  <option value="Both">{t(lang, 'photoModeBoth')}</option>
                 </select>
               </div>
 
-              {form.photoMode === 'OwnerGallery' && (
+              {(form.photoMode === 'OwnerGallery' || form.photoMode === 'Both') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'galleryPhotos')}</label>
                   {!editingService ? (

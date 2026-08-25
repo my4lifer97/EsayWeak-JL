@@ -12,7 +12,7 @@ import SlotBookedModal from './SlotBookedModal'
 type GalleryPhoto = { id: string; url: string }
 type Service = {
   id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
-  photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload'; galleryPhotos: GalleryPhoto[]
+  photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; galleryPhotos: GalleryPhoto[]
 }
 type BarberInfo = {
   slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[]
@@ -121,6 +121,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const photoSatisfied =
     service?.photoMode === 'OwnerGallery' ? !!selectedGalleryPhotoId
       : service?.photoMode === 'CustomerUpload' ? !!uploadedPhotoUrl
+      : service?.photoMode === 'Both' ? !!selectedGalleryPhotoId || !!uploadedPhotoUrl
       : true
 
   async function confirm() {
@@ -257,7 +258,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                   placeholder={t(lang, 'notesPlaceholder')}
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
-              {service?.photoMode === 'OwnerGallery' && (
+              {(service?.photoMode === 'OwnerGallery' || service?.photoMode === 'Both') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'choosePhoto')}</label>
                   <p className="text-gray-500 text-xs mb-2">{t(lang, 'choosePhotoHint')}</p>
@@ -274,7 +275,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                 </div>
               )}
 
-              {service?.photoMode === 'CustomerUpload' && (
+              {(service?.photoMode === 'CustomerUpload' || service?.photoMode === 'Both') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'uploadYourPhoto')}</label>
                   <p className="text-gray-500 text-xs mb-2">{t(lang, 'uploadYourPhotoHint')}</p>

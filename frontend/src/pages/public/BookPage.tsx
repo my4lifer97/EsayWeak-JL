@@ -10,7 +10,7 @@ type BarberInfo = {
   language: string; isRTL: boolean; activeDays: number[]
   services: {
     id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
-    photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload'; galleryPhotos: { id: string; url: string }[]
+    photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; galleryPhotos: { id: string; url: string }[]
   }[]
   waitlistEnabled: boolean
 }
