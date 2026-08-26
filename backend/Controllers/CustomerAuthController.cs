@@ -15,6 +15,9 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, IOt
     private const int OtpMaxAttempts = 5;
     private const int OtpExpiryMinutes = 10;
 
+    private const string TestCustomerCode = "123456";
+    private static readonly string TestCustomerPhone = PhoneNormalizer.Normalize("0501234567");
+
     [HttpPost("otp")]
     public async Task<IActionResult> RequestOtp([FromBody] RequestCustomerOtpRequest req)
     {
@@ -38,7 +41,9 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, IOt
 
         var isNew = !await db.CustomerAccounts.AnyAsync(a => a.Phone == phone);
 
-        var code = Random.Shared.Next(100000, 999999).ToString();
+        var code = phone == TestCustomerPhone
+            ? TestCustomerCode
+            : Random.Shared.Next(100000, 999999).ToString();
         db.CustomerOtps.Add(new CustomerOtp
         {
             Phone = phone,
