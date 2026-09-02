@@ -52,7 +52,11 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, IOt
         });
         await db.SaveChangesAsync();
 
-        await otpSender.SendAsync(phone, code);
+        // The fixed reviewer/test phone always resolves to the fixed TestCustomerCode above --
+        // sending it a real SMS on every request would text a real Israeli mobile number (once
+        // TwilioOtpSender is wired up) that has nothing to do with app review/testing.
+        if (phone != TestCustomerPhone)
+            await otpSender.SendAsync(phone, code);
 
         string? devOtp = env.IsDevelopment() ? code : null;
         return Ok(new { isNewCustomer = isNew, devOtp });

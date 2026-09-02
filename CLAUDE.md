@@ -305,6 +305,20 @@ Twilio credentials are stored **per-barber** in the `Barbers` table (`TwilioSid`
 - Webhook replies to EN/AR/HE keywords (book, cancel, reschedule) with booking links or cancels the next upcoming appointment directly.  
 - Reminders are sent by hitting `/api/cron/reminders` (e.g. via an external cron job or scheduler).
 
+### Customer login OTP
+`POST /api/customer/auth/otp` generates and rate-limits the code the same way regardless of delivery
+(`CustomerAuthController`: 45s cooldown, 5/hour cap, 5 verify attempts, 10-minute expiry, BCrypt-hashed
+in `CustomerOtps`) — only *how* the code reaches the customer differs by environment. `Services/IOtpSender`
+is `TwilioOtpSender` (real SMS, via a **platform-level** Twilio account — `Twilio:AccountSid/AuthToken/FromNumber`,
+distinct from any barber's own WhatsApp Twilio credentials above) once `Twilio:AccountSid` is configured,
+else `DevOtpSender` (no-op; the code comes back as `devOtp` in the response body, but only when
+`ASPNETCORE_ENVIRONMENT=Development` — a misconfigured production without Twilio creds fails closed,
+silently not delivering the code, rather than leaking it in the response). `PhoneNormalizer.Normalize`
+(used everywhere phones are stored/matched) keeps a bare local number as-is if the customer didn't type
+a `+`, so `TwilioOtpSender` E.164-izes it at send time only, assuming an Israeli mobile number (leading
+`0` swapped for `+972`) since that normalized/matching format can't change without breaking existing
+phone-matching everywhere else in the app.
+
 ### Configuration (`backend/appsettings.json`)
 ```
 ConnectionStrings:Default   PostgreSQL connection string (prod: barbersaas)
@@ -318,6 +332,9 @@ Cardcom:TerminalNumber      Cardcom terminal number -- billing is disabled (503)
 Cardcom:ApiName             Cardcom API name (sent on LowProfile/Create and GetLpResult)
 Cardcom:ApiPassword         Cardcom API password (sent on the recurring token-charge call only, not on LowProfile/Create)
 Cardcom:MonthlyAmount       Subscription amount in ILS, as a string (default "120")
+Twilio:AccountSid           Platform-level Twilio account SID -- sends the customer login OTP as a real SMS when set; falls back to the no-op DevOtpSender (code returned as devOtp in Development only) otherwise. Separate from each barber's own TwilioSid/Token/Number (used for WhatsApp replies).
+Twilio:AuthToken            Platform-level Twilio auth token
+Twilio:FromNumber           Platform-level Twilio phone number the OTP SMS is sent from (E.164, e.g. "+15551234567")
 ```
 
 `Jwt:Secret` and `CronSecret` are **not** in `appsettings.json` — there's no default, so the app fails fast if they're missing rather than silently falling back to a guessable value.
