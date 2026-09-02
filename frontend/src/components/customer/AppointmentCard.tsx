@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { t, serviceName } from '../../lib/i18n'
+import { mediaUrl } from '../../lib/media'
 
 type GalleryPhoto = { id: string; url: string }
 export type Appointment = {
@@ -118,8 +119,8 @@ export default function AppointmentCard({
             <div className="text-gray-500 text-sm mt-1 italic">"{appt.notes}"</div>
           )}
           {appt.photoUrl && (
-            <a href={appt.photoUrl} target="_blank" rel="noreferrer" className="inline-block mt-2">
-              <img src={appt.photoUrl} alt={t(lang, 'referencePhoto')}
+            <a href={mediaUrl(appt.photoUrl)} target="_blank" rel="noreferrer" className="inline-block mt-2">
+              <img src={mediaUrl(appt.photoUrl)} alt={t(lang, 'referencePhoto')}
                 className="w-14 h-14 object-cover rounded-lg border border-gray-700 hover:border-blue-500 transition-colors" />
             </a>
           )}
@@ -164,7 +165,7 @@ export default function AppointmentCard({
               {(appt.service.galleryPhotos ?? []).map((p) => (
                 <button key={p.id} type="button" disabled={busy} onClick={() => pickGalleryPhoto(p.id)}
                   className="aspect-square rounded-lg overflow-hidden border-2 border-gray-700 hover:border-blue-500 transition-colors disabled:opacity-50">
-                  <img src={p.url} alt="" className="w-full h-full object-cover" />
+                  <img src={mediaUrl(p.url)} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>

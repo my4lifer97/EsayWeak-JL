@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
+import { mediaUrl } from '../../lib/media'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
 import AppointmentCard, { type Appointment } from '../../components/customer/AppointmentCard'
@@ -77,7 +78,7 @@ export default function BarberPage() {
         </div>
         <div className="text-center mb-8">
           {barber.logo ? (
-            <img src={barber.logo} alt={barber.name}
+            <img src={mediaUrl(barber.logo)} alt={barber.name}
               className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border border-gray-800" />
           ) : (
             <div className="text-5xl mb-4">✂️</div>

@@ -4,6 +4,7 @@ import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { t, serviceName } from '../../lib/i18n'
+import { mediaUrl } from '../../lib/media'
 import CancelOptionsModal from './CancelOptionsModal'
 
 type Appointment = {
@@ -73,67 +74,72 @@ export default function WeeklyCalendar({
         </button>
       </div>
 
-      <div className="bg-gray-900 rounded-2xl overflow-hidden border border-gray-800">
-        <div className="grid grid-cols-8 border-b border-gray-800">
-          <div className="p-3" />
-          {days.map((d) => (
-            <div key={d.toISOString()} className="p-3 text-center border-s border-gray-800">
-              <div className="text-xs text-gray-500 uppercase">{format(d, 'EEE', { locale: dateLocale })}</div>
-              <div className={`text-lg font-semibold mt-0.5 ${
-                format(d, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-blue-400' : 'text-white'
-              }`}>{format(d, 'd')}</div>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-8 relative" style={{ height: `${totalMinutes * 1.2}px` }}>
-          <div className="border-e border-gray-800">
-            {HOURS.map((h) => (
-              <div key={h} className="text-xs text-gray-600 text-end pe-2 absolute w-full"
-                style={{ top: `${(h * 60 - startMinute) * 1.2}px` }}>
-                {String(h).padStart(2, '0')}:00
+      {/* Below md, 8 squished columns are unreadable, so the grid gets a fixed min-width and
+          scrolls horizontally within its own box instead of shrinking illegibly -- avoids
+          forcing the owner to rotate the phone to landscape just to read the board. */}
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-x-auto">
+        <div className="min-w-[640px]">
+          <div className="grid grid-cols-8 border-b border-gray-800">
+            <div className="p-3" />
+            {days.map((d) => (
+              <div key={d.toISOString()} className="p-3 text-center border-s border-gray-800">
+                <div className="text-xs text-gray-500 uppercase">{format(d, 'EEE', { locale: dateLocale })}</div>
+                <div className={`text-lg font-semibold mt-0.5 ${
+                  format(d, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-blue-400' : 'text-white'
+                }`}>{format(d, 'd')}</div>
               </div>
             ))}
           </div>
-          {days.map((day) => {
-            const dayStr = format(day, 'yyyy-MM-dd')
-            const dayAppts = appointments.filter((a) => a.date.slice(0, 10) === dayStr)
-            return (
-              <div key={dayStr} className="relative border-s border-gray-800">
-                {HOURS.map((h) => (
-                  <div key={h} className="absolute w-full border-t border-gray-800/50"
-                    style={{ top: `${(h * 60 - startMinute) * 1.2}px`, height: `${60 * 1.2}px` }} />
-                ))}
-                {dayAppts.map((appt) => {
-                  const top = (timeToMinutes(appt.startTime) - startMinute) * 1.2
-                  const height = (timeToMinutes(appt.endTime) - timeToMinutes(appt.startTime)) * 1.2
-                  // A pending cancellation-approval request takes priority over both the
-                  // recurring-purple and normal status colors -- it needs the owner's attention
-                  // above anything else on the board. Recurring appointments get their own color
-                  // (instead of the default confirmed-blue) so they stand out as "reserved every
-                  // week" at a glance -- completed/cancelled still show their own status color.
-                  const color = appt.pendingCancellationApproval
-                    ? 'bg-amber-500'
-                    : appt.recurringSeriesId && appt.status === 'CONFIRMED'
-                    ? 'bg-purple-600'
-                    : STATUS_COLORS[appt.status] ?? 'bg-blue-600'
-                  return (
-                    <button key={appt.id} onClick={() => setSelected(appt)}
-                      title={appt.pendingCancellationApproval ? t(lang, 'cancellationRequestedBadge') : appt.recurringSeriesId ? t(lang, 'partOfSeries') : undefined}
-                      className={`absolute inset-x-0.5 rounded-md px-1.5 py-1 text-left overflow-hidden ${color} hover:opacity-80 transition-opacity`}
-                      style={{ top, height: Math.max(height, 24) }}>
-                      {/* One line, not two — a short appointment's block (min 24px) only has
-                          room for a single text-xs line; a second stacked line gets silently
-                          clipped by overflow-hidden, hiding the service name entirely. */}
-                      <div className="text-white text-xs font-medium truncate">
-                        {appt.pendingCancellationApproval ? '⚠️ ' : appt.recurringSeriesId && '🔁 '}{appt.customer.name} · {serviceName(appt.service, lang)}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })}
+
+          <div className="grid grid-cols-8 relative" style={{ height: `${totalMinutes * 1.2}px` }}>
+            <div className="border-e border-gray-800">
+              {HOURS.map((h) => (
+                <div key={h} className="text-xs text-gray-600 text-end pe-2 absolute w-full"
+                  style={{ top: `${(h * 60 - startMinute) * 1.2}px` }}>
+                  {String(h).padStart(2, '0')}:00
+                </div>
+              ))}
+            </div>
+            {days.map((day) => {
+              const dayStr = format(day, 'yyyy-MM-dd')
+              const dayAppts = appointments.filter((a) => a.date.slice(0, 10) === dayStr)
+              return (
+                <div key={dayStr} className="relative border-s border-gray-800">
+                  {HOURS.map((h) => (
+                    <div key={h} className="absolute w-full border-t border-gray-800/50"
+                      style={{ top: `${(h * 60 - startMinute) * 1.2}px`, height: `${60 * 1.2}px` }} />
+                  ))}
+                  {dayAppts.map((appt) => {
+                    const top = (timeToMinutes(appt.startTime) - startMinute) * 1.2
+                    const height = (timeToMinutes(appt.endTime) - timeToMinutes(appt.startTime)) * 1.2
+                    // A pending cancellation-approval request takes priority over both the
+                    // recurring-purple and normal status colors -- it needs the owner's attention
+                    // above anything else on the board. Recurring appointments get their own color
+                    // (instead of the default confirmed-blue) so they stand out as "reserved every
+                    // week" at a glance -- completed/cancelled still show their own status color.
+                    const color = appt.pendingCancellationApproval
+                      ? 'bg-amber-500'
+                      : appt.recurringSeriesId && appt.status === 'CONFIRMED'
+                      ? 'bg-purple-600'
+                      : STATUS_COLORS[appt.status] ?? 'bg-blue-600'
+                    return (
+                      <button key={appt.id} onClick={() => setSelected(appt)}
+                        title={appt.pendingCancellationApproval ? t(lang, 'cancellationRequestedBadge') : appt.recurringSeriesId ? t(lang, 'partOfSeries') : undefined}
+                        className={`absolute inset-x-0.5 rounded-md px-1.5 py-1 text-left overflow-hidden ${color} hover:opacity-80 transition-opacity`}
+                        style={{ top, height: Math.max(height, 24) }}>
+                        {/* One line, not two — a short appointment's block (min 24px) only has
+                            room for a single text-xs line; a second stacked line gets silently
+                            clipped by overflow-hidden, hiding the service name entirely. */}
+                        <div className="text-white text-xs font-medium truncate">
+                          {appt.pendingCancellationApproval ? '⚠️ ' : appt.recurringSeriesId && '🔁 '}{appt.customer.name} · {serviceName(appt.service, lang)}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -164,8 +170,8 @@ export default function WeeklyCalendar({
             {selected.photoUrl && (
               <div className="mb-6">
                 <div className="text-gray-400 text-sm mb-2">{t(lang, 'referencePhoto')}</div>
-                <a href={selected.photoUrl} target="_blank" rel="noreferrer">
-                  <img src={selected.photoUrl} alt={t(lang, 'referencePhoto')}
+                <a href={mediaUrl(selected.photoUrl)} target="_blank" rel="noreferrer">
+                  <img src={mediaUrl(selected.photoUrl)} alt={t(lang, 'referencePhoto')}
                     className="w-full max-h-64 object-cover rounded-xl border border-gray-700 hover:border-blue-500 transition-colors" />
                 </a>
               </div>

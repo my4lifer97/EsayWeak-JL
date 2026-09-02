@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t, serviceName, type TKey } from '../../lib/i18n'
+import { mediaUrl } from '../../lib/media'
 import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
 import CancelOptionsModal from '../../components/admin/CancelOptionsModal'
 
@@ -137,8 +138,8 @@ export default function AppointmentsPage() {
       {filtered.length === 0 ? (
         <div className="text-center text-gray-500 py-16">{t(lang, 'noAppointments')}</div>
       ) : (
-        <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-x-auto">
+          <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-left">
                 {(['date', 'time', 'colCustomer', 'phone', 'service', 'referencePhoto', 'status', 'colActions'] as TKey[]).map((key) => (
@@ -158,8 +159,8 @@ export default function AppointmentsPage() {
                   <td className="px-4 py-3 text-gray-300">{serviceName(a.service, lang)}</td>
                   <td className="px-4 py-3">
                     {a.photoUrl && (
-                      <a href={a.photoUrl} target="_blank" rel="noreferrer">
-                        <img src={a.photoUrl} alt={t(lang, 'referencePhoto')} className="w-10 h-10 object-cover rounded-lg border border-gray-700 hover:border-blue-500 transition-colors" />
+                      <a href={mediaUrl(a.photoUrl)} target="_blank" rel="noreferrer">
+                        <img src={mediaUrl(a.photoUrl)} alt={t(lang, 'referencePhoto')} className="w-10 h-10 object-cover rounded-lg border border-gray-700 hover:border-blue-500 transition-colors" />
                       </a>
                     )}
                   </td>

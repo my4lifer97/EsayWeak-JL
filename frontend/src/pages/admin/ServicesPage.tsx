@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
+import { mediaUrl } from '../../lib/media'
 
 type GalleryPhoto = { id: string; url: string }
 type PhotoMode = 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'
@@ -182,7 +183,7 @@ export default function ServicesPage() {
                       <div className="grid grid-cols-3 gap-2 mb-2">
                         {editingService.galleryPhotos.map((p) => (
                           <div key={p.id} className="relative group">
-                            <img src={p.url} alt="" className="w-full aspect-square object-cover rounded-lg border border-gray-700" />
+                            <img src={mediaUrl(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-gray-700" />
                             <button type="button" onClick={() => handleGalleryDelete(p.id)}
                               className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                               ✕

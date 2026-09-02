@@ -5,6 +5,7 @@ import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t, serviceName } from '../../lib/i18n'
+import { mediaUrl } from '../../lib/media'
 import BackButton from '../BackButton'
 import LanguageSwitcher from '../customer/LanguageSwitcher'
 import SlotBookedModal from './SlotBookedModal'
@@ -268,7 +269,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                         className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
                           selectedGalleryPhotoId === p.id ? 'border-blue-500' : 'border-gray-700 hover:border-gray-500'
                         }`}>
-                        <img src={p.url} alt="" className="w-full h-full object-cover" />
+                        <img src={mediaUrl(p.url)} alt="" className="w-full h-full object-cover" />
                       </button>
                     ))}
                   </div>
@@ -281,7 +282,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                   <p className="text-gray-500 text-xs mb-2">{t(lang, 'uploadYourPhotoHint')}</p>
                   {uploadedPhotoUrl ? (
                     <div className="relative w-24 h-24">
-                      <img src={uploadedPhotoUrl} alt="" className="w-24 h-24 object-cover rounded-lg border border-gray-700" />
+                      <img src={mediaUrl(uploadedPhotoUrl)} alt="" className="w-24 h-24 object-cover rounded-lg border border-gray-700" />
                       <button type="button" onClick={() => setUploadedPhotoUrl(null)}
                         className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                         ✕

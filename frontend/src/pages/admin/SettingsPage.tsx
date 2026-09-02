@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
+import { mediaUrl } from '../../lib/media'
 
 type BarberSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
@@ -181,7 +182,7 @@ export default function SettingsPage() {
             <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'profilePhoto')}</label>
             <div className="flex items-center gap-4">
               {logoPreview || barber.logo ? (
-                <img src={logoPreview ?? barber.logo!} alt={barber.name}
+                <img src={logoPreview ?? mediaUrl(barber.logo)} alt={barber.name}
                   className="w-16 h-16 rounded-full object-cover border border-gray-700" />
               ) : (
                 <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-2xl">✂️</div>
