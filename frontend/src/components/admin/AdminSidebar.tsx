@@ -88,7 +88,8 @@ function TouchSidebar({
             <div className="text-white font-bold text-lg">EsayWeek</div>
             <div className="text-gray-400 text-sm mt-0.5 truncate">{barberName}</div>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl" aria-label="Close menu">✕</button>
+          <button onClick={onClose} aria-label="Close menu"
+            className="text-gray-500 hover:text-white w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-gray-800 text-2xl leading-none transition-colors">✕</button>
         </div>
         <NavContent lang={lang} onNavigate={onClose} />
         <button

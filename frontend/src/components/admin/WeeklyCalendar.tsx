@@ -144,10 +144,10 @@ export default function WeeklyCalendar({
       </div>
 
       {selected && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-800">
-            <div className="flex justify-between items-start mb-4">
-              <div>
+        <div onClick={() => setSelected(null)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-800">
+            <div className="relative mb-4">
+              <div className="text-center px-11">
                 <h2 className="text-white font-semibold text-lg">{selected.customer.name}</h2>
                 {selected.pendingCancellationApproval && (
                   <div className="text-xs text-amber-400 mt-0.5">⚠️ {t(lang, 'cancellationRequestedBadge')}</div>
@@ -156,7 +156,9 @@ export default function WeeklyCalendar({
                   <div className="text-xs text-purple-400 mt-0.5">🔁 {t(lang, 'partOfSeries')}</div>
                 )}
               </div>
-              <button onClick={() => setSelected(null)} className="text-gray-500 hover:text-white text-xl">✕</button>
+              <button onClick={() => setSelected(null)}
+                className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-gray-800 text-2xl leading-none transition-colors"
+                aria-label="Close">✕</button>
             </div>
             <div className="space-y-2 text-sm mb-6">
               <Row label={t(lang, 'service')} value={serviceName(selected.service, lang)} />

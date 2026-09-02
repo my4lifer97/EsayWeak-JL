@@ -43,11 +43,12 @@ export default function CancelOptionsModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-800">
+    <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-800">
         <div className="flex justify-between items-start mb-4">
           <h2 className="text-white font-semibold text-lg">{t(lang, 'cancelOptionsTitle')}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white text-xl">✕</button>
+          <button onClick={onClose} aria-label="Close"
+            className="text-gray-500 hover:text-white w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-gray-800 text-2xl leading-none transition-colors">✕</button>
         </div>
 
         {mode === 'options' ? (

@@ -12,8 +12,8 @@ export default function SlotBookedModal({
   onClose: () => void
 }) {
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" dir={dir}>
-      <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full border border-gray-800">
+    <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" dir={dir}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full border border-gray-800">
         <h2 className="text-white font-semibold text-lg mb-2">{t(lang, 'slotBookedTitle')}</h2>
         {joined ? (
           <p className="text-green-400 text-sm mb-5">{t(lang, 'joinedWaitlistConfirmation')}</p>
