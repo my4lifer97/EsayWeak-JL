@@ -36,6 +36,10 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     const u: CustomerUser = { id: data.customerId, name: data.name, familyName: data.familyName, phone: data.phone }
     localStorage.setItem('customerUser', JSON.stringify(u))
     setUser(u)
+    // The backend detected this from the customer's own WhatsApp messages (see
+    // WhatsAppController.DetectLanguage) -- carry it over so the wizard opens in the language
+    // they were just chatting in, rather than whatever was last stored in this browser.
+    if (data.language) setLang(data.language)
     return { barberSlug: data.barberSlug, serviceId: data.serviceId }
   }
 

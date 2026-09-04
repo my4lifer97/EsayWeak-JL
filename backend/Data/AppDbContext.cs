@@ -125,6 +125,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<WaitlistEntry>()
             .Property(x => x.Status)
             .HasConversion<string>();
+        // Explicit DB-level default (not just the C# property initializer, which only applies to
+        // objects EF constructs itself) -- without this, EF's migration scaffolding backfills
+        // existing rows with default(bool) = false when the column is added, which would silently
+        // disable the chatbot for every barber that already existed before this feature shipped.
+        b.Entity<Barber>()
+            .Property(x => x.ChatbotEnabled)
+            .HasDefaultValue(true);
 
         b.Entity<Service>()
             .HasOne(x => x.Barber).WithMany(x => x.Services)

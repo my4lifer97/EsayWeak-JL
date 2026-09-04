@@ -47,6 +47,16 @@ public class WhatsAppControllerTests : IntegrationTestBase
         return (barberId, slug, idsInBotOrder);
     }
 
+    private async Task SetChatbotConfig(string barberId, bool enabled = true, string? welcome = null, string? confirmation = null)
+    {
+        using var db = Db();
+        var barber = await db.Barbers.FirstAsync(b => b.Id == barberId);
+        barber.ChatbotEnabled = enabled;
+        barber.ChatbotWelcomeMessage = welcome;
+        barber.ChatbotConfirmationMessage = confirmation;
+        await db.SaveChangesAsync();
+    }
+
     private static string ComputeTwilioSignature(string url, string authToken, IReadOnlyDictionary<string, string> parms)
     {
         var data = url + string.Concat(parms.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Key + kv.Value));
@@ -150,6 +160,105 @@ public class WhatsAppControllerTests : IntegrationTestBase
         Assert.Contains("cancelled", reply, StringComparison.OrdinalIgnoreCase);
         using var verifyDb = Db();
         Assert.False(await verifyDb.WhatsAppConversationStates.AnyAsync(s => s.BarberId == barberId && s.Phone == phone));
+    }
+
+    [Fact]
+    public async Task ArabicFirstMessage_RepliesInArabic()
+    {
+        await SeedBarberWithServices("wa-webhook-lang-ar@example.com", "wa-webhook-lang-ar");
+        var phone = "+15558880010";
+
+        // "مرحبا" (hello) -- Arabic-script text with no cancel/reschedule keyword.
+        var reply = await SendWhatsAppMessage(phone, "مرحبا");
+
+        Assert.Contains("الخدمة", reply); // "service" -- only appears in the Arabic template
+    }
+
+    [Fact]
+    public async Task HebrewFirstMessage_RepliesInHebrew()
+    {
+        await SeedBarberWithServices("wa-webhook-lang-he@example.com", "wa-webhook-lang-he");
+        var phone = "+15558880011";
+
+        // "שלום" (hello) -- Hebrew-script text.
+        var reply = await SendWhatsAppMessage(phone, "שלום");
+
+        Assert.Contains("שירות", reply); // "service" -- only appears in the Hebrew template
+    }
+
+    [Fact]
+    public async Task NumericReply_KeepsThePreviouslyDetectedLanguage()
+    {
+        await SeedBarberWithServices("wa-webhook-lang-sticky@example.com", "wa-webhook-lang-sticky");
+        var phone = "+15558880012";
+        await SendWhatsAppMessage(phone, "مرحبا"); // opens the conversation in Arabic
+
+        // "1" alone carries no language signal -- must still reply in Arabic, not fall back to
+        // the barber's own default (English, since RegisterRequest doesn't set a language).
+        await SendWhatsAppMessage(phone, "1");
+
+        using var db = Db();
+        var token = await db.WhatsAppBookingTokens.FirstAsync(t => t.Phone == phone);
+        Assert.Equal("AR", token.Language);
+    }
+
+    [Fact]
+    public async Task ChatbotDisabled_SendsNoAutomatedReply()
+    {
+        var (barberId, _, _) = await SeedBarberWithServices("wa-webhook-disabled@example.com", "wa-webhook-disabled");
+        await SetChatbotConfig(barberId, enabled: false);
+
+        var reply = await SendWhatsAppMessage("+15558880013", "hi");
+
+        Assert.DoesNotContain("<Message>", reply);
+        using var db = Db();
+        Assert.False(await db.WhatsAppConversationStates.AnyAsync(s => s.BarberId == barberId));
+    }
+
+    [Fact]
+    public async Task CustomWelcomeMessage_ReplacesDefaultGreetingButKeepsServiceList()
+    {
+        var (barberId, _, _) = await SeedBarberWithServices("wa-webhook-welcome@example.com", "wa-webhook-welcome");
+        await SetChatbotConfig(barberId, welcome: "Yo! Welcome to the shop.");
+
+        var reply = await SendWhatsAppMessage("+15558880014", "hi");
+
+        Assert.Contains("Yo! Welcome to the shop.", reply);
+        // Services are listed in Id order, not creation order, so don't assume which one is #1.
+        Assert.Matches(@"1\. Service \d", reply);
+        Assert.Matches(@"2\. Service \d", reply);
+        Assert.DoesNotContain("booking assistant", reply); // the default greeting text
+    }
+
+    [Fact]
+    public async Task CustomConfirmationMessage_WithUrlPlaceholder_SubstitutesInPlace()
+    {
+        var (barberId, _, _) = await SeedBarberWithServices("wa-webhook-confirm-1@example.com", "wa-webhook-confirm-1");
+        await SetChatbotConfig(barberId, confirmation: "Thanks! Tap here to finish booking: {url} See you soon.");
+        var phone = "+15558880015";
+        await SendWhatsAppMessage(phone, "hi");
+
+        var reply = await SendWhatsAppMessage(phone, "1");
+
+        Assert.Contains("Tap here to finish booking: http", reply);
+        Assert.Contains("See you soon.", reply);
+        Assert.DoesNotContain("{url}", reply);
+    }
+
+    [Fact]
+    public async Task CustomConfirmationMessage_WithoutUrlPlaceholder_AppendsLinkAtTheEnd()
+    {
+        var (barberId, _, _) = await SeedBarberWithServices("wa-webhook-confirm-2@example.com", "wa-webhook-confirm-2");
+        // No apostrophe -- the reply is HTML-encoded as XML content, so a literal "'" would come
+        // back as "&#39;" and this'd need to assert against the encoded form instead.
+        await SetChatbotConfig(barberId, confirmation: "Almost done! Here is your link:");
+        var phone = "+15558880016";
+        await SendWhatsAppMessage(phone, "hi");
+
+        var reply = await SendWhatsAppMessage(phone, "1");
+
+        Assert.Contains("Almost done! Here is your link:", reply);
+        Assert.Contains("/w/", reply);
     }
 
     [Fact]

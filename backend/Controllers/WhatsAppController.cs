@@ -30,7 +30,7 @@ public class WhatsAppController(
         var toNumber = parms.GetValueOrDefault("To", "").Replace("whatsapp:", "");
         var barber = await db.Barbers
             .Where(b => b.TwilioNumber == toNumber)
-            .Select(b => new { b.Id, b.Name, b.Slug, b.Language, b.TwilioToken })
+            .Select(b => new { b.Id, b.Name, b.Slug, b.Language, b.TwilioToken, b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage })
             .FirstOrDefaultAsync();
 
         if (barber?.TwilioToken is null)
@@ -48,39 +48,75 @@ public class WhatsAppController(
         if (!validator.Validate(webhookUrl, parms, signature))
             return StatusCode(403, "Invalid signature");
 
+        // The barber wants to reply themselves instead of the automated flow -- send no message
+        // at all (an empty TwiML response), rather than a fixed "not available" reply.
+        if (!barber.ChatbotEnabled)
+            return Content("""<?xml version="1.0" encoding="UTF-8"?><Response></Response>""", "text/xml");
+
         var incomingMsg = parms.GetValueOrDefault("Body", "").Trim();
         var fromPhone = parms.GetValueOrDefault("From", "").Replace("whatsapp:", "");
         // Twilio's inbound WhatsApp webhook includes the sender's WhatsApp display name here --
         // that's the "name automatically taken from the WhatsApp API" the booking link identifies
         // the customer with, no separate profile lookup needed.
         var profileName = parms.GetValueOrDefault("ProfileName", "");
-        var lang = barber.Language.ToString();
+        var lang = await ResolveLanguage(barber.Id, fromPhone, incomingMsg, barber.Language.ToString());
         var lowerMsg = incomingMsg.ToLowerInvariant();
 
         string reply;
         if (CancelKeywords.Any(k => lowerMsg.Contains(k)))
         {
-            reply = await HandleCancel(barber.Id, barber.Name, fromPhone, lang);
+            reply = await HandleCancel(barber.Id, barber.Name, fromPhone, lang, barber.ChatbotWelcomeMessage);
         }
         else if (RescheduleKeywords.Any(k => lowerMsg.Contains(k)))
         {
             await ClearConversationState(barber.Id, fromPhone);
             var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
-            reply = $"{intro}\n\n{await PromptServiceSelection(barber.Id, barber.Name, fromPhone, lang)}";
+            reply = $"{intro}\n\n{await PromptServiceSelection(barber.Id, barber.Name, fromPhone, lang, barber.ChatbotWelcomeMessage)}";
         }
         else
         {
             // Either a fresh conversation (no state row yet -- falls through to the prompt below)
             // or a reply to an already-open "which service?" prompt (a numeric selection or junk).
-            var selectionReply = await TryHandleServiceSelectionReply(barber.Id, barber.Slug, appUrl, fromPhone, profileName, lang, incomingMsg);
-            reply = selectionReply ?? await PromptServiceSelection(barber.Id, barber.Name, fromPhone, lang);
+            var selectionReply = await TryHandleServiceSelectionReply(barber.Id, barber.Slug, appUrl, fromPhone, profileName, lang, incomingMsg, barber.ChatbotConfirmationMessage);
+            reply = selectionReply ?? await PromptServiceSelection(barber.Id, barber.Name, fromPhone, lang, barber.ChatbotWelcomeMessage);
         }
 
         var twiml = $"""<?xml version="1.0" encoding="UTF-8"?><Response><Message>{System.Net.WebUtility.HtmlEncode(reply)}</Message></Response>""";
         return Content(twiml, "text/xml");
     }
 
-    private async Task<string> HandleCancel(string barberId, string barberName, string fromPhone, string lang)
+    // Detects the language from the incoming message's script (Hebrew/Arabic Unicode blocks, or
+    // Latin letters -> English) so the bot always replies in whatever language the customer just
+    // wrote in, regardless of the barber's own configured storefront language. A message with no
+    // letters at all (e.g. a bare "1" reply) carries no signal of its own, so it falls back to
+    // whatever language the open conversation was already using, and only falls back to the
+    // barber's default when there's no open conversation either (a fresh, signal-less first message).
+    private const char HebrewBlockStart = (char)0x0590;
+    private const char HebrewBlockEnd = (char)0x05FF;
+    private const char ArabicBlockStart = (char)0x0600;
+    private const char ArabicBlockEnd = (char)0x06FF;
+
+    private static string? DetectLanguage(string text)
+    {
+        if (text.Any(c => c >= HebrewBlockStart && c <= HebrewBlockEnd)) return "HE";
+        if (text.Any(c => c >= ArabicBlockStart && c <= ArabicBlockEnd)) return "AR";
+        if (text.Any(char.IsLetter)) return "EN";
+        return null;
+    }
+
+    private async Task<string> ResolveLanguage(string barberId, string phone, string incomingMsg, string barberDefault)
+    {
+        var detected = DetectLanguage(incomingMsg);
+        if (detected is not null) return detected;
+
+        var pendingLang = await db.WhatsAppConversationStates
+            .Where(s => s.BarberId == barberId && s.Phone == phone && s.ExpiresAt > DateTime.UtcNow)
+            .Select(s => s.Language)
+            .FirstOrDefaultAsync();
+        return pendingLang ?? barberDefault;
+    }
+
+    private async Task<string> HandleCancel(string barberId, string barberName, string fromPhone, string lang, string? welcomeMessage)
     {
         var customer = await db.Customers
             // a.Date is a calendar date (local wall-clock, never UTC-converted), so compare
@@ -99,7 +135,7 @@ public class WhatsAppController(
         {
             await ClearConversationState(barberId, fromPhone);
             var intro = I18nService.T(lang, "whatsapp.noAppointment");
-            return $"{intro}\n\n{await PromptServiceSelection(barberId, barberName, fromPhone, lang)}";
+            return $"{intro}\n\n{await PromptServiceSelection(barberId, barberName, fromPhone, lang, welcomeMessage)}";
         }
 
         await ClearConversationState(barberId, fromPhone);
@@ -134,10 +170,13 @@ public class WhatsAppController(
         })).ToList();
     }
 
-    // Upserts the (BarberId, Phone) conversation-state row (unique index guarantees at most one)
-    // and replies with the numbered service list. Reused by the conversation-start path and by
-    // the reschedule/no-appointment paths, which prefix their own intro line first.
-    private async Task<string> PromptServiceSelection(string barberId, string barberName, string phone, string lang)
+    // Upserts the (BarberId, Phone) conversation-state row (unique index guarantees at most one,
+    // and records the resolved language on it for TryHandleServiceSelectionReply / future
+    // signal-less replies to reuse) and replies with the numbered service list. Reused by the
+    // conversation-start path and by the reschedule/no-appointment paths, which prefix their own
+    // intro line first. A barber's custom welcome message replaces the default greeting -- the
+    // "which service + list + instructions" tail always stays in the detected language.
+    private async Task<string> PromptServiceSelection(string barberId, string barberName, string phone, string lang, string? welcomeMessage)
     {
         var services = await ActiveServices(barberId, lang);
         if (services.Count == 0)
@@ -150,17 +189,25 @@ public class WhatsAppController(
             db.WhatsAppConversationStates.Add(existing);
         }
         existing.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        existing.Language = lang;
         await db.SaveChangesAsync();
 
         var list = string.Join("\n", services.Select((s, i) => $"{i + 1}. {s.Name}"));
+        if (!string.IsNullOrWhiteSpace(welcomeMessage))
+        {
+            var tail = I18nService.T(lang, "whatsapp.selectServicePrompt", new() { ["list"] = list });
+            return $"{welcomeMessage}\n\n{tail}";
+        }
         return I18nService.T(lang, "whatsapp.selectService", new() { ["barberName"] = barberName, ["list"] = list });
     }
 
     // Returns null when there's no open "which service?" prompt for this phone -- the caller then
     // falls through to starting a fresh one. Otherwise resolves the numeric reply: valid -> issues
     // the booking link and clears the state; invalid -> reprompts and keeps the state so the
-    // customer can retry within the window.
-    private async Task<string?> TryHandleServiceSelectionReply(string barberId, string slug, string appUrl, string phone, string profileName, string lang, string message)
+    // customer can retry within the window. A barber's custom confirmation message is used as-is
+    // (with {url} substituted if present, else the link is appended on its own line) in place of
+    // the default confirmation text.
+    private async Task<string?> TryHandleServiceSelectionReply(string barberId, string slug, string appUrl, string phone, string profileName, string lang, string message, string? confirmationMessage)
     {
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BarberId == barberId && s.Phone == phone && s.ExpiresAt > DateTime.UtcNow);
         if (state is null) return null;
@@ -173,8 +220,15 @@ public class WhatsAppController(
         db.WhatsAppConversationStates.Remove(state);
         await db.SaveChangesAsync();
 
-        var token = await bookingTokens.CreateAsync(barberId, chosen.Id, phone, string.IsNullOrWhiteSpace(profileName) ? null : profileName);
+        var token = await bookingTokens.CreateAsync(barberId, chosen.Id, phone, string.IsNullOrWhiteSpace(profileName) ? null : profileName, lang);
         var url = $"{appUrl}/{slug}/w/{token.Id}";
+
+        if (!string.IsNullOrWhiteSpace(confirmationMessage))
+        {
+            return confirmationMessage.Contains("{url}")
+                ? confirmationMessage.Replace("{url}", url)
+                : $"{confirmationMessage}\n\n{url}";
+        }
         return I18nService.T(lang, "whatsapp.serviceLinkSent", new() { ["service"] = chosen.Name, ["url"] = url });
     }
 }

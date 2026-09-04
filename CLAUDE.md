@@ -302,9 +302,35 @@ Migrations: `InitialCreate` ... `AddRecurringAppointments` (adds `RecurringSerie
 The barber can only cancel an appointment now (`AdminController.UpdateAppointmentStatus` rejects any `status` other than `CANCELLED`) — there's no "Mark Complete" button anywhere in the admin UI. Instead, `Services/AppointmentStatusHelper.EffectiveStatus(status, date, endTime)` computes "COMPLETED" automatically for any still-`CONFIRMED` appointment whose end time has passed (compared against `DateTime.Now`, local server time — same reasoning as the Availability Engine above), applied wherever a status is returned to a client: `AdminController` (dashboard + appointments list), `CustomerAppointmentsController.GetMyAppointments`, and `BookingController.GetAppointment` (the magic-link view). `CANCELLED` is never overridden. The stored `AppointmentStatus` column itself stays `CONFIRMED` — only the API response's status string is computed; nothing rewrites the DB row.
 
 ### Twilio / WhatsApp
-Twilio credentials are stored **per-barber** in the `Barbers` table (`TwilioSid`, `TwilioToken`, `TwilioNumber`) — not in appsettings. Barbers configure these in their Settings page.  
+Twilio credentials are stored **per-barber** in the `Barbers` table (`TwilioSid`, `TwilioToken`, `TwilioNumber`) — not in appsettings. Barbers configure these in their Settings page. Twilio is one of Meta's official WhatsApp Business Solution Providers — messages still run on Meta's actual WhatsApp Business Platform underneath, Twilio just handles the Meta onboarding/webhook plumbing.
 - Webhook drives the service-selection chatbot flow (see below) and replies to EN/AR/HE cancel/reschedule keywords by cancelling the next upcoming appointment directly or sending a fresh booking prompt.  
 - Reminders are sent by hitting `/api/cron/reminders` (e.g. via an external cron job or scheduler).
+
+### Chatbot customization & language auto-detection
+Per barber, in `Settings > WhatsApp Chatbot`:
+- `Barber.ChatbotEnabled` (default `true`) — when off, `WhatsAppController.Webhook` returns an
+  empty `<Response></Response>` TwiML body (no automated reply at all) for every inbound message,
+  cancel/reschedule keywords included — the barber wants to answer customers themselves.
+- `Barber.ChatbotWelcomeMessage` / `ChatbotConfirmationMessage` (both nullable free text, one
+  language each, not per-EN/AR/HE) — when set, replace the *default* greeting/confirmation text
+  only; the service list and its surrounding instructions always stay in the detected language
+  (see below), so a custom welcome message is followed by `whatsapp.selectServicePrompt`, not the
+  full `whatsapp.selectService` template. A custom confirmation message may include a literal
+  `{url}` placeholder to control where the booking link lands in the text; if omitted, the link is
+  appended on its own line.
+
+**Language auto-detection** (`WhatsAppController.DetectLanguage`): every inbound message's script
+is checked against the Hebrew (`U+0590`–`U+05FF`) and Arabic (`U+0600`–`U+06FF`) Unicode blocks,
+falling back to `EN` if it has any Latin letters at all. This is independent of the barber's own
+configured storefront `Language` — the bot always replies in whatever language the *customer* just
+typed in. A message with no letters at all (a bare numeric reply like `"1"`) carries no signal of
+its own, so `ResolveLanguage` falls back to the language already stored on the open
+`WhatsAppConversationState` row (see below) for that phone, and only falls back to the barber's own
+default when there's no open conversation either (a signal-less first message, e.g. an emoji).
+`WhatsAppConversationState.Language` and `WhatsAppBookingToken.Language` both persist the resolved
+language — the latter is returned by `POST /api/customer/auth/whatsapp` (`language` field) and the
+frontend's `loginWithWhatsAppToken` calls `setLang()` with it, so the booking wizard opens in the
+same language the customer was just chatting in, not whatever was last stored in that browser.
 
 ### Customer login via WhatsApp
 There is no phone+OTP login anymore — a customer session starts by redeeming a link the WhatsApp

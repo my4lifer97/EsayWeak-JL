@@ -40,7 +40,8 @@ public class AdminController(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
             b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber, b.TwilioSid,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
-            b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel));
+            b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
+            b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage));
     }
 
     [HttpPost("settings/logo")]
@@ -94,6 +95,9 @@ public class AdminController(
         var oldMaxBookingsPerWeek = b.MaxBookingsPerWeek;
         var oldWaitlistEnabled = b.WaitlistEnabled;
         var oldRequireApprovalOnCustomerCancel = b.RequireApprovalOnCustomerCancel;
+        var oldChatbotEnabled = b.ChatbotEnabled;
+        var oldChatbotWelcomeMessage = b.ChatbotWelcomeMessage;
+        var oldChatbotConfirmationMessage = b.ChatbotConfirmationMessage;
 
         if (req.Name is not null) b.Name = req.Name;
         if (req.Phone is not null) b.Phone = req.Phone;
@@ -108,6 +112,9 @@ public class AdminController(
         b.MaxBookingsPerWeek = req.MaxBookingsPerWeek;
         b.WaitlistEnabled = req.WaitlistEnabled;
         b.RequireApprovalOnCustomerCancel = req.RequireApprovalOnCustomerCancel;
+        b.ChatbotEnabled = req.ChatbotEnabled;
+        b.ChatbotWelcomeMessage = req.ChatbotWelcomeMessage;
+        b.ChatbotConfirmationMessage = req.ChatbotConfirmationMessage;
 
         await db.SaveChangesAsync();
 
@@ -127,6 +134,9 @@ public class AdminController(
         if (b.WaitlistEnabled != oldWaitlistEnabled) changes.Add($"waitlist {(b.WaitlistEnabled ? "enabled" : "disabled")}");
         if (b.RequireApprovalOnCustomerCancel != oldRequireApprovalOnCustomerCancel)
             changes.Add($"cancellation approval {(b.RequireApprovalOnCustomerCancel ? "required" : "not required")}");
+        if (b.ChatbotEnabled != oldChatbotEnabled) changes.Add($"chatbot {(b.ChatbotEnabled ? "enabled" : "disabled")}");
+        if (b.ChatbotWelcomeMessage != oldChatbotWelcomeMessage) changes.Add("chatbot welcome message");
+        if (b.ChatbotConfirmationMessage != oldChatbotConfirmationMessage) changes.Add("chatbot confirmation message");
 
         this.SetActivityDetail(changes.Count > 0 ? $"Updated settings: {string.Join(", ", changes)}" : "Updated settings (no fields changed)");
 

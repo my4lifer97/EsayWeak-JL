@@ -9,11 +9,12 @@ vi.mock('./customerApi', () => ({
 }))
 
 function TestConsumer() {
-  const { user, loginWithWhatsAppToken, logout, isAuthenticated } = useCustomerAuth()
+  const { user, loginWithWhatsAppToken, logout, isAuthenticated, language } = useCustomerAuth()
   return (
     <div>
       <div data-testid="authed">{String(isAuthenticated)}</div>
       <div data-testid="user">{user ? user.phone : 'none'}</div>
+      <div data-testid="language">{language}</div>
       <button onClick={() => loginWithWhatsAppToken('wa-token-1')}>login</button>
       <button onClick={logout}>logout</button>
     </div>
@@ -58,6 +59,19 @@ describe('CustomerAuthProvider', () => {
     await waitFor(() => expect(screen.getByTestId('authed').textContent).toBe('true'))
     expect(localStorage.getItem('customerToken')).toBe('t1')
     expect(JSON.parse(localStorage.getItem('customerUser')!).phone).toBe('+15550001111')
+  })
+
+  it('loginWithWhatsAppToken adopts the language detected server-side from the WhatsApp conversation', async () => {
+    localStorage.setItem('customerLang', 'HE') // whatever was last stored in this browser
+    vi.mocked(customerApi.post).mockResolvedValue({
+      data: { token: 't1', customerId: '1', name: 'First', familyName: 'Last', phone: '+15550001111', barberSlug: 'test-barber', serviceId: 'svc-1', language: 'AR' },
+    })
+    renderWithProvider()
+
+    await userEvent.click(screen.getByText('login'))
+
+    await waitFor(() => expect(screen.getByTestId('language').textContent).toBe('AR'))
+    expect(localStorage.getItem('customerLang')).toBe('AR')
   })
 
   it('logout clears storage and context', async () => {

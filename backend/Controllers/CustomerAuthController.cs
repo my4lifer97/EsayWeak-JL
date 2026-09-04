@@ -54,6 +54,7 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             phone = account.Phone,
             barberSlug = barber.Slug,
             serviceId = service.Id,
+            language = tokenRow.Language,
         });
     }
 

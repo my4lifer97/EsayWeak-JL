@@ -17,6 +17,10 @@ public class WhatsAppBookingToken
     // WhatsApp's inbound-message "ProfileName" field -- the sender's WhatsApp display name.
     // Null when Twilio doesn't supply one; the redemption endpoint falls back to a generic name.
     public string? ProfileName { get; set; }
+    // The language detected from the customer's WhatsApp conversation (see
+    // WhatsAppController.DetectLanguage) -- carried into the customer's frontend session on
+    // redemption so the booking wizard opens in the language they were just chatting in.
+    public string Language { get; set; } = "EN";
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -46,6 +46,14 @@ public class Barber
     // to decide (offer to waitlist / cancel silently / replace customer) via the dashboard.
     public bool RequireApprovalOnCustomerCancel { get; set; } = false;
 
+    // WhatsApp chatbot customization ("Simple Mode" per the product spec). When ChatbotEnabled is
+    // false, WhatsAppController sends no automated reply at all -- the barber wants to answer
+    // messages themselves instead. The two message fields are free text the barber writes in
+    // their own language; null means "use the built-in default text" (see I18nService).
+    public bool ChatbotEnabled { get; set; } = true;
+    public string? ChatbotWelcomeMessage { get; set; }
+    public string? ChatbotConfirmationMessage { get; set; }
+
     public ICollection<Service> Services { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];

@@ -11,7 +11,7 @@ public class WhatsAppBookingTokenService(AppDbContext db)
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromHours(24);
 
-    public async Task<WhatsAppBookingToken> CreateAsync(string barberId, string serviceId, string phone, string? profileName)
+    public async Task<WhatsAppBookingToken> CreateAsync(string barberId, string serviceId, string phone, string? profileName, string language = "EN")
     {
         var token = new WhatsAppBookingToken
         {
@@ -19,6 +19,7 @@ public class WhatsAppBookingTokenService(AppDbContext db)
             ServiceId = serviceId,
             Phone = phone,
             ProfileName = profileName,
+            Language = language,
             ExpiresAt = DateTime.UtcNow.Add(Lifetime),
         };
         db.WhatsAppBookingTokens.Add(token);

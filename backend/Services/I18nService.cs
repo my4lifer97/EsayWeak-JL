@@ -8,6 +8,9 @@ public static class I18nService
         {
             ["reminder.message"] = "Hi {customerName}! Reminder: your appointment with {barberName} is tomorrow at {time} for {service}.\n\nTo cancel: {cancelUrl}",
             ["whatsapp.selectService"] = "Hi! I'm {barberName}'s booking assistant. Which service would you like?\n\n{list}\n\nReply with the number.",
+            // Same tail as whatsapp.selectService minus the greeting -- used after a barber's own
+            // custom welcome message, which replaces the greeting instead of stacking on top of it.
+            ["whatsapp.selectServicePrompt"] = "Which service would you like?\n\n{list}\n\nReply with the number.",
             ["whatsapp.invalidServiceSelection"] = "Sorry, I didn't recognize that. Please reply with just the number of the service you'd like.",
             ["whatsapp.noServices"] = "Sorry, {barberName} hasn't set up any bookable services yet.",
             ["whatsapp.serviceLinkSent"] = "Great! Book your {service} appointment here: {url}",
@@ -21,6 +24,7 @@ public static class I18nService
         {
             ["reminder.message"] = "مرحبًا {customerName}! تذكير: موعدك مع {barberName} غدًا الساعة {time} لخدمة {service}.\n\nللإلغاء: {cancelUrl}",
             ["whatsapp.selectService"] = "مرحبًا! أنا مساعد حجز {barberName}. ما هي الخدمة التي تريدها؟\n\n{list}\n\nأرسل الرقم للاختيار.",
+            ["whatsapp.selectServicePrompt"] = "ما هي الخدمة التي تريدها؟\n\n{list}\n\nأرسل الرقم للاختيار.",
             ["whatsapp.invalidServiceSelection"] = "عذرًا، لم أفهم ذلك. الرجاء إرسال رقم الخدمة فقط.",
             ["whatsapp.noServices"] = "عذرًا، لم يقم {barberName} بإعداد أي خدمات للحجز بعد.",
             ["whatsapp.serviceLinkSent"] = "رائع! احجز موعد {service} هنا: {url}",
@@ -34,6 +38,7 @@ public static class I18nService
         {
             ["reminder.message"] = "שלום {customerName}! תזכורת: התור שלך אצל {barberName} מחר בשעה {time} לשירות {service}.\n\nלביטול: {cancelUrl}",
             ["whatsapp.selectService"] = "שלום! אני עוזר התורים של {barberName}. איזה שירות תרצה?\n\n{list}\n\nהשב עם המספר.",
+            ["whatsapp.selectServicePrompt"] = "איזה שירות תרצה?\n\n{list}\n\nהשב עם המספר.",
             ["whatsapp.invalidServiceSelection"] = "סליחה, לא הבנתי. אנא שלח רק את מספר השירות שתרצה.",
             ["whatsapp.noServices"] = "סליחה, {barberName} עדיין לא הגדיר שירותים לקביעת תור.",
             ["whatsapp.serviceLinkSent"] = "מעולה! קבע תור ל{service} כאן: {url}",

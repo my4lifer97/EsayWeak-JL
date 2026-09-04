@@ -12,6 +12,10 @@ public class WhatsAppConversationState
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string BarberId { get; set; } = "";
     public string Phone { get; set; } = "";
+    // The language detected from whichever message opened/last touched this conversation (see
+    // WhatsAppController.DetectLanguage) -- lets a numeric-only reply like "1" (no language
+    // signal of its own) keep replying in the language the customer was already using.
+    public string Language { get; set; } = "EN";
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

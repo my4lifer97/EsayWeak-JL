@@ -22,13 +22,15 @@ public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
     string? Description, string? Logo, string Language, string? TwilioNumber, string? TwilioSid,
     DateTime TrialEndsAt, string SubscriptionStatus,
-    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel);
+    int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel,
+    bool ChatbotEnabled, string? ChatbotWelcomeMessage, string? ChatbotConfirmationMessage);
 
 public record UpdateSettingsRequest(
     string? Name, string? Phone, string? Description, string? Language,
     string? TwilioNumber, string? TwilioSid, string? TwilioToken,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled = false,
-    bool RequireApprovalOnCustomerCancel = false);
+    bool RequireApprovalOnCustomerCancel = false,
+    bool ChatbotEnabled = true, string? ChatbotWelcomeMessage = null, string? ChatbotConfirmationMessage = null);
 
 public record BookAppointmentRequest(
     string ServiceId, string Date, string StartTime,

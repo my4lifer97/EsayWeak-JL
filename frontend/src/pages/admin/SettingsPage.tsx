@@ -14,6 +14,9 @@ type BarberSettings = {
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
   waitlistEnabled: boolean
   requireApprovalOnCustomerCancel: boolean
+  chatbotEnabled: boolean
+  chatbotWelcomeMessage: string | null
+  chatbotConfirmationMessage: string | null
 }
 
 export default function SettingsPage() {
@@ -28,12 +31,14 @@ export default function SettingsPage() {
     name: '', phone: '', description: '', language: 'EN' as 'EN' | 'AR' | 'HE',
     twilioNumber: '', twilioSid: '', twilioToken: '',
     maxBookingsPerDay: '', maxBookingsPerWeek: '',
+    chatbotWelcomeMessage: '', chatbotConfirmationMessage: '',
   })
   // Kept out of `form` above -- that object's values are read generically via
   // form[key as keyof typeof form] in the text-input .map()s below, and mixing in a boolean
   // would widen every one of those reads to `string | boolean`.
   const [waitlistEnabled, setWaitlistEnabled] = useState(false)
   const [requireApprovalOnCustomerCancel, setRequireApprovalOnCustomerCancel] = useState(false)
+  const [chatbotEnabled, setChatbotEnabled] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -72,9 +77,12 @@ export default function SettingsPage() {
       twilioSid: barber.twilioSid ?? '', twilioToken: '',
       maxBookingsPerDay: barber.maxBookingsPerDay?.toString() ?? '',
       maxBookingsPerWeek: barber.maxBookingsPerWeek?.toString() ?? '',
+      chatbotWelcomeMessage: barber.chatbotWelcomeMessage ?? '',
+      chatbotConfirmationMessage: barber.chatbotConfirmationMessage ?? '',
     })
     setWaitlistEnabled(barber.waitlistEnabled)
     setRequireApprovalOnCustomerCancel(barber.requireApprovalOnCustomerCancel)
+    setChatbotEnabled(barber.chatbotEnabled)
     setLang(barber.language)
     setInitialized(true)
   }
@@ -88,6 +96,9 @@ export default function SettingsPage() {
       maxBookingsPerWeek: form.maxBookingsPerWeek ? Number(form.maxBookingsPerWeek) : null,
       waitlistEnabled,
       requireApprovalOnCustomerCancel,
+      chatbotEnabled,
+      chatbotWelcomeMessage: form.chatbotWelcomeMessage || null,
+      chatbotConfirmationMessage: form.chatbotConfirmationMessage || null,
     }
     if (form.twilioToken) payload.twilioToken = form.twilioToken
     try {
@@ -275,6 +286,39 @@ export default function SettingsPage() {
                 <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'customerCancelApprovalHint')}</span>
               </span>
             </label>
+          </div>
+        </div>
+
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
+          <h2 className="text-white font-semibold mb-1">{t(lang, 'chatbotSettings')}</h2>
+          <p className="text-gray-500 text-sm">{t(lang, 'chatbotSettingsHint')}</p>
+
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={chatbotEnabled}
+              onChange={(e) => setChatbotEnabled(e.target.checked)}
+              className="mt-1 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+            <span>
+              <span className="block text-sm font-medium text-gray-200">{t(lang, 'chatbotEnabledLabel')}</span>
+              <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'chatbotEnabledHint')}</span>
+            </span>
+          </label>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'chatbotWelcomeMessage')}</label>
+            <p className="text-gray-500 text-xs mb-1.5">{t(lang, 'chatbotWelcomeMessageHint')}</p>
+            <textarea value={form.chatbotWelcomeMessage} rows={2}
+              onChange={(e) => setForm((f) => ({ ...f, chatbotWelcomeMessage: e.target.value }))}
+              placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'chatbotConfirmationMessage')}</label>
+            <p className="text-gray-500 text-xs mb-1.5">{t(lang, 'chatbotConfirmationMessageHint')}</p>
+            <textarea value={form.chatbotConfirmationMessage} rows={2}
+              onChange={(e) => setForm((f) => ({ ...f, chatbotConfirmationMessage: e.target.value }))}
+              placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
         </div>
 
