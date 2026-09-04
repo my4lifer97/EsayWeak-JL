@@ -13,17 +13,8 @@ public class ServicePhotoTests : IntegrationTestBase
     private record RegisterResponse(string? DevCode);
     private record AvailabilityResponse(List<TimeSlot> Slots);
     private record UploadPhotoResponse(string Url);
-    private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
-    private record VerifyOtpResponse(string Token, string CustomerId, string Phone);
-
-    private async Task<string> GetCustomerToken(string phone, string name = "First", string familyName = "Last")
-    {
-        var otpResp = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
-        var otpBody = await otpResp.Content.ReadFromJsonAsync<OtpRequestResponse>();
-        var verify = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, otpBody!.DevOtp!, name, familyName));
-        var verifyBody = await verify.Content.ReadFromJsonAsync<VerifyOtpResponse>();
-        return verifyBody!.Token;
-    }
+    private async Task<string> GetCustomerToken(string phone, string name = "First", string familyName = "Last") =>
+        (await LoginCustomerViaWhatsAppAsync(phone, name, familyName)).Token;
 
     private async Task<(string Token, string Slug)> RegisterAndLoginBarber(string email, string slug)
     {

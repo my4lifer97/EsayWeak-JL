@@ -11,8 +11,6 @@ namespace BarberSaas.Api.Tests.Controllers;
 public class WaitlistTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
-    private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
-    private record VerifyOtpResponse(string Token, string CustomerId, string Phone);
 
     private async Task<string> RegisterAndLoginBarber(string email, string slug)
     {
@@ -23,14 +21,8 @@ public class WaitlistTests : IntegrationTestBase
         return body!.Token;
     }
 
-    private async Task<string> GetCustomerToken(string phone, string name = "Waiting", string familyName = "Customer")
-    {
-        var otpResp = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
-        var otpBody = await otpResp.Content.ReadFromJsonAsync<OtpRequestResponse>();
-        var verify = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, otpBody!.DevOtp!, name, familyName));
-        var verifyBody = await verify.Content.ReadFromJsonAsync<VerifyOtpResponse>();
-        return verifyBody!.Token;
-    }
+    private async Task<string> GetCustomerToken(string phone, string name = "Waiting", string familyName = "Customer") =>
+        (await LoginCustomerViaWhatsAppAsync(phone, name, familyName)).Token;
 
     // Registers a barber, opens working hours for tomorrow (avoids the "isToday" cutoff in
     // AvailabilityService), and turns on the waitlist with dummy Twilio creds so WaitlistService

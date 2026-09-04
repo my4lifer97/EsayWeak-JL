@@ -32,8 +32,6 @@ public class BookingFlowTests : IntegrationTestBase
         return (monday.ToString("yyyy-MM-dd"), monday.AddDays(1).ToString("yyyy-MM-dd"));
     }
 
-    private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
-    private record VerifyOtpResponse(string Token, string CustomerId, string Phone);
     private record AvailabilityResponse(List<TimeSlot> Slots);
     private record RegisterResponse(string? DevCode);
 
@@ -55,14 +53,8 @@ public class BookingFlowTests : IntegrationTestBase
         return service!.Id;
     }
 
-    private async Task<string> GetCustomerToken(string phone, string name = "First", string familyName = "Last")
-    {
-        var otpResp = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
-        var otpBody = await otpResp.Content.ReadFromJsonAsync<OtpRequestResponse>();
-        var verify = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, otpBody!.DevOtp!, name, familyName));
-        var verifyBody = await verify.Content.ReadFromJsonAsync<VerifyOtpResponse>();
-        return verifyBody!.Token;
-    }
+    private async Task<string> GetCustomerToken(string phone, string name = "First", string familyName = "Last") =>
+        (await LoginCustomerViaWhatsAppAsync(phone, name, familyName)).Token;
 
     private async Task<List<TimeSlot>> AvailableSlots(string slug, string serviceId, string? date = null)
     {

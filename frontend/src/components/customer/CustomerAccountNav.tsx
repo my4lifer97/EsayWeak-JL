@@ -15,7 +15,10 @@ export default function CustomerAccountNav() {
 
   function handleSignOut() {
     logout()
-    navigate('/login')
+    // No manual sign-in page exists anymore -- a fresh session only starts from a WhatsApp
+    // booking link, so there's nowhere to send them to log back in. Browse is still open to
+    // anonymous visitors.
+    navigate('/browse')
   }
 
   return (
@@ -34,7 +37,9 @@ export default function CustomerAccountNav() {
               {t(lang, 'signOutPortal')}
             </button>
           ) : (
-            <Link to="/login" className="text-blue-400 hover:text-blue-300 text-sm transition-colors">{t(lang, 'loginTitle')}</Link>
+            // No manual sign-in page exists anymore -- a session only starts from a WhatsApp
+            // booking link, so there's nothing to link to here.
+            <span className="text-gray-600 text-sm">{t(lang, 'whatsappOnlyAccess')}</span>
           )}
           <LanguageSwitcher />
         </div>

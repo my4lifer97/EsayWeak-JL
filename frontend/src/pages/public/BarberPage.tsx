@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
@@ -114,12 +114,6 @@ export default function BarberPage() {
             </button>
           )}
 
-          {isAuthenticated && (
-            <Link to="/account/bookings"
-              className="block text-center text-gray-500 hover:text-gray-300 text-sm py-2 transition-colors">
-              {t(lang, 'viewMyAppointments')}
-            </Link>
-          )}
         </div>
 
         {showAppointments && activeAppointments.length > 0 && (

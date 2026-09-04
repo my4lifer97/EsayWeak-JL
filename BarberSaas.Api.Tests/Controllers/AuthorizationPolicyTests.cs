@@ -10,8 +10,6 @@ namespace BarberSaas.Api.Tests.Controllers;
 // accounts feature: a barber JWT must never satisfy a customer-only endpoint and vice versa.
 public class AuthorizationPolicyTests : IntegrationTestBase
 {
-    private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
-    private record VerifyOtpResponse(string Token);
     private record RegisterResponse(string? DevCode);
 
     private async Task<string> GetBarberToken()
@@ -23,15 +21,7 @@ public class AuthorizationPolicyTests : IntegrationTestBase
         return body!.Token;
     }
 
-    private async Task<string> GetCustomerToken()
-    {
-        const string phone = "+15552220001";
-        var otpResp = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
-        var otpBody = await otpResp.Content.ReadFromJsonAsync<OtpRequestResponse>();
-        var verify = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, otpBody!.DevOtp!, "First", "Last"));
-        var verifyBody = await verify.Content.ReadFromJsonAsync<VerifyOtpResponse>();
-        return verifyBody!.Token;
-    }
+    private async Task<string> GetCustomerToken() => (await LoginCustomerViaWhatsAppAsync("+15552220001")).Token;
 
     [Fact]
     public async Task AdminEndpoint_WithBarberToken_Succeeds()
