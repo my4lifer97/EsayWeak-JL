@@ -33,7 +33,7 @@ const barber = {
 function mockAnonymous() {
   vi.mocked(useCustomerAuth).mockReturnValue({
     user: null, isAuthenticated: false, language: 'EN', setLang: vi.fn(),
-    requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
+    loginWithWhatsAppToken: vi.fn(), logout: vi.fn(),
   } as ReturnType<typeof useCustomerAuth>)
 }
 
@@ -155,7 +155,7 @@ describe('BookingWizard', () => {
     vi.mocked(useCustomerAuth).mockReturnValue({
       user: { id: '1', name: 'Jane', familyName: 'Doe', phone: '+15559998888' },
       isAuthenticated: true, language: 'EN', setLang: vi.fn(),
-      requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
+      loginWithWhatsAppToken: vi.fn(), logout: vi.fn(),
     } as ReturnType<typeof useCustomerAuth>)
 
     renderWizard()
@@ -265,5 +265,33 @@ describe('BookingWizard', () => {
 
     await waitFor(() => expect(screen.getByText('Your Details')).toBeInTheDocument())
     expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-barber/availability/full?date=2026-08-10&serviceId=svc-1'))
+  })
+
+  it('deep-links from a WhatsApp booking link (serviceId only) straight to date selection, skipping service selection', async () => {
+    renderWizard('/test-barber/book?serviceId=svc-1')
+
+    expect(screen.getByText('Select a Date')).toBeInTheDocument()
+    expect(screen.queryByText('Select a Service')).not.toBeInTheDocument()
+  })
+
+  it('shows a "View My Appointments" link on the date-selection step for an authenticated customer', async () => {
+    vi.mocked(useCustomerAuth).mockReturnValue({
+      user: { id: '1', name: 'Jane', familyName: 'Doe', phone: '+15559998888' },
+      isAuthenticated: true, language: 'EN', setLang: vi.fn(),
+      loginWithWhatsAppToken: vi.fn(), logout: vi.fn(),
+    } as ReturnType<typeof useCustomerAuth>)
+    renderWizard()
+
+    await userEvent.click(screen.getByText('Haircut'))
+
+    expect(screen.getByText('View My Appointments')).toBeInTheDocument()
+  })
+
+  it('does not show "View My Appointments" on the date-selection step for an anonymous visitor', async () => {
+    renderWizard()
+
+    await userEvent.click(screen.getByText('Haircut'))
+
+    expect(screen.queryByText('View My Appointments')).not.toBeInTheDocument()
   })
 })

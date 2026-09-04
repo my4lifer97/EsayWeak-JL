@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { format, addDays } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
@@ -82,20 +82,27 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     } finally { setJoiningWaitlist(false) }
   }
 
-  // Deep-link prefill from a WhatsApp waitlist notification (?serviceId=&date=&time=): jump
-  // straight to the relevant slot instead of making the customer re-pick service/date/time from
-  // scratch. If the slot's already gone by the time they arrive (someone beat them to it), they
-  // just land on step 3 seeing the real current state -- no special-case error needed.
+  // Deep-link prefill from a WhatsApp notification or booking link (?serviceId=&date=&time=):
+  // jump straight past whichever steps are already decided instead of making the customer re-pick
+  // from scratch.
+  // - serviceId + date (+ time): a waitlist "slot opened up" notification -- jump to that slot; if
+  //   it's already gone by the time they arrive (someone beat them to it), they land on step 3
+  //   seeing the real current state, no special-case error needed.
+  // - serviceId only: the WhatsApp chatbot booking link (WhatsAppLandingPage) -- the customer
+  //   already picked their service in the chat, so skip step 1 entirely and land on date
+  //   selection (step 2), with no sign-up/service-selection step in between.
   useEffect(() => {
     const prefillServiceId = searchParams.get('serviceId')
     const prefillDate = searchParams.get('date')
     const prefillTime = searchParams.get('time')
-    if (!prefillServiceId || !prefillDate) return
+    if (!prefillServiceId) return
 
     const svc = barber.services.find((s) => s.id === prefillServiceId)
     if (!svc) return
 
     setService(svc)
+    if (!prefillDate) { setStep(2); return }
+
     setDate(prefillDate)
     setStep(3)
     customerApi.get(`/${barber.slug}/availability/full?date=${prefillDate}&serviceId=${svc.id}`).then(({ data }) => {
@@ -203,6 +210,12 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
                 )
               })}
             </div>
+            {isAuthenticated && (
+              <Link to="/account/bookings"
+                className="block text-center text-gray-500 hover:text-gray-300 text-sm mt-6 transition-colors">
+                {t(lang, 'viewMyAppointments')}
+              </Link>
+            )}
           </div>
         )}
 

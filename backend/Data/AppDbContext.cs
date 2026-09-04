@@ -15,7 +15,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<CustomerAccount> CustomerAccounts => Set<CustomerAccount>();
     public DbSet<Follow> Follows => Set<Follow>();
-    public DbSet<CustomerOtp> CustomerOtps => Set<CustomerOtp>();
+    public DbSet<WhatsAppBookingToken> WhatsAppBookingTokens => Set<WhatsAppBookingToken>();
+    public DbSet<WhatsAppConversationState> WhatsAppConversationStates => Set<WhatsAppConversationState>();
     public DbSet<BarberEmailOtp> BarberEmailOtps => Set<BarberEmailOtp>();
     public DbSet<BarberPasswordResetOtp> BarberPasswordResetOtps => Set<BarberPasswordResetOtp>();
     public DbSet<RecurringSeries> RecurringSeries => Set<RecurringSeries>();
@@ -46,8 +47,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Follow>()
             .HasIndex(x => new { x.CustomerAccountId, x.BarberId }).IsUnique();
 
-        b.Entity<CustomerOtp>()
-            .HasIndex(x => new { x.Phone, x.CreatedAt });
+        b.Entity<WhatsAppBookingToken>()
+            .HasIndex(x => x.ExpiresAt);
+
+        b.Entity<WhatsAppConversationState>()
+            .HasIndex(x => new { x.BarberId, x.Phone }).IsUnique();
 
         b.Entity<BarberEmailOtp>()
             .HasIndex(x => new { x.Email, x.CreatedAt });
@@ -176,6 +180,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Appointment>()
             .HasOne(x => x.RecurringSeries).WithMany(x => x.Appointments)
             .HasForeignKey(x => x.RecurringSeriesId).OnDelete(DeleteBehavior.SetNull);
+
+        b.Entity<WhatsAppBookingToken>()
+            .HasOne(x => x.Barber).WithMany()
+            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<WhatsAppBookingToken>()
+            .HasOne(x => x.Service).WithMany()
+            .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<WhatsAppConversationState>()
+            .HasOne(x => x.Barber).WithMany()
+            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<WaitlistEntry>()
             .HasOne(x => x.Appointment).WithMany(x => x.WaitlistEntries)

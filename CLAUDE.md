@@ -96,10 +96,10 @@ barber-saas/
 │   │   ├── AdminController.cs             # Protected admin CRUD (JWT required, BarberOnly policy)
 │   │   ├── BarbersController.cs           # GET /api/barbers/search|followed, POST/DELETE .../follow (CustomerOnly)
 │   │   ├── BookingController.cs           # Public booking API (GetAppointment/etc. accept anonymous)
-│   │   ├── CustomerAuthController.cs      # POST /api/customer/auth/otp|verify — phone+OTP login
+│   │   ├── CustomerAuthController.cs      # POST /api/customer/auth/whatsapp — redeems a WhatsApp booking-link token into a customer session
 │   │   ├── CustomerAppointmentsController.cs  # GET/PATCH /api/customer/appointments/* (CustomerOnly)
 │   │   ├── RecurringAppointmentsController.cs # GET/POST/DELETE /api/admin/recurring — owner-managed recurring series
-│   │   ├── WhatsAppController.cs          # Twilio webhook — replies to customer messages
+│   │   ├── WhatsAppController.cs          # Twilio webhook — service-selection chatbot flow + book/cancel/reschedule keywords
 │   │   └── CronController.cs              # GET /api/cron/reminders, /api/cron/generate-recurring, /api/cron/charge-subscriptions
 │   ├── Data/AppDbContext.cs         # EF Core DbContext, indexes, relationships
 │   ├── DTOs/AuthDtos.cs             # All request/response record types
@@ -107,8 +107,9 @@ barber-saas/
 │   ├── Models/
 │   │   ├── Barber.cs                # Barber, Service, ServiceGalleryPhoto, Appointment, WorkingHours, Break, BlockedSlot, Customer, RecurringSeries, RecurringSkip, etc.
 │   │   ├── CustomerAccount.cs       # Logged-in customer identity (phone-based)
-│   │   ├── CustomerOtp.cs           # One-time codes for phone verification
-│   │   ├── BarberEmailOtp.cs        # One-time codes for barber email verification (mirrors CustomerOtp)
+│   │   ├── WhatsAppBookingToken.cs  # Opaque, DB-backed booking-link token (barber+service+phone), 24h-reusable, issued once a service is picked in WhatsApp
+│   │   ├── WhatsAppConversationState.cs # Short-lived (barber, phone) "awaiting service selection" row -- Twilio webhooks are stateless per-message
+│   │   ├── BarberEmailOtp.cs        # One-time codes for barber email verification
 │   │   ├── BarberPasswordResetOtp.cs # One-time codes for barber password reset (mirrors BarberEmailOtp)
 │   │   └── Follow.cs                # CustomerAccount <-> Barber follow relationship
 │   ├── Services/
@@ -119,7 +120,7 @@ barber-saas/
 │   │   ├── JwtService.cs               # Barber JWT generation (30-day tokens, HS256)
 │   │   ├── CustomerJwtService.cs       # Customer JWT generation (separate "type": "customer" claim)
 │   │   ├── PhoneNormalizer.cs          # Normalizes phone numbers to a canonical form for matching
-│   │   ├── IOtpSender.cs / DevOtpSender.cs  # OTP delivery abstraction (dev sender logs/returns the code)
+│   │   ├── WhatsAppBookingTokenService.cs  # Issues/resolves WhatsAppBookingToken rows (shared by WhatsAppController and CustomerAuthController)
 │   │   ├── IEmailSender.cs / DevEmailSender.cs  # Email delivery abstraction (dev sender no-ops; code goes out via devCode in the API response instead)
 │   ├── GlobalExceptionHandler.cs     # Catches unhandled exceptions -> { error } JSON + ILogger, never a bare 500
 │   ├── Program.cs                   # App startup, DI registration, middleware pipeline, BarberOnly/CustomerOnly policies
@@ -134,16 +135,16 @@ barber-saas/
         │   ├── customer/       # CustomerAccountNav, LanguageSwitcher
         │   ├── BackButton.tsx           # Browser-history back button, used on all customer pages
         │   ├── ProtectedRoute.tsx       # Guards /admin/* routes (barber auth)
-        │   └── CustomerProtectedRoute.tsx  # Guards customer routes, preserves ?next= for post-login redirect
+        │   └── CustomerProtectedRoute.tsx  # Guards customer routes; renders an inline "message us on WhatsApp" notice when unauthenticated (no login page to redirect to)
         ├── lib/
         │   ├── api.ts          # Axios instance — baseURL /api, JWT request interceptor, 401 auto-logout
         │   ├── auth.tsx        # AuthContext + AuthProvider + useAuth hook (barber/admin auth)
-        │   ├── customerAuth.tsx  # CustomerAuthProvider + useCustomerAuth hook (customer auth + language pref)
+        │   ├── customerAuth.tsx  # CustomerAuthProvider + useCustomerAuth hook (loginWithWhatsAppToken + language pref)
         │   └── i18n.ts          # Client-side translations (EN/AR/HE) + t() + serviceName()
         └── pages/
             ├── admin/        # LoginPage, RegisterPage, DashboardPage,
             │                 #   AppointmentsPage, RecurringAppointmentsPage, ServicesPage, SchedulePage, SettingsPage
-            └── public/       # BarberPage, BookPage, AppointmentPage, CustomerLoginPage,
+            └── public/       # BarberPage, BookPage, AppointmentPage, WhatsAppLandingPage,
                               #   BrowseBarbersPage (search + followed list), MyBookingsPage
 ```
 
@@ -154,10 +155,10 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 ### Backend API Routes
 
 **Auth (no JWT)**
-- `POST /api/auth/register` — create barber account (`EmailVerified = false`); auto-creates Mon–Fri 09:00–18:00 working hours; sends a 6-digit email verification code (`devCode` in the response body in Development, matching `DevOtpSender`'s pattern for customer OTPs)
+- `POST /api/auth/register` — create barber account (`EmailVerified = false`); auto-creates Mon–Fri 09:00–18:00 working hours; sends a 6-digit email verification code (`devCode` in the response body in Development, matching `DevEmailSender`'s no-op-in-dev pattern)
 - `POST /api/auth/login` — returns JWT token (30 days); **403 `{ emailNotVerified: true }`** if the barber hasn't verified their email yet (frontend responds by requesting a fresh code and dropping into the verify-code view)
 - `POST /api/auth/verify-email` — `{ email, code }`; marks the barber verified and returns a JWT (`LoginResponse`), logging them in directly
-- `POST /api/auth/resend-verification` — `{ email }`; 45s cooldown + 5/hour cap, same shape as customer OTP resend
+- `POST /api/auth/resend-verification` — `{ email }`; 45s cooldown + 5/hour cap
 - `POST /api/auth/forgot-password` — `{ email }`; sends a 6-digit reset code (`devCode` in Development), same cooldown/cap as email verification; 404 if the email isn't registered
 - `POST /api/auth/reset-password` — `{ email, code, newPassword }`; verifies the code, updates the password, and returns a JWT (`LoginResponse`), logging them in directly
 
@@ -190,8 +191,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `PATCH /api/{slug}/appointments/{id}?token=` — reschedule (re-checks availability first)
 
 **Customer auth (no JWT)**
-- `POST /api/customer/auth/otp` — request a login code for a phone number (dev sender logs/returns it instead of sending SMS)
-- `POST /api/customer/auth/verify` — verify the code; returns a customer JWT (`"type": "customer"` claim)
+- `POST /api/customer/auth/whatsapp` — `{ token }`; redeems a `WhatsAppBookingToken` (issued by `WhatsAppController` once the customer picks a service in the chatbot) into a customer session — returns a customer JWT (`"type": "customer"` claim) plus `{ barberSlug, serviceId }` so the frontend can land directly on date selection with the service preselected. 400 if the token is missing/expired, 404 if the barber/service it points at is gone. See [Customer login via WhatsApp](#customer-login-via-whatsapp).
 
 **Barbers directory**
 - `GET /api/barbers/search?query=` — search barbers by name/slug (public, no auth)
@@ -203,7 +203,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `PATCH /api/customer/appointments/{id}/photo` — change a CONFIRMED appointment's reference photo (only for services with `photoMode != None`); same `galleryPhotoId`/`customerPhotoUrl` shape as booking
 
 **Integrations**
-- `POST /api/whatsapp/webhook` — Twilio webhook; validates X-Twilio-Signature; replies in barber's language to book/cancel/reschedule keywords
+- `POST /api/whatsapp/webhook` — Twilio webhook; validates X-Twilio-Signature; drives the service-selection chatbot flow (see below) plus cancel/reschedule keywords, in the barber's language
 - `GET /api/cron/reminders` — send 24h WhatsApp reminders; requires `Authorization: Bearer <CronSecret>`
 - `GET /api/cron/generate-recurring` — extends every active `RecurringSeries`' generated `Appointment` rows to the rolling horizon (default 8 weeks, `RecurringGeneration:HorizonWeeks` config); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, created, skipped }`; meant to run daily via an external scheduler — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
 - `GET /api/cron/charge-subscriptions` — charges every `ACTIVE` barber with a stored `CardcomToken` whose `CardcomNextChargeAt` has passed, via Cardcom's token-charge API; same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, charged, failed }`; a successful charge bumps `CardcomNextChargeAt` by 1 month, a failed one sets `SubscriptionStatus = EXPIRED` — see [Billing (Cardcom)](#billing-cardcom)
@@ -217,28 +217,29 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — services CRUD
 - `/admin/settings` — business info, Twilio setup
-- `/:slug` — public barber page — **requires customer login** (see below)
-- `/:slug/book` — 5-step booking wizard — **requires customer login**
+- `/:slug` — public barber page — **requires a customer session** (see below)
+- `/:slug/book` — booking wizard (service → date → time → details) — **requires a customer session**; `?serviceId=` alone (from a WhatsApp booking link) skips service selection straight to date selection, `?serviceId=&date=&time=` (from a waitlist notification) skips straight to the confirm step if the slot's still open
+- `/:slug/w/:token` — WhatsApp booking-link landing point (`WhatsAppLandingPage`); redeems the token itself and establishes the session, then redirects into `/:slug/book?serviceId=`; public, not guarded
 - `/:slug/appointments/:id?token=<cancelToken>` — view/cancel/reschedule appointment — public, token-secured, no login (opened directly from a WhatsApp/SMS reminder)
 
 ### Auth
 JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via request interceptor. 401 responses redirect to `/admin/login` — **except** a 401 from `/auth/login` itself (wrong password), which must NOT redirect or it wipes `LoginPage`'s own error message via a full page reload before React can render it. Admin routes are wrapped in `ProtectedRoute` (`frontend/src/components/ProtectedRoute.tsx`) which checks `useAuth().isAuthenticated`.
 
-**Customer routes**: `/:slug`, `/:slug/book`, `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor (including one opening a barber's shared link for the first time) is redirected to `/login?next=<the path they tried>`, and `CustomerLoginPage` sends them back there after a successful phone+OTP login. Visiting `/login` directly (no `next`) still lands on `/browse` as before. There is deliberately no guest-browsing fallback for these routes — this reverses the earlier "guest booking must work" decision from the customer-accounts feature. The backend (`BookingController.BookAppointment`) still technically accepts anonymous requests; only the frontend routing enforces login now. `/:slug/appointments/:id` (the magic-link view) is intentionally left outside this guard.
+**Customer routes**: `/:slug`, `/:slug/book`, `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — there is no manual sign-in page anymore (see [Customer login via WhatsApp](#customer-login-via-whatsapp)), so an anonymous visitor here just sees an inline "message us on WhatsApp for a booking link" notice instead of a redirect. There is deliberately no guest-browsing fallback for these routes either — this carries forward the earlier "guest booking must work" reversal from the customer-accounts feature. The backend (`BookingController.BookAppointment`) still technically accepts anonymous requests; only the frontend routing enforces a session. `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are intentionally left outside this guard.
 
 **Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBarbersPage` (`/browse`) fetches `GET /api/barbers/followed` itself and renders a "Barbers You Follow" list right under the search bar, with a "Remove" button per entry. A customer is auto-followed to a barber the moment they book an appointment while logged in (`BookingController.BookAppointment`), not just via an explicit Follow click — guest bookings don't create a follow (no account to attach it to).
 
 ### i18n (Translations)
 - **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings.  
   Use `t(lang, 'key')` for UI strings and `serviceName(service, lang)` for multilingual service names.  
-  **Customer-facing pages** (login/browse/account/*, a barber's public page, the booking wizard) use the
+  **Customer-facing pages** (browse/account/*, a barber's public page, the booking wizard) use the
   customer's own language preference — `useCustomerAuth().language`/`setLang()`, stored under
   `localStorage['customerLang']`, defaulting to **Hebrew** when unset. This is independent of, and
   overrides, that specific barber's own configured `language`/`isRTL` (their business's storefront
   setting) — a customer who picks English sees English everywhere, even on a Hebrew-configured
   barber's page. RTL is derived from the customer's chosen language (`AR`/`HE` → `rtl`), not the
   barber's `isRTL` flag. `<LanguageSwitcher />` (`frontend/src/components/customer/`) exposes the
-  picker; it's on `CustomerAccountNav`, `CustomerLoginPage`, `BarberPage`, and `BookingWizard`.
+  picker; it's on `CustomerAccountNav`, `BarberPage`, and `BookingWizard`.
   **Admin/barber dashboard pages** are unaffected — they still use `useAuth().language`, set from the
   barber's own `Settings > Language` field, unrelated to any customer's choice.
 - **Backend**: `backend/Services/I18nService.cs` — static `T(lang, key, args)` for WhatsApp/reminder messages.
@@ -246,7 +247,7 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
 ### Back navigation (customer pages)
 `frontend/src/components/BackButton.tsx` — browser-history back (`navigate(-1)`), not a fixed
 route, so it works regardless of how the customer arrived. Used on every customer-facing page
-(BarberPage, BookPage/BookingWizard step 1, MyBookingsPage, BrowseBarbersPage, CustomerLoginPage,
+(BarberPage, BookPage/BookingWizard step 1, MyBookingsPage, BrowseBarbersPage,
 AppointmentPage). BookingWizard steps 2-4 keep their own in-wizard step-back button instead
 (moving between wizard steps, not pages).
 
@@ -302,29 +303,43 @@ The barber can only cancel an appointment now (`AdminController.UpdateAppointmen
 
 ### Twilio / WhatsApp
 Twilio credentials are stored **per-barber** in the `Barbers` table (`TwilioSid`, `TwilioToken`, `TwilioNumber`) — not in appsettings. Barbers configure these in their Settings page.  
-- Webhook replies to EN/AR/HE keywords (book, cancel, reschedule) with booking links or cancels the next upcoming appointment directly.  
+- Webhook drives the service-selection chatbot flow (see below) and replies to EN/AR/HE cancel/reschedule keywords by cancelling the next upcoming appointment directly or sending a fresh booking prompt.  
 - Reminders are sent by hitting `/api/cron/reminders` (e.g. via an external cron job or scheduler).
 
-### Customer login OTP
-`POST /api/customer/auth/otp` generates and rate-limits the code the same way regardless of delivery
-(`CustomerAuthController`: 45s cooldown, 5/hour cap, 5 verify attempts, 10-minute expiry, BCrypt-hashed
-in `CustomerOtps`) — only *how* the code reaches the customer differs by environment. `Services/IOtpSender`
-is `TwilioOtpSender` (real SMS, via a **platform-level** Twilio account — `Twilio:AccountSid/AuthToken/FromNumber`,
-distinct from any barber's own WhatsApp Twilio credentials above) once `Twilio:AccountSid` is configured,
-else `DevOtpSender` (no-op; the code comes back as `devOtp` in the response body, but only when
-`ASPNETCORE_ENVIRONMENT=Development` — a misconfigured production without Twilio creds fails closed,
-silently not delivering the code, rather than leaking it in the response). `PhoneNormalizer.Normalize`
-(used everywhere phones are stored/matched) keeps a bare local number as-is if the customer didn't type
-a `+`, so `TwilioOtpSender` E.164-izes it at send time only, assuming an Israeli mobile number (leading
-`0` swapped for `+972`) since that normalized/matching format can't change without breaking existing
-phone-matching everywhere else in the app.
+### Customer login via WhatsApp
+There is no phone+OTP login anymore — a customer session starts by redeeming a link the WhatsApp
+bot sent them. Flow (`WhatsAppController` + `CustomerAuthController`):
+1. Any message from a phone with no pending selection (or the `book` keyword) gets a numbered list
+   of the barber's active services (`whatsapp.selectService`, service order = `Service.Id` order)
+   and opens a `WhatsAppConversationState` row (`BarberId`+`Phone`, 10-minute expiry) remembering
+   the bot is waiting on a reply — Twilio webhooks are stateless per-message, so this is the only
+   way to connect the "which service?" prompt to the customer's numeric reply that follows.
+2. A valid numeric reply creates a `WhatsAppBookingToken` (`WhatsAppBookingTokenService.CreateAsync`)
+   — an **opaque, DB-backed** id, not a JWT, so the phone number it carries can't be read off the
+   URL — and replies with `{AppUrl}/{slug}/w/{token}`. Reusable for 24h (no one-time-use flag), so
+   reopening the WhatsApp message later the same day still works. An invalid reply reprompts and
+   keeps the state row; the `cancel`/`reschedule` keywords clear it.
+3. Opening that URL (`WhatsAppLandingPage`) calls `POST /api/customer/auth/whatsapp` with the
+   token, which resolves it (400 if missing/expired, 404 if the barber/service was deleted or
+   deactivated since), upserts a `CustomerAccount` by phone — splitting Twilio's `ProfileName` form
+   field (the sender's WhatsApp display name) into `Name`/`FamilyName` on the first space, falling
+   back to a generic name if WhatsApp didn't supply one — and returns a normal customer JWT via
+   `CustomerJwtService.Generate` (identical to the old OTP-verify flow) plus `{ barberSlug,
+   serviceId }`. The frontend then redirects into `/:slug/book?serviceId=`, which skips straight to
+   date selection (`BookingWizard`'s deep-link `useEffect`) — no sign-up/sign-in step, no service
+   list to pick from again.
+
+`PhoneNormalizer.Normalize` (used everywhere phones are stored/matched) keeps a bare local number
+as-is if the customer didn't type a `+` — WhatsApp's `From` field always arrives in E.164 already,
+so this mainly matters for matching against phones entered elsewhere (owner-created appointments,
+the booking form's editable phone field).
 
 ### Configuration (`backend/appsettings.json`)
 ```
 ConnectionStrings:Default   PostgreSQL connection string (prod: barbersaas)
 Jwt:Issuer                  barbersaas-api
 Jwt:Audience                barbersaas-frontend
-AppUrl                      Public frontend URL (used in WhatsApp message links)
+AppUrl                      Public frontend URL (used in WhatsApp message links, including booking-link tokens)
 AllowedOrigin               CORS allowed origin (frontend URL)
 RecurringGeneration:HorizonWeeks   How many weeks ahead RecurringAppointmentService keeps generated (optional, defaults to 8)
 BackendUrl                  Public backend URL (used to build Cardcom's WebHookUrl callback -- must be a URL Cardcom's servers can reach, unlike AppUrl which points at the frontend)
@@ -332,9 +347,6 @@ Cardcom:TerminalNumber      Cardcom terminal number -- billing is disabled (503)
 Cardcom:ApiName             Cardcom API name (sent on LowProfile/Create and GetLpResult)
 Cardcom:ApiPassword         Cardcom API password (sent on the recurring token-charge call only, not on LowProfile/Create)
 Cardcom:MonthlyAmount       Subscription amount in ILS, as a string (default "120")
-Twilio:AccountSid           Platform-level Twilio account SID -- sends the customer login OTP as a real SMS when set; falls back to the no-op DevOtpSender (code returned as devOtp in Development only) otherwise. Separate from each barber's own TwilioSid/Token/Number (used for WhatsApp replies).
-Twilio:AuthToken            Platform-level Twilio auth token
-Twilio:FromNumber           Platform-level Twilio phone number the OTP SMS is sent from (E.164, e.g. "+15551234567")
 ```
 
 `Jwt:Secret` and `CronSecret` are **not** in `appsettings.json` — there's no default, so the app fails fast if they're missing rather than silently falling back to a guessable value.

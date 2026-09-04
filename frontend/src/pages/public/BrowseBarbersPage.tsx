@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { customerApi } from '../../lib/customerApi'
@@ -11,7 +11,6 @@ type BarberResult = { slug: string; name: string; description: string | null; lo
 
 export default function BrowseBarbersPage() {
   const { language: lang, isAuthenticated } = useCustomerAuth()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
   const [pending, setPending] = useState<string | null>(null)
@@ -40,7 +39,10 @@ export default function BrowseBarbersPage() {
   }
 
   async function toggleFollow(slug: string, isFollowed: boolean) {
-    if (!isAuthenticated) { navigate('/login?next=/browse'); return }
+    // No manual sign-in exists anymore -- following requires a customer session, which only
+    // starts from a WhatsApp booking link, so there's nowhere to send an anonymous visitor to
+    // log in. The Follow button is disabled for them instead (see the button below).
+    if (!isAuthenticated) return
     setPending(slug)
     try {
       if (isFollowed) await customerApi.delete(`/barbers/${slug}/follow`)
@@ -78,7 +80,8 @@ export default function BrowseBarbersPage() {
                       {b.description && <div className="text-gray-500 text-sm truncate mt-0.5">{b.description}</div>}
                     </Link>
                     <button
-                      disabled={pending === b.slug}
+                      disabled={pending === b.slug || !isAuthenticated}
+                      title={isAuthenticated ? undefined : t(lang, 'whatsappOnlyAccess')}
                       onClick={() => toggleFollow(b.slug, b.isFollowed)}
                       className={`shrink-0 text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 ${
                         b.isFollowed

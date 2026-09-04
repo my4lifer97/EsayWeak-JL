@@ -6,96 +6,38 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BarberSaas.Api.Controllers;
 
+// Replaces the old phone+OTP login: a customer session now starts by redeeming the opaque
+// booking-link token the WhatsApp bot sent them (see WhatsAppController + WhatsAppBookingTokenService)
+// instead of typing a phone number and a code. No manual sign-up/sign-in step remains.
 [ApiController]
 [Route("api/customer/auth")]
-public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, IOtpSender otpSender, IWebHostEnvironment env) : ControllerBase
+public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, WhatsAppBookingTokenService bookingTokens) : ControllerBase
 {
-    private const int OtpCooldownSeconds = 45;
-    private const int OtpMaxPerHour = 5;
-    private const int OtpMaxAttempts = 5;
-    private const int OtpExpiryMinutes = 10;
-
-    private const string TestCustomerCode = "123456";
-    private static readonly string TestCustomerPhone = PhoneNormalizer.Normalize("0501234567");
-
-    [HttpPost("otp")]
-    public async Task<IActionResult> RequestOtp([FromBody] RequestCustomerOtpRequest req)
+    [HttpPost("whatsapp")]
+    public async Task<IActionResult> LoginWithWhatsApp([FromBody] WhatsAppLoginRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.Phone))
-            return BadRequest(new { error = "Phone is required" });
+        if (string.IsNullOrWhiteSpace(req.Token))
+            return BadRequest(new { error = "Token is required" });
 
-        var phone = PhoneNormalizer.Normalize(req.Phone);
-        var since = DateTime.UtcNow.AddHours(-1);
+        var tokenRow = await bookingTokens.TryResolveAsync(req.Token);
+        if (tokenRow is null)
+            return BadRequest(new { error = "This link has expired or is invalid" });
 
-        var recent = await db.CustomerOtps
-            .Where(o => o.Phone == phone && o.CreatedAt > since)
-            .OrderByDescending(o => o.CreatedAt)
-            .ToListAsync();
+        var barber = await db.Barbers.Where(b => b.Id == tokenRow.BarberId).Select(b => new { b.Slug }).FirstOrDefaultAsync();
+        // Services are soft-deleted (IsActive = false), never hard-deleted -- so this also covers
+        // the barber deactivating the service after the WhatsApp link was already sent.
+        var service = await db.Services.Where(s => s.Id == tokenRow.ServiceId && s.IsActive).Select(s => new { s.Id }).FirstOrDefaultAsync();
+        if (barber is null || service is null)
+            return NotFound(new { error = "This barber or service is no longer available" });
 
-        var last = recent.FirstOrDefault();
-        if (last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < OtpCooldownSeconds)
-            return StatusCode(429, new { error = "Please wait before requesting another code" });
-
-        if (recent.Count >= OtpMaxPerHour)
-            return StatusCode(429, new { error = "Too many requests. Try again later" });
-
-        var isNew = !await db.CustomerAccounts.AnyAsync(a => a.Phone == phone);
-
-        var code = phone == TestCustomerPhone
-            ? TestCustomerCode
-            : Random.Shared.Next(100000, 999999).ToString();
-        db.CustomerOtps.Add(new CustomerOtp
-        {
-            Phone = phone,
-            CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
-            ExpiresAt = DateTime.UtcNow.AddMinutes(OtpExpiryMinutes),
-        });
-        await db.SaveChangesAsync();
-
-        // The fixed reviewer/test phone always resolves to the fixed TestCustomerCode above --
-        // sending it a real SMS on every request would text a real Israeli mobile number (once
-        // TwilioOtpSender is wired up) that has nothing to do with app review/testing.
-        if (phone != TestCustomerPhone)
-            await otpSender.SendAsync(phone, code);
-
-        string? devOtp = env.IsDevelopment() ? code : null;
-        return Ok(new { isNewCustomer = isNew, devOtp });
-    }
-
-    [HttpPost("verify")]
-    public async Task<IActionResult> VerifyOtp([FromBody] VerifyCustomerOtpRequest req)
-    {
-        if (string.IsNullOrWhiteSpace(req.Phone) || string.IsNullOrWhiteSpace(req.Otp))
-            return BadRequest(new { error = "Phone and code are required" });
-
-        var phone = PhoneNormalizer.Normalize(req.Phone);
-
-        var entry = await db.CustomerOtps
-            .Where(o => o.Phone == phone && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < OtpMaxAttempts)
-            .OrderByDescending(o => o.CreatedAt)
-            .FirstOrDefaultAsync();
-
-        if (entry is null || !BCrypt.Net.BCrypt.Verify(req.Otp, entry.CodeHash))
-        {
-            if (entry is not null)
-            {
-                entry.Attempts++;
-                await db.SaveChangesAsync();
-            }
-            return BadRequest(new { error = "Invalid or expired code" });
-        }
-
-        entry.Consumed = true;
-
+        var phone = PhoneNormalizer.Normalize(tokenRow.Phone);
         var account = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == phone);
         if (account is null)
         {
-            if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.FamilyName))
-                return BadRequest(new { error = "Name and family name required for new customers" });
-            account = new CustomerAccount { Phone = phone, Name = req.Name, FamilyName = req.FamilyName };
+            var (name, familyName) = SplitProfileName(tokenRow.ProfileName);
+            account = new CustomerAccount { Phone = phone, Name = name, FamilyName = familyName };
             db.CustomerAccounts.Add(account);
         }
-
         await db.SaveChangesAsync();
 
         await db.Customers
@@ -110,9 +52,21 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, IOt
             name = account.Name,
             familyName = account.FamilyName,
             phone = account.Phone,
+            barberSlug = barber.Slug,
+            serviceId = service.Id,
         });
+    }
+
+    // WhatsApp only exposes a single display name, not separate given/family names -- best-effort
+    // split on the first space. Falls back to a generic name (never blocks login) when the
+    // customer has no WhatsApp profile name set; they can still correct it in the booking form.
+    private static (string Name, string FamilyName) SplitProfileName(string? profileName)
+    {
+        if (string.IsNullOrWhiteSpace(profileName))
+            return ("Customer", "");
+        var parts = profileName.Trim().Split(' ', 2);
+        return parts.Length == 2 ? (parts[0], parts[1]) : (parts[0], "");
     }
 }
 
-public record RequestCustomerOtpRequest(string Phone);
-public record VerifyCustomerOtpRequest(string Phone, string Otp, string? Name, string? FamilyName);
+public record WhatsAppLoginRequest(string Token);

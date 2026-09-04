@@ -9,8 +9,6 @@ namespace BarberSaas.Api.Tests.Controllers;
 public class PlatformAdminControllerTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
-    private record OtpRequestResponse(bool IsNewCustomer, string? DevOtp);
-    private record VerifyOtpResponse(string Token, string CustomerId, string Phone);
 
     private async Task<string> RegisterAndLoginBarber(string email, string slug)
     {
@@ -23,11 +21,8 @@ public class PlatformAdminControllerTests : IntegrationTestBase
 
     private async Task<(string Token, string CustomerId)> GetCustomerToken(string phone, string name = "Test", string familyName = "Customer")
     {
-        var otpResp = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
-        var otpBody = await otpResp.Content.ReadFromJsonAsync<OtpRequestResponse>();
-        var verify = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, otpBody!.DevOtp!, name, familyName));
-        var verifyBody = await verify.Content.ReadFromJsonAsync<VerifyOtpResponse>();
-        return (verifyBody!.Token, verifyBody.CustomerId);
+        var result = await LoginCustomerViaWhatsAppAsync(phone, name, familyName);
+        return (result.Token, result.CustomerId);
     }
 
     private async Task<string> BootstrapAdmin(string email = "owner@example.com")

@@ -48,14 +48,7 @@ builder.Services.AddScoped<FollowService>();
 builder.Services.AddScoped<IWhatsAppSender, TwilioWhatsAppSender>();
 builder.Services.AddScoped<WaitlistService>();
 builder.Services.AddScoped<AppointmentCancellationService>();
-// Real SMS sending via a platform-level Twilio account only kicks in once Twilio:AccountSid is
-// configured (via dotnet user-secrets locally, env vars in production) — falls back to the no-op
-// dev sender otherwise, so environments without an account (including the test suite) are
-// unaffected. This is separate from each barber's own WhatsApp Twilio credentials.
-if (!string.IsNullOrEmpty(builder.Configuration["Twilio:AccountSid"]))
-    builder.Services.AddScoped<IOtpSender, TwilioOtpSender>();
-else
-    builder.Services.AddScoped<IOtpSender, DevOtpSender>();
+builder.Services.AddScoped<WhatsAppBookingTokenService>();
 // Real email sending via Resend only kicks in once Resend:ApiKey is configured (via
 // dotnet user-secrets locally, env vars in production) — falls back to the no-op dev sender
 // otherwise, so environments without an API key (including the test suite) are unaffected.

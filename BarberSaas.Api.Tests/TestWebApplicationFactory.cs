@@ -12,12 +12,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace BarberSaas.Api.Tests;
 
-// Development environment so CustomerAuthController exposes devOtp, matching real local-dev
-// behavior; Program.cs's IsNpgsql() guard means the Development-only auto-migrate is skipped
-// for this provider (schema is created directly below via EnsureCreated instead, since the
-// real migrations' raw-SQL backfill is Postgres-specific and wouldn't run on SQLite).
+// Development environment so AuthController/CustomerAuthController-adjacent flows expose devCode,
+// matching real local-dev behavior; Program.cs's IsNpgsql() guard means the Development-only
+// auto-migrate is skipped for this provider (schema is created directly below via EnsureCreated
+// instead, since the real migrations' raw-SQL backfill is Postgres-specific and wouldn't run on
+// SQLite).
 //
-// SQLite (not the EF InMemory provider) because CustomerAuthController.VerifyOtp uses
+// SQLite (not the EF InMemory provider) because CustomerAuthController.LoginWithWhatsApp uses
 // ExecuteUpdateAsync, a relational-only bulk operation the InMemory provider can't execute.
 // The connection is kept open for the factory's lifetime — SQLite's in-memory database is
 // destroyed the moment its one connection closes.

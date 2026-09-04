@@ -9,13 +9,12 @@ vi.mock('./customerApi', () => ({
 }))
 
 function TestConsumer() {
-  const { user, requestOtp, verifyOtp, logout, isAuthenticated } = useCustomerAuth()
+  const { user, loginWithWhatsAppToken, logout, isAuthenticated } = useCustomerAuth()
   return (
     <div>
       <div data-testid="authed">{String(isAuthenticated)}</div>
       <div data-testid="user">{user ? user.phone : 'none'}</div>
-      <button onClick={() => requestOtp('+15550001111')}>request</button>
-      <button onClick={() => verifyOtp('+15550001111', '123456', 'First', 'Last')}>verify</button>
+      <button onClick={() => loginWithWhatsAppToken('wa-token-1')}>login</button>
       <button onClick={logout}>logout</button>
     </div>
   )
@@ -47,24 +46,15 @@ describe('CustomerAuthProvider', () => {
     expect(screen.getByTestId('user').textContent).toBe('+15550001111')
   })
 
-  it('requestOtp calls the OTP endpoint and returns the response data without touching storage', async () => {
-    vi.mocked(customerApi.post).mockResolvedValue({ data: { isNewCustomer: true, devOtp: '999999' } })
-    renderWithProvider()
-
-    await userEvent.click(screen.getByText('request'))
-
-    expect(customerApi.post).toHaveBeenCalledWith('/customer/auth/otp', { phone: '+15550001111' })
-    expect(localStorage.getItem('customerToken')).toBeNull()
-  })
-
-  it('verifyOtp stores token/user and updates context', async () => {
+  it('loginWithWhatsAppToken redeems the token, stores the session, and returns the redirect target', async () => {
     vi.mocked(customerApi.post).mockResolvedValue({
-      data: { token: 't1', customerId: '1', name: 'First', familyName: 'Last', phone: '+15550001111' },
+      data: { token: 't1', customerId: '1', name: 'First', familyName: 'Last', phone: '+15550001111', barberSlug: 'test-barber', serviceId: 'svc-1' },
     })
     renderWithProvider()
 
-    await userEvent.click(screen.getByText('verify'))
+    await userEvent.click(screen.getByText('login'))
 
+    expect(customerApi.post).toHaveBeenCalledWith('/customer/auth/whatsapp', { token: 'wa-token-1' })
     await waitFor(() => expect(screen.getByTestId('authed').textContent).toBe('true'))
     expect(localStorage.getItem('customerToken')).toBe('t1')
     expect(JSON.parse(localStorage.getItem('customerUser')!).phone).toBe('+15550001111')

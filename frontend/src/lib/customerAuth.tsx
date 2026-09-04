@@ -2,10 +2,10 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { customerApi } from './customerApi'
 
 interface CustomerUser { id: string; name: string; familyName: string; phone: string }
+interface WhatsAppLoginResult { barberSlug: string; serviceId: string }
 interface CustomerAuthCtx {
   user: CustomerUser | null
-  requestOtp: (phone: string) => Promise<{ isNewCustomer: boolean; devOtp?: string }>
-  verifyOtp: (phone: string, otp: string, name?: string, familyName?: string) => Promise<void>
+  loginWithWhatsAppToken: (token: string) => Promise<WhatsAppLoginResult>
   logout: () => void
   isAuthenticated: boolean
   language: string
@@ -28,17 +28,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     setLanguage(l)
   }
 
-  async function requestOtp(phone: string) {
-    const { data } = await customerApi.post('/customer/auth/otp', { phone })
-    return data
-  }
-
-  async function verifyOtp(phone: string, otp: string, name?: string, familyName?: string) {
-    const { data } = await customerApi.post('/customer/auth/verify', { phone, otp, name, familyName })
+  // Redeems the opaque token from a WhatsApp-issued booking link (see WhatsAppLandingPage): no
+  // sign-up/sign-in step, the customer's WhatsApp phone + profile name already identified them.
+  async function loginWithWhatsAppToken(token: string) {
+    const { data } = await customerApi.post('/customer/auth/whatsapp', { token })
     localStorage.setItem('customerToken', data.token)
     const u: CustomerUser = { id: data.customerId, name: data.name, familyName: data.familyName, phone: data.phone }
     localStorage.setItem('customerUser', JSON.stringify(u))
     setUser(u)
+    return { barberSlug: data.barberSlug, serviceId: data.serviceId }
   }
 
   function logout() {
@@ -48,7 +46,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <CustomerAuthContext.Provider value={{ user, requestOtp, verifyOtp, logout, isAuthenticated: !!user, language, setLang }}>
+    <CustomerAuthContext.Provider value={{ user, loginWithWhatsAppToken, logout, isAuthenticated: !!user, language, setLang }}>
       {children}
     </CustomerAuthContext.Provider>
   )

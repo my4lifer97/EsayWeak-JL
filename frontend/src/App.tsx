@@ -21,7 +21,7 @@ import ImpersonationBanner from './components/ImpersonationBanner'
 import BarberPage from './pages/public/BarberPage'
 import BookPage from './pages/public/BookPage'
 import AppointmentPage from './pages/public/AppointmentPage'
-import CustomerLoginPage from './pages/public/CustomerLoginPage'
+import WhatsAppLandingPage from './pages/public/WhatsAppLandingPage'
 import BrowseBarbersPage from './pages/public/BrowseBarbersPage'
 import MyBookingsPage from './pages/public/MyBookingsPage'
 import HomePage from './pages/HomePage'
@@ -55,7 +55,6 @@ export default function App() {
                     <Route path="/admin/settings" element={<SettingsPage />} />
                   </Route>
                 </Route>
-                <Route path="/login" element={<CustomerLoginPage />} />
                 <Route path="/browse" element={<BrowseBarbersPage />} />
                 <Route element={<CustomerProtectedRoute />}>
                   <Route path="/account/bookings" element={<MyBookingsPage />} />
@@ -65,6 +64,9 @@ export default function App() {
                 {/* Magic-link view stays public and token-secured — opened directly from a
                     WhatsApp/SMS reminder, must not require login. */}
                 <Route path="/:slug/appointments/:id" element={<AppointmentPage />} />
+                {/* WhatsApp booking-link landing point — establishes the customer session itself
+                    (see WhatsAppLandingPage), so it's public and outside CustomerProtectedRoute. */}
+                <Route path="/:slug/w/:token" element={<WhatsAppLandingPage />} />
                 {/* Deliberately not linked from any public nav -- internal tool only. */}
                 <Route path="/platform-admin/login" element={<PlatformAdminLoginPage />} />
                 <Route element={<PlatformAdminProtectedRoute />}>
