@@ -57,6 +57,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Jwt__Issuer", JwtIssuer);
         Environment.SetEnvironmentVariable("Jwt__Audience", JwtAudience);
         Environment.SetEnvironmentVariable("CronSecret", CronSecret);
+        // Matches WhatsAppControllerTests' TwilioToken constant -- one platform-owned Twilio
+        // account now signs/validates for every barber (see TwilioWhatsAppSender), so this env var
+        // is what WhatsAppController.Webhook checks inbound signatures against in tests.
+        Environment.SetEnvironmentVariable("Twilio__AccountSid", "AC_test_sid");
+        Environment.SetEnvironmentVariable("Twilio__AuthToken", "test_auth_token");
         Environment.SetEnvironmentVariable("AllowedOrigin", "http://localhost:5173");
         Environment.SetEnvironmentVariable("AppUrl", "http://localhost:5173");
 

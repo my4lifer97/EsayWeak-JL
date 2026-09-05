@@ -1,23 +1,48 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
 
 type BarberDetail = {
   id: string; name: string; email: string; slug: string; phone: string | null
-  trialEndsAt: string; subscriptionStatus: string; createdAt: string
+  trialEndsAt: string; subscriptionStatus: string; createdAt: string; twilioNumber: string | null
 }
 
 export default function PlatformAdminBarberDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const queryClient = useQueryClient()
   const [error, setError] = useState('')
   const [impersonating, setImpersonating] = useState(false)
+  const [twilioNumber, setTwilioNumber] = useState('')
+  const [twilioInitialized, setTwilioInitialized] = useState(false)
+  const [savingTwilio, setSavingTwilio] = useState(false)
+  const [twilioError, setTwilioError] = useState('')
 
   const { data: barber } = useQuery<BarberDetail>({
     queryKey: ['platform-admin-barber', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/barbers/${id}`).then((r) => r.data),
   })
+
+  if (barber && !twilioInitialized) {
+    setTwilioNumber(barber.twilioNumber ?? '')
+    setTwilioInitialized(true)
+  }
+
+  async function handleSaveTwilioNumber() {
+    if (!barber) return
+    setSavingTwilio(true); setTwilioError('')
+    try {
+      await platformAdminApi.patch(`/platform-admin/barbers/${barber.id}/twilio-number`, {
+        twilioNumber: twilioNumber || null,
+      })
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-barber', id] })
+    } catch {
+      setTwilioError('Could not save')
+    } finally {
+      setSavingTwilio(false)
+    }
+  }
   const { data: activity } = useQuery<ActivityLogEntry[]>({
     queryKey: ['platform-admin-barber-activity', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/barbers/${id}/activity`).then((r) => r.data),
@@ -67,6 +92,23 @@ export default function PlatformAdminBarberDetailPage() {
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
             {impersonating ? 'Logging in...' : 'Log in as this account'}
           </button>
+        </div>
+
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
+          <h2 className="font-semibold mb-1">WhatsApp Number</h2>
+          <p className="text-gray-500 text-sm mb-3">
+            Which of the platform's Twilio WhatsApp senders this barber's chatbot uses.
+          </p>
+          {twilioError && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-3">{twilioError}</div>}
+          <div className="flex gap-2">
+            <input type="text" value={twilioNumber} onChange={(e) => setTwilioNumber(e.target.value)}
+              placeholder="+14155238886"
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={handleSaveTwilioNumber} disabled={savingTwilio}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+              {savingTwilio ? 'Saving...' : 'Save'}
+            </button>
+          </div>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">

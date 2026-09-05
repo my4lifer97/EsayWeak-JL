@@ -34,13 +34,15 @@ public class WhatsAppControllerTests : IntegrationTestBase
         Authorize(Client, barberBody!.Token);
         for (var i = 0; i < serviceCount; i++)
             await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest($"Service {i}", $"Service {i}", $"Service {i}", 30, 50m));
-
-        await Client.PatchAsJsonAsync("/api/admin/settings", new UpdateSettingsRequest(
-            null, null, null, null, TwilioNumber, "AC_test_sid", TwilioToken, null, null));
         Client.DefaultRequestHeaders.Authorization = null;
 
         using var db = Db();
         var barberId = await db.Barbers.Where(b => b.Slug == slug).Select(b => b.Id).FirstAsync();
+        // TwilioNumber is now platform-admin-assigned, not settable via /api/admin/settings --
+        // set it directly, same as SetChatbotConfig below does for chatbot fields.
+        var barberForTwilio = await db.Barbers.FirstAsync(b => b.Id == barberId);
+        barberForTwilio.TwilioNumber = TwilioNumber;
+        await db.SaveChangesAsync();
         // Same ordering WhatsAppController uses (OrderBy Id) -- so tests can pick "the Nth item
         // the bot listed" without depending on service-creation order.
         var idsInBotOrder = await db.Services.Where(s => s.BarberId == barberId).OrderBy(s => s.Id).Select(s => s.Id).ToListAsync();

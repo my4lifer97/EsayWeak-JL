@@ -30,10 +30,10 @@ public class WhatsAppController(
         var toNumber = parms.GetValueOrDefault("To", "").Replace("whatsapp:", "");
         var barber = await db.Barbers
             .Where(b => b.TwilioNumber == toNumber)
-            .Select(b => new { b.Id, b.Name, b.Slug, b.Language, b.TwilioToken, b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage })
+            .Select(b => new { b.Id, b.Name, b.Slug, b.Language, b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage })
             .FirstOrDefaultAsync();
 
-        if (barber?.TwilioToken is null)
+        if (barber is null)
             return NotFound("Not configured");
 
         var signature = Request.Headers["X-Twilio-Signature"].FirstOrDefault() ?? "";
@@ -44,7 +44,10 @@ public class WhatsAppController(
         // only, while AppUrl keeps pointing at the frontend for booking links in reply text).
         var webhookUrl = $"{config["WebhookPublicUrl"] ?? appUrl}/api/whatsapp/webhook";
 
-        var validator = new RequestValidator(barber.TwilioToken);
+        // One platform-owned Twilio account handles every barber's WhatsApp number now (see
+        // TwilioWhatsAppSender) -- the signature is always checked against that single account's
+        // Auth Token, not a per-barber one.
+        var validator = new RequestValidator(config["Twilio:AuthToken"] ?? "");
         if (!validator.Validate(webhookUrl, parms, signature))
             return StatusCode(403, "Invalid signature");
 

@@ -28,11 +28,29 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
     headers: { Authorization: `Bearer ${token}` },
     data: { nameEn: 'Haircut', nameAr: 'Haircut', nameHe: 'Haircut', durationMinutes: 30, price: 40 },
   })
-  const twilioToken = `e2e-token-${Date.now()}`
+  // The webhook signature is now checked against one platform-owned Twilio:AuthToken (local dev's
+  // dotnet user-secrets), not a per-barber token -- see CLAUDE.md's Twilio/WhatsApp section for
+  // the local-dev setup this env var must match. TwilioNumber alone is still per-barber, but it's
+  // now assigned by a platform admin rather than settable via /api/admin/settings, so this test
+  // bootstraps/logs into a platform-admin account to assign it, below.
+  const twilioToken = process.env.TWILIO_AUTH_TOKEN ?? 'test-auth-token'
   const twilioNumber = `+1555${(Date.now() + 1).toString().slice(-7)}`
-  await api.patch(`${API}/admin/settings`, {
+  const barberId = (await (await api.get(`${API}/admin/settings`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { twilioNumber, twilioSid: 'AC_e2e_test', twilioToken },
+  })).json()).id
+  // Fixed (not per-run) credentials -- platform-admin bootstrap only ever succeeds once per DB,
+  // so repeat runs against the same local dev DB need to log into the *same* admin account
+  // rather than registering a new one each time, matching this suite's "safe to run repeatedly
+  // against the same DB" convention.
+  const adminEmail = 'e2e-platform-admin@example.com'
+  const bootstrapAvailable = (await (await api.get(`${API}/platform-admin/bootstrap-available`)).json()).available
+  const admin = bootstrapAvailable
+    ? await api.post(`${API}/platform-admin/bootstrap`, { data: { email: adminEmail, password: 'password123', name: 'E2E Admin' } })
+    : await api.post(`${API}/platform-admin/login`, { data: { email: adminEmail, password: 'password123' } })
+  const { token: adminToken } = await admin.json()
+  await api.patch(`${API}/platform-admin/barbers/${barberId}/twilio-number`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { twilioNumber },
   })
 
   // This test exercises the WhatsApp login-and-book flow, not localization — pin the customer's

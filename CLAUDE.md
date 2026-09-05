@@ -85,6 +85,9 @@ npx.cmd playwright test              # E2E — needs both dev servers already ru
   direct API calls (register/login/create-service) rather than relying on existing data, so
   it's safe to run against the same DB repeatedly. `vite.config.ts`'s `test.exclude` keeps
   vitest from also picking up these `.spec.ts` files (both tools default to the same glob).
+  `barber-login-gate.spec.ts` additionally needs local dev's backend `Twilio:AuthToken` user-secret
+  set to `"test-auth-token"` (or export `TWILIO_AUTH_TOKEN` to match whatever it's actually set to)
+  — it signs a real webhook request against that value, same as production's signature check.
 
 ## Project Structure
 
@@ -163,7 +166,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `POST /api/auth/reset-password` — `{ email, code, newPassword }`; verifies the code, updates the password, and returns a JWT (`LoginResponse`), logging them in directly
 
 **Admin (JWT required — barber ID read from token claims, never from body, `BarberOnly` policy)**
-- `GET/PATCH /api/admin/settings` — barber profile, Twilio config, language, booking limits
+- `GET/PATCH /api/admin/settings` — barber profile, language, booking limits (WhatsApp number is read-only here — see [Twilio / WhatsApp](#twilio--whatsapp))
 - `GET/POST /api/admin/services` — services CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/services/{id}` — update / soft-delete (IsActive = false)
 - `POST /api/admin/services/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)
@@ -216,7 +219,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `/admin/recurring` — manage recurring series: create (service → customer → day-of-week button → real availability slot grid → notes) and delete (no pause/resume — see below)
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — services CRUD
-- `/admin/settings` — business info, Twilio setup
+- `/admin/settings` — business info, chatbot customization, read-only assigned WhatsApp number
 - `/:slug` — public barber page — **requires a customer session** (see below)
 - `/:slug/book` — booking wizard (service → date → time → details) — **requires a customer session**; `?serviceId=` alone (from a WhatsApp booking link) skips service selection straight to date selection, `?serviceId=&date=&time=` (from a waitlist notification) skips straight to the confirm step if the slot's still open
 - `/:slug/w/:token` — WhatsApp booking-link landing point (`WhatsAppLandingPage`); redeems the token itself and establishes the session, then redirects into `/:slug/book?serviceId=`; public, not guarded
@@ -302,7 +305,21 @@ Migrations: `InitialCreate` ... `AddRecurringAppointments` (adds `RecurringSerie
 The barber can only cancel an appointment now (`AdminController.UpdateAppointmentStatus` rejects any `status` other than `CANCELLED`) — there's no "Mark Complete" button anywhere in the admin UI. Instead, `Services/AppointmentStatusHelper.EffectiveStatus(status, date, endTime)` computes "COMPLETED" automatically for any still-`CONFIRMED` appointment whose end time has passed (compared against `DateTime.Now`, local server time — same reasoning as the Availability Engine above), applied wherever a status is returned to a client: `AdminController` (dashboard + appointments list), `CustomerAppointmentsController.GetMyAppointments`, and `BookingController.GetAppointment` (the magic-link view). `CANCELLED` is never overridden. The stored `AppointmentStatus` column itself stays `CONFIRMED` — only the API response's status string is computed; nothing rewrites the DB row.
 
 ### Twilio / WhatsApp
-Twilio credentials are stored **per-barber** in the `Barbers` table (`TwilioSid`, `TwilioToken`, `TwilioNumber`) — not in appsettings. Barbers configure these in their Settings page. Twilio is one of Meta's official WhatsApp Business Solution Providers — messages still run on Meta's actual WhatsApp Business Platform underneath, Twilio just handles the Meta onboarding/webhook plumbing.
+As of 2026-09-05, **one platform-owned Twilio account** handles every barber's WhatsApp chatbot —
+not a per-barber account. `Twilio:AccountSid`/`Twilio:AuthToken` (config-only, same
+no-default-in-`appsettings.json` pattern as `Jwt:Secret`/`CronSecret` — `dotnet user-secrets`
+locally, `Twilio__AccountSid`/`Twilio__AuthToken` env vars in production) are read directly by
+`WhatsAppController.Webhook` (inbound signature validation) and `TwilioWhatsAppSender` (outbound
+sends, e.g. reminders). The only thing that's still per-barber is `Barber.TwilioNumber` — which of
+the platform's Twilio WhatsApp senders that barber's chatbot uses — and it's now **assigned by the
+platform admin** (`PATCH /api/platform-admin/barbers/{id}/twilio-number`, a control on
+`PlatformAdminBarberDetailPage`), not self-entered by the barber; the barber's own Settings page
+just shows it read-only. Twilio is one of Meta's official WhatsApp Business Solution Providers —
+messages still run on Meta's actual WhatsApp Business Platform underneath, Twilio just handles the
+Meta onboarding/webhook plumbing. **Each WhatsApp number still needs its own Meta WhatsApp Business
+Profile approval** regardless of this — that's a Meta requirement tied to the number's business
+identity, done manually in the Twilio console per barber, not something this centralization removes
+or automates.
 - Webhook drives the service-selection chatbot flow (see below) and replies to EN/AR/HE cancel/reschedule keywords by cancelling the next upcoming appointment directly or sending a fresh booking prompt.  
 - Reminders are sent by hitting `/api/cron/reminders` (e.g. via an external cron job or scheduler).
 
@@ -375,10 +392,10 @@ Cardcom:ApiPassword         Cardcom API password (sent on the recurring token-ch
 Cardcom:MonthlyAmount       Subscription amount in ILS, as a string (default "120")
 ```
 
-`Jwt:Secret` and `CronSecret` are **not** in `appsettings.json` — there's no default, so the app fails fast if they're missing rather than silently falling back to a guessable value.
+`Jwt:Secret`, `CronSecret`, and `Twilio:AccountSid`/`Twilio:AuthToken` are **not** in `appsettings.json` — there's no default, so the app fails fast (or, for the Twilio pair, simply can't validate/send) if they're missing rather than silently falling back to a guessable value.
 - **Local dev**: stored in the `dotnet user-secrets` store for `backend/BarberSaas.Api.csproj` (`UserSecretsId` in the `.csproj`, values live outside the repo at `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `dotnet run` loads them automatically in Development.
-- **Production**: supply both via environment variables (`Jwt__Secret`, `CronSecret`) or `appsettings.Production.json` (gitignored) — never commit real values.
-- Rotating either secret invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug.
+- **Production**: supply via environment variables (`Jwt__Secret`, `CronSecret`, `Twilio__AccountSid`, `Twilio__AuthToken`) or `appsettings.Production.json` (gitignored) — never commit real values.
+- Rotating `Jwt:Secret`/`CronSecret` invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug. Rotating the Twilio pair (e.g. after switching Twilio accounts) requires re-pointing every barber's `TwilioNumber` too if the numbers themselves moved to a different account.
 
 ### Billing (Cardcom)
 Billed via Cardcom (an Israeli payment gateway) using its "Low Profile" hosted-payment-page API (v11: `https://secure.cardcom.solutions/api/v11/...`), through `Services/ICardcomService`/`CardcomService.cs` (hand-rolled `HttpClient` wrapper -- Cardcom has no official .NET SDK, unlike Stripe.net which this replaced). `Cardcom:TerminalNumber`/`ApiName`/`ApiPassword` ship as empty strings in `appsettings.json` (no Cardcom account exists yet) — `BillingController` checks for `TerminalNumber`/`ApiName` and returns `503 { error: "Payments are not yet configured..." }` instead of attempting a call when they're blank. Once a real Cardcom account exists, set all three the same way as `Jwt:Secret`/`CronSecret`: `dotnet user-secrets` locally, environment variables (`Cardcom__TerminalNumber`, `Cardcom__ApiName`, `Cardcom__ApiPassword`) in production.

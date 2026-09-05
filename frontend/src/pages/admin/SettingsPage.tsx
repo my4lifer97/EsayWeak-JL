@@ -9,7 +9,7 @@ import { mediaUrl } from '../../lib/media'
 
 type BarberSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
-  language: 'EN' | 'AR' | 'HE'; twilioNumber: string | null; twilioSid: string | null
+  language: 'EN' | 'AR' | 'HE'; twilioNumber: string | null
   trialEndsAt: string; subscriptionStatus: string
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
   waitlistEnabled: boolean
@@ -29,7 +29,6 @@ export default function SettingsPage() {
 
   const [form, setForm] = useState({
     name: '', phone: '', description: '', language: 'EN' as 'EN' | 'AR' | 'HE',
-    twilioNumber: '', twilioSid: '', twilioToken: '',
     maxBookingsPerDay: '', maxBookingsPerWeek: '',
     chatbotWelcomeMessage: '', chatbotConfirmationMessage: '',
   })
@@ -73,8 +72,7 @@ export default function SettingsPage() {
   if (barber && !initialized) {
     setForm({
       name: barber.name, phone: barber.phone ?? '', description: barber.description ?? '',
-      language: barber.language, twilioNumber: barber.twilioNumber ?? '',
-      twilioSid: barber.twilioSid ?? '', twilioToken: '',
+      language: barber.language,
       maxBookingsPerDay: barber.maxBookingsPerDay?.toString() ?? '',
       maxBookingsPerWeek: barber.maxBookingsPerWeek?.toString() ?? '',
       chatbotWelcomeMessage: barber.chatbotWelcomeMessage ?? '',
@@ -91,7 +89,7 @@ export default function SettingsPage() {
     e.preventDefault(); setSaving(true); setError('')
     const payload: Record<string, string | number | boolean | null | undefined> = {
       name: form.name, phone: form.phone, description: form.description,
-      language: form.language, twilioNumber: form.twilioNumber, twilioSid: form.twilioSid,
+      language: form.language,
       maxBookingsPerDay: form.maxBookingsPerDay ? Number(form.maxBookingsPerDay) : null,
       maxBookingsPerWeek: form.maxBookingsPerWeek ? Number(form.maxBookingsPerWeek) : null,
       waitlistEnabled,
@@ -100,7 +98,6 @@ export default function SettingsPage() {
       chatbotWelcomeMessage: form.chatbotWelcomeMessage || null,
       chatbotConfirmationMessage: form.chatbotConfirmationMessage || null,
     }
-    if (form.twilioToken) payload.twilioToken = form.twilioToken
     try {
       await api.patch('/admin/settings', payload)
       setLang(form.language)
@@ -322,26 +319,11 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-2">
           <h2 className="text-white font-semibold mb-1">{t(lang, 'whatsappSetup')}</h2>
-          {[['Account SID', 'twilioSid', 'text', 'ACxxxxxxxxxxxxxxxxxx'], ['WhatsApp Number', 'twilioNumber', 'text', '+14155238886']].map(([label, key, type, placeholder]) => (
-            <div key={key}>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
-              <input type={type} value={form[key as keyof typeof form]} placeholder={placeholder}
-                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-          ))}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">
-              Auth Token <span className="text-gray-500 font-normal">(leave blank to keep existing)</span>
-            </label>
-            <input type="password" value={form.twilioToken} onChange={(e) => setForm((f) => ({ ...f, twilioToken: e.target.value }))}
-              placeholder="••••••••••••••••••••••••••••••••"
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div className="bg-blue-900/20 border border-blue-800/40 rounded-lg px-4 py-3 text-sm text-blue-300">
-            <strong>Webhook URL:</strong> <code className="text-blue-200">{window.location.origin}/api/whatsapp/webhook</code>
+          <p className="text-gray-500 text-sm">{t(lang, 'whatsappNumberHint')}</p>
+          <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono">
+            {barber?.twilioNumber || <span className="text-gray-500 font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
           </div>
         </div>
 

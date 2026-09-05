@@ -15,7 +15,7 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
     {
         var barber = await db.Barbers.FindAsync(cancelledAppointment.BarberId);
         if (barber is null || !barber.WaitlistEnabled) return;
-        if (barber.TwilioSid is null || barber.TwilioToken is null || barber.TwilioNumber is null) return;
+        if (barber.TwilioNumber is null) return;
 
         var entries = await db.WaitlistEntries
             .Include(w => w.CustomerAccount)

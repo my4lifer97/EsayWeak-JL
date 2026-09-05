@@ -38,13 +38,16 @@ public class WaitlistTests : IntegrationTestBase
             new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
 
         var settingsResp = await Client.PatchAsJsonAsync("/api/admin/settings", new UpdateSettingsRequest(
-            null, null, null, null, "+15550009999", "AC_test_sid", "test_auth_token", null, null, WaitlistEnabled: waitlistEnabled));
+            null, null, null, null, null, null, WaitlistEnabled: waitlistEnabled));
         Assert.Equal(HttpStatusCode.OK, settingsResp.StatusCode);
 
         Client.DefaultRequestHeaders.Authorization = null;
 
+        // TwilioNumber is now platform-admin-assigned, not settable via /api/admin/settings.
         using var db = Db();
         var barber = db.Barbers.First(b => b.Slug == slug);
+        barber.TwilioNumber = "+15550009999";
+        db.SaveChanges();
         return (barber.Id, service!.Id, date);
     }
 

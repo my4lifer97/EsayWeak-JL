@@ -87,7 +87,36 @@ public class PlatformAdminController(
         var b = await db.Barbers.FindAsync(id);
         if (b is null) return NotFound();
         return Ok(new PlatformAdminBarberDetailDto(
-            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt));
+            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.TwilioNumber));
+    }
+
+    // Assigns (or clears, with a null body value) which of the platform's own Twilio WhatsApp
+    // numbers this barber's chatbot uses -- see Barber.TwilioNumber and TwilioWhatsAppSender.
+    [HttpPatch("barbers/{id}/twilio-number")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> SetTwilioNumber(string id, [FromBody] SetTwilioNumberRequest req)
+    {
+        var b = await db.Barbers.FindAsync(id);
+        if (b is null) return NotFound();
+
+        var old = b.TwilioNumber;
+        b.TwilioNumber = req.TwilioNumber;
+        await db.SaveChangesAsync();
+
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BarberId = b.Id,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{nameof(SetTwilioNumber)}",
+            Description = $"WhatsApp number: \"{old}\" → \"{b.TwilioNumber}\"",
+            Method = "PATCH",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { b.Id, b.TwilioNumber });
     }
 
     [HttpGet("barbers/{id}/activity")]

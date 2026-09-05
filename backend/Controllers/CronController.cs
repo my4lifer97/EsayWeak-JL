@@ -96,7 +96,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
 
         foreach (var appt in appointments)
         {
-            if (appt.Barber.TwilioSid is null || appt.Barber.TwilioToken is null || appt.Barber.TwilioNumber is null)
+            if (appt.Barber.TwilioNumber is null)
                 continue;
 
             try

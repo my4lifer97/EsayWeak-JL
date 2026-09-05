@@ -20,14 +20,15 @@ public record CreateBlockedSlotRequest(string Date, string? StartTime, string? E
 
 public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
-    string? Description, string? Logo, string Language, string? TwilioNumber, string? TwilioSid,
+    // TwilioNumber is read-only here -- assigned by the platform admin, not settable by the
+    // barber (see UpdateSettingsRequest, which omits it).
+    string? Description, string? Logo, string Language, string? TwilioNumber,
     DateTime TrialEndsAt, string SubscriptionStatus,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel,
     bool ChatbotEnabled, string? ChatbotWelcomeMessage, string? ChatbotConfirmationMessage);
 
 public record UpdateSettingsRequest(
     string? Name, string? Phone, string? Description, string? Language,
-    string? TwilioNumber, string? TwilioSid, string? TwilioToken,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled = false,
     bool RequireApprovalOnCustomerCancel = false,
     bool ChatbotEnabled = true, string? ChatbotWelcomeMessage = null, string? ChatbotConfirmationMessage = null);
@@ -111,7 +112,9 @@ public record PlatformAdminLoginResponse(string Token, string Id, string Name, s
 public record PlatformAdminBarberSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
 public record PlatformAdminBarberDetailDto(
     string Id, string Name, string Email, string Slug, string? Phone,
-    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt);
+    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? TwilioNumber);
+
+public record SetTwilioNumberRequest(string? TwilioNumber);
 
 public record PlatformAdminCustomerSummaryDto(string Id, string Name, string FamilyName, string Phone);
 public record PlatformAdminCustomerDetailDto(string Id, string Name, string FamilyName, string Phone, DateTime CreatedAt);

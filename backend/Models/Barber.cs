@@ -19,9 +19,11 @@ public class Barber
     public string? Logo { get; set; }
     public string? Description { get; set; }
     public Language Language { get; set; } = Language.EN;
+    // Which of the platform's own Twilio WhatsApp senders this barber's chatbot uses -- assigned
+    // by the platform admin (see PlatformAdminController.SetTwilioNumber), not self-configured by
+    // the barber. Credentials for sending/validating live in one platform-owned Twilio account
+    // (config: Twilio:AccountSid/AuthToken), not per-barber -- see TwilioWhatsAppSender.
     public string? TwilioNumber { get; set; }
-    public string? TwilioSid { get; set; }
-    public string? TwilioToken { get; set; }
     public DateTime TrialEndsAt { get; set; }
     public SubStatus SubscriptionStatus { get; set; } = SubStatus.TRIAL;
     // Cardcom's reusable charge token (from LowProfile/Create with Operation=ChargeAndCreateToken).

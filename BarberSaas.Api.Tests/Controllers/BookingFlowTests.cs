@@ -75,7 +75,7 @@ public class BookingFlowTests : IntegrationTestBase
     {
         Authorize(Client, barberToken);
         var resp = await Client.PatchAsJsonAsync("/api/admin/settings",
-            new UpdateSettingsRequest(null, null, null, null, null, null, null, perDay, perWeek));
+            new UpdateSettingsRequest(null, null, null, null, perDay, perWeek));
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Client.DefaultRequestHeaders.Authorization = null;
     }

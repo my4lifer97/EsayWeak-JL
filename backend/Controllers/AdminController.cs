@@ -38,7 +38,7 @@ public class AdminController(
         if (b is null) return NotFound();
         return Ok(new SettingsDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
-            b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber, b.TwilioSid,
+            b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
             b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage));
@@ -89,8 +89,6 @@ public class AdminController(
         var oldPhone = b.Phone;
         var oldDescription = b.Description;
         var oldLanguage = b.Language;
-        var oldTwilioNumber = b.TwilioNumber;
-        var oldTwilioSid = b.TwilioSid;
         var oldMaxBookingsPerDay = b.MaxBookingsPerDay;
         var oldMaxBookingsPerWeek = b.MaxBookingsPerWeek;
         var oldWaitlistEnabled = b.WaitlistEnabled;
@@ -103,9 +101,6 @@ public class AdminController(
         if (req.Phone is not null) b.Phone = req.Phone;
         if (req.Description is not null) b.Description = req.Description;
         if (req.Language is not null && Enum.TryParse<Language>(req.Language, out var lang)) b.Language = lang;
-        if (req.TwilioNumber is not null) b.TwilioNumber = req.TwilioNumber;
-        if (req.TwilioSid is not null) b.TwilioSid = req.TwilioSid;
-        if (req.TwilioToken is not null) b.TwilioToken = req.TwilioToken;
         // Unlike the fields above, null here is a real value (unlimited), not "omitted" —
         // the settings form always submits both, so assign unconditionally.
         b.MaxBookingsPerDay = req.MaxBookingsPerDay;
@@ -123,10 +118,6 @@ public class AdminController(
         if (b.Phone != oldPhone) changes.Add($"phone: \"{oldPhone}\" → \"{b.Phone}\"");
         if (b.Description != oldDescription) changes.Add("description");
         if (b.Language != oldLanguage) changes.Add($"language: {oldLanguage} → {b.Language}");
-        if (b.TwilioNumber != oldTwilioNumber) changes.Add($"WhatsApp number: \"{oldTwilioNumber}\" → \"{b.TwilioNumber}\"");
-        if (b.TwilioSid != oldTwilioSid) changes.Add("Twilio SID");
-        // Never log the token's actual value, before or after -- it's a live credential.
-        if (req.TwilioToken is not null) changes.Add("Twilio auth token");
         if (b.MaxBookingsPerDay != oldMaxBookingsPerDay)
             changes.Add($"max bookings/day: {oldMaxBookingsPerDay?.ToString() ?? "unlimited"} → {b.MaxBookingsPerDay?.ToString() ?? "unlimited"}");
         if (b.MaxBookingsPerWeek != oldMaxBookingsPerWeek)

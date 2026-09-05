@@ -45,7 +45,6 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
 
         var settingsResp = await Client.PatchAsJsonAsync("/api/admin/settings", new UpdateSettingsRequest(
             null, setOwnerPhone ? "+15559990000" : null, null, null,
-            configureTwilio ? "+15550009999" : null, configureTwilio ? "AC_test_sid" : null, configureTwilio ? "test_auth_token" : null,
             null, null, WaitlistEnabled: false, RequireApprovalOnCustomerCancel: requireApproval));
         Assert.Equal(HttpStatusCode.OK, settingsResp.StatusCode);
 
@@ -53,6 +52,12 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
 
         using var db = Db();
         var barber = db.Barbers.First(b => b.Slug == slug);
+        // TwilioNumber is now platform-admin-assigned, not settable via /api/admin/settings.
+        if (configureTwilio)
+        {
+            barber.TwilioNumber = "+15550009999";
+            db.SaveChanges();
+        }
         return (barber.Id, service!.Id, date);
     }
 
