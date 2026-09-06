@@ -9,7 +9,7 @@ type AppointmentDetail = {
   id: string; date: string; startTime: string; endTime: string; status: string; notes: string | null; cancelToken: string
   service: { nameEn: string; nameAr: string; nameHe: string }
   customer: { name: string; phone: string }
-  barber: { name: string; language: string }
+  business: { name: string; language: string }
 }
 
 export default function AppointmentPage() {
@@ -27,7 +27,7 @@ export default function AppointmentPage() {
   if (isLoading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><div className="text-gray-500">{t('EN', 'loading')}</div></div>
   if (!appt) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><div className="text-gray-400">{t('EN', 'appointmentNotFound')}</div></div>
 
-  const lang = appt.barber.language
+  const lang = appt.business.language
   const isRTL = lang === 'AR' || lang === 'HE'
   const isCancelled = appt.status === 'CANCELLED' || cancelled
 
@@ -57,7 +57,7 @@ export default function AppointmentPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-sm">
         <BackButton lang={lang} />
-        <h1 className="text-2xl font-bold text-white text-center mb-2 mt-3">{appt.barber.name}</h1>
+        <h1 className="text-2xl font-bold text-white text-center mb-2 mt-3">{appt.business.name}</h1>
         <p className="text-gray-400 text-center text-sm mb-8">{t(lang, 'yourAppointment')}</p>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4 mb-6">

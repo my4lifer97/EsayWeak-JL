@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace BarberSaas.Api.Models;
 
-public class BarberEmailOtp
+public class BusinessPasswordResetOtp
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Email { get; set; } = "";

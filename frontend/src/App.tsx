@@ -18,16 +18,16 @@ import ProtectedRoute from './components/ProtectedRoute'
 import CustomerProtectedRoute from './components/CustomerProtectedRoute'
 import PlatformAdminProtectedRoute from './components/PlatformAdminProtectedRoute'
 import ImpersonationBanner from './components/ImpersonationBanner'
-import BarberPage from './pages/public/BarberPage'
+import BusinessPage from './pages/public/BusinessPage'
 import BookPage from './pages/public/BookPage'
 import AppointmentPage from './pages/public/AppointmentPage'
 import WhatsAppLandingPage from './pages/public/WhatsAppLandingPage'
-import BrowseBarbersPage from './pages/public/BrowseBarbersPage'
+import BrowseBusinessesPage from './pages/public/BrowseBusinessesPage'
 import MyBookingsPage from './pages/public/MyBookingsPage'
 import HomePage from './pages/HomePage'
 import PlatformAdminLoginPage from './pages/platform-admin/LoginPage'
 import PlatformAdminDashboardPage from './pages/platform-admin/DashboardPage'
-import PlatformAdminBarberDetailPage from './pages/platform-admin/BarberDetailPage'
+import PlatformAdminBusinessDetailPage from './pages/platform-admin/BusinessDetailPage'
 import PlatformAdminCustomerDetailPage from './pages/platform-admin/CustomerDetailPage'
 
 const queryClient = new QueryClient()
@@ -55,10 +55,10 @@ export default function App() {
                     <Route path="/admin/settings" element={<SettingsPage />} />
                   </Route>
                 </Route>
-                <Route path="/browse" element={<BrowseBarbersPage />} />
+                <Route path="/browse" element={<BrowseBusinessesPage />} />
                 <Route element={<CustomerProtectedRoute />}>
                   <Route path="/account/bookings" element={<MyBookingsPage />} />
-                  <Route path="/:slug" element={<BarberPage />} />
+                  <Route path="/:slug" element={<BusinessPage />} />
                   <Route path="/:slug/book" element={<BookPage />} />
                 </Route>
                 {/* Magic-link view stays public and token-secured — opened directly from a
@@ -71,7 +71,7 @@ export default function App() {
                 <Route path="/platform-admin/login" element={<PlatformAdminLoginPage />} />
                 <Route element={<PlatformAdminProtectedRoute />}>
                   <Route path="/platform-admin" element={<PlatformAdminDashboardPage />} />
-                  <Route path="/platform-admin/barbers/:id" element={<PlatformAdminBarberDetailPage />} />
+                  <Route path="/platform-admin/businesses/:id" element={<PlatformAdminBusinessDetailPage />} />
                   <Route path="/platform-admin/customers/:id" element={<PlatformAdminCustomerDetailPage />} />
                 </Route>
               </Routes>

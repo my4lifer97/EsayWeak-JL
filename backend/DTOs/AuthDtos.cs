@@ -9,7 +9,7 @@ public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Code, string NewPassword);
 
 public record ServiceGalleryPhotoDto(string Id, string Url);
-public record ServiceDto(string Id, string BarberId, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, bool IsActive, string PhotoMode, List<ServiceGalleryPhotoDto> GalleryPhotos);
+public record ServiceDto(string Id, string BusinessId, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, bool IsActive, string PhotoMode, List<ServiceGalleryPhotoDto> GalleryPhotos);
 public record CreateServiceRequest(string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, string PhotoMode = "None");
 
 public record WorkingHoursDto(string? Id, int DayOfWeek, string StartTime, string EndTime, bool IsActive);
@@ -21,7 +21,7 @@ public record CreateBlockedSlotRequest(string Date, string? StartTime, string? E
 public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
     // TwilioNumber is read-only here -- assigned by the platform admin, not settable by the
-    // barber (see UpdateSettingsRequest, which omits it).
+    // business (see UpdateSettingsRequest, which omits it).
     string? Description, string? Logo, string Language, string? TwilioNumber,
     DateTime TrialEndsAt, string SubscriptionStatus,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel,
@@ -70,17 +70,17 @@ public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, s
 public record WaitlistEntrySummaryDto(string Id, string CustomerAccountId, string Name, string FamilyName, string Phone, string Status, DateTime CreatedAt);
 
 public record AppointmentDetailDto(
-    string Id, string BarberId, string CustomerId, string ServiceId,
+    string Id, string BusinessId, string CustomerId, string ServiceId,
     string Date, string StartTime, string EndTime, string? Notes,
     string Status, bool ReminderSent, string CancelToken, DateTime CreatedAt,
-    CustomerSummary Customer, ServiceSummary Service, BarberSummary Barber, string? PhotoUrl,
+    CustomerSummary Customer, ServiceSummary Service, BusinessSummary Business, string? PhotoUrl,
     string? RecurringSeriesId = null);
 
 public record CustomerSummary(string Id, string Name, string FamilyName, string Phone);
 public record ServiceSummary(
     string Id, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price,
     string PhotoMode = "None", List<ServiceGalleryPhotoDto>? GalleryPhotos = null);
-public record BarberSummary(string Name, string Slug, string Language);
+public record BusinessSummary(string Name, string Slug, string Language);
 
 public record DashboardAppointmentDto(
     string Id, string Date, string StartTime, string EndTime,
@@ -92,15 +92,15 @@ public record ScheduleResponse(
     List<BreakDto> Breaks,
     List<BlockedSlotDto> BlockedSlots);
 
-public record PublicBarberDto(
+public record PublicBusinessDto(
     string Slug, string Name, string? Description, string? Logo,
     string Language, bool IsRTL, int[] ActiveDays, List<ServiceDto> Services, bool IsFollowed,
     bool WaitlistEnabled);
 
-public record BarberSearchResultDto(string Slug, string Name, string? Description, string? Logo, string Language, bool IsFollowed);
+public record BusinessSearchResultDto(string Slug, string Name, string? Description, string? Logo, string Language, bool IsFollowed);
 
 public record CustomerAppointmentDto(
-    string Id, string BarberSlug, string BarberName, string Date, string StartTime, string EndTime,
+    string Id, string BusinessSlug, string BusinessName, string Date, string StartTime, string EndTime,
     string? Notes, string Status, string CancelToken, ServiceSummary Service, string? PhotoUrl);
 
 public record UpdateAppointmentPhotoRequest(string? GalleryPhotoId, string? CustomerPhotoUrl);
@@ -109,8 +109,8 @@ public record PlatformAdminBootstrapRequest(string Email, string Password, strin
 public record PlatformAdminLoginRequest(string Email, string Password);
 public record PlatformAdminLoginResponse(string Token, string Id, string Name, string Email);
 
-public record PlatformAdminBarberSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
-public record PlatformAdminBarberDetailDto(
+public record PlatformAdminBusinessSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
+public record PlatformAdminBusinessDetailDto(
     string Id, string Name, string Email, string Slug, string? Phone,
     DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? TwilioNumber);
 

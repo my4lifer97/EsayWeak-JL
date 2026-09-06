@@ -33,12 +33,12 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (ReservedSlugs.Contains(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
 
-        if (await db.Barbers.AnyAsync(b => b.Email == req.Email))
+        if (await db.Businesses.AnyAsync(b => b.Email == req.Email))
             return BadRequest(new { error = "Email already registered" });
-        if (await db.Barbers.AnyAsync(b => b.Slug == req.Slug))
+        if (await db.Businesses.AnyAsync(b => b.Slug == req.Slug))
             return BadRequest(new { error = "URL already taken" });
 
-        var barber = new Barber
+        var business = new Business
         {
             Name = req.Name,
             Email = req.Email,
@@ -48,11 +48,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             EmailVerified = false,
         };
 
-        db.Barbers.Add(barber);
+        db.Businesses.Add(business);
 
         var defaultHours = new[] { 1, 2, 3, 4, 5 }.Select(day => new WorkingHours
         {
-            BarberId = barber.Id,
+            BusinessId = business.Id,
             DayOfWeek = day,
             StartTime = "09:00",
             EndTime = "18:00",
@@ -74,32 +74,32 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         await db.SaveChangesAsync();
 
         string? devCode = env.IsDevelopment() ? code : null;
-        return StatusCode(201, new { barber.Id, barber.Name, barber.Email, barber.Slug, devCode });
+        return StatusCode(201, new { business.Id, business.Name, business.Email, business.Slug, devCode });
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
-        if (barber is null || !BCrypt.Net.BCrypt.Verify(req.Password, barber.PasswordHash))
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 
-        if (!barber.EmailVerified)
+        if (!business.EmailVerified)
             return StatusCode(403, new { error = "Please verify your email before signing in.", emailNotVerified = true });
 
-        var token = jwt.Generate(barber.Id, barber.Email, barber.Name, barber.Slug);
-        return Ok(new LoginResponse(token, barber.Id, barber.Name, barber.Email, barber.Slug));
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
+        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }
 
     [HttpPost("resend-verification")]
     public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req)
     {
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
-        if (barber is null) return NotFound(new { error = "Not found" });
-        if (barber.EmailVerified) return BadRequest(new { error = "Email is already verified" });
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (business is null) return NotFound(new { error = "Not found" });
+        if (business.EmailVerified) return BadRequest(new { error = "Email is already verified" });
 
         var since = DateTime.UtcNow.AddHours(-1);
-        var recent = await db.BarberEmailOtps
+        var recent = await db.BusinessEmailOtps
             .Where(o => o.Email == req.Email && o.CreatedAt > since)
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
@@ -133,10 +133,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Code))
             return BadRequest(new { error = "Email and code are required" });
 
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
-        if (barber is null) return NotFound(new { error = "Not found" });
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (business is null) return NotFound(new { error = "Not found" });
 
-        var entry = await db.BarberEmailOtps
+        var entry = await db.BusinessEmailOtps
             .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
@@ -152,21 +152,21 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         }
 
         entry.Consumed = true;
-        barber.EmailVerified = true;
+        business.EmailVerified = true;
         await db.SaveChangesAsync();
 
-        var token = jwt.Generate(barber.Id, barber.Email, barber.Name, barber.Slug);
-        return Ok(new LoginResponse(token, barber.Id, barber.Name, barber.Email, barber.Slug));
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
+        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }
 
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
     {
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
-        if (barber is null) return NotFound(new { error = "Not found" });
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (business is null) return NotFound(new { error = "Not found" });
 
         var since = DateTime.UtcNow.AddHours(-1);
-        var recent = await db.BarberPasswordResetOtps
+        var recent = await db.BusinessPasswordResetOtps
             .Where(o => o.Email == req.Email && o.CreatedAt > since)
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
@@ -200,10 +200,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
             return BadRequest(new { error = "Password must be at least 6 characters" });
 
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Email == req.Email);
-        if (barber is null) return NotFound(new { error = "Not found" });
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        if (business is null) return NotFound(new { error = "Not found" });
 
-        var entry = await db.BarberPasswordResetOtps
+        var entry = await db.BusinessPasswordResetOtps
             .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
@@ -219,17 +219,17 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         }
 
         entry.Consumed = true;
-        barber.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        business.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
         await db.SaveChangesAsync();
 
-        var token = jwt.Generate(barber.Id, barber.Email, barber.Name, barber.Slug);
-        return Ok(new LoginResponse(token, barber.Id, barber.Name, barber.Email, barber.Slug));
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
+        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }
 
     private async Task<string> IssuePasswordResetCode(string email)
     {
         var code = Random.Shared.Next(100000, 999999).ToString();
-        db.BarberPasswordResetOtps.Add(new BarberPasswordResetOtp
+        db.BusinessPasswordResetOtps.Add(new BusinessPasswordResetOtp
         {
             Email = email,
             CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
@@ -245,7 +245,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     private async Task<string> IssueVerificationCode(string email)
     {
         var code = Random.Shared.Next(100000, 999999).ToString();
-        db.BarberEmailOtps.Add(new BarberEmailOtp
+        db.BusinessEmailOtps.Add(new BusinessEmailOtp
         {
             Email = email,
             CodeHash = BCrypt.Net.BCrypt.HashPassword(code),

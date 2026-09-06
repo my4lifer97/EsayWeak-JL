@@ -11,10 +11,10 @@ namespace BarberSaas.Api.Controllers;
 [Route("api/billing")]
 public class BillingController(AppDbContext db, IConfiguration config, ICardcomService cardcom, ILogger<BillingController> logger) : ControllerBase
 {
-    private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+    private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpPost("checkout-session")]
-    [Authorize(Policy = "BarberOnly")]
+    [Authorize(Policy = "BusinessOnly")]
     public async Task<IActionResult> CreateCheckoutSession()
     {
         var terminalNumber = config["Cardcom:TerminalNumber"];
@@ -22,8 +22,8 @@ public class BillingController(AppDbContext db, IConfiguration config, ICardcomS
         if (string.IsNullOrEmpty(terminalNumber) || string.IsNullOrEmpty(apiName))
             return StatusCode(503, new { error = "Payments are not yet configured. Please contact support." });
 
-        var barber = await db.Barbers.FindAsync(BarberId);
-        if (barber is null) return NotFound();
+        var business = await db.Businesses.FindAsync(BusinessId);
+        if (business is null) return NotFound();
 
         var appUrl = config["AppUrl"] ?? "";
         var backendUrl = config["BackendUrl"] ?? "";
@@ -31,11 +31,11 @@ public class BillingController(AppDbContext db, IConfiguration config, ICardcomS
 
         var result = await cardcom.CreateLowProfileAsync(new CardcomLowProfileCreateParams(
             Amount: amount,
-            ProductName: "Barber SaaS Monthly Subscription",
+            ProductName: "Business SaaS Monthly Subscription",
             SuccessRedirectUrl: $"{appUrl}/admin/settings?billing=success",
             FailedRedirectUrl: $"{appUrl}/admin/settings?billing=cancelled",
             WebHookUrl: $"{backendUrl}/api/billing/webhook",
-            ReturnValue: barber.Id));
+            ReturnValue: business.Id));
 
         if (result.ResponseCode != 0 || string.IsNullOrEmpty(result.Url))
         {
@@ -74,19 +74,19 @@ public class BillingController(AppDbContext db, IConfiguration config, ICardcomS
             return Ok();
         }
 
-        var barber = await db.Barbers.FindAsync(verified.ReturnValue);
-        if (barber is null) return Ok();
+        var business = await db.Businesses.FindAsync(verified.ReturnValue);
+        if (business is null) return Ok();
 
         // Idempotency: ignore a duplicate webhook delivery for a LowProfileId already processed.
-        if (barber.CardcomLastLowProfileId == lowProfileId) return Ok();
+        if (business.CardcomLastLowProfileId == lowProfileId) return Ok();
 
         if (!string.IsNullOrEmpty(verified.TokenNumber))
         {
-            barber.CardcomToken = verified.TokenNumber;
-            barber.SubscriptionStatus = SubStatus.ACTIVE;
-            barber.CardcomNextChargeAt = DateTime.UtcNow.AddMonths(1);
+            business.CardcomToken = verified.TokenNumber;
+            business.SubscriptionStatus = SubStatus.ACTIVE;
+            business.CardcomNextChargeAt = DateTime.UtcNow.AddMonths(1);
         }
-        barber.CardcomLastLowProfileId = lowProfileId;
+        business.CardcomLastLowProfileId = lowProfileId;
         await db.SaveChangesAsync();
 
         return Ok();

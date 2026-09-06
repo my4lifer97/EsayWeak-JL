@@ -35,18 +35,18 @@ public class BookingFlowTests : IntegrationTestBase
     private record AvailabilityResponse(List<TimeSlot> Slots);
     private record RegisterResponse(string? DevCode);
 
-    private async Task<(string Token, string Slug)> RegisterAndLoginBarber(string email, string slug)
+    private async Task<(string Token, string Slug)> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         return (body!.Token, slug);
     }
 
-    private async Task<string> CreateService(string barberToken)
+    private async Task<string> CreateService(string businessToken)
     {
-        Authorize(Client, barberToken);
+        Authorize(Client, businessToken);
         var resp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Haircut", "Haircut", "Haircut", 30, 50m));
         var service = await resp.Content.ReadFromJsonAsync<ServiceDto>();
         Client.DefaultRequestHeaders.Authorization = null;
@@ -71,9 +71,9 @@ public class BookingFlowTests : IntegrationTestBase
         return slots[0].Start;
     }
 
-    private async Task SetBookingLimits(string barberToken, int? perDay, int? perWeek)
+    private async Task SetBookingLimits(string businessToken, int? perDay, int? perWeek)
     {
-        Authorize(Client, barberToken);
+        Authorize(Client, businessToken);
         var resp = await Client.PatchAsJsonAsync("/api/admin/settings",
             new UpdateSettingsRequest(null, null, null, null, perDay, perWeek));
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
@@ -86,8 +86,8 @@ public class BookingFlowTests : IntegrationTestBase
     [Fact]
     public async Task Booking_StoresFirstAndFamilyNameSeparately()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("split-name-flow@example.com", "split-name-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("split-name-flow@example.com", "split-name-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, serviceId);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(
@@ -103,8 +103,8 @@ public class BookingFlowTests : IntegrationTestBase
     [Fact]
     public async Task GuestBooking_CanBookViewAndCancel_WithoutAuth()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("guest-flow@example.com", "guest-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("guest-flow@example.com", "guest-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, serviceId);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
@@ -127,8 +127,8 @@ public class BookingFlowTests : IntegrationTestBase
     [Fact]
     public async Task AuthenticatedBooking_PhoneIsOverriddenFromTokenNotSpoofedBody()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("auth-flow@example.com", "auth-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("auth-flow@example.com", "auth-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, serviceId);
 
         const string verifiedPhone = "+15553330002";
@@ -151,30 +151,30 @@ public class BookingFlowTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Booking_AutomaticallyFollowsTheBarber_ForAnAuthenticatedCustomer()
+    public async Task Booking_AutomaticallyFollowsTheBusiness_ForAnAuthenticatedCustomer()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("autofollow-flow@example.com", "autofollow-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("autofollow-flow@example.com", "autofollow-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, serviceId);
         var customerToken = await GetCustomerToken("+15553330006");
 
         Authorize(Client, customerToken);
-        var followedBefore = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        var followedBefore = await Client.GetFromJsonAsync<List<BusinessSearchResultDto>>("/api/businesses/followed");
         Assert.DoesNotContain(followedBefore!, b => b.Slug == slug);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
             new BookAppointmentRequest(serviceId, TestDate, slot, "Auto Follow", "+15553330006", null));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
 
-        var followedAfter = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        var followedAfter = await Client.GetFromJsonAsync<List<BusinessSearchResultDto>>("/api/businesses/followed");
         Assert.Contains(followedAfter!, b => b.Slug == slug);
     }
 
     [Fact]
     public async Task GuestBooking_DoesNotCreateAFollow_NoAccountToAttachItTo()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("guestfollow-flow@example.com", "guestfollow-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("guestfollow-flow@example.com", "guestfollow-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, serviceId);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
@@ -185,38 +185,38 @@ public class BookingFlowTests : IntegrationTestBase
         // earlier guest booking (there was no account to attach it to at the time).
         var customerToken = await GetCustomerToken("+15553330007");
         Authorize(Client, customerToken);
-        var followed = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        var followed = await Client.GetFromJsonAsync<List<BusinessSearchResultDto>>("/api/businesses/followed");
         Assert.DoesNotContain(followed!, b => b.Slug == slug);
     }
 
     [Fact]
     public async Task FollowUnfollow_UpdatesIsFollowedAcrossEndpoints()
     {
-        var (_, slug) = await RegisterAndLoginBarber("follow-flow@example.com", "follow-flow-shop");
+        var (_, slug) = await RegisterAndLoginBusiness("follow-flow@example.com", "follow-flow-shop");
         var customerToken = await GetCustomerToken("+15553330003");
         Authorize(Client, customerToken);
 
-        var follow = await Client.PostAsync($"/api/barbers/{slug}/follow", null);
+        var follow = await Client.PostAsync($"/api/businesses/{slug}/follow", null);
         Assert.Equal(HttpStatusCode.OK, follow.StatusCode);
 
-        var followed = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        var followed = await Client.GetFromJsonAsync<List<BusinessSearchResultDto>>("/api/businesses/followed");
         Assert.Contains(followed!, b => b.Slug == slug);
 
-        var info = await Client.GetFromJsonAsync<PublicBarberDto>($"/api/{slug}/info");
+        var info = await Client.GetFromJsonAsync<PublicBusinessDto>($"/api/{slug}/info");
         Assert.True(info!.IsFollowed);
 
-        var unfollow = await Client.DeleteAsync($"/api/barbers/{slug}/follow");
+        var unfollow = await Client.DeleteAsync($"/api/businesses/{slug}/follow");
         Assert.Equal(HttpStatusCode.OK, unfollow.StatusCode);
 
-        var followedAfter = await Client.GetFromJsonAsync<List<BarberSearchResultDto>>("/api/barbers/followed");
+        var followedAfter = await Client.GetFromJsonAsync<List<BusinessSearchResultDto>>("/api/businesses/followed");
         Assert.DoesNotContain(followedAfter!, b => b.Slug == slug);
     }
 
     [Fact]
     public async Task CustomerAppointments_OwnershipIsEnforced()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("owner-flow@example.com", "owner-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("owner-flow@example.com", "owner-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, serviceId);
 
         var ownerToken = await GetCustomerToken("+15553330004");
@@ -241,8 +241,8 @@ public class BookingFlowTests : IntegrationTestBase
     [Fact]
     public async Task NoLimitSet_AllowsMultipleBookingsSameDay()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("nolimit-flow@example.com", "nolimit-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("nolimit-flow@example.com", "nolimit-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slots = await AvailableSlots(slug, serviceId);
         Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
 
@@ -256,11 +256,11 @@ public class BookingFlowTests : IntegrationTestBase
     [Fact]
     public async Task MaxBookingsPerDay_RejectsOnceLimitReached()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("perday-flow@example.com", "perday-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("perday-flow@example.com", "perday-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slots = await AvailableSlots(slug, serviceId);
         Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
-        await SetBookingLimits(barberToken, perDay: 1, perWeek: null);
+        await SetBookingLimits(businessToken, perDay: 1, perWeek: null);
 
         var first = await Book(slug, serviceId, TestDate, slots[0].Start, "+15553330011");
         var second = await Book(slug, serviceId, TestDate, slots[1].Start, "+15553330011");
@@ -272,10 +272,10 @@ public class BookingFlowTests : IntegrationTestBase
     [Fact]
     public async Task MaxBookingsPerWeek_RejectsOnceLimitReachedAcrossDifferentDays()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("perweek-flow@example.com", "perweek-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("perweek-flow@example.com", "perweek-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var (mondayDate, tuesdaySameWeek) = TwoWeekdaysInSameFutureWeek();
-        await SetBookingLimits(barberToken, perDay: null, perWeek: 1);
+        await SetBookingLimits(businessToken, perDay: null, perWeek: 1);
 
         var monday = await Book(slug, serviceId, mondayDate, (await FirstAvailableSlot(slug, serviceId, mondayDate)), "+15553330012");
         var tuesday = await Book(slug, serviceId, tuesdaySameWeek, (await FirstAvailableSlot(slug, serviceId, tuesdaySameWeek)), "+15553330012");
@@ -287,11 +287,11 @@ public class BookingFlowTests : IntegrationTestBase
     [Fact]
     public async Task MaxBookingsPerDay_AppliesRegardlessOfLoginState_MatchedByPhone()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("mixed-flow@example.com", "mixed-flow-shop");
-        var serviceId = await CreateService(barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("mixed-flow@example.com", "mixed-flow-shop");
+        var serviceId = await CreateService(businessToken);
         var slots = await AvailableSlots(slug, serviceId);
         Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
-        await SetBookingLimits(barberToken, perDay: 1, perWeek: null);
+        await SetBookingLimits(businessToken, perDay: 1, perWeek: null);
         const string phone = "+15553330013";
 
         var customerToken = await GetCustomerToken(phone);

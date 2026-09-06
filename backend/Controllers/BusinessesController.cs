@@ -10,8 +10,8 @@ using Microsoft.EntityFrameworkCore;
 namespace BarberSaas.Api.Controllers;
 
 [ApiController]
-[Route("api/barbers")]
-public class BarbersController(AppDbContext db, FollowService followService) : ControllerBase
+[Route("api/businesses")]
+public class BusinessesController(AppDbContext db, FollowService followService) : ControllerBase
 {
     private string? CustomerAccountId =>
         User.FindFirst("type")?.Value == "customer" ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null;
@@ -19,7 +19,7 @@ public class BarbersController(AppDbContext db, FollowService followService) : C
     [HttpGet("search")]
     public async Task<IActionResult> Search([FromQuery] string? query)
     {
-        var q = db.Barbers.AsQueryable();
+        var q = db.Businesses.AsQueryable();
         if (!string.IsNullOrWhiteSpace(query))
         {
             var pattern = $"%{query.Trim()}%";
@@ -29,7 +29,7 @@ public class BarbersController(AppDbContext db, FollowService followService) : C
                 (b.Description != null && EF.Functions.ILike(b.Description, pattern)));
         }
 
-        var barbers = await q.OrderBy(b => b.Name).Take(30).ToListAsync();
+        var businesses = await q.OrderBy(b => b.Name).Take(30).ToListAsync();
 
         var followedSlugs = new HashSet<string>();
         var accountId = CustomerAccountId;
@@ -37,12 +37,12 @@ public class BarbersController(AppDbContext db, FollowService followService) : C
         {
             followedSlugs = (await db.Follows
                 .Where(f => f.CustomerAccountId == accountId)
-                .Select(f => f.Barber.Slug)
+                .Select(f => f.Business.Slug)
                 .ToListAsync())
                 .ToHashSet();
         }
 
-        var results = barbers.Select(b => new BarberSearchResultDto(
+        var results = businesses.Select(b => new BusinessSearchResultDto(
             b.Slug, b.Name, b.Description, b.Logo, b.Language.ToString(), followedSlugs.Contains(b.Slug)));
 
         return Ok(results);
@@ -55,8 +55,8 @@ public class BarbersController(AppDbContext db, FollowService followService) : C
         var results = await db.Follows
             .Where(f => f.CustomerAccountId == CustomerAccountId)
             .OrderByDescending(f => f.CreatedAt)
-            .Select(f => new BarberSearchResultDto(
-                f.Barber.Slug, f.Barber.Name, f.Barber.Description, f.Barber.Logo, f.Barber.Language.ToString(), true))
+            .Select(f => new BusinessSearchResultDto(
+                f.Business.Slug, f.Business.Name, f.Business.Description, f.Business.Logo, f.Business.Language.ToString(), true))
             .ToListAsync();
 
         return Ok(results);
@@ -66,10 +66,10 @@ public class BarbersController(AppDbContext db, FollowService followService) : C
     [Authorize(Policy = "CustomerOnly")]
     public async Task<IActionResult> Follow(string slug)
     {
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Slug == slug);
-        if (barber is null) return NotFound(new { error = "Not found" });
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        if (business is null) return NotFound(new { error = "Not found" });
 
-        await followService.EnsureFollowed(CustomerAccountId!, barber.Id);
+        await followService.EnsureFollowed(CustomerAccountId!, business.Id);
         return Ok(new { ok = true });
     }
 
@@ -77,10 +77,10 @@ public class BarbersController(AppDbContext db, FollowService followService) : C
     [Authorize(Policy = "CustomerOnly")]
     public async Task<IActionResult> Unfollow(string slug)
     {
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Slug == slug);
-        if (barber is null) return NotFound(new { error = "Not found" });
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        if (business is null) return NotFound(new { error = "Not found" });
 
-        var follow = await db.Follows.FirstOrDefaultAsync(f => f.CustomerAccountId == CustomerAccountId && f.BarberId == barber.Id);
+        var follow = await db.Follows.FirstOrDefaultAsync(f => f.CustomerAccountId == CustomerAccountId && f.BusinessId == business.Id);
         if (follow is not null)
         {
             db.Follows.Remove(follow);

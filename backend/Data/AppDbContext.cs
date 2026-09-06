@@ -5,7 +5,7 @@ namespace BarberSaas.Api.Data;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
-    public DbSet<Barber> Barbers => Set<Barber>();
+    public DbSet<Business> Businesses => Set<Business>();
     public DbSet<BusinessTypeDefinition> BusinessTypeDefinitions => Set<BusinessTypeDefinition>();
     public DbSet<Service> Services => Set<Service>();
     public DbSet<ServiceGalleryPhoto> ServiceGalleryPhotos => Set<ServiceGalleryPhoto>();
@@ -18,8 +18,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<WhatsAppBookingToken> WhatsAppBookingTokens => Set<WhatsAppBookingToken>();
     public DbSet<WhatsAppConversationState> WhatsAppConversationStates => Set<WhatsAppConversationState>();
-    public DbSet<BarberEmailOtp> BarberEmailOtps => Set<BarberEmailOtp>();
-    public DbSet<BarberPasswordResetOtp> BarberPasswordResetOtps => Set<BarberPasswordResetOtp>();
+    public DbSet<BusinessEmailOtp> BusinessEmailOtps => Set<BusinessEmailOtp>();
+    public DbSet<BusinessPasswordResetOtp> BusinessPasswordResetOtps => Set<BusinessPasswordResetOtp>();
     public DbSet<RecurringSeries> RecurringSeries => Set<RecurringSeries>();
     public DbSet<RecurringSkip> RecurringSkips => Set<RecurringSkip>();
     public DbSet<WaitlistEntry> WaitlistEntries => Set<WaitlistEntry>();
@@ -28,23 +28,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
     protected override void OnModelCreating(ModelBuilder b)
     {
-        b.Entity<Barber>()
+        b.Entity<Business>()
             .HasIndex(x => x.Email).IsUnique();
-        b.Entity<Barber>()
+        b.Entity<Business>()
             .HasIndex(x => x.Slug).IsUnique();
-        b.Entity<Barber>()
+        b.Entity<Business>()
             .HasIndex(x => x.BusinessTypeId);
-        b.Entity<Barber>()
+        b.Entity<Business>()
             .HasIndex(x => x.BusinessModel);
 
         b.Entity<BusinessTypeDefinition>()
             .HasIndex(x => x.Key).IsUnique();
 
         b.Entity<WorkingHours>()
-            .HasIndex(x => new { x.BarberId, x.DayOfWeek }).IsUnique();
+            .HasIndex(x => new { x.BusinessId, x.DayOfWeek }).IsUnique();
 
         b.Entity<Customer>()
-            .HasIndex(x => new { x.BarberId, x.Phone }).IsUnique();
+            .HasIndex(x => new { x.BusinessId, x.Phone }).IsUnique();
 
         b.Entity<Appointment>()
             .HasIndex(x => x.CancelToken).IsUnique();
@@ -53,22 +53,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => x.Phone).IsUnique();
 
         b.Entity<Follow>()
-            .HasIndex(x => new { x.CustomerAccountId, x.BarberId }).IsUnique();
+            .HasIndex(x => new { x.CustomerAccountId, x.BusinessId }).IsUnique();
 
         b.Entity<WhatsAppBookingToken>()
             .HasIndex(x => x.ExpiresAt);
 
         b.Entity<WhatsAppConversationState>()
-            .HasIndex(x => new { x.BarberId, x.Phone }).IsUnique();
+            .HasIndex(x => new { x.BusinessId, x.Phone }).IsUnique();
 
-        b.Entity<BarberEmailOtp>()
+        b.Entity<BusinessEmailOtp>()
             .HasIndex(x => new { x.Email, x.CreatedAt });
 
-        b.Entity<BarberPasswordResetOtp>()
+        b.Entity<BusinessPasswordResetOtp>()
             .HasIndex(x => new { x.Email, x.CreatedAt });
 
         b.Entity<RecurringSeries>()
-            .HasIndex(x => new { x.BarberId, x.IsActive });
+            .HasIndex(x => new { x.BusinessId, x.IsActive });
 
         b.Entity<Appointment>()
             .HasIndex(x => new { x.RecurringSeriesId, x.Date });
@@ -80,18 +80,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => x.Email).IsUnique();
 
         b.Entity<ActivityLog>()
-            .HasIndex(x => new { x.BarberId, x.CreatedAt });
+            .HasIndex(x => new { x.BusinessId, x.CreatedAt });
         b.Entity<ActivityLog>()
             .HasIndex(x => new { x.CustomerAccountId, x.CreatedAt });
 
         // Closes a pre-existing TOCTOU gap (check-then-insert, no DB-level guard): only one
-        // CONFIRMED appointment may occupy a given barber/date/start-time slot. Filtered so
+        // CONFIRMED appointment may occupy a given business/date/start-time slot. Filtered so
         // cancelled/completed history never collides with a later booking of the same slot.
         b.Entity<Appointment>()
-            .HasIndex(x => new { x.BarberId, x.Date, x.StartTime })
+            .HasIndex(x => new { x.BusinessId, x.Date, x.StartTime })
             .IsUnique()
             .HasFilter("\"Status\" = 'CONFIRMED'")
-            .HasDatabaseName("IX_Appointments_BarberId_Date_StartTime_Confirmed");
+            .HasDatabaseName("IX_Appointments_BusinessId_Date_StartTime_Confirmed");
 
         b.Entity<Service>()
             .Property(x => x.Price)
@@ -118,10 +118,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .Property(x => x.Date)
             .HasColumnType("date");
 
-        b.Entity<Barber>()
+        b.Entity<Business>()
             .Property(x => x.Language)
             .HasConversion<string>();
-        b.Entity<Barber>()
+        b.Entity<Business>()
             .Property(x => x.SubscriptionStatus)
             .HasConversion<string>();
         b.Entity<Appointment>()
@@ -136,37 +136,37 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // Explicit DB-level default (not just the C# property initializer, which only applies to
         // objects EF constructs itself) -- without this, EF's migration scaffolding backfills
         // existing rows with default(bool) = false when the column is added, which would silently
-        // disable the chatbot for every barber that already existed before this feature shipped.
-        b.Entity<Barber>()
+        // disable the chatbot for every business that already existed before this feature shipped.
+        b.Entity<Business>()
             .Property(x => x.ChatbotEnabled)
             .HasDefaultValue(true);
-        b.Entity<Barber>()
+        b.Entity<Business>()
             .Property(x => x.BusinessModel)
             .HasConversion<string>()
             .HasDefaultValue(BusinessModel.Appointment);
 
-        b.Entity<Barber>()
-            .HasOne(x => x.BusinessType).WithMany(x => x.Barbers)
+        b.Entity<Business>()
+            .HasOne(x => x.BusinessType).WithMany(x => x.Businesses)
             .HasForeignKey(x => x.BusinessTypeId).OnDelete(DeleteBehavior.SetNull);
 
         b.Entity<Service>()
-            .HasOne(x => x.Barber).WithMany(x => x.Services)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany(x => x.Services)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<ServiceGalleryPhoto>()
             .HasOne(x => x.Service).WithMany(x => x.GalleryPhotos)
             .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WorkingHours>()
-            .HasOne(x => x.Barber).WithMany(x => x.WorkingHours)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany(x => x.WorkingHours)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Break>()
-            .HasOne(x => x.Barber).WithMany(x => x.Breaks)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany(x => x.Breaks)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<BlockedSlot>()
-            .HasOne(x => x.Barber).WithMany(x => x.BlockedSlots)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany(x => x.BlockedSlots)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Customer>()
-            .HasOne(x => x.Barber).WithMany(x => x.Customers)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany(x => x.Customers)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Customer>()
             .HasOne(x => x.CustomerAccount).WithMany(x => x.Profiles)
             .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.SetNull);
@@ -174,11 +174,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.CustomerAccount).WithMany(x => x.Follows)
             .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Follow>()
-            .HasOne(x => x.Barber).WithMany(x => x.Follows)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany(x => x.Follows)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<Appointment>()
-            .HasOne(x => x.Barber).WithMany(x => x.Appointments)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Restrict);
+            .HasOne(x => x.Business).WithMany(x => x.Appointments)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Appointment>()
             .HasOne(x => x.Customer).WithMany(x => x.Appointments)
             .HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
@@ -187,8 +187,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<RecurringSeries>()
-            .HasOne(x => x.Barber).WithMany(x => x.RecurringSeries)
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Restrict);
+            .HasOne(x => x.Business).WithMany(x => x.RecurringSeries)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<RecurringSeries>()
             .HasOne(x => x.Customer).WithMany(x => x.RecurringSeries)
             .HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
@@ -205,28 +205,28 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(x => x.RecurringSeriesId).OnDelete(DeleteBehavior.SetNull);
 
         b.Entity<WhatsAppBookingToken>()
-            .HasOne(x => x.Barber).WithMany()
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany()
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WhatsAppBookingToken>()
             .HasOne(x => x.Service).WithMany()
             .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WhatsAppConversationState>()
-            .HasOne(x => x.Barber).WithMany()
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany()
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<WaitlistEntry>()
             .HasOne(x => x.Appointment).WithMany(x => x.WaitlistEntries)
             .HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WaitlistEntry>()
-            .HasOne(x => x.Barber).WithMany()
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany()
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WaitlistEntry>()
             .HasOne(x => x.CustomerAccount).WithMany(x => x.WaitlistEntries)
             .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
 
         b.Entity<ActivityLog>()
-            .HasOne(x => x.Barber).WithMany()
-            .HasForeignKey(x => x.BarberId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Business).WithMany()
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<ActivityLog>()
             .HasOne(x => x.CustomerAccount).WithMany()
             .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);

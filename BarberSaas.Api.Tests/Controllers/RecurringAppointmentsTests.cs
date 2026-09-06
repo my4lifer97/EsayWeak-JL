@@ -9,9 +9,9 @@ public class RecurringAppointmentsTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
 
-    private async Task<string> RegisterAndLoginBarber(string email, string slug)
+    private async Task<string> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
@@ -30,7 +30,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Create_NewCustomer_CreatesActiveSeries()
     {
         var slug = "recurring-create";
-        var token = await RegisterAndLoginBarber("recurring-create@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-create@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -51,7 +51,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Create_ImmediatelyGeneratesFirstOccurrence_VisibleOnDashboardAndBlocksSlot()
     {
         var slug = "recurring-immediate";
-        var token = await RegisterAndLoginBarber("recurring-immediate@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-immediate@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -80,7 +80,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Create_ExistingCustomer_LinksToThatCustomer()
     {
         var slug = "recurring-existing";
-        var token = await RegisterAndLoginBarber("recurring-existing@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-existing@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -100,7 +100,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Create_InvalidDayOfWeek_ReturnsBadRequest()
     {
         var slug = "recurring-bad-day";
-        var token = await RegisterAndLoginBarber("recurring-bad-day@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-bad-day@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -114,7 +114,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Create_PastStartDate_ReturnsBadRequest()
     {
         var slug = "recurring-past-start";
-        var token = await RegisterAndLoginBarber("recurring-past-start@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-past-start@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -129,7 +129,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Create_EndDateBeforeStartDate_ReturnsBadRequest()
     {
         var slug = "recurring-bad-range";
-        var token = await RegisterAndLoginBarber("recurring-bad-range@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-bad-range@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -145,7 +145,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task List_ReturnsCreatedSeries()
     {
         var slug = "recurring-list";
-        var token = await RegisterAndLoginBarber("recurring-list@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-list@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -161,7 +161,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Delete_RemovesSeries()
     {
         var slug = "recurring-delete";
-        var token = await RegisterAndLoginBarber("recurring-delete@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-delete@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -180,7 +180,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     public async Task Delete_CancelsUpcomingLinkedAppointments()
     {
         var slug = "recurring-delete-cancels";
-        var token = await RegisterAndLoginBarber("recurring-delete-cancels@example.com", slug);
+        var token = await RegisterAndLoginBusiness("recurring-delete-cancels@example.com", slug);
         var serviceId = await SeedService(token);
 
         Authorize(Client, token);
@@ -212,10 +212,10 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task OtherBarber_CannotAccessAnotherBarbersSeries()
+    public async Task OtherBusiness_CannotAccessAnotherBusinessesSeries()
     {
         var slugA = "recurring-owner";
-        var tokenA = await RegisterAndLoginBarber("recurring-owner@example.com", slugA);
+        var tokenA = await RegisterAndLoginBusiness("recurring-owner@example.com", slugA);
         var serviceIdA = await SeedService(tokenA);
 
         Authorize(Client, tokenA);
@@ -224,7 +224,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         var created = await createResp.Content.ReadFromJsonAsync<RecurringSeriesDto>();
 
         var slugB = "recurring-intruder";
-        var tokenB = await RegisterAndLoginBarber("recurring-intruder@example.com", slugB);
+        var tokenB = await RegisterAndLoginBusiness("recurring-intruder@example.com", slugB);
         Authorize(Client, tokenB);
 
         var resp = await Client.DeleteAsync($"/api/admin/recurring/{created!.Id}");

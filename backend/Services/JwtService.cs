@@ -19,8 +19,8 @@ public class JwtService(IConfiguration config)
         return BuildToken(claims, DateTime.UtcNow.AddDays(30));
     }
 
-    // Same claim shape as Generate (so every existing BarberOnly endpoint keeps working
-    // unmodified against the target barber's real id) plus an impersonatedBy marker and a much
+    // Same claim shape as Generate (so every existing BusinessOnly endpoint keeps working
+    // unmodified against the target business's real id) plus an impersonatedBy marker and a much
     // shorter expiry, since this is minted by a platform admin rather than a real login.
     public string GenerateImpersonation(string id, string email, string name, string slug, string impersonatedByAdminId)
     {

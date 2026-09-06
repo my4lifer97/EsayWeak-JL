@@ -22,7 +22,7 @@ public static class ActivityDetailExtensions
         string.IsNullOrWhiteSpace(familyName) ? name : $"{name} {familyName}";
 }
 
-// Logs every authenticated write request (POST/PUT/PATCH/DELETE) against the acting barber or
+// Logs every authenticated write request (POST/PUT/PATCH/DELETE) against the acting business or
 // customer account, purely from claims every request already carries -- no existing controller
 // needs to opt in or change. Platform-admin requests are skipped here; PlatformAdminController
 // logs its own actions (e.g. impersonation) explicitly instead of being swept up generically.
@@ -64,7 +64,7 @@ public class ActivityLogFilter(AppDbContext db) : IAsyncResultFilter
         if (type == "customer")
             log.CustomerAccountId = subject;
         else
-            log.BarberId = subject;
+            log.BusinessId = subject;
 
         log.ImpersonatedByPlatformAdminId = user.FindFirst("impersonatedBy")?.Value;
 

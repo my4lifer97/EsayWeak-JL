@@ -11,7 +11,7 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
 
     public async Task<(int Total, int Created, int Skipped)> GenerateOccurrences()
     {
-        // Local wall-clock "today" -- RecurringSeries/Appointment dates are barber-local,
+        // Local wall-clock "today" -- RecurringSeries/Appointment dates are business-local,
         // never UTC-converted, same reasoning as AvailabilityService/CronController.
         var today = DateTime.Now.Date;
         var horizon = Horizon(today);
@@ -69,12 +69,12 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
             if (!exists)
             {
                 var dateStr = d.ToString("yyyy-MM-dd");
-                var slots = await availability.GetAvailableSlots(s.BarberId, dateStr, s.Service.DurationMinutes);
+                var slots = await availability.GetAvailableSlots(s.BusinessId, dateStr, s.Service.DurationMinutes);
                 if (slots.Any(sl => sl.Start == s.StartTime))
                 {
                     db.Appointments.Add(new Appointment
                     {
-                        BarberId = s.BarberId,
+                        BusinessId = s.BusinessId,
                         CustomerId = s.CustomerId,
                         ServiceId = s.ServiceId,
                         Date = d,

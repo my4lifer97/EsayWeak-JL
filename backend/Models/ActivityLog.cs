@@ -9,7 +9,7 @@ namespace BarberSaas.Api.Models;
 public class ActivityLog
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string? BarberId { get; set; }
+    public string? BusinessId { get; set; }
     public string? CustomerAccountId { get; set; }
     // Set when the acting token was a platform-admin impersonation token, so an account's
     // activity log can distinguish "the owner did this" from "support did this on their behalf".
@@ -22,7 +22,7 @@ public class ActivityLog
     public string? IpAddress { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public Barber? Barber { get; set; }
+    public Business? Business { get; set; }
     public CustomerAccount? CustomerAccount { get; set; }
     public PlatformAdmin? ImpersonatedByPlatformAdmin { get; set; }
 }

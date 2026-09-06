@@ -14,12 +14,12 @@ public abstract class IntegrationTestBase : IDisposable
     protected readonly TestWebApplicationFactory Factory;
     protected readonly HttpClient Client;
 
-    // A throwaway barber+service, seeded lazily on first use, that LoginCustomerViaWhatsAppAsync
+    // A throwaway business+service, seeded lazily on first use, that LoginCustomerViaWhatsAppAsync
     // issues its booking-link tokens against. Its identity never leaks into the returned customer
-    // JWT (CustomerJwtService.Generate only encodes the CustomerAccount, not the barber/service the
+    // JWT (CustomerJwtService.Generate only encodes the CustomerAccount, not the business/service the
     // login token happened to be minted for), so every test in a class can safely share the same
-    // one instead of each call seeding its own barber.
-    private string? _loginBarberId;
+    // one instead of each call seeding its own business.
+    private string? _loginBusinessId;
     private string? _loginServiceId;
 
     protected IntegrationTestBase() : this(configureCardcom: false) { }
@@ -44,30 +44,30 @@ public abstract class IntegrationTestBase : IDisposable
     // (phone, name, familyName) unchanged.
     protected async Task<WhatsAppLoginResult> LoginCustomerViaWhatsAppAsync(string phone, string name = "First", string familyName = "Last")
     {
-        await EnsureLoginBarberSeededAsync();
+        await EnsureLoginBusinessSeededAsync();
 
         using var scope = Factory.Services.CreateScope();
         var tokens = scope.ServiceProvider.GetRequiredService<WhatsAppBookingTokenService>();
         var profileName = string.IsNullOrWhiteSpace(familyName) ? name : $"{name} {familyName}";
-        var tokenRow = await tokens.CreateAsync(_loginBarberId!, _loginServiceId!, phone, profileName);
+        var tokenRow = await tokens.CreateAsync(_loginBusinessId!, _loginServiceId!, phone, profileName);
 
         var resp = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new { token = tokenRow.Id });
         resp.EnsureSuccessStatusCode();
         return (await resp.Content.ReadFromJsonAsync<WhatsAppLoginResult>())!;
     }
 
-    private async Task EnsureLoginBarberSeededAsync()
+    private async Task EnsureLoginBusinessSeededAsync()
     {
-        if (_loginBarberId is not null) return;
+        if (_loginBusinessId is not null) return;
 
         using var db = Db();
-        var barber = new Barber { Name = "Login Seed Barber", Email = $"{Guid.NewGuid():N}@login-seed.test", Slug = $"login-seed-{Guid.NewGuid():N}" };
-        db.Barbers.Add(barber);
-        var service = new Service { BarberId = barber.Id, NameEn = "Seed Service", NameAr = "Seed Service", NameHe = "Seed Service", DurationMinutes = 30, Price = 0 };
+        var business = new Business { Name = "Login Seed Business", Email = $"{Guid.NewGuid():N}@login-seed.test", Slug = $"login-seed-{Guid.NewGuid():N}" };
+        db.Businesses.Add(business);
+        var service = new Service { BusinessId = business.Id, NameEn = "Seed Service", NameAr = "Seed Service", NameHe = "Seed Service", DurationMinutes = 30, Price = 0 };
         db.Services.Add(service);
         await db.SaveChangesAsync();
 
-        _loginBarberId = barber.Id;
+        _loginBusinessId = business.Id;
         _loginServiceId = service.Id;
     }
 
@@ -79,4 +79,4 @@ public abstract class IntegrationTestBase : IDisposable
     }
 }
 
-public record WhatsAppLoginResult(string Token, string CustomerId, string Name, string FamilyName, string Phone, string BarberSlug, string ServiceId);
+public record WhatsAppLoginResult(string Token, string CustomerId, string Name, string FamilyName, string Phone, string BusinessSlug, string ServiceId);

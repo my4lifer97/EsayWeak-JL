@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLanguage(l)
   }
 
-  // The barber's saved language previously only reached this context when SettingsPage
+  // The business's saved language previously only reached this context when SettingsPage
   // happened to be visited (it fetches /admin/settings and calls setLang itself) — every
   // other admin page fell back to whatever was last in localStorage (default English) until
   // then. Sync it on login and on session restore so it's correct everywhere from the start.

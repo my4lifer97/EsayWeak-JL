@@ -11,7 +11,7 @@ namespace BarberSaas.Api.Models;
 public class WhatsAppBookingToken
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public string ServiceId { get; set; } = "";
     public string Phone { get; set; } = "";
     // WhatsApp's inbound-message "ProfileName" field -- the sender's WhatsApp display name.
@@ -24,6 +24,6 @@ public class WhatsAppBookingToken
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
     public Service Service { get; set; } = null!;
 }

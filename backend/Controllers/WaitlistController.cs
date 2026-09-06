@@ -18,11 +18,11 @@ public class WaitlistController(AppDbContext db) : ControllerBase
     [HttpPost("{appointmentId}")]
     public async Task<IActionResult> Join(string slug, string appointmentId)
     {
-        var barber = await db.Barbers.FirstOrDefaultAsync(b => b.Slug == slug);
-        if (barber is null) return NotFound(new { error = "Not found" });
-        if (!barber.WaitlistEnabled) return BadRequest(new { error = "Waitlist is not enabled for this business" });
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        if (business is null) return NotFound(new { error = "Not found" });
+        if (!business.WaitlistEnabled) return BadRequest(new { error = "Waitlist is not enabled for this business" });
 
-        var appointment = await db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId && a.BarberId == barber.Id);
+        var appointment = await db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == business.Id);
         if (appointment is null) return NotFound(new { error = "Appointment not found" });
         if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment is not currently booked" });
@@ -30,7 +30,7 @@ public class WaitlistController(AppDbContext db) : ControllerBase
         var exists = await db.WaitlistEntries.AnyAsync(w => w.AppointmentId == appointmentId && w.CustomerAccountId == CustomerAccountId);
         if (exists) return Ok(new { ok = true });
 
-        db.WaitlistEntries.Add(new WaitlistEntry { AppointmentId = appointmentId, BarberId = barber.Id, CustomerAccountId = CustomerAccountId });
+        db.WaitlistEntries.Add(new WaitlistEntry { AppointmentId = appointmentId, BusinessId = business.Id, CustomerAccountId = CustomerAccountId });
         try
         {
             await db.SaveChangesAsync();

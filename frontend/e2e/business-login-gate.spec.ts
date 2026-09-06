@@ -18,10 +18,10 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
   const api = await request.newContext()
 
   const register = await api.post(`${API}/auth/register`, {
-    data: { name: 'E2E WA Barber', email, password: 'password123', slug },
+    data: { name: 'E2E WA Business', email, password: 'password123', slug },
   })
   const { devCode } = await register.json()
-  // Registration leaves the barber unverified; verify via API to get a token directly.
+  // Registration leaves the business unverified; verify via API to get a token directly.
   const verify = await api.post(`${API}/auth/verify-email`, { data: { email, code: devCode } })
   const { token } = await verify.json()
   await api.post(`${API}/admin/services`, {
@@ -29,13 +29,13 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
     data: { nameEn: 'Haircut', nameAr: 'Haircut', nameHe: 'Haircut', durationMinutes: 30, price: 40 },
   })
   // The webhook signature is now checked against one platform-owned Twilio:AuthToken (local dev's
-  // dotnet user-secrets), not a per-barber token -- see CLAUDE.md's Twilio/WhatsApp section for
-  // the local-dev setup this env var must match. TwilioNumber alone is still per-barber, but it's
+  // dotnet user-secrets), not a per-business token -- see CLAUDE.md's Twilio/WhatsApp section for
+  // the local-dev setup this env var must match. TwilioNumber alone is still per-business, but it's
   // now assigned by a platform admin rather than settable via /api/admin/settings, so this test
   // bootstraps/logs into a platform-admin account to assign it, below.
   const twilioToken = process.env.TWILIO_AUTH_TOKEN ?? 'test-auth-token'
   const twilioNumber = `+1555${(Date.now() + 1).toString().slice(-7)}`
-  const barberId = (await (await api.get(`${API}/admin/settings`, {
+  const businessId = (await (await api.get(`${API}/admin/settings`, {
     headers: { Authorization: `Bearer ${token}` },
   })).json()).id
   // Fixed (not per-run) credentials -- platform-admin bootstrap only ever succeeds once per DB,
@@ -48,13 +48,13 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
     ? await api.post(`${API}/platform-admin/bootstrap`, { data: { email: adminEmail, password: 'password123', name: 'E2E Admin' } })
     : await api.post(`${API}/platform-admin/login`, { data: { email: adminEmail, password: 'password123' } })
   const { token: adminToken } = await admin.json()
-  await api.patch(`${API}/platform-admin/barbers/${barberId}/twilio-number`, {
+  await api.patch(`${API}/platform-admin/businesses/${businessId}/twilio-number`, {
     headers: { Authorization: `Bearer ${adminToken}` },
     data: { twilioNumber },
   })
 
   // This test exercises the WhatsApp login-and-book flow, not localization — pin the customer's
-  // language to English (default is now Hebrew, chosen independently of any barber's own language).
+  // language to English (default is now Hebrew, chosen independently of any business's own language).
   await page.addInitScript(() => localStorage.setItem('customerLang', 'EN'))
 
   // Simulates the two inbound WhatsApp messages a real customer would send: the bot's first reply
@@ -84,7 +84,7 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
   await expect(page.getByText('Select a Date')).toBeVisible()
   await expect(page.getByText('Select a Service')).not.toBeVisible()
 
-  // "View My Appointments" now lives on this step (moved from the barber page).
+  // "View My Appointments" now lives on this step (moved from the business page).
   await expect(page.getByText('View My Appointments')).toBeVisible()
 
   // Pick the *second* enabled date cell, not the first (which may be today) — today's
@@ -105,7 +105,7 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
   await expect(page.locator('#booking-phone')).toBeDisabled()
   await page.getByRole('button', { name: 'Confirm Appointment' }).click()
 
-  // Booking redirects straight back to the barber's own page.
+  // Booking redirects straight back to the business's own page.
   await expect(page).toHaveURL(new RegExp(`/${slug}$`), { timeout: 10000 })
-  await expect(page.getByRole('heading', { name: 'E2E WA Barber' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'E2E WA Business' })).toBeVisible()
 })

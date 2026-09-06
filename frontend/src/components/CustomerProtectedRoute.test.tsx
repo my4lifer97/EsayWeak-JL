@@ -14,7 +14,7 @@ function renderAt(path: string) {
       <Routes>
         <Route element={<CustomerProtectedRoute />}>
           <Route path="/account/bookings" element={<div>My Bookings Page</div>} />
-          <Route path="/:slug" element={<div>Barber Page</div>} />
+          <Route path="/:slug" element={<div>Business Page</div>} />
         </Route>
       </Routes>
     </MemoryRouter>
@@ -38,11 +38,11 @@ describe('CustomerProtectedRoute', () => {
     expect(screen.getByText('My Bookings Page')).toBeInTheDocument()
   })
 
-  it('gates a barber page (/:slug) the same way when not authenticated', () => {
+  it('gates a business page (/:slug) the same way when not authenticated', () => {
     vi.mocked(useCustomerAuth).mockReturnValue({ isAuthenticated: false, language: 'EN' } as ReturnType<typeof useCustomerAuth>)
 
     renderAt('/jamelmarie85')
 
-    expect(screen.queryByText('Barber Page')).not.toBeInTheDocument()
+    expect(screen.queryByText('Business Page')).not.toBeInTheDocument()
   })
 })

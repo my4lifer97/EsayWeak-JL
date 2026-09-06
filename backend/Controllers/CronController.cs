@@ -21,7 +21,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         var amount = decimal.Parse(config["Cardcom:MonthlyAmount"] ?? "120");
         var now = DateTime.UtcNow;
 
-        var due = await db.Barbers
+        var due = await db.Businesses
             .Where(b => b.SubscriptionStatus == SubStatus.ACTIVE
                 && b.CardcomToken != null
                 && b.CardcomNextChargeAt != null
@@ -29,28 +29,28 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             .ToListAsync();
 
         int charged = 0, failed = 0;
-        foreach (var barber in due)
+        foreach (var business in due)
         {
             try
             {
-                var result = await cardcom.ChargeByTokenAsync(barber.CardcomToken!, amount, "Barber SaaS Monthly Subscription");
+                var result = await cardcom.ChargeByTokenAsync(business.CardcomToken!, amount, "Business SaaS Monthly Subscription");
                 if (result.ResponseCode == 0)
                 {
-                    barber.CardcomNextChargeAt = barber.CardcomNextChargeAt!.Value.AddMonths(1);
+                    business.CardcomNextChargeAt = business.CardcomNextChargeAt!.Value.AddMonths(1);
                     charged++;
                 }
                 else
                 {
-                    logger.LogWarning("Cardcom recurring charge failed for barber {BarberId}: {Code} {Description}",
-                        barber.Id, result.ResponseCode, result.Description);
-                    barber.SubscriptionStatus = SubStatus.EXPIRED;
+                    logger.LogWarning("Cardcom recurring charge failed for business {BusinessId}: {Code} {Description}",
+                        business.Id, result.ResponseCode, result.Description);
+                    business.SubscriptionStatus = SubStatus.EXPIRED;
                     failed++;
                 }
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Cardcom recurring charge threw for barber {BarberId}", barber.Id);
-                barber.SubscriptionStatus = SubStatus.EXPIRED;
+                logger.LogError(ex, "Cardcom recurring charge threw for business {BusinessId}", business.Id);
+                business.SubscriptionStatus = SubStatus.EXPIRED;
                 failed++;
             }
         }
@@ -79,13 +79,13 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
             return Unauthorized(new { error = "Unauthorized" });
 
-        // a.Date is the barber's local wall-clock calendar date, never converted to/from UTC
+        // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — compute "tomorrow" from local now or this fires reminders
-        // a day early/late near midnight for any barber off UTC.
+        // a day early/late near midnight for any business off UTC.
         var tomorrow = DateTime.Now.AddDays(1).Date;
 
         var appointments = await db.Appointments
-            .Include(a => a.Barber)
+            .Include(a => a.Business)
             .Include(a => a.Customer)
             .Include(a => a.Service)
             .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.ReminderSent)
@@ -96,12 +96,12 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
 
         foreach (var appt in appointments)
         {
-            if (appt.Barber.TwilioNumber is null)
+            if (appt.Business.TwilioNumber is null)
                 continue;
 
             try
             {
-                var lang = appt.Barber.Language.ToString();
+                var lang = appt.Business.Language.ToString();
                 var serviceName = lang switch
                 {
                     "AR" => appt.Service.NameAr,
@@ -109,25 +109,25 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
                     _ => appt.Service.NameEn,
                 };
 
-                var cancelUrl = $"{appUrl}/{appt.Barber.Slug}/appointments/{appt.Id}?token={appt.CancelToken}";
+                var cancelUrl = $"{appUrl}/{appt.Business.Slug}/appointments/{appt.Id}?token={appt.CancelToken}";
                 var message = I18nService.T(lang, "reminder.message", new()
                 {
                     ["customerName"] = appt.Customer.Name,
-                    ["barberName"] = appt.Barber.Name,
+                    ["businessName"] = appt.Business.Name,
                     ["time"] = appt.StartTime,
                     ["service"] = serviceName,
                     ["cancelUrl"] = cancelUrl,
                 });
 
-                await whatsAppSender.SendAsync(appt.Barber, appt.Customer.Phone, message);
+                await whatsAppSender.SendAsync(appt.Business, appt.Customer.Phone, message);
 
                 appt.ReminderSent = true;
                 sent++;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to send WhatsApp reminder for appointment {AppointmentId} (barber {BarberId})",
-                    appt.Id, appt.BarberId);
+                logger.LogError(ex, "Failed to send WhatsApp reminder for appointment {AppointmentId} (business {BusinessId})",
+                    appt.Id, appt.BusinessId);
                 failed++;
             }
         }

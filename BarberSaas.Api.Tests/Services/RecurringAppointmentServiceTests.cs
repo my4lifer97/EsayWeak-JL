@@ -41,17 +41,17 @@ public class RecurringAppointmentServiceTests : IDisposable
     // seeded date's Ticks line up with whatever the production code compares it against.
     private static DateTime AsStoredDate(string dateStr) => DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
 
-    private static (Barber Barber, Service Service, Customer Customer) SeedBarberServiceCustomer(AppDbContext db, DayOfWeek dayOfWeek)
+    private static (Business Business, Service Service, Customer Customer) SeedBusinessServiceCustomer(AppDbContext db, DayOfWeek dayOfWeek)
     {
-        var barber = new Barber { Name = "Test Barber", Email = $"{Guid.NewGuid():N}@example.com", Slug = $"barber-{Guid.NewGuid():N}" };
-        var service = new Service { BarberId = barber.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 30, Price = 20, IsActive = true };
-        var customer = new Customer { BarberId = barber.Id, Name = "Mohamed", Phone = "+15551110000" };
-        db.Barbers.Add(barber);
+        var business = new Business { Name = "Test Business", Email = $"{Guid.NewGuid():N}@example.com", Slug = $"business-{Guid.NewGuid():N}" };
+        var service = new Service { BusinessId = business.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 30, Price = 20, IsActive = true };
+        var customer = new Customer { BusinessId = business.Id, Name = "Mohamed", Phone = "+15551110000" };
+        db.Businesses.Add(business);
         db.Services.Add(service);
         db.Customers.Add(customer);
-        db.WorkingHours.Add(new WorkingHours { BarberId = barber.Id, DayOfWeek = (int)dayOfWeek, StartTime = "09:00", EndTime = "18:00", IsActive = true });
+        db.WorkingHours.Add(new WorkingHours { BusinessId = business.Id, DayOfWeek = (int)dayOfWeek, StartTime = "09:00", EndTime = "18:00", IsActive = true });
         db.SaveChanges();
-        return (barber, service, customer);
+        return (business, service, customer);
     }
 
     [Fact]
@@ -59,10 +59,10 @@ public class RecurringAppointmentServiceTests : IDisposable
     {
         using var db = NewDb();
         var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
-        var (barber, service, customer) = SeedBarberServiceCustomer(db, target.DayOfWeek);
+        var (business, service, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         var series = new RecurringSeries
         {
-            BarberId = barber.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
             DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target, EndDate = target, IsActive = true,
         };
         db.RecurringSeries.Add(series);
@@ -82,11 +82,11 @@ public class RecurringAppointmentServiceTests : IDisposable
     {
         using var db = NewDb();
         var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
-        var (barber, service, customer) = SeedBarberServiceCustomer(db, target.DayOfWeek);
-        db.BlockedSlots.Add(new BlockedSlot { BarberId = barber.Id, Date = target, StartTime = null, EndTime = null, Reason = "Day off" });
+        var (business, service, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
+        db.BlockedSlots.Add(new BlockedSlot { BusinessId = business.Id, Date = target, StartTime = null, EndTime = null, Reason = "Day off" });
         var series = new RecurringSeries
         {
-            BarberId = barber.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
             DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target, EndDate = target, IsActive = true,
         };
         db.RecurringSeries.Add(series);
@@ -106,10 +106,10 @@ public class RecurringAppointmentServiceTests : IDisposable
     {
         using var db = NewDb();
         var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
-        var (barber, service, customer) = SeedBarberServiceCustomer(db, target.DayOfWeek);
+        var (business, service, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         var series = new RecurringSeries
         {
-            BarberId = barber.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
             DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target, EndDate = target, IsActive = true,
         };
         db.RecurringSeries.Add(series);
@@ -128,11 +128,11 @@ public class RecurringAppointmentServiceTests : IDisposable
     {
         using var db = NewDb();
         var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
-        var (barber, service, customer) = SeedBarberServiceCustomer(db, target.DayOfWeek);
+        var (business, service, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         service.IsActive = false;
         var series = new RecurringSeries
         {
-            BarberId = barber.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
             DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target, EndDate = target, IsActive = true,
         };
         db.RecurringSeries.Add(series);
@@ -155,10 +155,10 @@ public class RecurringAppointmentServiceTests : IDisposable
         var tomorrow = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
         var pastStart = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1 - 21)));
         var endDate = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1 + 7)));
-        var (barber, service, customer) = SeedBarberServiceCustomer(db, tomorrow.DayOfWeek);
+        var (business, service, customer) = SeedBusinessServiceCustomer(db, tomorrow.DayOfWeek);
         var series = new RecurringSeries
         {
-            BarberId = barber.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
             DayOfWeek = (int)tomorrow.DayOfWeek, StartTime = "13:00", StartDate = pastStart, EndDate = endDate, IsActive = true,
         };
         db.RecurringSeries.Add(series);
@@ -178,10 +178,10 @@ public class RecurringAppointmentServiceTests : IDisposable
         using var db = NewDb();
         var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
         var pastEnd = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(-1)));
-        var (barber, service, customer) = SeedBarberServiceCustomer(db, target.DayOfWeek);
+        var (business, service, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         var series = new RecurringSeries
         {
-            BarberId = barber.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
             DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target.AddDays(-30), EndDate = pastEnd, IsActive = true,
         };
         db.RecurringSeries.Add(series);

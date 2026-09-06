@@ -12,12 +12,12 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/admin")]
-[Authorize(Policy = "BarberOnly")]
+[Authorize(Policy = "BusinessOnly")]
 public class AdminController(
     AppDbContext db, IWebHostEnvironment env, AvailabilityService availability,
     WaitlistService waitlist, AppointmentCancellationService cancellationService) : ControllerBase
 {
-    private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+    private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     private static readonly Dictionary<string, string> AllowedLogoTypes = new()
     {
@@ -26,7 +26,7 @@ public class AdminController(
     private const long MaxLogoBytes = 5 * 1024 * 1024;
 
     private static ServiceDto ToServiceDto(Service s) => new(
-        s.Id, s.BarberId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
+        s.Id, s.BusinessId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
         s.PhotoMode.ToString(), s.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList());
 
     // ─── Settings ───────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ public class AdminController(
     [HttpGet("settings")]
     public async Task<IActionResult> GetSettings()
     {
-        var b = await db.Barbers.FindAsync(BarberId);
+        var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
         return Ok(new SettingsDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
@@ -48,7 +48,7 @@ public class AdminController(
     [RequestSizeLimit(MaxLogoBytes)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
-        var b = await db.Barbers.FindAsync(BarberId);
+        var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -79,7 +79,7 @@ public class AdminController(
     [HttpPatch("settings")]
     public async Task<IActionResult> UpdateSettings([FromBody] UpdateSettingsRequest req)
     {
-        var b = await db.Barbers.FindAsync(BarberId);
+        var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
 
         // Captured before assignment so we can report only the fields that actually changed --
@@ -141,7 +141,7 @@ public class AdminController(
     {
         var services = await db.Services
             .Include(s => s.GalleryPhotos)
-            .Where(s => s.BarberId == BarberId && s.IsActive)
+            .Where(s => s.BusinessId == BusinessId && s.IsActive)
             .OrderBy(s => s.NameEn)
             .ToListAsync();
         return Ok(services.Select(ToServiceDto));
@@ -159,7 +159,7 @@ public class AdminController(
 
         var service = new Service
         {
-            BarberId = BarberId,
+            BusinessId = BusinessId,
             NameEn = req.NameEn,
             NameAr = req.NameAr,
             NameHe = req.NameHe,
@@ -180,7 +180,7 @@ public class AdminController(
             return BadRequest(new { error = "Invalid photo mode" });
 
         var service = await db.Services.Include(s => s.GalleryPhotos)
-            .FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
+            .FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
         if (service is null) return NotFound();
 
         // Captured before assignment so we can report only the fields that actually changed,
@@ -218,7 +218,7 @@ public class AdminController(
     [HttpDelete("services/{id}")]
     public async Task<IActionResult> DeleteService(string id)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
         if (service is null) return NotFound();
         service.IsActive = false;
         await db.SaveChangesAsync();
@@ -240,7 +240,7 @@ public class AdminController(
     [RequestSizeLimit(MaxLogoBytes)]
     public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
         if (service is null) return NotFound();
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
@@ -273,7 +273,7 @@ public class AdminController(
     public async Task<IActionResult> DeleteGalleryPhoto(string id, string photoId)
     {
         var photo = await db.ServiceGalleryPhotos.Include(p => p.Service)
-            .FirstOrDefaultAsync(p => p.Id == photoId && p.ServiceId == id && p.Service.BarberId == BarberId);
+            .FirstOrDefaultAsync(p => p.Id == photoId && p.ServiceId == id && p.Service.BusinessId == BusinessId);
         if (photo is null) return NotFound();
 
         var path = Path.Combine(env.ContentRootPath, "wwwroot", photo.Url.Replace("/api/uploads/", "uploads/").Replace('/', Path.DirectorySeparatorChar));
@@ -292,13 +292,13 @@ public class AdminController(
     [HttpGet("schedule")]
     public async Task<IActionResult> GetSchedule()
     {
-        var wh = await db.WorkingHours.Where(w => w.BarberId == BarberId)
+        var wh = await db.WorkingHours.Where(w => w.BusinessId == BusinessId)
             .Select(w => new WorkingHoursDto(w.Id, w.DayOfWeek, w.StartTime, w.EndTime, w.IsActive))
             .ToListAsync();
-        var brk = await db.Breaks.Where(b => b.BarberId == BarberId)
+        var brk = await db.Breaks.Where(b => b.BusinessId == BusinessId)
             .Select(b => new BreakDto(b.Id, b.DayOfWeek, b.StartTime, b.EndTime))
             .ToListAsync();
-        var bsl = await db.BlockedSlots.Where(b => b.BarberId == BarberId)
+        var bsl = await db.BlockedSlots.Where(b => b.BusinessId == BusinessId)
             .OrderBy(b => b.Date)
             .Select(b => new BlockedSlotDto(b.Id, b.Date.ToString("yyyy-MM-dd"), b.StartTime, b.EndTime, b.Reason))
             .ToListAsync();
@@ -310,13 +310,13 @@ public class AdminController(
     {
         // Captured before assignment so we can report only the days that actually changed --
         // the schedule form always submits all 7 days on every save, mirroring UpdateSettings.
-        var oldByDay = await db.WorkingHours.Where(w => w.BarberId == BarberId)
+        var oldByDay = await db.WorkingHours.Where(w => w.BusinessId == BusinessId)
             .ToDictionaryAsync(w => w.DayOfWeek, w => (w.StartTime, w.EndTime, w.IsActive));
 
         foreach (var h in hours)
         {
             var existing = await db.WorkingHours
-                .FirstOrDefaultAsync(w => w.BarberId == BarberId && w.DayOfWeek == h.DayOfWeek);
+                .FirstOrDefaultAsync(w => w.BusinessId == BusinessId && w.DayOfWeek == h.DayOfWeek);
             if (existing is not null)
             {
                 existing.StartTime = h.StartTime;
@@ -327,7 +327,7 @@ public class AdminController(
             {
                 db.WorkingHours.Add(new WorkingHours
                 {
-                    BarberId = BarberId,
+                    BusinessId = BusinessId,
                     DayOfWeek = h.DayOfWeek,
                     StartTime = h.StartTime,
                     EndTime = h.EndTime,
@@ -360,7 +360,7 @@ public class AdminController(
     [HttpPost("schedule/breaks")]
     public async Task<IActionResult> AddBreak([FromBody] CreateBreakRequest req)
     {
-        var br = new Break { BarberId = BarberId, DayOfWeek = req.DayOfWeek, StartTime = req.StartTime, EndTime = req.EndTime };
+        var br = new Break { BusinessId = BusinessId, DayOfWeek = req.DayOfWeek, StartTime = req.StartTime, EndTime = req.EndTime };
         db.Breaks.Add(br);
         await db.SaveChangesAsync();
         this.SetActivityDetail($"Added break: {(DayOfWeek)br.DayOfWeek}s {br.StartTime}–{br.EndTime}");
@@ -370,7 +370,7 @@ public class AdminController(
     [HttpDelete("schedule/breaks/{id}")]
     public async Task<IActionResult> DeleteBreak(string id)
     {
-        var br = await db.Breaks.FirstOrDefaultAsync(b => b.Id == id && b.BarberId == BarberId);
+        var br = await db.Breaks.FirstOrDefaultAsync(b => b.Id == id && b.BusinessId == BusinessId);
         if (br is null) return NotFound();
         db.Breaks.Remove(br);
         await db.SaveChangesAsync();
@@ -383,7 +383,7 @@ public class AdminController(
     {
         var slot = new BlockedSlot
         {
-            BarberId = BarberId,
+            BusinessId = BusinessId,
             Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime(),
             StartTime = req.StartTime,
             EndTime = req.EndTime,
@@ -402,7 +402,7 @@ public class AdminController(
     [HttpDelete("schedule/blocked/{id}")]
     public async Task<IActionResult> DeleteBlockedSlot(string id)
     {
-        var slot = await db.BlockedSlots.FirstOrDefaultAsync(b => b.Id == id && b.BarberId == BarberId);
+        var slot = await db.BlockedSlots.FirstOrDefaultAsync(b => b.Id == id && b.BusinessId == BusinessId);
         if (slot is null) return NotFound();
         db.BlockedSlots.Remove(slot);
         await db.SaveChangesAsync();
@@ -418,7 +418,7 @@ public class AdminController(
     [HttpGet("dashboard")]
     public async Task<IActionResult> GetDashboard([FromQuery] int week = 0)
     {
-        // a.Date is the barber's local wall-clock calendar date, never converted to/from UTC
+        // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — bucket weeks by local "now" or this drifts a day near midnight.
         var now = DateTime.Now;
         var weekStart = now.AddDays(week * 7 - (int)now.DayOfWeek);
@@ -427,7 +427,7 @@ public class AdminController(
         var appointments = await db.Appointments
             .Include(a => a.Customer)
             .Include(a => a.Service)
-            .Where(a => a.BarberId == BarberId && a.Date >= weekStart && a.Date <= weekEnd && a.Status != AppointmentStatus.CANCELLED)
+            .Where(a => a.BusinessId == BusinessId && a.Date >= weekStart && a.Date <= weekEnd && a.Status != AppointmentStatus.CANCELLED)
             .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
             .ToListAsync();
 
@@ -449,7 +449,7 @@ public class AdminController(
         var query = db.Appointments
             .Include(a => a.Customer)
             .Include(a => a.Service)
-            .Where(a => a.BarberId == BarberId);
+            .Where(a => a.BusinessId == BusinessId);
 
         query = filter switch
         {
@@ -474,10 +474,10 @@ public class AdminController(
     [HttpGet("appointments/availability")]
     public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string serviceId)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.BarberId == BarberId && s.IsActive);
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.BusinessId == BusinessId && s.IsActive);
         if (service is null) return NotFound(new { error = "Service not found" });
 
-        var slots = await availability.GetAvailableSlots(BarberId, date, service.DurationMinutes);
+        var slots = await availability.GetAvailableSlots(BusinessId, date, service.DurationMinutes);
         return Ok(new { slots });
     }
 
@@ -487,7 +487,7 @@ public class AdminController(
         if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2) return Ok(Array.Empty<CustomerSummary>());
         var q = query.Trim().ToLower();
         var customers = await db.Customers
-            .Where(c => c.BarberId == BarberId &&
+            .Where(c => c.BusinessId == BusinessId &&
                 // Match against the concatenated "First Last" rather than Name/FamilyName
                 // separately -- a full-name search like "John Smith" spans both columns, and
                 // this alone still matches a first-name-only or last-name-only query too.
@@ -501,7 +501,7 @@ public class AdminController(
     [HttpPost("appointments")]
     public async Task<IActionResult> CreateAppointment([FromBody] CreateAdminAppointmentRequest req)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BarberId == BarberId && s.IsActive);
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BusinessId == BusinessId && s.IsActive);
         if (service is null) return NotFound(new { error = "Service not found" });
 
         var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
@@ -525,11 +525,11 @@ public class AdminController(
 
         if (!req.Force)
         {
-            var slots = await availability.GetAvailableSlots(BarberId, req.Date, service.DurationMinutes);
+            var slots = await availability.GetAvailableSlots(BusinessId, req.Date, service.DurationMinutes);
             if (!slots.Any(s => s.Start == req.StartTime))
                 return Conflict(new { error = "Slot not available" });
         }
-        else if (await availability.HasConflictingAppointment(BarberId, req.Date, req.StartTime, endTime))
+        else if (await availability.HasConflictingAppointment(BusinessId, req.Date, req.StartTime, endTime))
         {
             return Conflict(new { error = "This time overlaps an existing appointment" });
         }
@@ -537,7 +537,7 @@ public class AdminController(
         var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         var appointment = new Appointment
         {
-            BarberId = BarberId,
+            BusinessId = BusinessId,
             CustomerId = customer!.Id,
             ServiceId = service.Id,
             Date = requestedDate,
@@ -549,8 +549,8 @@ public class AdminController(
         };
         db.Appointments.Add(appointment);
 
-        await waitlist.ResolveForRebooking(BarberId, requestedDate, req.StartTime);
-        if (!await availability.TrySaveOrDetectConflict(BarberId, req.Date, req.StartTime, endTime))
+        await waitlist.ResolveForRebooking(BusinessId, requestedDate, req.StartTime);
+        if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
         this.SetActivityDetail($"Booked appointment: {service.NameEn} for {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} on {req.Date} at {req.StartTime}");
@@ -566,14 +566,14 @@ public class AdminController(
     [HttpPatch("appointments/{id}")]
     public async Task<IActionResult> UpdateAppointmentStatus(string id, [FromBody] UpdateStatusRequest req)
     {
-        // The barber can only cancel now — "Completed" is computed automatically once an
+        // The business can only cancel now — "Completed" is computed automatically once an
         // appointment's end time passes (AppointmentStatusHelper), not manually set.
         if (req.Status != nameof(AppointmentStatus.CANCELLED))
             return BadRequest(new { error = "Only cancelling is supported" });
 
         var appt = await db.Appointments
             .Include(a => a.Customer).Include(a => a.Service)
-            .FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
+            .FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
         if (appt is null) return NotFound();
 
         // The owner can cancel regardless of effective status (e.g. correcting a past/completed
@@ -599,7 +599,7 @@ public class AdminController(
     [HttpGet("appointments/{id}/waitlist")]
     public async Task<IActionResult> GetWaitlist(string id)
     {
-        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
+        var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
         if (appt is null) return NotFound();
 
         var entries = await db.WaitlistEntries
@@ -620,7 +620,7 @@ public class AdminController(
     public async Task<IActionResult> ReplaceCustomer(string id, [FromBody] ReplaceCustomerRequest req)
     {
         var appt = await db.Appointments.Include(a => a.Service)
-            .FirstOrDefaultAsync(a => a.Id == id && a.BarberId == BarberId);
+            .FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
         if (appt is null) return NotFound();
         if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
@@ -629,7 +629,7 @@ public class AdminController(
         if (!string.IsNullOrWhiteSpace(req.WaitlistEntryId))
         {
             var entry = await db.WaitlistEntries.Include(w => w.CustomerAccount)
-                .FirstOrDefaultAsync(w => w.Id == req.WaitlistEntryId && w.AppointmentId == id && w.BarberId == BarberId);
+                .FirstOrDefaultAsync(w => w.Id == req.WaitlistEntryId && w.AppointmentId == id && w.BusinessId == BusinessId);
             if (entry is null) return NotFound(new { error = "Waitlist entry not found" });
 
             customer = await ResolveCustomerFromAccount(entry.CustomerAccount);
@@ -666,17 +666,17 @@ public class AdminController(
     {
         if (!string.IsNullOrWhiteSpace(customerId))
         {
-            var existing = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId && c.BarberId == BarberId);
+            var existing = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId && c.BusinessId == BusinessId);
             return existing is null ? (null, NotFound(new { error = "Customer not found" })) : (existing, null);
         }
 
         if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerPhone))
             return (null, BadRequest(new { error = "Customer name and phone are required" }));
 
-        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == customerPhone);
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == customerPhone);
         if (customer is null)
         {
-            customer = new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BarberId = BarberId };
+            customer = new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId };
             db.Customers.Add(customer);
         }
         else
@@ -692,13 +692,13 @@ public class AdminController(
     // link CustomerAccountId and set FamilyName, which the typed-in path has no way to know.
     private async Task<Customer> ResolveCustomerFromAccount(CustomerAccount account)
     {
-        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == account.Phone);
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == account.Phone);
         if (customer is null)
         {
             customer = new Customer
             {
                 Name = account.Name, FamilyName = account.FamilyName, Phone = account.Phone,
-                BarberId = BarberId, CustomerAccountId = account.Id,
+                BusinessId = BusinessId, CustomerAccountId = account.Id,
             };
             db.Customers.Add(customer);
         }

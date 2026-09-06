@@ -7,34 +7,34 @@ import { t } from '../../lib/i18n'
 import CustomerAccountNav from '../../components/customer/CustomerAccountNav'
 import BackButton from '../../components/BackButton'
 
-type BarberResult = { slug: string; name: string; description: string | null; logo: string | null; isFollowed: boolean }
+type BusinessResult = { slug: string; name: string; description: string | null; logo: string | null; isFollowed: boolean }
 
-export default function BrowseBarbersPage() {
+export default function BrowseBusinessesPage() {
   const { language: lang, isAuthenticated } = useCustomerAuth()
   const queryClient = useQueryClient()
   const [query, setQuery] = useState('')
   const [pending, setPending] = useState<string | null>(null)
 
-  const { data: followed = [] } = useQuery<BarberResult[]>({
-    queryKey: ['followed-barbers'],
-    queryFn: () => customerApi.get('/barbers/followed').then((r) => r.data),
+  const { data: followed = [] } = useQuery<BusinessResult[]>({
+    queryKey: ['followed-businesses'],
+    queryFn: () => customerApi.get('/businesses/followed').then((r) => r.data),
     enabled: isAuthenticated,
   })
 
   // Search results only show once the customer types something — the old behavior of loading
-  // every barber by default (empty query) made this page a long, noisy dump of test/demo data.
+  // every business by default (empty query) made this page a long, noisy dump of test/demo data.
   const trimmedQuery = query.trim()
-  const { data: results = [], isLoading } = useQuery<BarberResult[]>({
-    queryKey: ['barber-search', trimmedQuery],
-    queryFn: () => customerApi.get(`/barbers/search?query=${encodeURIComponent(trimmedQuery)}`).then((r) => r.data),
+  const { data: results = [], isLoading } = useQuery<BusinessResult[]>({
+    queryKey: ['business-search', trimmedQuery],
+    queryFn: () => customerApi.get(`/businesses/search?query=${encodeURIComponent(trimmedQuery)}`).then((r) => r.data),
     enabled: trimmedQuery.length > 0,
   })
 
   async function unfollow(slug: string) {
     setPending(slug)
     try {
-      await customerApi.delete(`/barbers/${slug}/follow`)
-      queryClient.invalidateQueries({ queryKey: ['followed-barbers'] })
+      await customerApi.delete(`/businesses/${slug}/follow`)
+      queryClient.invalidateQueries({ queryKey: ['followed-businesses'] })
     } finally { setPending(null) }
   }
 
@@ -45,10 +45,10 @@ export default function BrowseBarbersPage() {
     if (!isAuthenticated) return
     setPending(slug)
     try {
-      if (isFollowed) await customerApi.delete(`/barbers/${slug}/follow`)
-      else await customerApi.post(`/barbers/${slug}/follow`)
-      queryClient.invalidateQueries({ queryKey: ['barber-search'] })
-      queryClient.invalidateQueries({ queryKey: ['followed-barbers'] })
+      if (isFollowed) await customerApi.delete(`/businesses/${slug}/follow`)
+      else await customerApi.post(`/businesses/${slug}/follow`)
+      queryClient.invalidateQueries({ queryKey: ['business-search'] })
+      queryClient.invalidateQueries({ queryKey: ['followed-businesses'] })
     } finally { setPending(null) }
   }
 
@@ -57,11 +57,11 @@ export default function BrowseBarbersPage() {
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
         <BackButton lang={lang} />
-        <h1 className="text-2xl font-bold text-white mb-6 mt-3">{t(lang, 'browseBarbers')}</h1>
+        <h1 className="text-2xl font-bold text-white mb-6 mt-3">{t(lang, 'browseBusinesses')}</h1>
 
         <input
           type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-          placeholder={t(lang, 'searchBarbersPlaceholder')}
+          placeholder={t(lang, 'searchBusinessesPlaceholder')}
           className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
@@ -70,7 +70,7 @@ export default function BrowseBarbersPage() {
             {isLoading ? (
               <div className="text-center text-gray-500 py-6">{t(lang, 'loading')}</div>
             ) : results.length === 0 ? (
-              <div className="text-center text-gray-500 py-6">{t(lang, 'noBarbersFound')}</div>
+              <div className="text-center text-gray-500 py-6">{t(lang, 'noBusinessesFound')}</div>
             ) : (
               <div className="space-y-3">
                 {results.map((b) => (
@@ -88,7 +88,7 @@ export default function BrowseBarbersPage() {
                           ? 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700'
                           : 'bg-blue-600 hover:bg-blue-700 text-white'
                       }`}>
-                      {b.isFollowed ? t(lang, 'following') : t(lang, 'followBarber')}
+                      {b.isFollowed ? t(lang, 'following') : t(lang, 'followBusiness')}
                     </button>
                   </div>
                 ))}
@@ -98,7 +98,7 @@ export default function BrowseBarbersPage() {
         )}
 
         <div className="mt-6">
-          <h2 className="text-sm font-semibold text-gray-400 mb-2">{t(lang, 'followedBarbers')}</h2>
+          <h2 className="text-sm font-semibold text-gray-400 mb-2">{t(lang, 'followedBusinesses')}</h2>
           {followed.length === 0 ? (
             <div className="text-center text-gray-500 py-12">{t(lang, 'noFollowedYet')}</div>
           ) : (

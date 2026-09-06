@@ -15,7 +15,7 @@ export default function AdminLayout() {
   if (!isTouch) {
     return (
       <div className="flex h-screen bg-gray-950 overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
-        <AdminSidebar barberName={user?.name ?? ''} isTouch={false} open={false} onClose={() => {}} />
+        <AdminSidebar businessName={user?.name ?? ''} isTouch={false} open={false} onClose={() => {}} />
         <main className="flex-1 overflow-y-auto p-8">
           <Outlet />
         </main>
@@ -30,7 +30,7 @@ export default function AdminLayout() {
   // `sticky` so it stays pinned to the viewport top through the whole page's scroll.
   return (
     <div className="min-h-screen bg-gray-950" dir={isRTL ? 'rtl' : 'ltr'}>
-      <AdminSidebar barberName={user?.name ?? ''} isTouch open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <AdminSidebar businessName={user?.name ?? ''} isTouch open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-gray-800 bg-gray-900">
         <button onClick={() => setSidebarOpen(true)} className="text-gray-300 hover:text-white text-xl" aria-label="Open menu">☰</button>
         <div className="text-white font-bold">EsayWeek</div>

@@ -13,9 +13,9 @@ vi.mock('../../lib/customerAuth', () => ({
   useCustomerAuth: vi.fn(),
 }))
 
-const barber = {
-  slug: 'test-barber',
-  name: 'Test Barber',
+const business = {
+  slug: 'test-business',
+  name: 'Test Business',
   language: 'EN',
   isRTL: false,
   activeDays: [0, 1, 2, 3, 4, 5, 6], // every day active — deterministic regardless of "today"
@@ -37,12 +37,12 @@ function mockAnonymous() {
   } as ReturnType<typeof useCustomerAuth>)
 }
 
-function renderWizard(initialPath = `/${barber.slug}/book`) {
+function renderWizard(initialPath = `/${business.slug}/book`) {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
-        <Route path="/:slug/book" element={<BookingWizard barber={barber} />} />
-        <Route path="/:slug" element={<div>Barber main page</div>} />
+        <Route path="/:slug/book" element={<BookingWizard business={business} />} />
+        <Route path="/:slug" element={<div>Business main page</div>} />
       </Routes>
     </MemoryRouter>
   )
@@ -104,7 +104,7 @@ describe('BookingWizard', () => {
     await userEvent.click(dateButtons[0])
 
     expect(screen.getByText('Select a Time')).toBeInTheDocument()
-    await waitFor(() => expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-barber/availability/full?date=')))
+    await waitFor(() => expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-business/availability/full?date=')))
     await waitFor(() => expect(screen.getByText('09:00')).toBeInTheDocument())
   })
 
@@ -119,7 +119,7 @@ describe('BookingWizard', () => {
     await waitFor(() => expect(screen.getByText('No available times. Please pick another day.')).toBeInTheDocument())
   })
 
-  it('submits the booking with the entered details and redirects to the barber\'s main page', async () => {
+  it('submits the booking with the entered details and redirects to the business\'s main page', async () => {
     await advanceToStep4()
     vi.mocked(customerApi.post).mockResolvedValue({ data: { appointmentId: 'appt-1', cancelToken: 'tok-1' } })
 
@@ -128,8 +128,8 @@ describe('BookingWizard', () => {
     await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
-    await waitFor(() => expect(screen.getByText('Barber main page')).toBeInTheDocument())
-    expect(customerApi.post).toHaveBeenCalledWith('/test-barber/appointments', expect.objectContaining({
+    await waitFor(() => expect(screen.getByText('Business main page')).toBeInTheDocument())
+    expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
       serviceId: 'svc-1',
       startTime: '09:00',
       customerName: 'Jane',
@@ -191,7 +191,7 @@ describe('BookingWizard', () => {
     vi.mocked(customerApi.post).mockResolvedValue({ data: { appointmentId: 'appt-2', cancelToken: 'tok-2' } })
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
-    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-barber/appointments', expect.objectContaining({
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
       serviceId: 'svc-gallery', galleryPhotoId: 'photo-1',
     })))
   })
@@ -210,12 +210,12 @@ describe('BookingWizard', () => {
     await userEvent.upload(fileInput, file)
 
     await waitFor(() => expect(screen.getByText('Confirm Appointment')).toBeEnabled())
-    expect(customerApi.post).toHaveBeenCalledWith('/test-barber/appointments/photo', expect.any(FormData))
+    expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments/photo', expect.any(FormData))
 
     vi.mocked(customerApi.post).mockResolvedValueOnce({ data: { appointmentId: 'appt-3', cancelToken: 'tok-3' } })
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
-    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-barber/appointments', expect.objectContaining({
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
       serviceId: 'svc-upload', customerPhotoUrl: '/api/uploads/appointment-photos/uploaded.jpg',
     })))
   })
@@ -252,7 +252,7 @@ describe('BookingWizard', () => {
     vi.mocked(customerApi.post).mockResolvedValue({ data: { ok: true } })
     await userEvent.click(screen.getByText('Join Waitlist'))
 
-    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-barber/waitlist/appt-booked'))
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/waitlist/appt-booked'))
     await waitFor(() => expect(screen.getByText(/You're on the waitlist/)).toBeInTheDocument())
   })
 
@@ -261,14 +261,14 @@ describe('BookingWizard', () => {
       data: { slots: [{ start: '09:00', end: '09:30', available: true }] },
     })
 
-    renderWizard('/test-barber/book?serviceId=svc-1&date=2026-08-10&time=09:00')
+    renderWizard('/test-business/book?serviceId=svc-1&date=2026-08-10&time=09:00')
 
     await waitFor(() => expect(screen.getByText('Your Details')).toBeInTheDocument())
-    expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-barber/availability/full?date=2026-08-10&serviceId=svc-1'))
+    expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-business/availability/full?date=2026-08-10&serviceId=svc-1'))
   })
 
   it('deep-links from a WhatsApp booking link (serviceId only) straight to date selection, skipping service selection', async () => {
-    renderWizard('/test-barber/book?serviceId=svc-1')
+    renderWizard('/test-business/book?serviceId=svc-1')
 
     expect(screen.getByText('Select a Date')).toBeInTheDocument()
     expect(screen.queryByText('Select a Service')).not.toBeInTheDocument()

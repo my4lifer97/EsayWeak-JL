@@ -7,7 +7,7 @@ import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 
-type BarberSettings = {
+type BusinessSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
   language: 'EN' | 'AR' | 'HE'; twilioNumber: string | null
   trialEndsAt: string; subscriptionStatus: string
@@ -22,7 +22,7 @@ type BarberSettings = {
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const { language: lang, setLang } = useAuth()
-  const { data: barber } = useQuery<BarberSettings>({
+  const { data: business } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
     queryFn: () => api.get('/admin/settings').then((r) => r.data),
   })
@@ -69,19 +69,19 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (barber && !initialized) {
+  if (business && !initialized) {
     setForm({
-      name: barber.name, phone: barber.phone ?? '', description: barber.description ?? '',
-      language: barber.language,
-      maxBookingsPerDay: barber.maxBookingsPerDay?.toString() ?? '',
-      maxBookingsPerWeek: barber.maxBookingsPerWeek?.toString() ?? '',
-      chatbotWelcomeMessage: barber.chatbotWelcomeMessage ?? '',
-      chatbotConfirmationMessage: barber.chatbotConfirmationMessage ?? '',
+      name: business.name, phone: business.phone ?? '', description: business.description ?? '',
+      language: business.language,
+      maxBookingsPerDay: business.maxBookingsPerDay?.toString() ?? '',
+      maxBookingsPerWeek: business.maxBookingsPerWeek?.toString() ?? '',
+      chatbotWelcomeMessage: business.chatbotWelcomeMessage ?? '',
+      chatbotConfirmationMessage: business.chatbotConfirmationMessage ?? '',
     })
-    setWaitlistEnabled(barber.waitlistEnabled)
-    setRequireApprovalOnCustomerCancel(barber.requireApprovalOnCustomerCancel)
-    setChatbotEnabled(barber.chatbotEnabled)
-    setLang(barber.language)
+    setWaitlistEnabled(business.waitlistEnabled)
+    setRequireApprovalOnCustomerCancel(business.requireApprovalOnCustomerCancel)
+    setChatbotEnabled(business.chatbotEnabled)
+    setLang(business.language)
     setInitialized(true)
   }
 
@@ -142,10 +142,10 @@ export default function SettingsPage() {
     }
   }
 
-  if (!barber) return <div className="text-gray-500">{t(lang, 'loading')}</div>
+  if (!business) return <div className="text-gray-500">{t(lang, 'loading')}</div>
 
-  const trialDate = parseISO(barber.trialEndsAt)
-  const isTrialActive = barber.subscriptionStatus === 'TRIAL' && trialDate > new Date()
+  const trialDate = parseISO(business.trialEndsAt)
+  const isTrialActive = business.subscriptionStatus === 'TRIAL' && trialDate > new Date()
   const trialDaysLeft = Math.max(0, Math.ceil((trialDate.getTime() - Date.now()) / 86400000))
 
   return (
@@ -162,14 +162,14 @@ export default function SettingsPage() {
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
           <h2 className="text-white font-semibold mb-3">{t(lang, 'subscription')}</h2>
           <div className={`text-sm px-4 py-2 rounded-lg inline-block ${
-            barber.subscriptionStatus === 'ACTIVE' ? 'bg-green-900/40 text-green-300'
+            business.subscriptionStatus === 'ACTIVE' ? 'bg-green-900/40 text-green-300'
               : isTrialActive ? 'bg-blue-900/40 text-blue-300' : 'bg-red-900/40 text-red-300'
           }`}>
-            {barber.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionActive')
+            {business.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionActive')
               : isTrialActive ? `Free trial · ${trialDaysLeft} days left (expires ${format(trialDate, 'MMM d, yyyy')})`
               : t(lang, 'subscriptionExpired')}
           </div>
-          {barber.subscriptionStatus !== 'ACTIVE' && (
+          {business.subscriptionStatus !== 'ACTIVE' && (
             <div className="mt-4">
               <button type="button" onClick={handleSubscribe} disabled={billingLoading}
                 className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
@@ -179,7 +179,7 @@ export default function SettingsPage() {
             </div>
           )}
           <p className="text-gray-500 text-xs mt-2">
-            {t(lang, 'bookingUrl')} <span className="text-blue-400">{window.location.origin}/{barber.slug}</span>
+            {t(lang, 'bookingUrl')} <span className="text-blue-400">{window.location.origin}/{business.slug}</span>
           </p>
         </div>
 
@@ -189,8 +189,8 @@ export default function SettingsPage() {
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'profilePhoto')}</label>
             <div className="flex items-center gap-4">
-              {logoPreview || barber.logo ? (
-                <img src={logoPreview ?? mediaUrl(barber.logo)} alt={barber.name}
+              {logoPreview || business.logo ? (
+                <img src={logoPreview ?? mediaUrl(business.logo)} alt={business.name}
                   className="w-16 h-16 rounded-full object-cover border border-gray-700" />
               ) : (
                 <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-2xl">✂️</div>
@@ -323,7 +323,7 @@ export default function SettingsPage() {
           <h2 className="text-white font-semibold mb-1">{t(lang, 'whatsappSetup')}</h2>
           <p className="text-gray-500 text-sm">{t(lang, 'whatsappNumberHint')}</p>
           <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono">
-            {barber?.twilioNumber || <span className="text-gray-500 font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
+            {business?.twilioNumber || <span className="text-gray-500 font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
           </div>
         </div>
 

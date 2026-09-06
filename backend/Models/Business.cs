@@ -11,7 +11,7 @@ public enum WaitlistEntryStatus { WAITING, NOTIFIED, RESOLVED }
 // product/service catalog with no booking. Both: mixes bookable and non-bookable items.
 public enum BusinessModel { Appointment, Showcase, Both }
 
-public class Barber
+public class Business
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
@@ -22,15 +22,15 @@ public class Barber
     public string? Logo { get; set; }
     public string? Description { get; set; }
     public Language Language { get; set; } = Language.EN;
-    // Which of the platform's own Twilio WhatsApp senders this barber's chatbot uses -- assigned
+    // Which of the platform's own Twilio WhatsApp senders this business's chatbot uses -- assigned
     // by the platform admin (see PlatformAdminController.SetTwilioNumber), not self-configured by
-    // the barber. Credentials for sending/validating live in one platform-owned Twilio account
-    // (config: Twilio:AccountSid/AuthToken), not per-barber -- see TwilioWhatsAppSender.
+    // the business. Credentials for sending/validating live in one platform-owned Twilio account
+    // (config: Twilio:AccountSid/AuthToken), not per-business -- see TwilioWhatsAppSender.
     public string? TwilioNumber { get; set; }
     public DateTime TrialEndsAt { get; set; }
     public SubStatus SubscriptionStatus { get; set; } = SubStatus.TRIAL;
     // Cardcom's reusable charge token (from LowProfile/Create with Operation=ChargeAndCreateToken).
-    // Null until the barber's first successful payment.
+    // Null until the business's first successful payment.
     public string? CardcomToken { get; set; }
     // Latest Cardcom LowProfileId whose result has been processed -- webhook idempotency guard,
     // since Cardcom's webhook may redeliver the same notification.
@@ -52,8 +52,8 @@ public class Barber
     public bool RequireApprovalOnCustomerCancel { get; set; } = false;
 
     // WhatsApp chatbot customization ("Simple Mode" per the product spec). When ChatbotEnabled is
-    // false, WhatsAppController sends no automated reply at all -- the barber wants to answer
-    // messages themselves instead. The two message fields are free text the barber writes in
+    // false, WhatsAppController sends no automated reply at all -- the business wants to answer
+    // messages themselves instead. The two message fields are free text the business writes in
     // their own language; null means "use the built-in default text" (see I18nService).
     public bool ChatbotEnabled { get; set; } = true;
     public string? ChatbotWelcomeMessage { get; set; }
@@ -75,7 +75,7 @@ public class Barber
     public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
 }
 
-// Extensible lookup of business verticals ("barber", "dentist", "car_dealer", ...) -- adding a
+// Extensible lookup of business verticals ("business", "dentist", "car_dealer", ...) -- adding a
 // new vertical is a data insert here, not a deploy, unlike a hardcoded enum.
 public class BusinessTypeDefinition
 {
@@ -86,13 +86,13 @@ public class BusinessTypeDefinition
     public string DisplayNameHe { get; set; } = "";
     public bool IsActive { get; set; } = true;
 
-    public ICollection<Barber> Barbers { get; set; } = [];
+    public ICollection<Business> Businesses { get; set; } = [];
 }
 
 public class Service
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public string NameEn { get; set; } = "";
     public string NameAr { get; set; } = "";
     public string NameHe { get; set; } = "";
@@ -101,7 +101,7 @@ public class Service
     public bool IsActive { get; set; } = true;
     public ServicePhotoMode PhotoMode { get; set; } = ServicePhotoMode.None;
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<ServiceGalleryPhoto> GalleryPhotos { get; set; } = [];
     public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
@@ -120,36 +120,36 @@ public class ServiceGalleryPhoto
 public class WorkingHours
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public int DayOfWeek { get; set; }
     public string StartTime { get; set; } = "";
     public string EndTime { get; set; } = "";
     public bool IsActive { get; set; } = true;
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
 }
 
 public class Break
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public int DayOfWeek { get; set; }
     public string StartTime { get; set; } = "";
     public string EndTime { get; set; } = "";
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
 }
 
 public class BlockedSlot
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public DateTime Date { get; set; }
     public string? StartTime { get; set; }
     public string? EndTime { get; set; }
     public string? Reason { get; set; }
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
 }
 
 public class Customer
@@ -158,10 +158,10 @@ public class Customer
     public string Name { get; set; } = "";
     public string FamilyName { get; set; } = "";
     public string Phone { get; set; } = "";
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public string? CustomerAccountId { get; set; }
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
     public CustomerAccount? CustomerAccount { get; set; }
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
@@ -170,7 +170,7 @@ public class Customer
 public class Appointment
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public string CustomerId { get; set; } = "";
     public string ServiceId { get; set; } = "";
     public DateTime Date { get; set; }
@@ -183,12 +183,12 @@ public class Appointment
     public string CancelToken { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? RecurringSeriesId { get; set; }
-    // Set when a customer cancels and the barber has RequireApprovalOnCustomerCancel on -- Status
+    // Set when a customer cancels and the business has RequireApprovalOnCustomerCancel on -- Status
     // deliberately stays CONFIRMED (so the slot keeps blocking availability/booking exactly as
     // before, no changes needed there) until the owner picks what happens to it.
     public bool PendingCancellationApproval { get; set; } = false;
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
     public Customer Customer { get; set; } = null!;
     public Service Service { get; set; } = null!;
     public RecurringSeries? RecurringSeries { get; set; }
@@ -198,7 +198,7 @@ public class Appointment
 public class RecurringSeries
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public string CustomerId { get; set; } = "";
     public string ServiceId { get; set; } = "";
     public int DayOfWeek { get; set; }
@@ -211,7 +211,7 @@ public class RecurringSeries
     public DateTime? LastGeneratedThrough { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
     public Customer Customer { get; set; } = null!;
     public Service Service { get; set; } = null!;
     public ICollection<Appointment> Appointments { get; set; } = [];
@@ -233,13 +233,13 @@ public class WaitlistEntry
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string AppointmentId { get; set; } = "";
-    public string BarberId { get; set; } = "";
+    public string BusinessId { get; set; } = "";
     public string CustomerAccountId { get; set; } = "";
     public WaitlistEntryStatus Status { get; set; } = WaitlistEntryStatus.WAITING;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? NotifiedAt { get; set; }
 
     public Appointment Appointment { get; set; } = null!;
-    public Barber Barber { get; set; } = null!;
+    public Business Business { get; set; } = null!;
     public CustomerAccount CustomerAccount { get; set; } = null!;
 }

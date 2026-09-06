@@ -11,8 +11,8 @@ public class AuthControllerTests : IntegrationTestBase
     private record RegisterResponse(string Id, string Name, string Email, string Slug, string? DevCode);
     private record ErrorResponse(string Error);
 
-    private static RegisterRequest ValidRegister(string email = "barber@example.com", string slug = "my-barber-shop") =>
-        new("Barber Name", email, "password123", slug);
+    private static RegisterRequest ValidRegister(string email = "business@example.com", string slug = "my-business-shop") =>
+        new("Business Name", email, "password123", slug);
 
     private async Task<string> RegisterAndGetDevCode(string email, string slug)
     {
@@ -114,8 +114,8 @@ public class AuthControllerTests : IntegrationTestBase
         Assert.Equal(6, code.Length);
 
         using var db = Db();
-        var barber = db.Barbers.Single(b => b.Email == "unverified@example.com");
-        Assert.False(barber.EmailVerified);
+        var business = db.Businesses.Single(b => b.Email == "unverified@example.com");
+        Assert.False(business.EmailVerified);
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class AuthControllerTests : IntegrationTestBase
         Assert.False(string.IsNullOrWhiteSpace(body?.Token));
 
         using var db = Db();
-        Assert.True(db.Barbers.Single(b => b.Email == "verify-ok@example.com").EmailVerified);
+        Assert.True(db.Businesses.Single(b => b.Email == "verify-ok@example.com").EmailVerified);
     }
 
     [Fact]

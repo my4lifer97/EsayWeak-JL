@@ -13,10 +13,10 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/admin/recurring")]
-[Authorize(Policy = "BarberOnly")]
+[Authorize(Policy = "BusinessOnly")]
 public class RecurringAppointmentsController(AppDbContext db, RecurringAppointmentService recurringAppointments, AppointmentCancellationService cancellationService) : ControllerBase
 {
-    private string BarberId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+    private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     private static RecurringSeriesDto ToDto(RecurringSeries s)
     {
@@ -40,7 +40,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
     {
         var series = await db.RecurringSeries
             .Include(s => s.Customer).Include(s => s.Service).Include(s => s.Skips)
-            .Where(s => s.BarberId == BarberId)
+            .Where(s => s.BusinessId == BusinessId)
             .OrderByDescending(s => s.IsActive).ThenBy(s => s.DayOfWeek).ThenBy(s => s.StartTime)
             .ToListAsync();
         return Ok(series.Select(ToDto));
@@ -49,7 +49,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateRecurringSeriesRequest req)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BarberId == BarberId && s.IsActive);
+        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BusinessId == BusinessId && s.IsActive);
         if (service is null) return NotFound(new { error = "Service not found" });
 
         if (req.DayOfWeek < 0 || req.DayOfWeek > 6)
@@ -60,19 +60,19 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         Customer? customer;
         if (!string.IsNullOrWhiteSpace(req.CustomerId))
         {
-            customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == req.CustomerId && c.BarberId == BarberId);
+            customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == req.CustomerId && c.BusinessId == BusinessId);
             if (customer is null) return NotFound(new { error = "Customer not found" });
         }
         else
         {
             if (string.IsNullOrWhiteSpace(req.CustomerName) || string.IsNullOrWhiteSpace(req.CustomerPhone))
                 return BadRequest(new { error = "Customer name and phone are required" });
-            customer = await db.Customers.FirstOrDefaultAsync(c => c.BarberId == BarberId && c.Phone == req.CustomerPhone);
+            customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == req.CustomerPhone);
             if (customer is null)
             {
                 customer = new Customer
                 {
-                    Name = req.CustomerName, FamilyName = req.CustomerFamilyName ?? "", Phone = req.CustomerPhone, BarberId = BarberId,
+                    Name = req.CustomerName, FamilyName = req.CustomerFamilyName ?? "", Phone = req.CustomerPhone, BusinessId = BusinessId,
                 };
                 db.Customers.Add(customer);
             }
@@ -105,7 +105,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
 
         var series = new RecurringSeries
         {
-            BarberId = BarberId,
+            BusinessId = BusinessId,
             CustomerId = customer.Id,
             ServiceId = service.Id,
             DayOfWeek = req.DayOfWeek,
@@ -136,7 +136,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
     {
         var series = await db.RecurringSeries
             .Include(s => s.Customer).Include(s => s.Service)
-            .FirstOrDefaultAsync(s => s.Id == id && s.BarberId == BarberId);
+            .FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
         if (series is null) return NotFound();
 
         this.SetActivityDetail(

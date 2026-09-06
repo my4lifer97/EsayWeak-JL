@@ -37,7 +37,7 @@ function NavContent({ lang, onNavigate }: { lang: string; onNavigate?: () => voi
 // Touch-primary devices (phones/tablets, see useIsTouchPrimary) get an off-canvas drawer;
 // everything else -- any PC with a mouse, regardless of window width or browser zoom -- gets
 // this exact always-visible static sidebar, unchanged from before mobile support existed.
-function DesktopSidebar({ barberName }: { barberName: string }) {
+function DesktopSidebar({ businessName }: { businessName: string }) {
   const { logout, language: lang } = useAuth()
   const navigate = useNavigate()
 
@@ -50,7 +50,7 @@ function DesktopSidebar({ barberName }: { barberName: string }) {
     <aside className="w-56 bg-gray-900 border-e border-gray-800 flex flex-col py-6 px-3 shrink-0">
       <div className="px-3 mb-8">
         <div className="text-white font-bold text-lg">EsayWeek</div>
-        <div className="text-gray-400 text-sm mt-0.5 truncate">{barberName}</div>
+        <div className="text-gray-400 text-sm mt-0.5 truncate">{businessName}</div>
       </div>
       <NavContent lang={lang} />
       <button
@@ -65,8 +65,8 @@ function DesktopSidebar({ barberName }: { barberName: string }) {
 }
 
 function TouchSidebar({
-  barberName, open, onClose,
-}: { barberName: string; open: boolean; onClose: () => void }) {
+  businessName, open, onClose,
+}: { businessName: string; open: boolean; onClose: () => void }) {
   const { logout, language: lang } = useAuth()
   const navigate = useNavigate()
 
@@ -86,7 +86,7 @@ function TouchSidebar({
         <div className="px-3 mb-8 flex items-start justify-between">
           <div>
             <div className="text-white font-bold text-lg">EsayWeek</div>
-            <div className="text-gray-400 text-sm mt-0.5 truncate">{barberName}</div>
+            <div className="text-gray-400 text-sm mt-0.5 truncate">{businessName}</div>
           </div>
           <button onClick={onClose} aria-label="Close menu"
             className="text-gray-500 hover:text-white w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-gray-800 text-2xl leading-none transition-colors">✕</button>
@@ -105,9 +105,9 @@ function TouchSidebar({
 }
 
 export default function AdminSidebar({
-  barberName, isTouch, open, onClose,
-}: { barberName: string; isTouch: boolean; open: boolean; onClose: () => void }) {
+  businessName, isTouch, open, onClose,
+}: { businessName: string; isTouch: boolean; open: boolean; onClose: () => void }) {
   return isTouch
-    ? <TouchSidebar barberName={barberName} open={open} onClose={onClose} />
-    : <DesktopSidebar barberName={barberName} />
+    ? <TouchSidebar businessName={businessName} open={open} onClose={onClose} />
+    : <DesktopSidebar businessName={businessName} />
 }

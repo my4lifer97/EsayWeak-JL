@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
-import BrowseBarbersPage from './BrowseBarbersPage'
+import BrowseBusinessesPage from './BrowseBusinessesPage'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
 
@@ -15,10 +15,10 @@ vi.mock('../../lib/customerAuth', () => ({
 }))
 
 const searchResults = [
-  { slug: 'joe', name: 'Joe the Barber', description: null, logo: null, isFollowed: false },
+  { slug: 'joe', name: 'Joe the Business', description: null, logo: null, isFollowed: false },
 ]
 const followedList = [
-  { slug: 'mo', name: 'Mo the Barber', description: null, logo: null, isFollowed: true },
+  { slug: 'mo', name: 'Mo the Business', description: null, logo: null, isFollowed: true },
 ]
 
 function renderPage() {
@@ -26,7 +26,7 @@ function renderPage() {
   return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <BrowseBarbersPage />
+        <BrowseBusinessesPage />
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -36,24 +36,24 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useCustomerAuth).mockReturnValue({ language: 'EN', isAuthenticated: true } as ReturnType<typeof useCustomerAuth>)
   vi.mocked(customerApi.get).mockImplementation((url: string) => {
-    if (url.startsWith('/barbers/search')) return Promise.resolve({ data: searchResults })
-    if (url === '/barbers/followed') return Promise.resolve({ data: followedList })
+    if (url.startsWith('/businesses/search')) return Promise.resolve({ data: searchResults })
+    if (url === '/businesses/followed') return Promise.resolve({ data: followedList })
     return Promise.reject(new Error(`unexpected url ${url}`))
   })
 })
 
-describe('BrowseBarbersPage', () => {
-  it('shows the followed barbers list', async () => {
+describe('BrowseBusinessesPage', () => {
+  it('shows the followed businesses list', async () => {
     renderPage()
 
-    expect(await screen.findByText('Mo the Barber')).toBeInTheDocument()
+    expect(await screen.findByText('Mo the Business')).toBeInTheDocument()
     expect(screen.getByText('Businesses You Follow')).toBeInTheDocument()
   })
 
   it('shows an empty state when there are no follows', async () => {
     vi.mocked(customerApi.get).mockImplementation((url: string) => {
-      if (url.startsWith('/barbers/search')) return Promise.resolve({ data: searchResults })
-      if (url === '/barbers/followed') return Promise.resolve({ data: [] })
+      if (url.startsWith('/businesses/search')) return Promise.resolve({ data: searchResults })
+      if (url === '/businesses/followed') return Promise.resolve({ data: [] })
       return Promise.reject(new Error(`unexpected url ${url}`))
     })
 
@@ -62,21 +62,21 @@ describe('BrowseBarbersPage', () => {
     expect(await screen.findByText("You're not following any businesses yet.")).toBeInTheDocument()
   })
 
-  it('does not fetch followed barbers when not authenticated', async () => {
+  it('does not fetch followed businesses when not authenticated', async () => {
     vi.mocked(useCustomerAuth).mockReturnValue({ language: 'EN', isAuthenticated: false } as ReturnType<typeof useCustomerAuth>)
 
     renderPage()
 
     await screen.findByText("You're not following any businesses yet.")
-    expect(customerApi.get).not.toHaveBeenCalledWith('/barbers/followed')
+    expect(customerApi.get).not.toHaveBeenCalledWith('/businesses/followed')
   })
 
   it('does not show search results until the customer types a query', async () => {
     renderPage()
 
-    await screen.findByText('Mo the Barber')
-    expect(screen.queryByText('Joe the Barber')).not.toBeInTheDocument()
-    expect(customerApi.get).not.toHaveBeenCalledWith(expect.stringContaining('/barbers/search'))
+    await screen.findByText('Mo the Business')
+    expect(screen.queryByText('Joe the Business')).not.toBeInTheDocument()
+    expect(customerApi.get).not.toHaveBeenCalledWith(expect.stringContaining('/businesses/search'))
   })
 
   it('shows search results once a query is typed', async () => {
@@ -84,28 +84,28 @@ describe('BrowseBarbersPage', () => {
 
     await userEvent.type(screen.getByPlaceholderText('Search businesses...'), 'Joe')
 
-    expect(await screen.findByText('Joe the Barber')).toBeInTheDocument()
+    expect(await screen.findByText('Joe the Business')).toBeInTheDocument()
   })
 
-  it('removing a followed barber calls unfollow and refreshes the list', async () => {
+  it('removing a followed business calls unfollow and refreshes the list', async () => {
     vi.mocked(customerApi.delete).mockResolvedValue({ data: { ok: true } })
     renderPage()
-    await screen.findByText('Mo the Barber')
+    await screen.findByText('Mo the Business')
 
     await userEvent.click(screen.getByText('Remove'))
 
-    await waitFor(() => expect(customerApi.delete).toHaveBeenCalledWith('/barbers/mo/follow'))
+    await waitFor(() => expect(customerApi.delete).toHaveBeenCalledWith('/businesses/mo/follow'))
   })
 
-  it('following a barber from search results calls the follow endpoint', async () => {
+  it('following a business from search results calls the follow endpoint', async () => {
     vi.mocked(customerApi.post).mockResolvedValue({ data: { ok: true } })
     renderPage()
 
     await userEvent.type(screen.getByPlaceholderText('Search businesses...'), 'Joe')
-    await screen.findByText('Joe the Barber')
+    await screen.findByText('Joe the Business')
 
     await userEvent.click(screen.getByText('Follow'))
 
-    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/barbers/joe/follow'))
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/businesses/joe/follow'))
   })
 })

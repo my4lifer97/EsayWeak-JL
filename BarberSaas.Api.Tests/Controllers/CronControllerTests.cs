@@ -113,25 +113,25 @@ public class CronControllerTests : IntegrationTestBase
 
     private record RegisterResponse(string? DevCode);
 
-    private async Task<string> SeedActiveBarberDueForCharge(string email, string slug)
+    private async Task<string> SeedActiveBusinessDueForCharge(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
 
         using var db = Factory.CreateDbContext();
-        var barber = await db.Barbers.SingleAsync(b => b.Email == email);
-        barber.SubscriptionStatus = SubStatus.ACTIVE;
-        barber.CardcomToken = "tok-existing";
-        barber.CardcomNextChargeAt = DateTime.UtcNow.AddDays(-1);
+        var business = await db.Businesses.SingleAsync(b => b.Email == email);
+        business.SubscriptionStatus = SubStatus.ACTIVE;
+        business.CardcomToken = "tok-existing";
+        business.CardcomNextChargeAt = DateTime.UtcNow.AddDays(-1);
         await db.SaveChangesAsync();
-        return barber.Id;
+        return business.Id;
     }
 
     [Fact]
     public async Task ChargeSubscriptions_SuccessfulCharge_BumpsNextChargeDateAndStaysActive()
     {
-        var barberId = await SeedActiveBarberDueForCharge("cron-charge-success@example.com", "cron-charge-success-shop");
+        var businessId = await SeedActiveBusinessDueForCharge("cron-charge-success@example.com", "cron-charge-success-shop");
         Factory.Cardcom.NextChargeSucceeds = true;
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
 
@@ -144,15 +144,15 @@ public class CronControllerTests : IntegrationTestBase
         Assert.Equal(0, body["failed"]);
 
         using var db = Factory.CreateDbContext();
-        var barber = await db.Barbers.SingleAsync(b => b.Id == barberId);
-        Assert.Equal(SubStatus.ACTIVE, barber.SubscriptionStatus);
-        Assert.True(barber.CardcomNextChargeAt > DateTime.UtcNow.AddDays(25));
+        var business = await db.Businesses.SingleAsync(b => b.Id == businessId);
+        Assert.Equal(SubStatus.ACTIVE, business.SubscriptionStatus);
+        Assert.True(business.CardcomNextChargeAt > DateTime.UtcNow.AddDays(25));
     }
 
     [Fact]
     public async Task ChargeSubscriptions_FailedCharge_SetsExpired()
     {
-        var barberId = await SeedActiveBarberDueForCharge("cron-charge-failed@example.com", "cron-charge-failed-shop");
+        var businessId = await SeedActiveBusinessDueForCharge("cron-charge-failed@example.com", "cron-charge-failed-shop");
         Factory.Cardcom.NextChargeSucceeds = false;
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
 
@@ -165,7 +165,7 @@ public class CronControllerTests : IntegrationTestBase
         Assert.Equal(1, body["failed"]);
 
         using var db = Factory.CreateDbContext();
-        var barber = await db.Barbers.SingleAsync(b => b.Id == barberId);
-        Assert.Equal(SubStatus.EXPIRED, barber.SubscriptionStatus);
+        var business = await db.Businesses.SingleAsync(b => b.Id == businessId);
+        Assert.Equal(SubStatus.EXPIRED, business.SubscriptionStatus);
     }
 }

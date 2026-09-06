@@ -16,7 +16,7 @@ export default function WhatsAppLandingPage() {
   useEffect(() => {
     if (!token) { setError(true); return }
     loginWithWhatsAppToken(token)
-      .then(({ barberSlug, serviceId }) => navigate(`/${barberSlug}/book?serviceId=${serviceId}`, { replace: true }))
+      .then(({ businessSlug, serviceId }) => navigate(`/${businessSlug}/book?serviceId=${serviceId}`, { replace: true }))
       .catch(() => setError(true))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])

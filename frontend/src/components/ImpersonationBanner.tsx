@@ -1,4 +1,4 @@
-type Impersonation = { type: 'barber' | 'customer'; name: string; returnPath: string }
+type Impersonation = { type: 'business' | 'customer'; name: string; returnPath: string }
 
 export default function ImpersonationBanner() {
   const raw = localStorage.getItem('impersonation')
@@ -12,7 +12,7 @@ export default function ImpersonationBanner() {
   }
 
   function exit() {
-    if (impersonation.type === 'barber') {
+    if (impersonation.type === 'business') {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
     } else {

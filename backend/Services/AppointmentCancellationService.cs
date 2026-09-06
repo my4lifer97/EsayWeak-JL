@@ -18,17 +18,17 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
     }
 
     // Entry point for the 3 customer-initiated cancel paths (magic-link, logged-in "My
-    // Bookings", WhatsApp "cancel" keyword). Routes through the barber's own choice: finalize
+    // Bookings", WhatsApp "cancel" keyword). Routes through the business's own choice: finalize
     // immediately like before (RequireApprovalOnCustomerCancel off, or we simply can't reach the
     // owner), or freeze the slot and text the owner to decide instead of guessing on their
     // behalf. Status deliberately stays CONFIRMED while frozen -- the slot keeps blocking
     // availability/booking exactly as it already did, no changes needed to that logic at all.
     public async Task CancelFromCustomerAsync(Appointment appointment)
     {
-        var barber = await db.Barbers.FindAsync(appointment.BarberId);
-        var canNotifyOwner = barber is not null && barber.RequireApprovalOnCustomerCancel
-            && barber.TwilioNumber is not null
-            && !string.IsNullOrWhiteSpace(barber.Phone);
+        var business = await db.Businesses.FindAsync(appointment.BusinessId);
+        var canNotifyOwner = business is not null && business.RequireApprovalOnCustomerCancel
+            && business.TwilioNumber is not null
+            && !string.IsNullOrWhiteSpace(business.Phone);
 
         if (!canNotifyOwner)
         {
@@ -40,7 +40,7 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
 
         var customer = await db.Customers.FindAsync(appointment.CustomerId);
         var service = await db.Services.FindAsync(appointment.ServiceId);
-        var lang = barber!.Language.ToString();
+        var lang = business!.Language.ToString();
         var serviceName = lang switch
         {
             "AR" => service?.NameAr,
@@ -58,6 +58,6 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             ["url"] = $"{appUrl}/admin/appointments",
         });
 
-        await whatsAppSender.SendAsync(barber, barber.Phone!, message);
+        await whatsAppSender.SendAsync(business, business.Phone!, message);
     }
 }

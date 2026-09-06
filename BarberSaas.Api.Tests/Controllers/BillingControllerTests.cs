@@ -13,9 +13,9 @@ public class BillingControllerTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
 
-    private async Task<string> RegisterAndLoginBarber(string email, string slug)
+    private async Task<string> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
@@ -33,7 +33,7 @@ public class BillingControllerTests : IntegrationTestBase
     [Fact]
     public async Task CheckoutSession_CardcomNotConfigured_ReturnsServiceUnavailable()
     {
-        var token = await RegisterAndLoginBarber("billing-unconfigured@example.com", "billing-unconfigured-shop");
+        var token = await RegisterAndLoginBusiness("billing-unconfigured@example.com", "billing-unconfigured-shop");
         Authorize(Client, token);
 
         var resp = await Client.PostAsync("/api/billing/checkout-session", null);

@@ -7,35 +7,35 @@ using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
 
-// The barber no longer manually marks appointments "Completed" — the system computes that
+// The business no longer manually marks appointments "Completed" — the system computes that
 // automatically once an appointment's end time has passed (AppointmentStatusHelper).
 public class AdminAppointmentsTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
 
-    private async Task<string> RegisterAndLoginBarber(string email, string slug)
+    private async Task<string> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         return body!.Token;
     }
 
-    private async Task<(string BarberId, string AppointmentId)> SeedPastConfirmedAppointment(string barberToken, string slug)
+    private async Task<(string BusinessId, string AppointmentId)> SeedPastConfirmedAppointment(string businessToken, string slug)
     {
-        Authorize(Client, barberToken);
+        Authorize(Client, businessToken);
         var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
         var service = await serviceResp.Content.ReadFromJsonAsync<ServiceDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
         using var db = Db();
-        var barber = db.Barbers.First(b => b.Slug == slug);
-        var customer = new Customer { BarberId = barber.Id, Name = "Past Customer", Phone = "+15559990001" };
+        var business = db.Businesses.First(b => b.Slug == slug);
+        var customer = new Customer { BusinessId = business.Id, Name = "Past Customer", Phone = "+15559990001" };
         db.Customers.Add(customer);
         db.Appointments.Add(new Appointment
         {
-            BarberId = barber.Id,
+            BusinessId = business.Id,
             CustomerId = customer.Id,
             ServiceId = service!.Id,
             Date = DateTime.UtcNow.Date.AddDays(-1),
@@ -44,15 +44,15 @@ public class AdminAppointmentsTests : IntegrationTestBase
             Status = AppointmentStatus.CONFIRMED,
         });
         db.SaveChanges();
-        var appt = db.Appointments.First(a => a.BarberId == barber.Id);
-        return (barber.Id, appt.Id);
+        var appt = db.Appointments.First(a => a.BusinessId == business.Id);
+        return (business.Id, appt.Id);
     }
 
     [Fact]
     public async Task PastConfirmedAppointment_ShowsAsCompletedInAppointmentsList()
     {
         var slug = "past-appt-shop";
-        var token = await RegisterAndLoginBarber("past-appt@example.com", slug);
+        var token = await RegisterAndLoginBusiness("past-appt@example.com", slug);
         await SeedPastConfirmedAppointment(token, slug);
 
         Authorize(Client, token);
@@ -66,7 +66,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task PastConfirmedAppointment_ShowsAsCompletedOnDashboard()
     {
         var slug = "past-dash-shop";
-        var token = await RegisterAndLoginBarber("past-dash@example.com", slug);
+        var token = await RegisterAndLoginBusiness("past-dash@example.com", slug);
         await SeedPastConfirmedAppointment(token, slug);
 
         Authorize(Client, token);
@@ -82,7 +82,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task UpdateStatus_RejectsAnythingOtherThanCancelled()
     {
         var slug = "reject-complete-shop";
-        var token = await RegisterAndLoginBarber("reject-complete@example.com", slug);
+        var token = await RegisterAndLoginBusiness("reject-complete@example.com", slug);
         var (_, appointmentId) = await SeedPastConfirmedAppointment(token, slug);
 
         Authorize(Client, token);
@@ -95,7 +95,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task UpdateStatus_StillAllowsCancelling()
     {
         var slug = "allow-cancel-shop";
-        var token = await RegisterAndLoginBarber("allow-cancel@example.com", slug);
+        var token = await RegisterAndLoginBusiness("allow-cancel@example.com", slug);
         var (_, appointmentId) = await SeedPastConfirmedAppointment(token, slug);
 
         Authorize(Client, token);
@@ -106,7 +106,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
     // ─── Manual (owner-created) appointment booking ────────────────────────
 
-    private async Task<(string BarberId, string ServiceId, DateTime Date)> SeedBarberWithServiceAndAvailability(string token, string slug)
+    private async Task<(string BusinessId, string ServiceId, DateTime Date)> SeedBusinessWithServiceAndAvailability(string token, string slug)
     {
         Authorize(Client, token);
         var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
@@ -119,21 +119,21 @@ public class AdminAppointmentsTests : IntegrationTestBase
             new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
 
         using var db = Db();
-        var barber = db.Barbers.First(b => b.Slug == slug);
-        return (barber.Id, service!.Id, date);
+        var business = db.Businesses.First(b => b.Slug == slug);
+        return (business.Id, service!.Id, date);
     }
 
     [Fact]
     public async Task CreateAppointment_ExistingCustomer_Succeeds()
     {
         var slug = "admin-book-existing";
-        var token = await RegisterAndLoginBarber("admin-book-existing@example.com", slug);
-        var (barberId, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-book-existing@example.com", slug);
+        var (businessId, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         string customerId;
         using (var db = Db())
         {
-            var customer = new Customer { BarberId = barberId, Name = "Mohamed", Phone = "+15550001111" };
+            var customer = new Customer { BusinessId = businessId, Name = "Mohamed", Phone = "+15550001111" };
             db.Customers.Add(customer);
             db.SaveChanges();
             customerId = customer.Id;
@@ -152,8 +152,8 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task CreateAppointment_NewCustomer_UpsertsByPhone()
     {
         var slug = "admin-book-new";
-        var token = await RegisterAndLoginBarber("admin-book-new@example.com", slug);
-        var (barberId, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-book-new@example.com", slug);
+        var (businessId, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
@@ -161,15 +161,15 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         using var db = Db();
-        Assert.Single(db.Customers.Where(c => c.BarberId == barberId && c.Phone == "+15559998888"));
+        Assert.Single(db.Customers.Where(c => c.BusinessId == businessId && c.Phone == "+15559998888"));
     }
 
     [Fact]
     public async Task CreateAppointment_NewCustomer_StoresFirstAndFamilyNameSeparately()
     {
         var slug = "admin-book-split-name";
-        var token = await RegisterAndLoginBarber("admin-book-split-name@example.com", slug);
-        var (barberId, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-book-split-name@example.com", slug);
+        var (businessId, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
@@ -177,7 +177,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         using var db = Db();
-        var customer = db.Customers.Single(c => c.BarberId == barberId && c.Phone == "+15559997777");
+        var customer = db.Customers.Single(c => c.BusinessId == businessId && c.Phone == "+15559997777");
         Assert.Equal("Sara", customer.Name);
         Assert.Equal("Connor", customer.FamilyName);
     }
@@ -186,8 +186,8 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task CreateAppointment_ConflictingSlotWithoutForce_ReturnsConflict()
     {
         var slug = "admin-book-conflict";
-        var token = await RegisterAndLoginBarber("admin-book-conflict@example.com", slug);
-        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-book-conflict@example.com", slug);
+        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         Authorize(Client, token);
@@ -201,8 +201,8 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task CreateAppointment_ForceTrue_OverridesUnavailableSlot()
     {
         var slug = "admin-book-force";
-        var token = await RegisterAndLoginBarber("admin-book-force@example.com", slug);
-        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-book-force@example.com", slug);
+        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         Authorize(Client, token);
         // 19:00 falls outside the 09:00-18:00 working hours seeded above, so a normal
@@ -217,8 +217,8 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task CreateAppointment_ForceTrue_StillRejectsExactOverlap()
     {
         var slug = "admin-book-force-overlap";
-        var token = await RegisterAndLoginBarber("admin-book-force-overlap@example.com", slug);
-        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-book-force-overlap@example.com", slug);
+        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         Authorize(Client, token);
@@ -233,8 +233,8 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task CreateAppointment_DoesNotEnforcePerCustomerBookingLimits()
     {
         var slug = "admin-book-limits";
-        var token = await RegisterAndLoginBarber("admin-book-limits@example.com", slug);
-        var (_, serviceId, date) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-book-limits@example.com", slug);
+        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         Authorize(Client, token);
@@ -254,12 +254,12 @@ public class AdminAppointmentsTests : IntegrationTestBase
     public async Task SearchCustomers_FullNameQuery_MatchesAcrossNameAndFamilyName()
     {
         var slug = "admin-search-fullname";
-        var token = await RegisterAndLoginBarber("admin-search-fullname@example.com", slug);
-        var (barberId, _, _) = await SeedBarberWithServiceAndAvailability(token, slug);
+        var token = await RegisterAndLoginBusiness("admin-search-fullname@example.com", slug);
+        var (businessId, _, _) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         using (var db = Db())
         {
-            db.Customers.Add(new Customer { BarberId = barberId, Name = "John", FamilyName = "Smith", Phone = "+15559990000" });
+            db.Customers.Add(new Customer { BusinessId = businessId, Name = "John", FamilyName = "Smith", Phone = "+15559990000" });
             db.SaveChanges();
         }
 

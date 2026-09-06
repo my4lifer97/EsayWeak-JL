@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { t } from '../lib/i18n'
 
 // Browser-history back, not a fixed route — works consistently regardless of which page
-// the customer arrived from (a barber's page, a search result, a direct link, etc).
+// the customer arrived from (a business's page, a search result, a direct link, etc).
 export default function BackButton({ lang, fallback = '/' }: { lang: string; fallback?: string }) {
   const navigate = useNavigate()
 

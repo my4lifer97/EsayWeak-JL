@@ -9,7 +9,7 @@ using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
 
-// Covers Barber.RequireApprovalOnCustomerCancel: when on, a customer cancelling doesn't finalize
+// Covers Business.RequireApprovalOnCustomerCancel: when on, a customer cancelling doesn't finalize
 // the cancellation -- the slot freezes (still CONFIRMED, PendingCancellationApproval=true) and
 // the owner gets a WhatsApp message to decide, instead of the appointment/waitlist being
 // resolved immediately.
@@ -17,9 +17,9 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
 
-    private async Task<string> RegisterAndLoginBarber(string email, string slug)
+    private async Task<string> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
@@ -29,10 +29,10 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     private async Task<string> GetCustomerToken(string phone, string name = "Jane", string familyName = "Doe") =>
         (await LoginCustomerViaWhatsAppAsync(phone, name, familyName)).Token;
 
-    // Registers a barber, opens working hours for tomorrow, and (unless overridden) fully
+    // Registers a business, opens working hours for tomorrow, and (unless overridden) fully
     // configures Twilio + a personal phone + RequireApprovalOnCustomerCancel so the approval
     // path is actually reachable -- individual tests override pieces of this to hit fallbacks.
-    private async Task<(string BarberId, string ServiceId, DateTime Date)> SeedApprovalBarber(
+    private async Task<(string BusinessId, string ServiceId, DateTime Date)> SeedApprovalBusiness(
         string token, string slug, bool requireApproval = true, bool configureTwilio = true, bool setOwnerPhone = true)
     {
         Authorize(Client, token);
@@ -51,14 +51,14 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         Client.DefaultRequestHeaders.Authorization = null;
 
         using var db = Db();
-        var barber = db.Barbers.First(b => b.Slug == slug);
+        var business = db.Businesses.First(b => b.Slug == slug);
         // TwilioNumber is now platform-admin-assigned, not settable via /api/admin/settings.
         if (configureTwilio)
         {
-            barber.TwilioNumber = "+15550009999";
+            business.TwilioNumber = "+15550009999";
             db.SaveChanges();
         }
-        return (barber.Id, service!.Id, date);
+        return (business.Id, service!.Id, date);
     }
 
     private Task<HttpResponseMessage> BookAs(string customerToken, string slug, string serviceId, string date, string startTime)
@@ -74,8 +74,8 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     [Fact]
     public async Task CustomerCancel_WithApprovalRequired_FreezesSlotAndNotifiesOwner()
     {
-        var token = await RegisterAndLoginBarber("approval-freeze@example.com", "approval-freeze-shop");
-        var (barberId, serviceId, date) = await SeedApprovalBarber(token, "approval-freeze-shop");
+        var token = await RegisterAndLoginBusiness("approval-freeze@example.com", "approval-freeze-shop");
+        var (businessId, serviceId, date) = await SeedApprovalBusiness(token, "approval-freeze-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110001");
@@ -88,7 +88,7 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, customerCancel.StatusCode);
 
         // The owner was texted instead of the cancellation finalizing.
-        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BarberId == barberId).ToList();
+        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId).ToList();
         Assert.Single(sent);
         Assert.Equal("+15559990000", sent[0].Phone);
 
@@ -119,8 +119,8 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     [Fact]
     public async Task OwnerFinalizesCancelSilently_AfterApprovalFreeze_FreesTheSlot()
     {
-        var token = await RegisterAndLoginBarber("approval-finalize@example.com", "approval-finalize-shop");
-        var (_, serviceId, date) = await SeedApprovalBarber(token, "approval-finalize-shop");
+        var token = await RegisterAndLoginBusiness("approval-finalize@example.com", "approval-finalize-shop");
+        var (_, serviceId, date) = await SeedApprovalBusiness(token, "approval-finalize-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110003");
@@ -152,8 +152,8 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     [Fact]
     public async Task OwnerReplacesCustomer_AfterApprovalFreeze_KeepsSlotConfirmedForNewCustomer()
     {
-        var token = await RegisterAndLoginBarber("approval-replace@example.com", "approval-replace-shop");
-        var (_, serviceId, date) = await SeedApprovalBarber(token, "approval-replace-shop");
+        var token = await RegisterAndLoginBusiness("approval-replace@example.com", "approval-replace-shop");
+        var (_, serviceId, date) = await SeedApprovalBusiness(token, "approval-replace-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110005");
@@ -179,8 +179,8 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     [Fact]
     public async Task CustomerCancel_ApprovalRequiredButTwilioNotConfigured_FallsBackToImmediateCancel()
     {
-        var token = await RegisterAndLoginBarber("approval-notwilio@example.com", "approval-notwilio-shop");
-        var (_, serviceId, date) = await SeedApprovalBarber(token, "approval-notwilio-shop", configureTwilio: false);
+        var token = await RegisterAndLoginBusiness("approval-notwilio@example.com", "approval-notwilio-shop");
+        var (_, serviceId, date) = await SeedApprovalBusiness(token, "approval-notwilio-shop", configureTwilio: false);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110006");
@@ -201,8 +201,8 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     [Fact]
     public async Task CustomerCancel_WithoutApprovalRequired_CancelsImmediatelyAsBefore()
     {
-        var token = await RegisterAndLoginBarber("no-approval@example.com", "no-approval-shop");
-        var (_, serviceId, date) = await SeedApprovalBarber(token, "no-approval-shop", requireApproval: false);
+        var token = await RegisterAndLoginBusiness("no-approval@example.com", "no-approval-shop");
+        var (_, serviceId, date) = await SeedApprovalBusiness(token, "no-approval-shop", requireApproval: false);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110007");

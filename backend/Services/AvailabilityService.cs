@@ -7,9 +7,9 @@ namespace BarberSaas.Api.Services;
 
 public class AvailabilityService(AppDbContext db)
 {
-    public async Task<List<TimeSlot>> GetAvailableSlots(string barberId, string dateStr, int serviceDuration)
+    public async Task<List<TimeSlot>> GetAvailableSlots(string businessId, string dateStr, int serviceDuration)
     {
-        var slots = await GetSlotsWithBookingInfo(barberId, dateStr, serviceDuration);
+        var slots = await GetSlotsWithBookingInfo(businessId, dateStr, serviceDuration);
         return slots.Where(s => s.Available).Select(s => new TimeSlot(s.Start, s.End)).ToList();
     }
 
@@ -17,26 +17,26 @@ public class AvailabilityService(AppDbContext db)
     // overlap a CONFIRMED appointment, flags them Available=false with that appointment's Id —
     // lets the customer-facing calendar show booked slots (for joining a waitlist) rather than
     // hiding them entirely. Breaks/blocked-slots are still fully excluded (not real bookings).
-    public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string barberId, string dateStr, int serviceDuration)
+    public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string businessId, string dateStr, int serviceDuration)
     {
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
         var dayOfWeek = (int)DateTime.Parse(dateStr).DayOfWeek;
 
         var workingHours = await db.WorkingHours
-            .FirstOrDefaultAsync(w => w.BarberId == barberId && w.DayOfWeek == dayOfWeek && w.IsActive);
+            .FirstOrDefaultAsync(w => w.BusinessId == businessId && w.DayOfWeek == dayOfWeek && w.IsActive);
 
         if (workingHours is null) return [];
 
         var breaks = await db.Breaks
-            .Where(b => b.BarberId == barberId && b.DayOfWeek == dayOfWeek)
+            .Where(b => b.BusinessId == businessId && b.DayOfWeek == dayOfWeek)
             .ToListAsync();
 
         var blockedSlots = await db.BlockedSlots
-            .Where(b => b.BarberId == barberId && b.Date == date)
+            .Where(b => b.BusinessId == businessId && b.Date == date)
             .ToListAsync();
 
         var existingAppointments = await db.Appointments
-            .Where(a => a.BarberId == barberId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED)
+            .Where(a => a.BusinessId == businessId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED)
             .ToListAsync();
 
         if (blockedSlots.Any(b => b.StartTime is null)) return [];
@@ -52,10 +52,10 @@ public class AvailabilityService(AppDbContext db)
 
         // For today, don't offer slots that have already started — a customer booking at
         // 15:00 shouldn't see (or be able to grab) a 10:00 slot. WorkingHours/Appointment
-        // times ("09:00", "17:30", ...) are the barber's local wall-clock hours, never
+        // times ("09:00", "17:30", ...) are the business's local wall-clock hours, never
         // converted to/from UTC anywhere in this app — so "now" here must be local server
         // time too, not DateTime.UtcNow, or the comparison is off by the UTC offset (e.g. a
-        // barber/customer 3 hours ahead of UTC would still see slots hours after they'd
+        // business/customer 3 hours ahead of UTC would still see slots hours after they'd
         // actually passed).
         var now = DateTime.Now;
         var isToday = DateTime.Parse(dateStr).Date == now.Date;
@@ -80,22 +80,22 @@ public class AvailabilityService(AppDbContext db)
             .ToList();
     }
 
-    public async Task<bool> HasConflictingAppointment(string barberId, string dateStr, string startTime, string endTime)
+    public async Task<bool> HasConflictingAppointment(string businessId, string dateStr, string startTime, string endTime)
     {
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
         var existing = await db.Appointments
-            .Where(a => a.BarberId == barberId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED)
+            .Where(a => a.BusinessId == businessId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED)
             .ToListAsync();
         return existing.Any(a => Overlaps(startTime, endTime, a.StartTime, a.EndTime));
     }
 
     // Wraps a booking/reschedule SaveChangesAsync that could collide with the partial unique
-    // index on (BarberId, Date, StartTime) for CONFIRMED appointments (AppDbContext) -- the
+    // index on (BusinessId, Date, StartTime) for CONFIRMED appointments (AppDbContext) -- the
     // DB-level guard against two requests claiming the same freed slot at once (e.g. two
     // waitlisted customers racing for a just-cancelled appointment). Returns false only if a
     // concurrent request genuinely won that exact slot (re-verified via HasConflictingAppointment
     // before swallowing the exception, so any other failure still surfaces as a real exception).
-    public async Task<bool> TrySaveOrDetectConflict(string barberId, string dateStr, string startTime, string endTime)
+    public async Task<bool> TrySaveOrDetectConflict(string businessId, string dateStr, string startTime, string endTime)
     {
         try
         {
@@ -105,7 +105,7 @@ public class AvailabilityService(AppDbContext db)
         catch (DbUpdateException)
         {
             db.ChangeTracker.Clear();
-            if (await HasConflictingAppointment(barberId, dateStr, startTime, endTime))
+            if (await HasConflictingAppointment(businessId, dateStr, startTime, endTime))
                 return false;
             throw;
         }

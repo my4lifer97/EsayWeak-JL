@@ -27,9 +27,9 @@ beforeEach(() => vi.clearAllMocks())
 
 describe('WhatsAppLandingPage', () => {
   it('redeems the token and redirects into the booking wizard with the service preselected', async () => {
-    const login = vi.fn().mockResolvedValue({ barberSlug: 'test-barber', serviceId: 'svc-1' })
+    const login = vi.fn().mockResolvedValue({ businessSlug: 'test-business', serviceId: 'svc-1' })
 
-    renderAt('/test-barber/w/abc123', login)
+    renderAt('/test-business/w/abc123', login)
 
     expect(login).toHaveBeenCalledWith('abc123')
     await waitFor(() => expect(screen.getByText('Booking Wizard')).toBeInTheDocument())
@@ -38,7 +38,7 @@ describe('WhatsAppLandingPage', () => {
   it('shows an expired-link message when the token is invalid', async () => {
     const login = vi.fn().mockRejectedValue(new Error('invalid'))
 
-    renderAt('/test-barber/w/bad-token', login)
+    renderAt('/test-business/w/bad-token', login)
 
     await waitFor(() => expect(screen.getByText(/expired or is invalid/)).toBeInTheDocument())
   })

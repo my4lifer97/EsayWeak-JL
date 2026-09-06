@@ -12,9 +12,9 @@ public class WaitlistTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
 
-    private async Task<string> RegisterAndLoginBarber(string email, string slug)
+    private async Task<string> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
@@ -24,10 +24,10 @@ public class WaitlistTests : IntegrationTestBase
     private async Task<string> GetCustomerToken(string phone, string name = "Waiting", string familyName = "Customer") =>
         (await LoginCustomerViaWhatsAppAsync(phone, name, familyName)).Token;
 
-    // Registers a barber, opens working hours for tomorrow (avoids the "isToday" cutoff in
+    // Registers a business, opens working hours for tomorrow (avoids the "isToday" cutoff in
     // AvailabilityService), and turns on the waitlist with dummy Twilio creds so WaitlistService
     // actually attempts a send (captured by the test factory's FakeWhatsAppSender).
-    private async Task<(string BarberId, string ServiceId, DateTime Date)> SeedWaitlistEnabledBarber(string token, string slug, bool waitlistEnabled = true)
+    private async Task<(string BusinessId, string ServiceId, DateTime Date)> SeedWaitlistEnabledBusiness(string token, string slug, bool waitlistEnabled = true)
     {
         Authorize(Client, token);
         var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
@@ -45,10 +45,10 @@ public class WaitlistTests : IntegrationTestBase
 
         // TwilioNumber is now platform-admin-assigned, not settable via /api/admin/settings.
         using var db = Db();
-        var barber = db.Barbers.First(b => b.Slug == slug);
-        barber.TwilioNumber = "+15550009999";
+        var business = db.Businesses.First(b => b.Slug == slug);
+        business.TwilioNumber = "+15550009999";
         db.SaveChanges();
-        return (barber.Id, service!.Id, date);
+        return (business.Id, service!.Id, date);
     }
 
     private Task<HttpResponseMessage> BookAs(string customerToken, string slug, string serviceId, string date, string startTime, string customerName = "Customer")
@@ -71,8 +71,8 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task Join_NoAuth_ReturnsUnauthorized()
     {
-        var token = await RegisterAndLoginBarber("wl-noauth@example.com", "wl-noauth-shop");
-        var (_, serviceId, date) = await SeedWaitlistEnabledBarber(token, "wl-noauth-shop");
+        var token = await RegisterAndLoginBusiness("wl-noauth@example.com", "wl-noauth-shop");
+        var (_, serviceId, date) = await SeedWaitlistEnabledBusiness(token, "wl-noauth-shop");
         var customerToken = await GetCustomerToken("+15551000001");
         var booked = await BookAs(customerToken, "wl-noauth-shop", serviceId, date.ToString("yyyy-MM-dd"), "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -85,8 +85,8 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task Join_WhenWaitlistDisabled_ReturnsBadRequest()
     {
-        var token = await RegisterAndLoginBarber("wl-disabled@example.com", "wl-disabled-shop");
-        var (_, serviceId, date) = await SeedWaitlistEnabledBarber(token, "wl-disabled-shop", waitlistEnabled: false);
+        var token = await RegisterAndLoginBusiness("wl-disabled@example.com", "wl-disabled-shop");
+        var (_, serviceId, date) = await SeedWaitlistEnabledBusiness(token, "wl-disabled-shop", waitlistEnabled: false);
         var bookerToken = await GetCustomerToken("+15551000002");
         var booked = await BookAs(bookerToken, "wl-disabled-shop", serviceId, date.ToString("yyyy-MM-dd"), "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -100,8 +100,8 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task Join_NonExistentAppointment_ReturnsNotFound()
     {
-        var token = await RegisterAndLoginBarber("wl-404@example.com", "wl-404-shop");
-        await SeedWaitlistEnabledBarber(token, "wl-404-shop");
+        var token = await RegisterAndLoginBusiness("wl-404@example.com", "wl-404-shop");
+        await SeedWaitlistEnabledBusiness(token, "wl-404-shop");
         var customerToken = await GetCustomerToken("+15551000004");
 
         var resp = await JoinWaitlistAs(customerToken, "wl-404-shop", "does-not-exist");
@@ -112,10 +112,10 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task Join_CrossTenant_ReturnsNotFound()
     {
-        var tokenA = await RegisterAndLoginBarber("wl-tenant-a@example.com", "wl-tenant-a-shop");
-        var (_, serviceIdA, dateA) = await SeedWaitlistEnabledBarber(tokenA, "wl-tenant-a-shop");
-        var tokenB = await RegisterAndLoginBarber("wl-tenant-b@example.com", "wl-tenant-b-shop");
-        await SeedWaitlistEnabledBarber(tokenB, "wl-tenant-b-shop");
+        var tokenA = await RegisterAndLoginBusiness("wl-tenant-a@example.com", "wl-tenant-a-shop");
+        var (_, serviceIdA, dateA) = await SeedWaitlistEnabledBusiness(tokenA, "wl-tenant-a-shop");
+        var tokenB = await RegisterAndLoginBusiness("wl-tenant-b@example.com", "wl-tenant-b-shop");
+        await SeedWaitlistEnabledBusiness(tokenB, "wl-tenant-b-shop");
 
         var bookerToken = await GetCustomerToken("+15551000005");
         var booked = await BookAs(bookerToken, "wl-tenant-a-shop", serviceIdA, dateA.ToString("yyyy-MM-dd"), "09:00");
@@ -131,8 +131,8 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task Join_Duplicate_IsIdempotent()
     {
-        var token = await RegisterAndLoginBarber("wl-dup@example.com", "wl-dup-shop");
-        var (barberId, serviceId, date) = await SeedWaitlistEnabledBarber(token, "wl-dup-shop");
+        var token = await RegisterAndLoginBusiness("wl-dup@example.com", "wl-dup-shop");
+        var (businessId, serviceId, date) = await SeedWaitlistEnabledBusiness(token, "wl-dup-shop");
         var bookerToken = await GetCustomerToken("+15551000007");
         var booked = await BookAs(bookerToken, "wl-dup-shop", serviceId, date.ToString("yyyy-MM-dd"), "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -150,8 +150,8 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task OwnerOffersToWaitlist_NotifiesWaitersAndResolvesOnRebook()
     {
-        var token = await RegisterAndLoginBarber("wl-lifecycle@example.com", "wl-lifecycle-shop");
-        var (barberId, serviceId, date) = await SeedWaitlistEnabledBarber(token, "wl-lifecycle-shop");
+        var token = await RegisterAndLoginBusiness("wl-lifecycle@example.com", "wl-lifecycle-shop");
+        var (businessId, serviceId, date) = await SeedWaitlistEnabledBusiness(token, "wl-lifecycle-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var bookerToken = await GetCustomerToken("+15551000009", "Original", "Booker");
@@ -171,7 +171,7 @@ public class WaitlistTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
         Client.DefaultRequestHeaders.Authorization = null;
 
-        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BarberId == barberId).ToList();
+        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId).ToList();
         Assert.Equal(2, sent.Count);
         Assert.Contains(sent, s => s.Phone == waiter1Phone);
         Assert.Contains(sent, s => s.Phone == waiter2Phone);
@@ -196,8 +196,8 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task OwnerCancelsSilently_SendsNoNotification()
     {
-        var token = await RegisterAndLoginBarber("wl-silent@example.com", "wl-silent-shop");
-        var (barberId, serviceId, date) = await SeedWaitlistEnabledBarber(token, "wl-silent-shop");
+        var token = await RegisterAndLoginBusiness("wl-silent@example.com", "wl-silent-shop");
+        var (businessId, serviceId, date) = await SeedWaitlistEnabledBusiness(token, "wl-silent-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var bookerToken = await GetCustomerToken("+15551000012");
@@ -212,7 +212,7 @@ public class WaitlistTests : IntegrationTestBase
             new { status = "CANCELLED", notifyWaitlist = false });
         Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
 
-        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BarberId == barberId);
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId);
         using var db = Db();
         Assert.All(db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId), e => Assert.Equal(WaitlistEntryStatus.WAITING, e.Status));
     }
@@ -220,8 +220,8 @@ public class WaitlistTests : IntegrationTestBase
     [Fact]
     public async Task ConcurrentBooking_ExactlyOneSucceedsForTheFreedSlot()
     {
-        var token = await RegisterAndLoginBarber("wl-race@example.com", "wl-race-shop");
-        var (_, serviceId, date) = await SeedWaitlistEnabledBarber(token, "wl-race-shop");
+        var token = await RegisterAndLoginBusiness("wl-race@example.com", "wl-race-shop");
+        var (_, serviceId, date) = await SeedWaitlistEnabledBusiness(token, "wl-race-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var bookerToken = await GetCustomerToken("+15551000014");
@@ -235,7 +235,7 @@ public class WaitlistTests : IntegrationTestBase
         var raceToken2 = await GetCustomerToken("+15551000016");
 
         // Two concurrent requests for the exact same now-freed slot -- the partial unique index
-        // on (BarberId, Date, StartTime) for CONFIRMED appointments must let exactly one win.
+        // on (BusinessId, Date, StartTime) for CONFIRMED appointments must let exactly one win.
         // We only assert that invariant (no double-booking survives), not the loser's exact
         // HTTP status: this test harness's SQLite in-memory DB is a single shared connection
         // (TestWebApplicationFactory), so a truly concurrent second transaction can fail at

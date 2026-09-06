@@ -17,7 +17,7 @@ public class GlobalExceptionHandlerTests : IntegrationTestBase
     [Fact]
     public async Task UnhandledException_ReturnsConsistentJsonErrorShape()
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", "exc-flow@example.com", "password123", "exc-flow-shop"));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "exc-flow@example.com", "password123", "exc-flow-shop"));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("exc-flow@example.com", registerBody!.DevCode!));
         var loginBody = await verify.Content.ReadFromJsonAsync<LoginResponse>();

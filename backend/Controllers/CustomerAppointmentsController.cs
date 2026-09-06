@@ -19,18 +19,18 @@ public class CustomerAppointmentsController(
     private string AccountId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpGet]
-    public async Task<IActionResult> GetMyAppointments([FromQuery] string? filter = null, [FromQuery] string? barberSlug = null)
+    public async Task<IActionResult> GetMyAppointments([FromQuery] string? filter = null, [FromQuery] string? businessSlug = null)
     {
-        // a.Date is the barber's local wall-clock calendar date, never converted to/from UTC
+        // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — filter by local "now" or this drifts a day near midnight.
         var today = DateTime.Now.Date;
         var query = db.Appointments
             .Include(a => a.Service).ThenInclude(s => s.GalleryPhotos)
-            .Include(a => a.Barber)
+            .Include(a => a.Business)
             .Where(a => a.Customer.CustomerAccountId == AccountId);
 
-        if (!string.IsNullOrEmpty(barberSlug))
-            query = query.Where(a => a.Barber.Slug == barberSlug);
+        if (!string.IsNullOrEmpty(businessSlug))
+            query = query.Where(a => a.Business.Slug == businessSlug);
 
         query = filter switch
         {
@@ -43,7 +43,7 @@ public class CustomerAppointmentsController(
         var appointments = await query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime).ToListAsync();
 
         var dtos = appointments.Select(a => new CustomerAppointmentDto(
-            a.Id, a.Barber.Slug, a.Barber.Name, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
+            a.Id, a.Business.Slug, a.Business.Name, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
             a.Notes, AppointmentStatusHelper.CustomerFacingStatus(a.Status, a.PendingCancellationApproval, a.Date, a.EndTime), a.CancelToken,
             new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price,
                 a.Service.PhotoMode.ToString(), a.Service.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList()),
@@ -56,7 +56,7 @@ public class CustomerAppointmentsController(
     public async Task<IActionResult> Cancel(string id)
     {
         var appt = await db.Appointments
-            .Include(a => a.Service).Include(a => a.Barber)
+            .Include(a => a.Service).Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
@@ -65,12 +65,12 @@ public class CustomerAppointmentsController(
         await cancellationService.CancelFromCustomerAsync(appt);
         await db.SaveChangesAsync();
 
-        // CancelFromCustomerAsync doesn't always finalize the cancellation -- if the barber
+        // CancelFromCustomerAsync doesn't always finalize the cancellation -- if the business
         // requires approval and can be reached, it just freezes the slot (PendingCancellationApproval
         // = true, Status stays CONFIRMED) and texts them instead. Reflect whichever actually happened.
         var verb = appt.PendingCancellationApproval ? "Requested cancellation (awaiting owner approval)" : "Cancelled appointment";
         this.SetActivityDetail(
-            $"{verb}: {appt.Service.NameEn} with {appt.Barber.Name} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
+            $"{verb}: {appt.Service.NameEn} with {appt.Business.Name} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
 
         return Ok(new { ok = true });
     }
@@ -79,13 +79,13 @@ public class CustomerAppointmentsController(
     public async Task<IActionResult> Reschedule(string id, [FromBody] RescheduleRequest req)
     {
         var appt = await db.Appointments
-            .Include(a => a.Service).Include(a => a.Barber)
+            .Include(a => a.Service).Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        var slots = await availability.GetAvailableSlots(appt.BarberId, req.Date, appt.Service.DurationMinutes);
+        var slots = await availability.GetAvailableSlots(appt.BusinessId, req.Date, appt.Service.DurationMinutes);
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 
@@ -97,12 +97,12 @@ public class CustomerAppointmentsController(
         appt.EndTime = AvailabilityService.AddMinutes(req.StartTime, appt.Service.DurationMinutes);
         appt.ReminderSent = false;
 
-        await waitlist.ResolveForRebooking(appt.BarberId, appt.Date, req.StartTime);
-        if (!await availability.TrySaveOrDetectConflict(appt.BarberId, req.Date, req.StartTime, appt.EndTime))
+        await waitlist.ResolveForRebooking(appt.BusinessId, appt.Date, req.StartTime);
+        if (!await availability.TrySaveOrDetectConflict(appt.BusinessId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
 
         this.SetActivityDetail(
-            $"Rescheduled appointment: {appt.Service.NameEn} with {appt.Barber.Name} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
+            $"Rescheduled appointment: {appt.Service.NameEn} with {appt.Business.Name} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
 
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }
@@ -111,7 +111,7 @@ public class CustomerAppointmentsController(
     public async Task<IActionResult> UpdatePhoto(string id, [FromBody] UpdateAppointmentPhotoRequest req)
     {
         var appt = await db.Appointments
-            .Include(a => a.Service).Include(a => a.Barber)
+            .Include(a => a.Service).Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
@@ -157,7 +157,7 @@ public class CustomerAppointmentsController(
 
         await db.SaveChangesAsync();
 
-        this.SetActivityDetail($"Changed reference photo for appointment: {appt.Service.NameEn} with {appt.Barber.Name} on {appt.Date:yyyy-MM-dd}");
+        this.SetActivityDetail($"Changed reference photo for appointment: {appt.Service.NameEn} with {appt.Business.Name} on {appt.Date:yyyy-MM-dd}");
 
         return Ok(new { appt.Id, appt.PhotoUrl });
     }
@@ -166,7 +166,7 @@ public class CustomerAppointmentsController(
     public async Task<IActionResult> UpdateNotes(string id, [FromBody] UpdateNotesRequest req)
     {
         var appt = await db.Appointments
-            .Include(a => a.Service).Include(a => a.Barber)
+            .Include(a => a.Service).Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
 
@@ -175,7 +175,7 @@ public class CustomerAppointmentsController(
 
         // Content deliberately never logged -- notes are free text a customer writes, same
         // "metadata only" principle as everywhere else in ActivityLogFilter.
-        this.SetActivityDetail($"Updated appointment notes: {appt.Service.NameEn} with {appt.Barber.Name} on {appt.Date:yyyy-MM-dd}");
+        this.SetActivityDetail($"Updated appointment notes: {appt.Service.NameEn} with {appt.Business.Name} on {appt.Date:yyyy-MM-dd}");
 
         return Ok(new { appt.Id, appt.Notes });
     }

@@ -8,7 +8,7 @@ import { mediaUrl } from '../../lib/media'
 
 type GalleryPhoto = { id: string; url: string }
 export type Appointment = {
-  id: string; barberSlug: string; barberName: string
+  id: string; businessSlug: string; businessName: string
   date: string; startTime: string; endTime: string
   notes: string | null; status: string; cancelToken: string
   service: {
@@ -27,11 +27,11 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function AppointmentCard({
-  appt, lang, showBarberName = true, onChanged,
+  appt, lang, showBusinessName = true, onChanged,
 }: {
   appt: Appointment
   lang: string
-  showBarberName?: boolean
+  showBusinessName?: boolean
   onChanged: () => void
 }) {
   const [expandedReschedule, setExpandedReschedule] = useState(false)
@@ -48,7 +48,7 @@ export default function AppointmentCard({
     enabled: expandedReschedule && !!rescheduleDate,
     queryFn: () =>
       customerApi
-        .get(`/${appt.barberSlug}/availability?date=${rescheduleDate}&serviceId=${appt.service.id}`)
+        .get(`/${appt.businessSlug}/availability?date=${rescheduleDate}&serviceId=${appt.service.id}`)
         .then((r) => r.data.slots),
   })
 
@@ -96,7 +96,7 @@ export default function AppointmentCard({
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const { data } = await customerApi.post(`/${appt.barberSlug}/appointments/photo`, formData)
+      const { data } = await customerApi.post(`/${appt.businessSlug}/appointments/photo`, formData)
       await customerApi.patch(`/customer/appointments/${appt.id}/photo`, { customerPhotoUrl: data.url })
       setExpandedPhoto(false)
       onChanged()
@@ -109,7 +109,7 @@ export default function AppointmentCard({
     <div className={`bg-gray-900 border rounded-2xl p-4 ${appt.status !== 'CONFIRMED' ? 'border-gray-800 opacity-60' : 'border-gray-700'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          {showBarberName && <div className="font-semibold text-white truncate">{appt.barberName}</div>}
+          {showBusinessName && <div className="font-semibold text-white truncate">{appt.businessName}</div>}
           <div className="text-gray-400 text-sm mt-1">{serviceName(appt.service, lang)}</div>
           <div className="text-gray-500 text-sm mt-1">
             {format(parseISO(appt.date), 'EEE, MMM d yyyy', { locale: lang === 'AR' ? ar : lang === 'HE' ? he : enUS })}

@@ -16,18 +16,18 @@ public class ServicePhotoTests : IntegrationTestBase
     private async Task<string> GetCustomerToken(string phone, string name = "First", string familyName = "Last") =>
         (await LoginCustomerViaWhatsAppAsync(phone, name, familyName)).Token;
 
-    private async Task<(string Token, string Slug)> RegisterAndLoginBarber(string email, string slug)
+    private async Task<(string Token, string Slug)> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Barber", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         return (body!.Token, slug);
     }
 
-    private async Task<ServiceDto> CreateService(string barberToken, string photoMode)
+    private async Task<ServiceDto> CreateService(string businessToken, string photoMode)
     {
-        Authorize(Client, barberToken);
+        Authorize(Client, businessToken);
         var resp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Haircut", "Haircut", "Haircut", 30, 50m, photoMode));
         var service = await resp.Content.ReadFromJsonAsync<ServiceDto>();
         Client.DefaultRequestHeaders.Authorization = null;
@@ -65,8 +65,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task CreateService_WithOwnerGalleryMode_PersistsPhotoMode()
     {
-        var (barberToken, _) = await RegisterAndLoginBarber("photomode-create@example.com", "photomode-create-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
+        var (businessToken, _) = await RegisterAndLoginBusiness("photomode-create@example.com", "photomode-create-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
 
         Assert.Equal("OwnerGallery", service.PhotoMode);
         Assert.Empty(service.GalleryPhotos);
@@ -75,8 +75,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task CreateService_WithInvalidPhotoMode_ReturnsBadRequest()
     {
-        var (barberToken, _) = await RegisterAndLoginBarber("photomode-invalid@example.com", "photomode-invalid-shop");
-        Authorize(Client, barberToken);
+        var (businessToken, _) = await RegisterAndLoginBusiness("photomode-invalid@example.com", "photomode-invalid-shop");
+        Authorize(Client, businessToken);
 
         var resp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Haircut", "Haircut", "Haircut", 30, 50m, "NotARealMode"));
 
@@ -86,10 +86,10 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task UploadGalleryPhoto_ByOwner_Succeeds_AndListedInServiceDto()
     {
-        var (barberToken, _) = await RegisterAndLoginBarber("gallery-upload@example.com", "gallery-upload-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
+        var (businessToken, _) = await RegisterAndLoginBusiness("gallery-upload@example.com", "gallery-upload-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
 
-        Authorize(Client, barberToken);
+        Authorize(Client, businessToken);
         var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
         Assert.Equal(HttpStatusCode.Created, uploadResp.StatusCode);
         var uploaded = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
@@ -104,21 +104,21 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task UploadGalleryPhoto_RejectsWrongContentType()
     {
-        var (barberToken, _) = await RegisterAndLoginBarber("gallery-badtype@example.com", "gallery-badtype-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
+        var (businessToken, _) = await RegisterAndLoginBusiness("gallery-badtype@example.com", "gallery-badtype-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
 
-        Authorize(Client, barberToken);
+        Authorize(Client, businessToken);
         var resp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage(fileName: "photo.jpg", contentType: "text/plain"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     [Fact]
-    public async Task UploadGalleryPhoto_ForAnotherBarbersService_ReturnsNotFound()
+    public async Task UploadGalleryPhoto_ForAnotherBusinessesService_ReturnsNotFound()
     {
-        var (ownerToken, _) = await RegisterAndLoginBarber("gallery-owner@example.com", "gallery-owner-shop");
+        var (ownerToken, _) = await RegisterAndLoginBusiness("gallery-owner@example.com", "gallery-owner-shop");
         var service = await CreateService(ownerToken, "OwnerGallery");
-        var (intruderToken, _) = await RegisterAndLoginBarber("gallery-intruder@example.com", "gallery-intruder-shop");
+        var (intruderToken, _) = await RegisterAndLoginBusiness("gallery-intruder@example.com", "gallery-intruder-shop");
 
         Authorize(Client, intruderToken);
         var resp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
@@ -129,10 +129,10 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task DeleteGalleryPhoto_ByOwner_RemovesIt()
     {
-        var (barberToken, _) = await RegisterAndLoginBarber("gallery-delete@example.com", "gallery-delete-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
+        var (businessToken, _) = await RegisterAndLoginBusiness("gallery-delete@example.com", "gallery-delete-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
 
-        Authorize(Client, barberToken);
+        Authorize(Client, businessToken);
         var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
         var uploaded = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
 
@@ -144,15 +144,15 @@ public class ServicePhotoTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task DeleteGalleryPhoto_ForAnotherBarbersService_ReturnsNotFound()
+    public async Task DeleteGalleryPhoto_ForAnotherBusinessesService_ReturnsNotFound()
     {
-        var (ownerToken, _) = await RegisterAndLoginBarber("gallery-del-owner@example.com", "gallery-del-owner-shop");
+        var (ownerToken, _) = await RegisterAndLoginBusiness("gallery-del-owner@example.com", "gallery-del-owner-shop");
         var service = await CreateService(ownerToken, "OwnerGallery");
         Authorize(Client, ownerToken);
         var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
         var uploaded = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
 
-        var (intruderToken, _) = await RegisterAndLoginBarber("gallery-del-intruder@example.com", "gallery-del-intruder-shop");
+        var (intruderToken, _) = await RegisterAndLoginBusiness("gallery-del-intruder@example.com", "gallery-del-intruder-shop");
         Authorize(Client, intruderToken);
         var deleteResp = await Client.DeleteAsync($"/api/admin/services/{service.Id}/gallery/{uploaded!.Id}");
 
@@ -162,8 +162,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task BookAppointment_OwnerGalleryMode_WithoutPhotoId_ReturnsBadRequest()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("book-gallery-missing@example.com", "book-gallery-missing-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-gallery-missing@example.com", "book-gallery-missing-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
         var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
@@ -175,9 +175,9 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task BookAppointment_OwnerGalleryMode_WithValidPhotoId_SetsPhotoUrlOnAppointment()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("book-gallery-ok@example.com", "book-gallery-ok-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
-        Authorize(Client, barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-gallery-ok@example.com", "book-gallery-ok-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
+        Authorize(Client, businessToken);
         var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
         var photo = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
@@ -195,10 +195,10 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task BookAppointment_OwnerGalleryMode_WithPhotoIdFromDifferentService_ReturnsBadRequest()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("book-gallery-wrong@example.com", "book-gallery-wrong-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
-        var otherService = await CreateService(barberToken, "OwnerGallery");
-        Authorize(Client, barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-gallery-wrong@example.com", "book-gallery-wrong-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
+        var otherService = await CreateService(businessToken, "OwnerGallery");
+        Authorize(Client, businessToken);
         var uploadResp = await Client.PostAsync($"/api/admin/services/{otherService.Id}/gallery", FakeImage());
         var photoOnOtherService = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
@@ -213,8 +213,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task BookAppointment_CustomerUploadMode_WithoutPhotoUrl_ReturnsBadRequest()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("book-upload-missing@example.com", "book-upload-missing-shop");
-        var service = await CreateService(barberToken, "CustomerUpload");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-upload-missing@example.com", "book-upload-missing-shop");
+        var service = await CreateService(businessToken, "CustomerUpload");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
         var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
@@ -226,8 +226,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task BookAppointment_CustomerUploadMode_WithUploadedPhoto_SetsPhotoUrlOnAppointment()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("book-upload-ok@example.com", "book-upload-ok-shop");
-        var service = await CreateService(barberToken, "CustomerUpload");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-upload-ok@example.com", "book-upload-ok-shop");
+        var service = await CreateService(businessToken, "CustomerUpload");
 
         var uploadResp = await Client.PostAsync($"/api/{slug}/appointments/photo", FakeImage());
         Assert.Equal(HttpStatusCode.OK, uploadResp.StatusCode);
@@ -246,8 +246,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task BookAppointment_CustomerUploadMode_RejectsArbitraryUrlNotFromUploadEndpoint()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("book-upload-spoofed@example.com", "book-upload-spoofed-shop");
-        var service = await CreateService(barberToken, "CustomerUpload");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-upload-spoofed@example.com", "book-upload-spoofed-shop");
+        var service = await CreateService(businessToken, "CustomerUpload");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
         var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
@@ -259,8 +259,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task BookAppointment_NoneMode_DoesNotRequireOrStorePhoto()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("book-none@example.com", "book-none-shop");
-        var service = await CreateService(barberToken, "None");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-none@example.com", "book-none-shop");
+        var service = await CreateService(businessToken, "None");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
@@ -275,9 +275,9 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task UpdatePhoto_OwnerGalleryMode_WithValidPhotoId_ChangesPhotoUrl()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-gallery@example.com", "changephoto-gallery-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
-        Authorize(Client, barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-gallery@example.com", "changephoto-gallery-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
+        Authorize(Client, businessToken);
         var firstUpload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
         var firstPhoto = await firstUpload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
         var secondUpload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
@@ -306,9 +306,9 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task UpdatePhoto_OwnerGalleryMode_WithoutPhotoId_ReturnsBadRequest()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-gallery-missing@example.com", "changephoto-gallery-missing-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
-        Authorize(Client, barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-gallery-missing@example.com", "changephoto-gallery-missing-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
+        Authorize(Client, businessToken);
         var upload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
         var photo = await upload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
@@ -332,8 +332,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task UpdatePhoto_CustomerUploadMode_WithNewUpload_ChangesPhotoUrl()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-upload@example.com", "changephoto-upload-shop");
-        var service = await CreateService(barberToken, "CustomerUpload");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-upload@example.com", "changephoto-upload-shop");
+        var service = await CreateService(businessToken, "CustomerUpload");
 
         var firstUpload = await Client.PostAsync($"/api/{slug}/appointments/photo", FakeImage());
         var firstPhoto = await firstUpload.Content.ReadFromJsonAsync<UploadPhotoResponse>();
@@ -361,9 +361,9 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task UpdatePhoto_ForAnotherCustomersAppointment_ReturnsNotFound()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-intruder@example.com", "changephoto-intruder-shop");
-        var service = await CreateService(barberToken, "OwnerGallery");
-        Authorize(Client, barberToken);
+        var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-intruder@example.com", "changephoto-intruder-shop");
+        var service = await CreateService(businessToken, "OwnerGallery");
+        Authorize(Client, businessToken);
         var upload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
         var photo = await upload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
@@ -389,8 +389,8 @@ public class ServicePhotoTests : IntegrationTestBase
     [Fact]
     public async Task UpdatePhoto_ForNoneModeService_ReturnsBadRequest()
     {
-        var (barberToken, slug) = await RegisterAndLoginBarber("changephoto-none@example.com", "changephoto-none-shop");
-        var service = await CreateService(barberToken, "None");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-none@example.com", "changephoto-none-shop");
+        var service = await CreateService(businessToken, "None");
 
         var customerToken = await GetCustomerToken("+15559990106");
         Authorize(Client, customerToken);

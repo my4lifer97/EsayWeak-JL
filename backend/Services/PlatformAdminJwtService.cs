@@ -24,7 +24,7 @@ public class PlatformAdminJwtService(IConfiguration config)
             issuer: config["Jwt:Issuer"],
             audience: config["Jwt:Audience"],
             claims: claims,
-            // Shorter than the 30-day barber/customer tokens -- this is the most powerful
+            // Shorter than the 30-day business/customer tokens -- this is the most powerful
             // credential in the system, so it has to be re-obtained more often.
             expires: DateTime.UtcNow.AddHours(12),
             signingCredentials: creds);

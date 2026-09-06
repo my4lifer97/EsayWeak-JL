@@ -12,7 +12,7 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/platform-admin")]
 public class PlatformAdminController(
-    AppDbContext db, PlatformAdminJwtService adminJwt, JwtService barberJwt, CustomerJwtService customerJwt) : ControllerBase
+    AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt) : ControllerBase
 {
     private string AdminId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -64,39 +64,39 @@ public class PlatformAdminController(
         return Ok(new PlatformAdminLoginResponse(token, admin.Id, admin.Name, admin.Email));
     }
 
-    // ─── Barbers ────────────────────────────────────────────────────────────
+    // ─── Businesses ────────────────────────────────────────────────────────────
 
-    [HttpGet("barbers")]
+    [HttpGet("businesses")]
     [Authorize(Policy = "PlatformAdminOnly")]
-    public async Task<IActionResult> SearchBarbers([FromQuery] string? search)
+    public async Task<IActionResult> SearchBusinesses([FromQuery] string? search)
     {
-        var query = db.Barbers.AsQueryable();
+        var query = db.Businesses.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(b => b.Name.Contains(search) || b.Email.Contains(search) || b.Slug.Contains(search));
 
-        var barbers = await query.OrderByDescending(b => b.CreatedAt).Take(50)
-            .Select(b => new PlatformAdminBarberSummaryDto(b.Id, b.Name, b.Email, b.Slug, b.SubscriptionStatus.ToString()))
+        var businesses = await query.OrderByDescending(b => b.CreatedAt).Take(50)
+            .Select(b => new PlatformAdminBusinessSummaryDto(b.Id, b.Name, b.Email, b.Slug, b.SubscriptionStatus.ToString()))
             .ToListAsync();
-        return Ok(barbers);
+        return Ok(businesses);
     }
 
-    [HttpGet("barbers/{id}")]
+    [HttpGet("businesses/{id}")]
     [Authorize(Policy = "PlatformAdminOnly")]
-    public async Task<IActionResult> GetBarber(string id)
+    public async Task<IActionResult> GetBusiness(string id)
     {
-        var b = await db.Barbers.FindAsync(id);
+        var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
-        return Ok(new PlatformAdminBarberDetailDto(
+        return Ok(new PlatformAdminBusinessDetailDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.TwilioNumber));
     }
 
     // Assigns (or clears, with a null body value) which of the platform's own Twilio WhatsApp
-    // numbers this barber's chatbot uses -- see Barber.TwilioNumber and TwilioWhatsAppSender.
-    [HttpPatch("barbers/{id}/twilio-number")]
+    // numbers this business's chatbot uses -- see Business.TwilioNumber and TwilioWhatsAppSender.
+    [HttpPatch("businesses/{id}/twilio-number")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> SetTwilioNumber(string id, [FromBody] SetTwilioNumberRequest req)
     {
-        var b = await db.Barbers.FindAsync(id);
+        var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
 
         var old = b.TwilioNumber;
@@ -105,7 +105,7 @@ public class PlatformAdminController(
 
         db.ActivityLogs.Add(new ActivityLog
         {
-            BarberId = b.Id,
+            BusinessId = b.Id,
             ImpersonatedByPlatformAdminId = AdminId,
             Action = $"{nameof(PlatformAdminController)}.{nameof(SetTwilioNumber)}",
             Description = $"WhatsApp number: \"{old}\" → \"{b.TwilioNumber}\"",
@@ -119,11 +119,11 @@ public class PlatformAdminController(
         return Ok(new { b.Id, b.TwilioNumber });
     }
 
-    [HttpGet("barbers/{id}/activity")]
+    [HttpGet("businesses/{id}/activity")]
     [Authorize(Policy = "PlatformAdminOnly")]
-    public async Task<IActionResult> GetBarberActivity(string id)
+    public async Task<IActionResult> GetBusinessActivity(string id)
     {
-        var logs = await db.ActivityLogs.Where(a => a.BarberId == id)
+        var logs = await db.ActivityLogs.Where(a => a.BusinessId == id)
             .OrderByDescending(a => a.CreatedAt).Take(200)
             .Select(a => new PlatformAdminActivityLogDto(
                 a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.CreatedAt,
@@ -132,15 +132,15 @@ public class PlatformAdminController(
         return Ok(logs);
     }
 
-    [HttpPost("barbers/{id}/impersonate")]
+    [HttpPost("businesses/{id}/impersonate")]
     [Authorize(Policy = "PlatformAdminOnly")]
-    public async Task<IActionResult> ImpersonateBarber(string id)
+    public async Task<IActionResult> ImpersonateBusiness(string id)
     {
-        var b = await db.Barbers.FindAsync(id);
+        var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
 
-        var token = barberJwt.GenerateImpersonation(b.Id, b.Email, b.Name, b.Slug, AdminId);
-        await LogImpersonation(barberId: b.Id, customerAccountId: null, "ImpersonateBarber");
+        var token = businessJwt.GenerateImpersonation(b.Id, b.Email, b.Name, b.Slug, AdminId);
+        await LogImpersonation(businessId: b.Id, customerAccountId: null, "ImpersonateBusiness");
 
         return Ok(new PlatformAdminImpersonateResponse(token));
     }
@@ -195,16 +195,16 @@ public class PlatformAdminController(
 
         var name = $"{c.Name} {c.FamilyName}".Trim();
         var token = customerJwt.GenerateImpersonation(c.Id, c.Phone, name, AdminId);
-        await LogImpersonation(barberId: null, customerAccountId: c.Id, "ImpersonateCustomer");
+        await LogImpersonation(businessId: null, customerAccountId: c.Id, "ImpersonateCustomer");
 
         return Ok(new PlatformAdminImpersonateResponse(token));
     }
 
-    private async Task LogImpersonation(string? barberId, string? customerAccountId, string action)
+    private async Task LogImpersonation(string? businessId, string? customerAccountId, string action)
     {
         db.ActivityLogs.Add(new ActivityLog
         {
-            BarberId = barberId,
+            BusinessId = businessId,
             CustomerAccountId = customerAccountId,
             ImpersonatedByPlatformAdminId = AdminId,
             Action = $"{nameof(PlatformAdminController)}.{action}",

@@ -6,7 +6,7 @@ public record CardcomLowProfileCreateParams(
     string SuccessRedirectUrl,
     string FailedRedirectUrl,
     string WebHookUrl,
-    string ReturnValue); // barber.Id -- echoed back so the webhook can resolve the barber directly
+    string ReturnValue); // business.Id -- echoed back so the webhook can resolve the business directly
 
 // ResponseCode/LowProfileId/Url are corroborated by multiple independent sources for Cardcom's
 // LowProfile/Create v11 endpoint.

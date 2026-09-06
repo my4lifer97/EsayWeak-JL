@@ -28,8 +28,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     private readonly bool _configureCardcom;
 
     public const string JwtSecret = "test-jwt-signing-secret-at-least-32-chars-long";
-    public const string JwtIssuer = "barbersaas-api-test";
-    public const string JwtAudience = "barbersaas-frontend-test";
+    public const string JwtIssuer = "businessesaas-api-test";
+    public const string JwtAudience = "businessesaas-frontend-test";
     public const string CronSecret = "test-cron-secret";
     public const string CardcomTerminalNumber = "1000";
     public const string CardcomApiName = "test-api-name";
@@ -58,7 +58,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Jwt__Audience", JwtAudience);
         Environment.SetEnvironmentVariable("CronSecret", CronSecret);
         // Matches WhatsAppControllerTests' TwilioToken constant -- one platform-owned Twilio
-        // account now signs/validates for every barber (see TwilioWhatsAppSender), so this env var
+        // account now signs/validates for every business (see TwilioWhatsAppSender), so this env var
         // is what WhatsAppController.Webhook checks inbound signatures against in tests.
         Environment.SetEnvironmentVariable("Twilio__AccountSid", "AC_test_sid");
         Environment.SetEnvironmentVariable("Twilio__AuthToken", "test_auth_token");

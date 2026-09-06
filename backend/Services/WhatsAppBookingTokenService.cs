@@ -11,11 +11,11 @@ public class WhatsAppBookingTokenService(AppDbContext db)
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromHours(24);
 
-    public async Task<WhatsAppBookingToken> CreateAsync(string barberId, string serviceId, string phone, string? profileName, string language = "EN")
+    public async Task<WhatsAppBookingToken> CreateAsync(string businessId, string serviceId, string phone, string? profileName, string language = "EN")
     {
         var token = new WhatsAppBookingToken
         {
-            BarberId = barberId,
+            BusinessId = businessId,
             ServiceId = serviceId,
             Phone = phone,
             ProfileName = profileName,

@@ -15,14 +15,14 @@ type Service = {
   id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
   photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; galleryPhotos: GalleryPhoto[]
 }
-type BarberInfo = {
+type BusinessInfo = {
   slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[]
   waitlistEnabled: boolean
 }
 type Slot = { start: string; end: string; available: boolean; appointmentId?: string }
 type Step = 1 | 2 | 3 | 4
 
-export default function BookingWizard({ barber }: { barber: BarberInfo }) {
+export default function BookingWizard({ business }: { business: BusinessInfo }) {
   const { user, isAuthenticated, language: lang } = useCustomerAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -50,13 +50,13 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
   const [joinedWaitlist, setJoinedWaitlist] = useState(false)
 
   // The customer's own language choice drives the UI everywhere, overriding this specific
-  // barber's configured storefront language.
+  // business's configured storefront language.
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
 
   async function fetchSlots(d: string, svc: Service) {
     setSlotsLoading(true); setSlots([])
-    const { data } = await customerApi.get(`/${barber.slug}/availability/full?date=${d}&serviceId=${svc.id}`)
+    const { data } = await customerApi.get(`/${business.slug}/availability/full?date=${d}&serviceId=${svc.id}`)
     setSlots(data.slots ?? [])
     setSlotsLoading(false)
   }
@@ -77,7 +77,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     if (!bookedSlot?.appointmentId) return
     setJoiningWaitlist(true)
     try {
-      await customerApi.post(`/${barber.slug}/waitlist/${bookedSlot.appointmentId}`)
+      await customerApi.post(`/${business.slug}/waitlist/${bookedSlot.appointmentId}`)
       setJoinedWaitlist(true)
     } finally { setJoiningWaitlist(false) }
   }
@@ -97,7 +97,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     const prefillTime = searchParams.get('time')
     if (!prefillServiceId) return
 
-    const svc = barber.services.find((s) => s.id === prefillServiceId)
+    const svc = business.services.find((s) => s.id === prefillServiceId)
     if (!svc) return
 
     setService(svc)
@@ -105,7 +105,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
 
     setDate(prefillDate)
     setStep(3)
-    customerApi.get(`/${barber.slug}/availability/full?date=${prefillDate}&serviceId=${svc.id}`).then(({ data }) => {
+    customerApi.get(`/${business.slug}/availability/full?date=${prefillDate}&serviceId=${svc.id}`).then(({ data }) => {
       const fetchedSlots: Slot[] = data.slots ?? []
       setSlots(fetchedSlots)
       const match = prefillTime && fetchedSlots.find((s) => s.start === prefillTime && s.available)
@@ -119,7 +119,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const { data } = await customerApi.post(`/${barber.slug}/appointments/photo`, formData)
+      const { data } = await customerApi.post(`/${business.slug}/appointments/photo`, formData)
       setUploadedPhotoUrl(data.url)
     } catch {
       setPhotoError(t(lang, 'photoUploadError'))
@@ -136,13 +136,13 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
     if (!service || !date || !slot || !photoSatisfied) return
     setConfirmLoading(true); setError('')
     try {
-      await customerApi.post(`/${barber.slug}/appointments`, {
+      await customerApi.post(`/${business.slug}/appointments`, {
         serviceId: service.id, date, startTime: slot.start,
         customerName: name, customerFamilyName: familyName, customerPhone: phone, notes: notes || undefined,
         galleryPhotoId: selectedGalleryPhotoId ?? undefined,
         customerPhotoUrl: uploadedPhotoUrl ?? undefined,
       })
-      navigate(`/${barber.slug}`)
+      navigate(`/${business.slug}`)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(msg ?? 'Booking failed. Please try again.')
@@ -151,7 +151,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
 
   const today = new Date()
   const calDays = Array.from({ length: 60 }, (_, i) => addDays(today, i))
-  const availableDays = calDays.filter((d) => barber.activeDays.includes(d.getDay()))
+  const availableDays = calDays.filter((d) => business.activeDays.includes(d.getDay()))
 
   return (
     <div className="min-h-screen bg-gray-950 text-white" dir={dir}>
@@ -172,13 +172,13 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
           <LanguageSwitcher />
         </div>
 
-        <h1 className="text-2xl font-bold mb-2">{barber.name}</h1>
+        <h1 className="text-2xl font-bold mb-2">{business.name}</h1>
 
         {step === 1 && (
           <div>
             <p className="text-gray-400 mb-6">{t(lang, 'selectService')}</p>
             <div className="space-y-3">
-              {barber.services.map((s) => (
+              {business.services.map((s) => (
                 <button key={s.id} onClick={() => {
                   setService(s); setSelectedGalleryPhotoId(null); setUploadedPhotoUrl(null); setPhotoError(''); setStep(2)
                 }}
@@ -332,7 +332,7 @@ export default function BookingWizard({ barber }: { barber: BarberInfo }) {
         <SlotBookedModal
           lang={lang}
           dir={dir}
-          waitlistEnabled={barber.waitlistEnabled}
+          waitlistEnabled={business.waitlistEnabled}
           joining={joiningWaitlist}
           joined={joinedWaitlist}
           onJoinWaitlist={joinWaitlist}

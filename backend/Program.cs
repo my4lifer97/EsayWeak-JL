@@ -35,7 +35,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(opt =>
 {
     opt.AddPolicy("CustomerOnly", p => p.RequireAuthenticatedUser().RequireClaim("type", "customer"));
-    opt.AddPolicy("BarberOnly", p => p.RequireAuthenticatedUser().RequireAssertion(ctx =>
+    opt.AddPolicy("BusinessOnly", p => p.RequireAuthenticatedUser().RequireAssertion(ctx =>
         ctx.User.FindFirst("type")?.Value != "customer"));
     opt.AddPolicy("PlatformAdminOnly", p => p.RequireAuthenticatedUser().RequireClaim("type", "platform_admin"));
 });

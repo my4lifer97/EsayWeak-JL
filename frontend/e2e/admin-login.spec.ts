@@ -2,16 +2,16 @@ import { test, expect, request } from '@playwright/test'
 
 const API = 'http://localhost:5280/api'
 
-test('barber can log in and land on the dashboard', async ({ page }) => {
+test('business can log in and land on the dashboard', async ({ page }) => {
   const slug = `e2e-admin-${Date.now()}`
   const email = `${slug}@example.com`
   const api = await request.newContext()
 
   const register = await api.post(`${API}/auth/register`, {
-    data: { name: 'E2E Admin Barber', email, password: 'password123', slug },
+    data: { name: 'E2E Admin Business', email, password: 'password123', slug },
   })
   const { devCode } = await register.json()
-  // Registration leaves the barber unverified; verify via API so this test exercises a normal
+  // Registration leaves the business unverified; verify via API so this test exercises a normal
   // login, not the separate verify-code UI flow.
   await api.post(`${API}/auth/verify-email`, { data: { email, code: devCode } })
 
@@ -22,7 +22,7 @@ test('barber can log in and land on the dashboard', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/admin\/dashboard$/)
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible()
-  await expect(page.getByText('E2E Admin Barber')).toBeVisible()
+  await expect(page.getByText('E2E Admin Business')).toBeVisible()
 })
 
 test('shows an error message for wrong credentials', async ({ page }) => {

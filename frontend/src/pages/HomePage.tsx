@@ -68,7 +68,7 @@ export default function HomePage() {
         <p className="text-gray-400 mb-10">{t(lang, 'homePricingSubtitle')}</p>
         <div className="bg-gray-900 border border-blue-600/40 rounded-2xl p-8">
           <div className="text-5xl font-bold mb-2">₪120<span className="text-xl text-gray-400 font-normal">{t(lang, 'homePricingPerMonth')}</span></div>
-          <p className="text-gray-400 mb-8">{t(lang, 'homePricingPerBarber')}</p>
+          <p className="text-gray-400 mb-8">{t(lang, 'homePricingPerBusiness')}</p>
           <ul className="text-start space-y-3 mb-8">
             {pricingItems.map((item) => (
               <li key={item} className="flex items-center gap-3 text-sm">
