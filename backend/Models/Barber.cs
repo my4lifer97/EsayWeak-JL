@@ -7,6 +7,9 @@ public enum SubStatus { TRIAL, ACTIVE, EXPIRED }
 public enum AppointmentStatus { CONFIRMED, CANCELLED, COMPLETED }
 public enum ServicePhotoMode { None, OwnerGallery, CustomerUpload, Both }
 public enum WaitlistEntryStatus { WAITING, NOTIFIED, RESOLVED }
+// Coarse business-level classification. Appointment: scheduling only. Showcase: a
+// product/service catalog with no booking. Both: mixes bookable and non-bookable items.
+public enum BusinessModel { Appointment, Showcase, Both }
 
 public class Barber
 {
@@ -56,6 +59,12 @@ public class Barber
     public string? ChatbotWelcomeMessage { get; set; }
     public string? ChatbotConfirmationMessage { get; set; }
 
+    // Nullable so existing/legacy rows can be backfilled to a seeded lookup row rather than
+    // requiring every tenant to have one from day one.
+    public string? BusinessTypeId { get; set; }
+    public BusinessModel BusinessModel { get; set; } = BusinessModel.Appointment;
+
+    public BusinessTypeDefinition? BusinessType { get; set; }
     public ICollection<Service> Services { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];
@@ -64,6 +73,20 @@ public class Barber
     public ICollection<Customer> Customers { get; set; } = [];
     public ICollection<Follow> Follows { get; set; } = [];
     public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
+}
+
+// Extensible lookup of business verticals ("barber", "dentist", "car_dealer", ...) -- adding a
+// new vertical is a data insert here, not a deploy, unlike a hardcoded enum.
+public class BusinessTypeDefinition
+{
+    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Key { get; set; } = "";
+    public string DisplayNameEn { get; set; } = "";
+    public string DisplayNameAr { get; set; } = "";
+    public string DisplayNameHe { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+
+    public ICollection<Barber> Barbers { get; set; } = [];
 }
 
 public class Service

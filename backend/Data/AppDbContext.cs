@@ -6,6 +6,7 @@ namespace BarberSaas.Api.Data;
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     public DbSet<Barber> Barbers => Set<Barber>();
+    public DbSet<BusinessTypeDefinition> BusinessTypeDefinitions => Set<BusinessTypeDefinition>();
     public DbSet<Service> Services => Set<Service>();
     public DbSet<ServiceGalleryPhoto> ServiceGalleryPhotos => Set<ServiceGalleryPhoto>();
     public DbSet<WorkingHours> WorkingHours => Set<WorkingHours>();
@@ -31,6 +32,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => x.Email).IsUnique();
         b.Entity<Barber>()
             .HasIndex(x => x.Slug).IsUnique();
+        b.Entity<Barber>()
+            .HasIndex(x => x.BusinessTypeId);
+        b.Entity<Barber>()
+            .HasIndex(x => x.BusinessModel);
+
+        b.Entity<BusinessTypeDefinition>()
+            .HasIndex(x => x.Key).IsUnique();
 
         b.Entity<WorkingHours>()
             .HasIndex(x => new { x.BarberId, x.DayOfWeek }).IsUnique();
@@ -132,6 +140,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Barber>()
             .Property(x => x.ChatbotEnabled)
             .HasDefaultValue(true);
+        b.Entity<Barber>()
+            .Property(x => x.BusinessModel)
+            .HasConversion<string>()
+            .HasDefaultValue(BusinessModel.Appointment);
+
+        b.Entity<Barber>()
+            .HasOne(x => x.BusinessType).WithMany(x => x.Barbers)
+            .HasForeignKey(x => x.BusinessTypeId).OnDelete(DeleteBehavior.SetNull);
 
         b.Entity<Service>()
             .HasOne(x => x.Barber).WithMany(x => x.Services)
