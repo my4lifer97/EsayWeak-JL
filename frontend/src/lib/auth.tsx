@@ -1,14 +1,15 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from './api'
 
-interface User { id: string; name: string; email: string; slug: string }
+interface User { id: string; name: string; email: string; slug: string; mustChangePassword: boolean }
 interface AuthCtx {
   user: User | null
-  login: (email: string, password: string) => Promise<void>
-  verifyEmail: (email: string, code: string) => Promise<void>
+  login: (email: string, password: string) => Promise<User>
+  verifyEmail: (email: string, code: string) => Promise<User>
   resendVerification: (email: string) => Promise<{ devCode?: string }>
   forgotPassword: (email: string) => Promise<{ devCode?: string }>
-  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<User>
+  changePassword: (newPassword: string) => Promise<User>
   logout: () => void
   isAuthenticated: boolean
   language: string
@@ -41,17 +42,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(email: string, password: string) {
     const { data } = await api.post('/auth/login', { email, password })
     localStorage.setItem('token', data.token)
-    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug }
+    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
     localStorage.setItem('user', JSON.stringify(u))
     setUser(u)
+    return u
   }
 
   async function verifyEmail(email: string, code: string) {
     const { data } = await api.post('/auth/verify-email', { email, code })
     localStorage.setItem('token', data.token)
-    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug }
+    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
     localStorage.setItem('user', JSON.stringify(u))
     setUser(u)
+    return u
   }
 
   async function resendVerification(email: string) {
@@ -67,9 +70,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function resetPassword(email: string, code: string, newPassword: string) {
     const { data } = await api.post('/auth/reset-password', { email, code, newPassword })
     localStorage.setItem('token', data.token)
-    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug }
+    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
     localStorage.setItem('user', JSON.stringify(u))
     setUser(u)
+    return u
+  }
+
+  // Used to clear a pending MustChangePassword (an admin-issued temp password) -- must remain
+  // reachable while that lockout is in effect, see backend's AllowWithPendingPasswordChange.
+  async function changePassword(newPassword: string) {
+    const { data } = await api.patch('/auth/change-password', { newPassword })
+    localStorage.setItem('token', data.token)
+    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
+    localStorage.setItem('user', JSON.stringify(u))
+    setUser(u)
+    return u
   }
 
   function logout() {
@@ -79,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, forgotPassword, resetPassword, logout, isAuthenticated: !!user, language, setLang }}>
+    <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, forgotPassword, resetPassword, changePassword, logout, isAuthenticated: !!user, language, setLang }}>
       {children}
     </AuthContext.Provider>
   )

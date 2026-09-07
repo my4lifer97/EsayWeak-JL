@@ -7,6 +7,7 @@ import { PlatformAdminAuthProvider } from './lib/platformAdminAuth'
 import LoginPage from './pages/admin/LoginPage'
 import RegisterPage from './pages/admin/RegisterPage'
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
+import SetPasswordPage from './pages/admin/SetPasswordPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import AppointmentsPage from './pages/admin/AppointmentsPage'
 import RecurringAppointmentsPage from './pages/admin/RecurringAppointmentsPage'
@@ -24,11 +25,13 @@ import AppointmentPage from './pages/public/AppointmentPage'
 import WhatsAppLandingPage from './pages/public/WhatsAppLandingPage'
 import BrowseBusinessesPage from './pages/public/BrowseBusinessesPage'
 import MyBookingsPage from './pages/public/MyBookingsPage'
+import RequestBusinessAccountPage from './pages/public/RequestBusinessAccountPage'
 import HomePage from './pages/HomePage'
 import PlatformAdminLoginPage from './pages/platform-admin/LoginPage'
 import PlatformAdminDashboardPage from './pages/platform-admin/DashboardPage'
 import PlatformAdminBusinessDetailPage from './pages/platform-admin/BusinessDetailPage'
 import PlatformAdminCustomerDetailPage from './pages/platform-admin/CustomerDetailPage'
+import PlatformAdminPendingRequestsPage from './pages/platform-admin/PendingRequestsPage'
 
 const queryClient = new QueryClient()
 
@@ -45,7 +48,11 @@ export default function App() {
                 <Route path="/admin/login" element={<LoginPage />} />
                 <Route path="/admin/register" element={<RegisterPage />} />
                 <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/request-business-account" element={<RequestBusinessAccountPage />} />
                 <Route element={<ProtectedRoute />}>
+                  {/* Outside AdminLayout deliberately -- a business with a pending temp password
+                      would just see nav links to pages that all 403 until this is done. */}
+                  <Route path="/admin/set-password" element={<SetPasswordPage />} />
                   <Route element={<AdminLayout />}>
                     <Route path="/admin/dashboard" element={<DashboardPage />} />
                     <Route path="/admin/appointments" element={<AppointmentsPage />} />
@@ -73,6 +80,7 @@ export default function App() {
                   <Route path="/platform-admin" element={<PlatformAdminDashboardPage />} />
                   <Route path="/platform-admin/businesses/:id" element={<PlatformAdminBusinessDetailPage />} />
                   <Route path="/platform-admin/customers/:id" element={<PlatformAdminCustomerDetailPage />} />
+                  <Route path="/platform-admin/requests" element={<PlatformAdminPendingRequestsPage />} />
                 </Route>
               </Routes>
             </BrowserRouter>

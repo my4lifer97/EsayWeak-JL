@@ -20,8 +20,8 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await login(email, password)
-      navigate('/admin/dashboard')
+      const u = await login(email, password)
+      navigate(u.mustChangePassword ? '/admin/set-password' : '/admin/dashboard')
     } catch (err: unknown) {
       const resp = (err as { response?: { status?: number; data?: { emailNotVerified?: boolean } } })?.response
       if (resp?.status === 403 && resp.data?.emailNotVerified) {
@@ -150,6 +150,10 @@ export default function LoginPage() {
         <p className="text-gray-500 text-center mt-6 text-sm">
           No account?{' '}
           <Link to="/admin/register" className="text-blue-400 hover:underline">Create one</Link>
+        </p>
+        <p className="text-gray-500 text-center mt-2 text-sm">
+          Prefer we set it up for you?{' '}
+          <Link to="/request-business-account" className="text-blue-400 hover:underline">Request an account</Link>
         </p>
       </div>
     </div>

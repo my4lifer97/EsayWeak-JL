@@ -25,6 +25,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WaitlistEntry> WaitlistEntries => Set<WaitlistEntry>();
     public DbSet<PlatformAdmin> PlatformAdmins => Set<PlatformAdmin>();
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
+    public DbSet<BusinessOwnerRequest> BusinessOwnerRequests => Set<BusinessOwnerRequest>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -83,6 +84,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => new { x.BusinessId, x.CreatedAt });
         b.Entity<ActivityLog>()
             .HasIndex(x => new { x.CustomerAccountId, x.CreatedAt });
+
+        b.Entity<BusinessOwnerRequest>()
+            .HasIndex(x => x.Email);
+        b.Entity<BusinessOwnerRequest>()
+            .HasIndex(x => x.Status);
 
         // Closes a pre-existing TOCTOU gap (check-then-insert, no DB-level guard): only one
         // CONFIRMED appointment may occupy a given business/date/start-time slot. Filtered so
@@ -149,6 +155,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .Property(x => x.BusinessModel)
             .HasConversion<string>()
             .HasDefaultValue(BusinessModel.Appointment);
+        // Explicit DB-level default -- see the ChatbotEnabled comment above; every pre-existing
+        // business predates this flag and was never issued a system-generated temp password.
+        b.Entity<Business>()
+            .Property(x => x.MustChangePassword)
+            .HasDefaultValue(false);
+        b.Entity<BusinessOwnerRequest>()
+            .Property(x => x.Status)
+            .HasConversion<string>();
 
         b.Entity<Business>()
             .HasOne(x => x.BusinessType).WithMany(x => x.Businesses)
@@ -240,5 +254,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<ActivityLog>()
             .HasOne(x => x.ImpersonatedByPlatformAdmin).WithMany()
             .HasForeignKey(x => x.ImpersonatedByPlatformAdminId).OnDelete(DeleteBehavior.SetNull);
+
+        // All three relations below are SetNull: a request is a historical record of how a
+        // business/review came to be, and must never block deleting the type/admin/business it
+        // references.
+        b.Entity<BusinessOwnerRequest>()
+            .HasOne(x => x.BusinessType).WithMany()
+            .HasForeignKey(x => x.BusinessTypeId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<BusinessOwnerRequest>()
+            .HasOne(x => x.ReviewedByPlatformAdmin).WithMany()
+            .HasForeignKey(x => x.ReviewedByPlatformAdminId).OnDelete(DeleteBehavior.SetNull);
+        b.Entity<BusinessOwnerRequest>()
+            .HasOne(x => x.CreatedBusiness).WithMany()
+            .HasForeignKey(x => x.CreatedBusinessId).OnDelete(DeleteBehavior.SetNull);
     }
 }

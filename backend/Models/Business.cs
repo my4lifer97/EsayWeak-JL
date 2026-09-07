@@ -65,6 +65,12 @@ public class Business
     public BusinessModel BusinessModel { get; set; } = BusinessModel.Appointment;
 
     public BusinessTypeDefinition? BusinessType { get; set; }
+
+    // True for an account created by PlatformAdminController.ApproveBusinessOwnerRequest with a
+    // system-generated temp password -- RequirePasswordChangeFilter blocks every BusinessOnly
+    // action except AuthController.ChangePassword until this is cleared.
+    public bool MustChangePassword { get; set; } = false;
+
     public ICollection<Item> Items { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];

@@ -23,6 +23,13 @@ api.interceptors.response.use(
       localStorage.removeItem('user')
       window.location.href = '/admin/login'
     }
+    // An admin-issued temp password that hasn't been replaced yet -- every BusinessOnly action
+    // 403s with this flag except change-password itself. Catches a session left open in an old
+    // tab from before the redirect below already happened, or reached without going through
+    // LoginPage's own check.
+    if (err.response?.status === 403 && err.response?.data?.mustChangePassword && window.location.pathname !== '/admin/set-password') {
+      window.location.href = '/admin/set-password'
+    }
     return Promise.reject(err)
   }
 )

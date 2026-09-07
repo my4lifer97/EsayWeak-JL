@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
@@ -198,6 +199,147 @@ public class PlatformAdminController(
         await LogImpersonation(businessId: null, customerAccountId: c.Id, "ImpersonateCustomer");
 
         return Ok(new PlatformAdminImpersonateResponse(token));
+    }
+
+    // ─── Business owner requests ───────────────────────────────────────────
+
+    [HttpGet("business-owner-requests")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> ListBusinessOwnerRequests([FromQuery] string? status)
+    {
+        if (!Enum.TryParse<BusinessOwnerRequestStatus>(status, ignoreCase: true, out var parsedStatus))
+            parsedStatus = BusinessOwnerRequestStatus.Pending;
+
+        var requests = await db.BusinessOwnerRequests
+            .Where(r => r.Status == parsedStatus)
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new BusinessOwnerRequestDto(
+                r.Id, r.BusinessName, r.OwnerName, r.Email, r.Phone,
+                r.BusinessTypeId, r.BusinessType != null ? r.BusinessType.DisplayNameEn : null,
+                r.Status.ToString(), r.RejectionNote, r.CreatedAt, r.ReviewedAt,
+                r.CreatedBusiness != null ? r.CreatedBusiness.Slug : null))
+            .ToListAsync();
+
+        return Ok(requests);
+    }
+
+    [HttpGet("business-owner-requests/{id}")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> GetBusinessOwnerRequest(string id)
+    {
+        var r = await db.BusinessOwnerRequests
+            .Include(x => x.BusinessType)
+            .Include(x => x.CreatedBusiness)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound();
+
+        return Ok(new BusinessOwnerRequestDto(
+            r.Id, r.BusinessName, r.OwnerName, r.Email, r.Phone,
+            r.BusinessTypeId, r.BusinessType?.DisplayNameEn, r.Status.ToString(), r.RejectionNote,
+            r.CreatedAt, r.ReviewedAt, r.CreatedBusiness?.Slug));
+    }
+
+    [HttpPost("business-owner-requests/{id}/approve")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> ApproveBusinessOwnerRequest(string id, [FromBody] ApproveBusinessOwnerRequestRequest req)
+    {
+        var request = await db.BusinessOwnerRequests.FindAsync(id);
+        if (request is null) return NotFound();
+        if (request.Status != BusinessOwnerRequestStatus.Pending)
+            return BadRequest(new { error = "This request has already been reviewed." });
+
+        if (!SlugValidator.IsValidFormat(req.Slug))
+            return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (min 3 chars)" });
+        if (SlugValidator.IsReserved(req.Slug))
+            return BadRequest(new { error = "This URL is reserved" });
+        if (await db.Businesses.AnyAsync(b => b.Slug == req.Slug))
+            return BadRequest(new { error = "URL already taken" });
+        // Re-check at approval time too -- the requester's email could have registered a real
+        // account through the self-service flow in the time since this request was submitted.
+        if (await db.Businesses.AnyAsync(b => b.Email == request.Email))
+            return BadRequest(new { error = "This email already has an account." });
+
+        var tempPassword = GenerateTempPassword();
+        var business = new Business
+        {
+            Name = request.BusinessName,
+            Email = request.Email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword),
+            Slug = req.Slug,
+            TrialEndsAt = DateTime.UtcNow.AddDays(30),
+            // The admin already vetted this request directly -- no self-service OTP loop needed.
+            EmailVerified = true,
+            BusinessTypeId = request.BusinessTypeId,
+            MustChangePassword = true,
+        };
+        db.Businesses.Add(business);
+
+        // Same default-schedule seeding as AuthController.Register -- new businesses default to
+        // BusinessModel.Appointment, so this always runs today, but stays guarded for when this
+        // flow can accept a Showcase business type too.
+        if (business.BusinessModel != BusinessModel.Showcase)
+        {
+            var defaultHours = new[] { 1, 2, 3, 4, 5 }.Select(day => new WorkingHours
+            {
+                BusinessId = business.Id,
+                DayOfWeek = day,
+                StartTime = "09:00",
+                EndTime = "18:00",
+                IsActive = true,
+            });
+            db.WorkingHours.AddRange(defaultHours);
+        }
+
+        request.Status = BusinessOwnerRequestStatus.Approved;
+        request.ReviewedAt = DateTime.UtcNow;
+        request.ReviewedByPlatformAdminId = AdminId;
+        request.CreatedBusinessId = business.Id;
+        await db.SaveChangesAsync();
+
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = business.Id,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{nameof(ApproveBusinessOwnerRequest)}",
+            Description = $"Account created from request by {request.OwnerName} ({request.Email})",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync();
+
+        // The only place this plaintext value ever exists outside the admin's own head -- never
+        // logged, never stored (only the bcrypt hash is persisted).
+        return Ok(new ApproveBusinessOwnerRequestResponse(business.Id, business.Slug, tempPassword));
+    }
+
+    [HttpPost("business-owner-requests/{id}/reject")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> RejectBusinessOwnerRequest(string id, [FromBody] RejectBusinessOwnerRequestRequest req)
+    {
+        var request = await db.BusinessOwnerRequests.FindAsync(id);
+        if (request is null) return NotFound();
+        if (request.Status != BusinessOwnerRequestStatus.Pending)
+            return BadRequest(new { error = "This request has already been reviewed." });
+
+        request.Status = BusinessOwnerRequestStatus.Rejected;
+        request.RejectionNote = req.Note;
+        request.ReviewedAt = DateTime.UtcNow;
+        request.ReviewedByPlatformAdminId = AdminId;
+        await db.SaveChangesAsync();
+
+        return Ok(new { ok = true });
+    }
+
+    // 12 characters from an alphabet that excludes visually-ambiguous characters (0/O, 1/l/I) --
+    // this is read once by a human off a screen and typed/pasted elsewhere, not entered
+    // programmatically, so ambiguity costs real support friction.
+    private static string GenerateTempPassword()
+    {
+        const string alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+        var bytes = RandomNumberGenerator.GetBytes(12);
+        return new string(bytes.Select(b => alphabet[b % alphabet.Length]).ToArray());
     }
 
     private async Task LogImpersonation(string? businessId, string? customerAccountId, string action)

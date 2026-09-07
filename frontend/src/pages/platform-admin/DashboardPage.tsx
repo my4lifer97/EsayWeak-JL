@@ -27,6 +27,7 @@ export default function PlatformAdminDashboardPage() {
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-2xl font-bold">Platform Admin</h1>
           <div className="flex items-center gap-4 text-sm text-gray-400">
+            <Link to="/platform-admin/requests" className="hover:text-white transition-colors">Pending requests</Link>
             <span>{user?.name}</span>
             <button onClick={logout} className="hover:text-white transition-colors">Sign out</button>
           </div>

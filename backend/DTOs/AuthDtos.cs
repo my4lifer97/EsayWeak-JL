@@ -2,7 +2,8 @@ namespace BarberSaas.Api.DTOs;
 
 public record RegisterRequest(string Name, string Email, string Password, string Slug);
 public record LoginRequest(string Email, string Password);
-public record LoginResponse(string Token, string Id, string Name, string Email, string Slug);
+public record LoginResponse(string Token, string Id, string Name, string Email, string Slug, bool MustChangePassword = false);
+public record ChangePasswordRequest(string NewPassword);
 public record VerifyEmailRequest(string Email, string Code);
 public record ResendVerificationRequest(string Email);
 public record ForgotPasswordRequest(string Email);
@@ -124,3 +125,16 @@ public record PlatformAdminImpersonateResponse(string Token);
 public record PlatformAdminActivityLogDto(
     string Id, string Action, string Description, string Method, string Path,
     int StatusCode, string? IpAddress, DateTime CreatedAt, bool Impersonated);
+
+public record BusinessTypeDto(string Id, string Key, string DisplayNameEn, string DisplayNameAr, string DisplayNameHe);
+
+public record CreateBusinessOwnerRequestRequest(string BusinessName, string OwnerName, string Email, string Phone, string? BusinessTypeId);
+
+public record BusinessOwnerRequestDto(
+    string Id, string BusinessName, string OwnerName, string Email, string Phone,
+    string? BusinessTypeId, string? BusinessTypeName, string Status, string? RejectionNote,
+    DateTime CreatedAt, DateTime? ReviewedAt, string? CreatedBusinessSlug);
+
+public record ApproveBusinessOwnerRequestRequest(string Slug);
+public record ApproveBusinessOwnerRequestResponse(string BusinessId, string Slug, string TempPassword);
+public record RejectBusinessOwnerRequestRequest(string? Note);

@@ -9,7 +9,11 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers(opt => opt.Filters.Add<ActivityLogFilter>());
+builder.Services.AddControllers(opt =>
+{
+    opt.Filters.Add<ActivityLogFilter>();
+    opt.Filters.Add<RequirePasswordChangeFilter>();
+});
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 

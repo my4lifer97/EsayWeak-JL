@@ -1,7 +1,10 @@
+using System.Security.Claims;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
+using BarberSaas.Api.Filters;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,9 +14,6 @@ namespace BarberSaas.Api.Controllers;
 [Route("api/auth")]
 public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailSender, IWebHostEnvironment env, ILogger<AuthController> logger) : ControllerBase
 {
-    private static readonly string[] ReservedSlugs =
-        ["admin", "api", "login", "register", "cron", "whatsapp", "_next", "favicon", "browse", "account"];
-
     private const int EmailOtpCooldownSeconds = 45;
     private const int EmailOtpMaxPerHour = 5;
     private const int EmailOtpMaxAttempts = 5;
@@ -28,9 +28,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 6)
             return BadRequest(new { error = "Password must be at least 6 characters" });
-        if (!System.Text.RegularExpressions.Regex.IsMatch(req.Slug, @"^[a-z0-9-]+$") || req.Slug.Length < 3)
+        if (!SlugValidator.IsValidFormat(req.Slug))
             return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (min 3 chars)" });
-        if (ReservedSlugs.Contains(req.Slug))
+        if (SlugValidator.IsReserved(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
 
         if (await db.Businesses.AnyAsync(b => b.Email == req.Email))
@@ -94,8 +94,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (!business.EmailVerified)
             return StatusCode(403, new { error = "Please verify your email before signing in.", emailNotVerified = true });
 
-        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
-        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.MustChangePassword);
+        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug, business.MustChangePassword));
     }
 
     [HttpPost("resend-verification")]
@@ -162,8 +162,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         business.EmailVerified = true;
         await db.SaveChangesAsync();
 
-        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
-        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.MustChangePassword);
+        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug, business.MustChangePassword));
     }
 
     [HttpPost("forgot-password")]
@@ -227,8 +227,33 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
         entry.Consumed = true;
         business.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        // Proving email ownership via OTP and setting a real password accomplishes the same thing
+        // as ChangePassword -- an admin-issued temp password no longer needs to be replaced.
+        business.MustChangePassword = false;
         await db.SaveChangesAsync();
 
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
+        return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
+    }
+
+    [HttpPatch("change-password")]
+    [Authorize(Policy = "BusinessOnly")]
+    [AllowWithPendingPasswordChange]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
+            return BadRequest(new { error = "Password must be at least 6 characters" });
+
+        var businessId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        var business = await db.Businesses.FindAsync(businessId);
+        if (business is null) return NotFound();
+
+        business.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+        business.MustChangePassword = false;
+        await db.SaveChangesAsync();
+
+        // Fresh token without the mustChangePassword claim, so the client can keep using it
+        // immediately without a second login round-trip.
         var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }

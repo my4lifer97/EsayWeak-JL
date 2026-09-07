@@ -7,15 +7,19 @@ namespace BarberSaas.Api.Services;
 
 public class JwtService(IConfiguration config)
 {
-    public string Generate(string id, string email, string name, string slug)
+    // mustChangePassword should reflect the business's real Business.MustChangePassword value --
+    // RequirePasswordChangeFilter reads this claim to block every BusinessOnly action except
+    // AuthController.ChangePassword until it's cleared.
+    public string Generate(string id, string email, string name, string slug, bool mustChangePassword = false)
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(JwtRegisteredClaimNames.Sub, id),
-            new Claim(JwtRegisteredClaimNames.Email, email),
-            new Claim(JwtRegisteredClaimNames.Name, name),
-            new Claim("slug", slug),
+            new(JwtRegisteredClaimNames.Sub, id),
+            new(JwtRegisteredClaimNames.Email, email),
+            new(JwtRegisteredClaimNames.Name, name),
+            new("slug", slug),
         };
+        if (mustChangePassword) claims.Add(new Claim("mustChangePassword", "true"));
         return BuildToken(claims, DateTime.UtcNow.AddDays(30));
     }
 
