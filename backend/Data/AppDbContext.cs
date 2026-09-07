@@ -33,6 +33,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => x.Email).IsUnique();
         b.Entity<Business>()
             .HasIndex(x => x.Slug).IsUnique();
+        // Partial unique index: Postgres treats NULLs as distinct, so the many self-service /
+        // legacy businesses with no username don't collide, while every generated username is
+        // guaranteed unique at the DB level (not just in application code).
+        b.Entity<Business>()
+            .HasIndex(x => x.Username).IsUnique();
         b.Entity<Business>()
             .HasIndex(x => x.BusinessTypeId);
         b.Entity<Business>()

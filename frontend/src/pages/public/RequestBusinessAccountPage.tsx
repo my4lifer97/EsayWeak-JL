@@ -5,12 +5,18 @@ import { api } from '../../lib/api'
 
 type BusinessType = { id: string; key: string; displayNameEn: string }
 
+// First name / family name feed the auto-generated login username, so they must be English letters.
+const ENGLISH_NAME = /^[A-Za-z][A-Za-z '-]*$/
+
 export default function RequestBusinessAccountPage() {
   const [businessName, setBusinessName] = useState('')
-  const [ownerName, setOwnerName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [familyName, setFamilyName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [businessTypeId, setBusinessTypeId] = useState('')
+  const [description, setDescription] = useState('')
+  const [systemNeeds, setSystemNeeds] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -20,14 +26,31 @@ export default function RequestBusinessAccountPage() {
     queryFn: () => api.get('/business-types').then((r) => r.data),
   })
 
+  const nameError =
+    (firstName && !ENGLISH_NAME.test(firstName.trim())) || (familyName && !ENGLISH_NAME.test(familyName.trim()))
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
+    if (!ENGLISH_NAME.test(firstName.trim()) || !ENGLISH_NAME.test(familyName.trim())) {
+      setError('First name and family name must be in English letters.')
+      return
+    }
+    if (!businessTypeId) {
+      setError('Please choose a business type.')
+      return
+    }
     setLoading(true)
     try {
       await api.post('/business-owner-requests', {
-        businessName, ownerName, email, phone,
-        businessTypeId: businessTypeId || null,
+        businessName,
+        ownerFirstName: firstName.trim(),
+        ownerFamilyName: familyName.trim(),
+        email,
+        phone,
+        businessTypeId,
+        businessDescription: description || null,
+        systemNeeds: systemNeeds || null,
       })
       setSubmitted(true)
     } catch (err: unknown) {
@@ -39,60 +62,89 @@ export default function RequestBusinessAccountPage() {
     }
   }
 
+  const inputClass =
+    'w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-md py-10">
         <h1 className="text-2xl font-bold text-white mb-2 text-center">Request a business account</h1>
         <p className="text-gray-400 text-center mb-8">
-          Tell us about your business and we'll be in touch to set up your account.
+          Tell us about your business. We review every request and email your login once approved.
         </p>
 
         {submitted ? (
           <div className="bg-green-900/30 border border-green-700/50 rounded-xl px-4 py-6 text-center">
             <p className="text-green-300 font-medium mb-2">Thanks — your request has been submitted.</p>
-            <p className="text-gray-400 text-sm">We'll review it and reach out with your account details.</p>
+            <p className="text-gray-400 text-sm">
+              Once an admin approves it, you'll get an email with your username and a temporary password.
+            </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">
-                {error}
-              </div>
+              <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">{error}</div>
             )}
-            <input
-              required value={businessName} onChange={(e) => setBusinessName(e.target.value)}
-              placeholder="Business name"
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <input
-              required value={ownerName} onChange={(e) => setOwnerName(e.target.value)}
-              placeholder="Your name"
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <input
-              type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <input
-              required value={phone} onChange={(e) => setPhone(e.target.value)}
-              placeholder="Phone"
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <select
-              value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Business type (optional)</option>
-              {businessTypes?.map((t) => (
-                <option key={t.id} value={t.id}>{t.displayNameEn}</option>
-              ))}
-            </select>
+
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Owner</h2>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    required value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name" autoComplete="given-name" className={inputClass}
+                  />
+                  <input
+                    required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
+                    placeholder="Family name" autoComplete="family-name" className={inputClass}
+                  />
+                </div>
+                <p className={`text-xs ${nameError ? 'text-red-400' : 'text-gray-500'}`}>
+                  Enter both names in English — they're used to create your login username.
+                </p>
+                <input
+                  type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Active email address" autoComplete="email" className={inputClass}
+                />
+                <input
+                  required value={phone} onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Phone number" autoComplete="tel" className={inputClass}
+                />
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Business</h2>
+              <div className="space-y-3">
+                <input
+                  required value={businessName} onChange={(e) => setBusinessName(e.target.value)}
+                  placeholder="Business name" className={inputClass}
+                />
+                <select
+                  required value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Business type…</option>
+                  {businessTypes?.map((t) => (
+                    <option key={t.id} value={t.id}>{t.displayNameEn}</option>
+                  ))}
+                </select>
+                <textarea
+                  value={description} onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe your business" rows={3} className={inputClass}
+                />
+                <textarea
+                  value={systemNeeds} onChange={(e) => setSystemNeeds(e.target.value)}
+                  placeholder="What do you want to use the system for?" rows={3} className={inputClass}
+                />
+              </div>
+            </div>
+
             <button
-              type="submit" disabled={loading}
+              type="submit" disabled={loading || !!nameError}
               className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
             >
-              {loading ? '...' : 'Submit request'}
+              {loading ? '…' : 'Submit request'}
             </button>
           </form>
         )}

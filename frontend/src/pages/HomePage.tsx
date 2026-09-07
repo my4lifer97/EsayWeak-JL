@@ -34,7 +34,7 @@ export default function HomePage() {
         <div className="flex items-center gap-4">
           <LanguageSwitcher />
           <Link to="/admin/login" className="text-gray-400 hover:text-white text-sm transition-colors">{t(lang, 'homeSignIn')}</Link>
-          <Link to="/admin/register" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t(lang, 'homeGetStarted')}</Link>
+          <Link to="/request-business-account" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t(lang, 'homeGetStarted')}</Link>
         </div>
       </nav>
 
@@ -45,7 +45,7 @@ export default function HomePage() {
         <h1 className="text-5xl font-bold leading-tight mb-6">{t(lang, 'homeHeadline1')}<br /><span className="text-blue-400">{t(lang, 'homeHeadline2')}</span></h1>
         <p className="text-gray-400 text-xl mb-10 leading-relaxed">{t(lang, 'homeSubheadline')}</p>
         <div className="flex gap-4 justify-center flex-wrap">
-          <Link to="/admin/register" className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-4 rounded-2xl text-lg transition-colors">{t(lang, 'homeStartTrial')}</Link>
+          <Link to="/request-business-account" className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-4 rounded-2xl text-lg transition-colors">{t(lang, 'homeStartTrial')}</Link>
           <Link to="/admin/login" className="bg-gray-800 hover:bg-gray-700 text-white font-semibold px-8 py-4 rounded-2xl text-lg transition-colors">{t(lang, 'homeSignIn')}</Link>
         </div>
       </section>
@@ -77,7 +77,7 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
-          <Link to="/admin/register" className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors">
+          <Link to="/request-business-account" className="block w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-colors">
             {t(lang, 'homePricingCta')}
           </Link>
         </div>

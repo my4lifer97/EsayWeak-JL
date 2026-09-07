@@ -128,13 +128,17 @@ public record PlatformAdminActivityLogDto(
 
 public record BusinessTypeDto(string Id, string Key, string DisplayNameEn, string DisplayNameAr, string DisplayNameHe);
 
-public record CreateBusinessOwnerRequestRequest(string BusinessName, string OwnerName, string Email, string Phone, string? BusinessTypeId);
+public record CreateBusinessOwnerRequestRequest(
+    string BusinessName, string OwnerFirstName, string OwnerFamilyName, string Email, string Phone,
+    string BusinessTypeId, string? BusinessDescription, string? SystemNeeds);
 
 public record BusinessOwnerRequestDto(
-    string Id, string BusinessName, string OwnerName, string Email, string Phone,
-    string? BusinessTypeId, string? BusinessTypeName, string Status, string? RejectionNote,
-    DateTime CreatedAt, DateTime? ReviewedAt, string? CreatedBusinessSlug);
+    string Id, string BusinessName, string OwnerFirstName, string OwnerFamilyName, string Email, string Phone,
+    string? BusinessTypeId, string? BusinessTypeName, string? BusinessDescription, string? SystemNeeds,
+    string Status, string? RejectionNote,
+    DateTime CreatedAt, DateTime? ReviewedAt, string? CreatedBusinessSlug, string? CreatedUsername);
 
 public record ApproveBusinessOwnerRequestRequest(string Slug);
-public record ApproveBusinessOwnerRequestResponse(string BusinessId, string Slug, string TempPassword);
+public record ApproveBusinessOwnerRequestResponse(
+    string BusinessId, string Slug, string Username, string TempPassword, bool EmailSent);
 public record RejectBusinessOwnerRequestRequest(string? Note);

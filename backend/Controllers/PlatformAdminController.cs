@@ -13,7 +13,8 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/platform-admin")]
 public class PlatformAdminController(
-    AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt) : ControllerBase
+    AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt,
+    IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger) : ControllerBase
 {
     private string AdminId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -203,21 +204,19 @@ public class PlatformAdminController(
 
     // ─── Business owner requests ───────────────────────────────────────────
 
+    // status: "Pending" | "Approved" | "Rejected" | "All" (or omitted) -- omitted/unrecognized
+    // defaults to All so the dashboard can show the full history, not just the queue.
     [HttpGet("business-owner-requests")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> ListBusinessOwnerRequests([FromQuery] string? status)
     {
-        if (!Enum.TryParse<BusinessOwnerRequestStatus>(status, ignoreCase: true, out var parsedStatus))
-            parsedStatus = BusinessOwnerRequestStatus.Pending;
+        var query = db.BusinessOwnerRequests.AsQueryable();
+        if (Enum.TryParse<BusinessOwnerRequestStatus>(status, ignoreCase: true, out var parsedStatus))
+            query = query.Where(r => r.Status == parsedStatus);
 
-        var requests = await db.BusinessOwnerRequests
-            .Where(r => r.Status == parsedStatus)
+        var requests = await query
             .OrderByDescending(r => r.CreatedAt)
-            .Select(r => new BusinessOwnerRequestDto(
-                r.Id, r.BusinessName, r.OwnerName, r.Email, r.Phone,
-                r.BusinessTypeId, r.BusinessType != null ? r.BusinessType.DisplayNameEn : null,
-                r.Status.ToString(), r.RejectionNote, r.CreatedAt, r.ReviewedAt,
-                r.CreatedBusiness != null ? r.CreatedBusiness.Slug : null))
+            .Select(ToDto)
             .ToListAsync();
 
         return Ok(requests);
@@ -227,17 +226,22 @@ public class PlatformAdminController(
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> GetBusinessOwnerRequest(string id)
     {
-        var r = await db.BusinessOwnerRequests
-            .Include(x => x.BusinessType)
-            .Include(x => x.CreatedBusiness)
-            .FirstOrDefaultAsync(x => x.Id == id);
-        if (r is null) return NotFound();
+        var dto = await db.BusinessOwnerRequests
+            .Where(x => x.Id == id)
+            .Select(ToDto)
+            .FirstOrDefaultAsync();
+        if (dto is null) return NotFound();
 
-        return Ok(new BusinessOwnerRequestDto(
-            r.Id, r.BusinessName, r.OwnerName, r.Email, r.Phone,
-            r.BusinessTypeId, r.BusinessType?.DisplayNameEn, r.Status.ToString(), r.RejectionNote,
-            r.CreatedAt, r.ReviewedAt, r.CreatedBusiness?.Slug));
+        return Ok(dto);
     }
+
+    private static readonly System.Linq.Expressions.Expression<Func<BusinessOwnerRequest, BusinessOwnerRequestDto>> ToDto = r => new BusinessOwnerRequestDto(
+        r.Id, r.BusinessName, r.OwnerFirstName, r.OwnerFamilyName, r.Email, r.Phone,
+        r.BusinessTypeId, r.BusinessType != null ? r.BusinessType.DisplayNameEn : null,
+        r.BusinessDescription, r.SystemNeeds,
+        r.Status.ToString(), r.RejectionNote, r.CreatedAt, r.ReviewedAt,
+        r.CreatedBusiness != null ? r.CreatedBusiness.Slug : null,
+        r.CreatedBusiness != null ? r.CreatedBusiness.Username : null);
 
     [HttpPost("business-owner-requests/{id}/approve")]
     [Authorize(Policy = "PlatformAdminOnly")]
@@ -259,11 +263,18 @@ public class PlatformAdminController(
         if (await db.Businesses.AnyAsync(b => b.Email == request.Email))
             return BadRequest(new { error = "This email already has an account." });
 
+        // Username is generated here (never by the client) from the owner's name and made unique
+        // against every existing Business.Username, guarded further by the DB unique index.
+        var username = await UsernameGenerator.GenerateUniqueAsync(
+            request.OwnerFirstName, request.OwnerFamilyName,
+            candidate => db.Businesses.AnyAsync(b => b.Username == candidate));
+
         var tempPassword = GenerateTempPassword();
         var business = new Business
         {
             Name = request.BusinessName,
             Email = request.Email,
+            Username = username,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword),
             Slug = req.Slug,
             TrialEndsAt = DateTime.UtcNow.AddDays(30),
@@ -301,7 +312,7 @@ public class PlatformAdminController(
             BusinessId = business.Id,
             ImpersonatedByPlatformAdminId = AdminId,
             Action = $"{nameof(PlatformAdminController)}.{nameof(ApproveBusinessOwnerRequest)}",
-            Description = $"Account created from request by {request.OwnerName} ({request.Email})",
+            Description = $"Account created from request by {request.OwnerFirstName} {request.OwnerFamilyName} ({request.Email}), username {username}",
             Method = "POST",
             Path = Request.Path.ToString(),
             StatusCode = 200,
@@ -309,9 +320,36 @@ public class PlatformAdminController(
         });
         await db.SaveChangesAsync();
 
-        // The only place this plaintext value ever exists outside the admin's own head -- never
-        // logged, never stored (only the bcrypt hash is persisted).
-        return Ok(new ApproveBusinessOwnerRequestResponse(business.Id, business.Slug, tempPassword));
+        var emailSent = await SendApprovalEmailAsync(request, username, tempPassword);
+
+        // The temp password is still returned even when the email went out, so the admin can send
+        // it by hand if delivery failed (bad address, provider limit). Never logged, never stored
+        // (only the bcrypt hash is persisted).
+        return Ok(new ApproveBusinessOwnerRequestResponse(business.Id, business.Slug, username, tempPassword, emailSent));
+    }
+
+    // Best-effort -- a failed send (SMTP hiccup, unverified sending domain, typo'd address) must
+    // never fail the approval itself; the admin always still has the credentials in the response.
+    private async Task<bool> SendApprovalEmailAsync(BusinessOwnerRequest request, string username, string tempPassword)
+    {
+        var appUrl = (config["AppUrl"] ?? "").TrimEnd('/');
+        var loginUrl = string.IsNullOrEmpty(appUrl) ? "the EsayWeek sign-in page" : $"{appUrl}/admin/login";
+        try
+        {
+            await emailSender.SendAsync(request.Email, "Your EsayWeek account is ready",
+                $"Hi {request.OwnerFirstName},\n\n" +
+                $"Your business account for \"{request.BusinessName}\" has been approved.\n\n" +
+                $"Sign in: {loginUrl}\n" +
+                $"Username: {username}\n" +
+                $"Temporary password: {tempPassword}\n\n" +
+                "You'll be asked to choose your own password the first time you sign in.\n");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send approval email for business-owner request {RequestId}", request.Id);
+            return false;
+        }
     }
 
     [HttpPost("business-owner-requests/{id}/reject")]

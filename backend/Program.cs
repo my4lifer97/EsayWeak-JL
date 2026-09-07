@@ -53,10 +53,15 @@ builder.Services.AddScoped<IWhatsAppSender, TwilioWhatsAppSender>();
 builder.Services.AddScoped<WaitlistService>();
 builder.Services.AddScoped<AppointmentCancellationService>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
-// Real email sending via Resend only kicks in once Resend:ApiKey is configured (via
-// dotnet user-secrets locally, env vars in production) — falls back to the no-op dev sender
-// otherwise, so environments without an API key (including the test suite) are unaffected.
-if (!string.IsNullOrEmpty(builder.Configuration["Resend:ApiKey"]))
+// Email delivery, in order of precedence: SMTP (e.g. Gmail with an app password) when
+// Smtp:Username + Smtp:Password are set, then Resend when Resend:ApiKey is set, otherwise the
+// no-op dev sender that just logs. Config comes from dotnet user-secrets locally / env vars in
+// production. Only one sender is ever active; environments with none configured (including the
+// test suite) fall through to DevEmailSender.
+if (!string.IsNullOrEmpty(builder.Configuration["Smtp:Username"]) &&
+    !string.IsNullOrEmpty(builder.Configuration["Smtp:Password"]))
+    builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+else if (!string.IsNullOrEmpty(builder.Configuration["Resend:ApiKey"]))
     builder.Services.AddHttpClient<IEmailSender, ResendEmailSender>();
 else
     builder.Services.AddScoped<IEmailSender, DevEmailSender>();

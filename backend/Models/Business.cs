@@ -16,6 +16,12 @@ public class Business
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";
+    // System-generated login identifier (firstname + first two letters of family name, deduped with
+    // a numeric suffix). Set only for accounts created via
+    // PlatformAdminController.ApproveBusinessOwnerRequest; null for self-service registrations,
+    // which still log in by email. Unique (partial — Postgres allows multiple NULLs). See
+    // UsernameGenerator and AuthController.Login (which accepts email OR username).
+    public string? Username { get; set; }
     public string PasswordHash { get; set; } = "";
     public string? Phone { get; set; }
     public string Slug { get; set; } = "";

@@ -33,7 +33,7 @@ export default function LoginPage() {
         }
         setView('verify')
       } else {
-        setError('Invalid email or password')
+        setError('Invalid email/username or password')
       }
     } finally {
       setLoading(false)
@@ -91,8 +91,8 @@ export default function LoginPage() {
               </div>
             )}
             <input
-              type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
+              type="text" required value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email or username" autoComplete="username"
               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
@@ -149,11 +149,8 @@ export default function LoginPage() {
 
         <p className="text-gray-500 text-center mt-6 text-sm">
           No account?{' '}
-          <Link to="/admin/register" className="text-blue-400 hover:underline">Create one</Link>
-        </p>
-        <p className="text-gray-500 text-center mt-2 text-sm">
-          Prefer we set it up for you?{' '}
-          <Link to="/request-business-account" className="text-blue-400 hover:underline">Request an account</Link>
+          <Link to="/request-business-account" className="text-blue-400 hover:underline">Request one</Link>
+          {' '}— we review every business before it gets access.
         </p>
       </div>
     </div>

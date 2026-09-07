@@ -87,7 +87,13 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        // The `Email` field carries either an email or a system-generated username (approved
+        // accounts get one — see PlatformAdminController.ApproveBusinessOwnerRequest). Match on
+        // whichever; the username lookup is skipped for blank/null so legacy rows with a null
+        // username can't be hit by an empty identifier.
+        var identifier = (req.Email ?? "").Trim();
+        var business = await db.Businesses.FirstOrDefaultAsync(b =>
+            b.Email == identifier || (b.Username != null && b.Username == identifier));
         if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 

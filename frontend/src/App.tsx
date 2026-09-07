@@ -31,7 +31,7 @@ import PlatformAdminLoginPage from './pages/platform-admin/LoginPage'
 import PlatformAdminDashboardPage from './pages/platform-admin/DashboardPage'
 import PlatformAdminBusinessDetailPage from './pages/platform-admin/BusinessDetailPage'
 import PlatformAdminCustomerDetailPage from './pages/platform-admin/CustomerDetailPage'
-import PlatformAdminPendingRequestsPage from './pages/platform-admin/PendingRequestsPage'
+import PlatformAdminRequestsPage from './pages/platform-admin/RequestsPage'
 
 const queryClient = new QueryClient()
 
@@ -80,7 +80,7 @@ export default function App() {
                   <Route path="/platform-admin" element={<PlatformAdminDashboardPage />} />
                   <Route path="/platform-admin/businesses/:id" element={<PlatformAdminBusinessDetailPage />} />
                   <Route path="/platform-admin/customers/:id" element={<PlatformAdminCustomerDetailPage />} />
-                  <Route path="/platform-admin/requests" element={<PlatformAdminPendingRequestsPage />} />
+                  <Route path="/platform-admin/requests" element={<PlatformAdminRequestsPage />} />
                 </Route>
               </Routes>
             </BrowserRouter>

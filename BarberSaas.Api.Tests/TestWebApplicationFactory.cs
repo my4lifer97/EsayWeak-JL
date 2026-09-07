@@ -103,6 +103,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IWhatsAppSender>();
             services.AddSingleton<IWhatsAppSender, FakeWhatsAppSender>();
 
+            // Same idea for email -- replace whichever sender Program.cs picked (DevEmailSender
+            // here, since no Smtp/Resend config) with one that records, so tests can assert that
+            // e.g. an approved business owner was mailed their temp password.
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<IEmailSender, FakeEmailSender>();
+
             // Real Cardcom calls would dial out to the real gateway -- always use the fake
             // regardless of _configureCardcom, which only controls whether Cardcom:* config keys
             // are present (i.e. whether BillingController/CronController even attempt a call).
@@ -122,6 +128,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 
     public FakeWhatsAppSender WhatsAppSender => (FakeWhatsAppSender)Services.GetRequiredService<IWhatsAppSender>();
     public FakeCardcomService Cardcom => (FakeCardcomService)Services.GetRequiredService<ICardcomService>();
+    public FakeEmailSender Email => (FakeEmailSender)Services.GetRequiredService<IEmailSender>();
 
     protected override void Dispose(bool disposing)
     {

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
@@ -23,22 +24,32 @@ public class BusinessOwnerRequestsController(AppDbContext db, IEmailSender email
         return Ok(types);
     }
 
+    // First name / family name are restricted to English letters (plus space, hyphen, apostrophe)
+    // because the backend derives the login username from them -- see UsernameGenerator.
+    private static readonly Regex EnglishNameRegex = new(@"^[A-Za-z][A-Za-z '-]*$", RegexOptions.Compiled);
+
     [HttpPost("api/business-owner-requests")]
     public async Task<IActionResult> Create([FromBody] CreateBusinessOwnerRequestRequest req)
     {
+        var firstName = (req.OwnerFirstName ?? "").Trim();
+        var familyName = (req.OwnerFamilyName ?? "").Trim();
+
         if (string.IsNullOrWhiteSpace(req.BusinessName))
             return BadRequest(new { error = "Business name is required" });
-        if (string.IsNullOrWhiteSpace(req.OwnerName))
-            return BadRequest(new { error = "Owner name is required" });
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(familyName))
+            return BadRequest(new { error = "First name and family name are required" });
+        if (!EnglishNameRegex.IsMatch(firstName) || !EnglishNameRegex.IsMatch(familyName))
+            return BadRequest(new { error = "First name and family name must be in English letters" });
         if (string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Phone))
             return BadRequest(new { error = "Phone is required" });
+        if (string.IsNullOrWhiteSpace(req.BusinessTypeId))
+            return BadRequest(new { error = "Business type is required" });
 
-        var businessType = string.IsNullOrWhiteSpace(req.BusinessTypeId)
-            ? null
-            : await db.BusinessTypeDefinitions.FirstOrDefaultAsync(t => t.Id == req.BusinessTypeId && t.IsActive);
-        if (!string.IsNullOrWhiteSpace(req.BusinessTypeId) && businessType is null)
+        var businessType = await db.BusinessTypeDefinitions
+            .FirstOrDefaultAsync(t => t.Id == req.BusinessTypeId && t.IsActive);
+        if (businessType is null)
             return BadRequest(new { error = "Invalid business type" });
 
         if (await db.Businesses.AnyAsync(b => b.Email == req.Email))
@@ -49,11 +60,14 @@ public class BusinessOwnerRequestsController(AppDbContext db, IEmailSender email
 
         var request = new BusinessOwnerRequest
         {
-            BusinessName = req.BusinessName,
-            OwnerName = req.OwnerName,
-            Email = req.Email,
-            Phone = req.Phone,
-            BusinessTypeId = businessType?.Id,
+            BusinessName = req.BusinessName.Trim(),
+            OwnerFirstName = firstName,
+            OwnerFamilyName = familyName,
+            Email = req.Email.Trim(),
+            Phone = req.Phone.Trim(),
+            BusinessTypeId = businessType.Id,
+            BusinessDescription = string.IsNullOrWhiteSpace(req.BusinessDescription) ? null : req.BusinessDescription.Trim(),
+            SystemNeeds = string.IsNullOrWhiteSpace(req.SystemNeeds) ? null : req.SystemNeeds.Trim(),
         };
         db.BusinessOwnerRequests.Add(request);
         await db.SaveChangesAsync();
@@ -77,11 +91,11 @@ public class BusinessOwnerRequestsController(AppDbContext db, IEmailSender email
             var typeLabel = businessType?.DisplayNameEn ?? "(not specified)";
             await emailSender.SendAsync(adminEmail, "New business account request",
                 $"Business name: {request.BusinessName}\n" +
-                $"Owner name: {request.OwnerName}\n" +
+                $"Owner: {request.OwnerFirstName} {request.OwnerFamilyName}\n" +
                 $"Email: {request.Email}\n" +
                 $"Phone: {request.Phone}\n" +
                 $"Business type: {typeLabel}\n\n" +
-                "Review it in the platform-admin panel under Pending Requests.");
+                "Review it in the platform-admin panel under Business requests.");
         }
         catch (Exception ex)
         {
