@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { t, serviceName } from './i18n'
+import { t, itemName } from './i18n'
 
 describe('t', () => {
   it('returns the English string for EN', () => {
@@ -19,19 +19,19 @@ describe('t', () => {
   })
 })
 
-describe('serviceName', () => {
-  const service = { nameEn: 'Haircut', nameAr: 'قصة شعر', nameHe: 'תספורת' }
+describe('itemName', () => {
+  const item = { nameEn: 'Haircut', nameAr: 'قصة شعر', nameHe: 'תספורת' }
 
   it('returns nameAr for AR', () => {
-    expect(serviceName(service, 'AR')).toBe('قصة شعر')
+    expect(itemName(item, 'AR')).toBe('قصة شعر')
   })
 
   it('returns nameHe for HE', () => {
-    expect(serviceName(service, 'HE')).toBe('תספורת')
+    expect(itemName(item, 'HE')).toBe('תספורת')
   })
 
   it('returns nameEn for EN and any other language', () => {
-    expect(serviceName(service, 'EN')).toBe('Haircut')
-    expect(serviceName(service, 'FR')).toBe('Haircut')
+    expect(itemName(item, 'EN')).toBe('Haircut')
+    expect(itemName(item, 'FR')).toBe('Haircut')
   })
 })

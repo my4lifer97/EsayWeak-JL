@@ -7,8 +7,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     public DbSet<Business> Businesses => Set<Business>();
     public DbSet<BusinessTypeDefinition> BusinessTypeDefinitions => Set<BusinessTypeDefinition>();
-    public DbSet<Service> Services => Set<Service>();
-    public DbSet<ServiceGalleryPhoto> ServiceGalleryPhotos => Set<ServiceGalleryPhoto>();
+    public DbSet<Item> Items => Set<Item>();
+    public DbSet<ItemGalleryPhoto> ItemGalleryPhotos => Set<ItemGalleryPhoto>();
     public DbSet<WorkingHours> WorkingHours => Set<WorkingHours>();
     public DbSet<Break> Breaks => Set<Break>();
     public DbSet<BlockedSlot> BlockedSlots => Set<BlockedSlot>();
@@ -93,7 +93,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasFilter("\"Status\" = 'CONFIRMED'")
             .HasDatabaseName("IX_Appointments_BusinessId_Date_StartTime_Confirmed");
 
-        b.Entity<Service>()
+        b.Entity<Item>()
             .Property(x => x.Price)
             .HasColumnType("decimal(10,2)");
 
@@ -127,9 +127,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Appointment>()
             .Property(x => x.Status)
             .HasConversion<string>();
-        b.Entity<Service>()
+        b.Entity<Item>()
             .Property(x => x.PhotoMode)
             .HasConversion<string>();
+        // Explicit DB-level default -- see the ChatbotEnabled/BusinessModel comment above; every
+        // pre-existing service is a real bookable offering, so it must backfill as bookable.
+        b.Entity<Item>()
+            .Property(x => x.IsBookable)
+            .HasDefaultValue(true);
         b.Entity<WaitlistEntry>()
             .Property(x => x.Status)
             .HasConversion<string>();
@@ -149,12 +154,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.BusinessType).WithMany(x => x.Businesses)
             .HasForeignKey(x => x.BusinessTypeId).OnDelete(DeleteBehavior.SetNull);
 
-        b.Entity<Service>()
-            .HasOne(x => x.Business).WithMany(x => x.Services)
+        b.Entity<Item>()
+            .HasOne(x => x.Business).WithMany(x => x.Items)
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
-        b.Entity<ServiceGalleryPhoto>()
-            .HasOne(x => x.Service).WithMany(x => x.GalleryPhotos)
-            .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ItemGalleryPhoto>()
+            .HasOne(x => x.Item).WithMany(x => x.GalleryPhotos)
+            .HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WorkingHours>()
             .HasOne(x => x.Business).WithMany(x => x.WorkingHours)
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
@@ -183,8 +188,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.Customer).WithMany(x => x.Appointments)
             .HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Appointment>()
-            .HasOne(x => x.Service).WithMany(x => x.Appointments)
-            .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+            .HasOne(x => x.Item).WithMany(x => x.Appointments)
+            .HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
 
         b.Entity<RecurringSeries>()
             .HasOne(x => x.Business).WithMany(x => x.RecurringSeries)
@@ -193,8 +198,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.Customer).WithMany(x => x.RecurringSeries)
             .HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<RecurringSeries>()
-            .HasOne(x => x.Service).WithMany(x => x.RecurringSeries)
-            .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Restrict);
+            .HasOne(x => x.Item).WithMany(x => x.RecurringSeries)
+            .HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<RecurringSkip>()
             .HasOne(x => x.RecurringSeries).WithMany(x => x.Skips)
             .HasForeignKey(x => x.RecurringSeriesId).OnDelete(DeleteBehavior.Cascade);
@@ -208,8 +213,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.Business).WithMany()
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WhatsAppBookingToken>()
-            .HasOne(x => x.Service).WithMany()
-            .HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
+            .HasOne(x => x.Item).WithMany()
+            .HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WhatsAppConversationState>()
             .HasOne(x => x.Business).WithMany()
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);

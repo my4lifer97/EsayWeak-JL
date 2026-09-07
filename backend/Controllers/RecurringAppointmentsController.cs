@@ -29,7 +29,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         return new RecurringSeriesDto(
             s.Id,
             new CustomerSummary(s.Customer.Id, s.Customer.Name, s.Customer.FamilyName, s.Customer.Phone),
-            new ServiceSummary(s.Service.Id, s.Service.NameEn, s.Service.NameAr, s.Service.NameHe, s.Service.DurationMinutes, s.Service.Price),
+            new ItemSummary(s.Item.Id, s.Item.NameEn, s.Item.NameAr, s.Item.NameHe, s.Item.DurationMinutes, s.Item.Price),
             s.DayOfWeek, s.StartTime, s.Notes, s.IsActive,
             s.StartDate.ToString("yyyy-MM-dd"), s.EndDate?.ToString("yyyy-MM-dd"), nextOccurrence,
             s.Skips.OrderByDescending(sk => sk.Date).Take(5).Select(sk => new RecurringSkipDto(sk.Date.ToString("yyyy-MM-dd"), sk.Reason)).ToList());
@@ -39,7 +39,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
     public async Task<IActionResult> List()
     {
         var series = await db.RecurringSeries
-            .Include(s => s.Customer).Include(s => s.Service).Include(s => s.Skips)
+            .Include(s => s.Customer).Include(s => s.Item).Include(s => s.Skips)
             .Where(s => s.BusinessId == BusinessId)
             .OrderByDescending(s => s.IsActive).ThenBy(s => s.DayOfWeek).ThenBy(s => s.StartTime)
             .ToListAsync();
@@ -49,8 +49,9 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateRecurringSeriesRequest req)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BusinessId == BusinessId && s.IsActive);
-        if (service is null) return NotFound(new { error = "Service not found" });
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == BusinessId && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
+        if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
         if (req.DayOfWeek < 0 || req.DayOfWeek > 6)
             return BadRequest(new { error = "Invalid day of week" });
@@ -107,7 +108,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         {
             BusinessId = BusinessId,
             CustomerId = customer.Id,
-            ServiceId = service.Id,
+            ItemId = item.Id,
             DayOfWeek = req.DayOfWeek,
             StartTime = req.StartTime,
             Notes = req.Notes,
@@ -122,11 +123,11 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         await recurringAppointments.GenerateForSeriesNow(series.Id);
 
         var created = await db.RecurringSeries
-            .Include(s => s.Customer).Include(s => s.Service).Include(s => s.Skips)
+            .Include(s => s.Customer).Include(s => s.Item).Include(s => s.Skips)
             .FirstAsync(s => s.Id == series.Id);
 
         this.SetActivityDetail(
-            $"Created recurring series: {service.NameEn} with {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} — every {(DayOfWeek)req.DayOfWeek}s at {req.StartTime}");
+            $"Created recurring series: {item.NameEn} with {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} — every {(DayOfWeek)req.DayOfWeek}s at {req.StartTime}");
 
         return StatusCode(201, ToDto(created));
     }
@@ -135,12 +136,12 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
     public async Task<IActionResult> Delete(string id)
     {
         var series = await db.RecurringSeries
-            .Include(s => s.Customer).Include(s => s.Service)
+            .Include(s => s.Customer).Include(s => s.Item)
             .FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
         if (series is null) return NotFound();
 
         this.SetActivityDetail(
-            $"Deleted recurring series: {series.Service.NameEn} with {ActivityDetailExtensions.FullName(series.Customer.Name, series.Customer.FamilyName)} — every {(DayOfWeek)series.DayOfWeek}s at {series.StartTime}");
+            $"Deleted recurring series: {series.Item.NameEn} with {ActivityDetailExtensions.FullName(series.Customer.Name, series.Customer.FamilyName)} — every {(DayOfWeek)series.DayOfWeek}s at {series.StartTime}");
 
         // Deleting a series means the customer no longer has these slots reserved --
         // cancel every occurrence that hasn't happened yet, freeing the slot for others.

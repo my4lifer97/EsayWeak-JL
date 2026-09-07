@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
-import { t, serviceName } from '../../lib/i18n'
+import { t, itemName } from '../../lib/i18n'
 import CustomerPicker, { type CustomerSelection } from './CustomerPicker'
 
-type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number }
+type Item = { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; isBookable: boolean }
 type Slot = { start: string; end: string }
 
 export default function NewAppointmentModal({
@@ -26,14 +26,15 @@ export default function NewAppointmentModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: allItems = [] } = useQuery<Item[]>({
     queryKey: ['services'],
-    queryFn: () => api.get('/admin/services').then((r) => r.data),
+    queryFn: () => api.get('/admin/items').then((r) => r.data),
   })
+  const services = allItems.filter((s) => s.isBookable)
 
   const { data: slots = [], isFetching: slotsLoading } = useQuery<Slot[]>({
     queryKey: ['admin-availability', date, serviceId],
-    queryFn: () => api.get(`/admin/appointments/availability?date=${date}&serviceId=${serviceId}`).then((r) => r.data.slots),
+    queryFn: () => api.get(`/admin/appointments/availability?date=${date}&itemId=${serviceId}`).then((r) => r.data.slots),
     enabled: !!date && !!serviceId && !showCustomTime,
   })
 
@@ -48,7 +49,7 @@ export default function NewAppointmentModal({
         ...('customerId' in customer ? { customerId: customer.customerId }
           : 'customerName' in customer ? { customerName: customer.customerName, customerFamilyName: customer.customerFamilyName, customerPhone: customer.customerPhone }
           : {}),
-        serviceId, date, startTime, notes: notes || undefined, force: showCustomTime ? forceBook : false,
+        itemId: serviceId, date, startTime, notes: notes || undefined, force: showCustomTime ? forceBook : false,
       })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['appointments'] })
@@ -75,7 +76,7 @@ export default function NewAppointmentModal({
             <select value={serviceId} onChange={(e) => { setServiceId(e.target.value); setSlot(null) }}
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">—</option>
-              {services.map((s) => <option key={s.id} value={s.id}>{serviceName(s, lang)}</option>)}
+              {services.map((s) => <option key={s.id} value={s.id}>{itemName(s, lang)}</option>)}
             </select>
           </div>
 

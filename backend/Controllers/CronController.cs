@@ -87,7 +87,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         var appointments = await db.Appointments
             .Include(a => a.Business)
             .Include(a => a.Customer)
-            .Include(a => a.Service)
+            .Include(a => a.Item)
             .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.ReminderSent)
             .ToListAsync();
 
@@ -102,11 +102,11 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             try
             {
                 var lang = appt.Business.Language.ToString();
-                var serviceName = lang switch
+                var itemName = lang switch
                 {
-                    "AR" => appt.Service.NameAr,
-                    "HE" => appt.Service.NameHe,
-                    _ => appt.Service.NameEn,
+                    "AR" => appt.Item.NameAr,
+                    "HE" => appt.Item.NameHe,
+                    _ => appt.Item.NameEn,
                 };
 
                 var cancelUrl = $"{appUrl}/{appt.Business.Slug}/appointments/{appt.Id}?token={appt.CancelToken}";
@@ -115,7 +115,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
                     ["customerName"] = appt.Customer.Name,
                     ["businessName"] = appt.Business.Name,
                     ["time"] = appt.StartTime,
-                    ["service"] = serviceName,
+                    ["service"] = itemName,
                     ["cancelUrl"] = cancelUrl,
                 });
 

@@ -39,13 +39,13 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
         appointment.PendingCancellationApproval = true;
 
         var customer = await db.Customers.FindAsync(appointment.CustomerId);
-        var service = await db.Services.FindAsync(appointment.ServiceId);
+        var item = await db.Items.FindAsync(appointment.ItemId);
         var lang = business!.Language.ToString();
-        var serviceName = lang switch
+        var itemName = lang switch
         {
-            "AR" => service?.NameAr,
-            "HE" => service?.NameHe,
-            _ => service?.NameEn,
+            "AR" => item?.NameAr,
+            "HE" => item?.NameHe,
+            _ => item?.NameEn,
         };
 
         var appUrl = config["AppUrl"] ?? "";
@@ -54,7 +54,7 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             ["customerName"] = customer?.Name ?? "",
             ["date"] = appointment.Date.ToString("yyyy-MM-dd"),
             ["time"] = appointment.StartTime,
-            ["service"] = serviceName ?? "",
+            ["service"] = itemName ?? "",
             ["url"] = $"{appUrl}/admin/appointments",
         });
 

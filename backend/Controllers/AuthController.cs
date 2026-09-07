@@ -50,15 +50,22 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
         db.Businesses.Add(business);
 
-        var defaultHours = new[] { 1, 2, 3, 4, 5 }.Select(day => new WorkingHours
+        // RegisterRequest doesn't yet expose a way to register directly as Showcase (every new
+        // business defaults to BusinessModel.Appointment), but guard the seeding anyway so a
+        // future onboarding flow that does can register a showcase-only business without an
+        // unwanted default schedule.
+        if (business.BusinessModel != BusinessModel.Showcase)
         {
-            BusinessId = business.Id,
-            DayOfWeek = day,
-            StartTime = "09:00",
-            EndTime = "18:00",
-            IsActive = true,
-        });
-        db.WorkingHours.AddRange(defaultHours);
+            var defaultHours = new[] { 1, 2, 3, 4, 5 }.Select(day => new WorkingHours
+            {
+                BusinessId = business.Id,
+                DayOfWeek = day,
+                StartTime = "09:00",
+                EndTime = "18:00",
+                IsActive = true,
+            });
+            db.WorkingHours.AddRange(defaultHours);
+        }
 
         string code;
         try

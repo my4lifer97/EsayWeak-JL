@@ -14,7 +14,7 @@ vi.mock('../../lib/auth', () => ({
 }))
 
 const services = [
-  { id: 'svc-1', nameEn: 'Haircut', nameAr: 'قصة شعر', nameHe: 'תספורת', durationMinutes: 30, price: 50, isActive: true },
+  { id: 'svc-1', nameEn: 'Haircut', nameAr: 'قصة شعر', nameHe: 'תספורת', durationMinutes: 30, price: 50, isActive: true, isBookable: true, photoMode: 'None', galleryPhotos: [] },
 ]
 
 function renderPage() {
@@ -63,7 +63,7 @@ describe('ServicesPage', () => {
     await userEvent.type(screen.getByLabelText('Price'), '25')
     await userEvent.click(screen.getByText('Save Service'))
 
-    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/admin/services', expect.objectContaining({
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/admin/items', expect.objectContaining({
       nameEn: 'Shave', nameAr: 'حلاقة', nameHe: 'גילוח', durationMinutes: 30, price: 25,
     })))
   })
@@ -81,7 +81,7 @@ describe('ServicesPage', () => {
     await userEvent.type(screen.getByLabelText('Price'), '60')
     await userEvent.click(screen.getByText('Save Service'))
 
-    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/admin/services/svc-1', expect.objectContaining({ price: 60 })))
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/admin/items/svc-1', expect.objectContaining({ price: 60 })))
   })
 
   it('deletes a service after confirmation', async () => {
@@ -93,7 +93,7 @@ describe('ServicesPage', () => {
     await userEvent.click(screen.getByText('Delete'))
 
     expect(confirm).toHaveBeenCalled()
-    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/admin/services/svc-1'))
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/admin/items/svc-1'))
   })
 
   it('does not delete when the confirmation is declined', async () => {

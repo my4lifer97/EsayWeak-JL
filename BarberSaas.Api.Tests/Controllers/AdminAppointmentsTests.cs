@@ -25,8 +25,8 @@ public class AdminAppointmentsTests : IntegrationTestBase
     private async Task<(string BusinessId, string AppointmentId)> SeedPastConfirmedAppointment(string businessToken, string slug)
     {
         Authorize(Client, businessToken);
-        var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
-        var service = await serviceResp.Content.ReadFromJsonAsync<ServiceDto>();
+        var serviceResp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m));
+        var service = await serviceResp.Content.ReadFromJsonAsync<ItemDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
         using var db = Db();
@@ -37,8 +37,13 @@ public class AdminAppointmentsTests : IntegrationTestBase
         {
             BusinessId = business.Id,
             CustomerId = customer.Id,
-            ServiceId = service!.Id,
-            Date = DateTime.UtcNow.Date.AddDays(-1),
+            ItemId = service!.Id,
+            // Local, not UTC -- Appointment.Date is the business's local wall-clock calendar
+            // date everywhere else in this app (see AdminController.GetDashboard's own comment);
+            // seeding with UtcNow.Date could land on a different calendar day than "yesterday"
+            // when the two clocks straddle midnight, pushing this appointment out of the week
+            // window the dashboard assertions below expect it in.
+            Date = DateTime.Now.Date.AddDays(-1),
             StartTime = "10:00",
             EndTime = "10:30",
             Status = AppointmentStatus.CONFIRMED,
@@ -106,11 +111,11 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
     // ─── Manual (owner-created) appointment booking ────────────────────────
 
-    private async Task<(string BusinessId, string ServiceId, DateTime Date)> SeedBusinessWithServiceAndAvailability(string token, string slug)
+    private async Task<(string BusinessId, string ItemId, DateTime Date)> SeedBusinessWithServiceAndAvailability(string token, string slug)
     {
         Authorize(Client, token);
-        var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
-        var service = await serviceResp.Content.ReadFromJsonAsync<ServiceDto>();
+        var serviceResp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m));
+        var service = await serviceResp.Content.ReadFromJsonAsync<ItemDto>();
 
         // Tomorrow, not today -- avoids the "isToday" cutoff in AvailabilityService rejecting
         // slots that fall before the current wall-clock time depending on when the test runs.
@@ -128,7 +133,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
     {
         var slug = "admin-book-existing";
         var token = await RegisterAndLoginBusiness("admin-book-existing@example.com", slug);
-        var (businessId, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         string customerId;
         using (var db = Db())
@@ -141,7 +146,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            customerId, null, null, serviceId, date.ToString("yyyy-MM-dd"), "09:00", null));
+            customerId, null, null, itemId, date.ToString("yyyy-MM-dd"), "09:00", null));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         var dto = await resp.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
@@ -153,11 +158,11 @@ public class AdminAppointmentsTests : IntegrationTestBase
     {
         var slug = "admin-book-new";
         var token = await RegisterAndLoginBusiness("admin-book-new@example.com", slug);
-        var (businessId, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            null, "Sara", "+15559998888", serviceId, date.ToString("yyyy-MM-dd"), "09:00", null));
+            null, "Sara", "+15559998888", itemId, date.ToString("yyyy-MM-dd"), "09:00", null));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         using var db = Db();
@@ -169,11 +174,11 @@ public class AdminAppointmentsTests : IntegrationTestBase
     {
         var slug = "admin-book-split-name";
         var token = await RegisterAndLoginBusiness("admin-book-split-name@example.com", slug);
-        var (businessId, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            null, "Sara", "+15559997777", serviceId, date.ToString("yyyy-MM-dd"), "09:00", null, CustomerFamilyName: "Connor"));
+            null, "Sara", "+15559997777", itemId, date.ToString("yyyy-MM-dd"), "09:00", null, CustomerFamilyName: "Connor"));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         using var db = Db();
@@ -187,12 +192,12 @@ public class AdminAppointmentsTests : IntegrationTestBase
     {
         var slug = "admin-book-conflict";
         var token = await RegisterAndLoginBusiness("admin-book-conflict@example.com", slug);
-        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var (_, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         Authorize(Client, token);
-        await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "A", "+15551110001", serviceId, dateStr, "09:00", null));
-        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "B", "+15551110002", serviceId, dateStr, "09:00", null));
+        await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "A", "+15551110001", itemId, dateStr, "09:00", null));
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "B", "+15551110002", itemId, dateStr, "09:00", null));
 
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
@@ -202,13 +207,13 @@ public class AdminAppointmentsTests : IntegrationTestBase
     {
         var slug = "admin-book-force";
         var token = await RegisterAndLoginBusiness("admin-book-force@example.com", slug);
-        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var (_, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
         Authorize(Client, token);
         // 19:00 falls outside the 09:00-18:00 working hours seeded above, so a normal
         // (non-forced) booking at this time would be rejected as unavailable.
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            null, "Walkin", "+15551234567", serviceId, date.ToString("yyyy-MM-dd"), "19:00", null, Force: true));
+            null, "Walkin", "+15551234567", itemId, date.ToString("yyyy-MM-dd"), "19:00", null, Force: true));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
     }
@@ -218,13 +223,13 @@ public class AdminAppointmentsTests : IntegrationTestBase
     {
         var slug = "admin-book-force-overlap";
         var token = await RegisterAndLoginBusiness("admin-book-force-overlap@example.com", slug);
-        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var (_, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         Authorize(Client, token);
-        await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "A", "+15551110003", serviceId, dateStr, "09:00", null));
+        await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "A", "+15551110003", itemId, dateStr, "09:00", null));
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            null, "B", "+15551110004", serviceId, dateStr, "09:00", null, Force: true));
+            null, "B", "+15551110004", itemId, dateStr, "09:00", null, Force: true));
 
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
@@ -234,15 +239,15 @@ public class AdminAppointmentsTests : IntegrationTestBase
     {
         var slug = "admin-book-limits";
         var token = await RegisterAndLoginBusiness("admin-book-limits@example.com", slug);
-        var (_, serviceId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var (_, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         Authorize(Client, token);
         await Client.PatchAsJsonAsync("/api/admin/settings", new { maxBookingsPerDay = 1 });
 
         const string phone = "+15557778888";
-        var first = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "Same Customer", phone, serviceId, dateStr, "09:00", null));
-        var second = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "Same Customer", phone, serviceId, dateStr, "10:00", null));
+        var first = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "Same Customer", phone, itemId, dateStr, "09:00", null));
+        var second = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(null, "Same Customer", phone, itemId, dateStr, "10:00", null));
 
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);

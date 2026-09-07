@@ -8,9 +8,9 @@ import BookingWizard from '../../components/booking/BookingWizard'
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
   language: string; isRTL: boolean; activeDays: number[]
-  services: {
-    id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
-    photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; galleryPhotos: { id: string; url: string }[]
+  items: {
+    id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null; price: number | null
+    photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; isBookable: boolean; galleryPhotos: { id: string; url: string }[]
   }[]
   waitlistEnabled: boolean
 }

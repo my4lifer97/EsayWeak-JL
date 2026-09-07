@@ -20,13 +20,13 @@ const business = {
   isRTL: false,
   activeDays: [0, 1, 2, 3, 4, 5, 6], // every day active — deterministic regardless of "today"
   waitlistEnabled: true,
-  services: [
-    { id: 'svc-1', nameEn: 'Haircut', nameAr: 'قصة شعر', nameHe: 'תספורת', durationMinutes: 30, price: 50, photoMode: 'None' as const, galleryPhotos: [] },
+  items: [
+    { id: 'svc-1', nameEn: 'Haircut', nameAr: 'قصة شعر', nameHe: 'תספורת', durationMinutes: 30, price: 50, photoMode: 'None' as const, isBookable: true, galleryPhotos: [] },
     {
       id: 'svc-gallery', nameEn: 'Gallery Cut', nameAr: 'قصة معرض', nameHe: 'תספורת גלריה', durationMinutes: 30, price: 60,
-      photoMode: 'OwnerGallery' as const, galleryPhotos: [{ id: 'photo-1', url: '/api/uploads/gallery/svc-gallery/photo1.jpg' }],
+      photoMode: 'OwnerGallery' as const, isBookable: true, galleryPhotos: [{ id: 'photo-1', url: '/api/uploads/gallery/svc-gallery/photo1.jpg' }],
     },
-    { id: 'svc-upload', nameEn: 'Upload Cut', nameAr: 'قصة رفع', nameHe: 'תספורת העלאה', durationMinutes: 30, price: 55, photoMode: 'CustomerUpload' as const, galleryPhotos: [] },
+    { id: 'svc-upload', nameEn: 'Upload Cut', nameAr: 'قصة رفع', nameHe: 'תספורת העלאה', durationMinutes: 30, price: 55, photoMode: 'CustomerUpload' as const, isBookable: true, galleryPhotos: [] },
   ],
 }
 
@@ -130,7 +130,7 @@ describe('BookingWizard', () => {
 
     await waitFor(() => expect(screen.getByText('Business main page')).toBeInTheDocument())
     expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
-      serviceId: 'svc-1',
+      itemId: 'svc-1',
       startTime: '09:00',
       customerName: 'Jane',
       customerFamilyName: 'Doe',
@@ -192,7 +192,7 @@ describe('BookingWizard', () => {
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
     await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
-      serviceId: 'svc-gallery', galleryPhotoId: 'photo-1',
+      itemId: 'svc-gallery', galleryPhotoId: 'photo-1',
     })))
   })
 
@@ -216,7 +216,7 @@ describe('BookingWizard', () => {
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
     await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
-      serviceId: 'svc-upload', customerPhotoUrl: '/api/uploads/appointment-photos/uploaded.jpg',
+      itemId: 'svc-upload', customerPhotoUrl: '/api/uploads/appointment-photos/uploaded.jpg',
     })))
   })
 
@@ -261,14 +261,14 @@ describe('BookingWizard', () => {
       data: { slots: [{ start: '09:00', end: '09:30', available: true }] },
     })
 
-    renderWizard('/test-business/book?serviceId=svc-1&date=2026-08-10&time=09:00')
+    renderWizard('/test-business/book?itemId=svc-1&date=2026-08-10&time=09:00')
 
     await waitFor(() => expect(screen.getByText('Your Details')).toBeInTheDocument())
-    expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-business/availability/full?date=2026-08-10&serviceId=svc-1'))
+    expect(customerApi.get).toHaveBeenCalledWith(expect.stringContaining('/test-business/availability/full?date=2026-08-10&itemId=svc-1'))
   })
 
-  it('deep-links from a WhatsApp booking link (serviceId only) straight to date selection, skipping service selection', async () => {
-    renderWizard('/test-business/book?serviceId=svc-1')
+  it('deep-links from a WhatsApp booking link (itemId only) straight to date selection, skipping service selection', async () => {
+    renderWizard('/test-business/book?itemId=svc-1')
 
     expect(screen.getByText('Select a Date')).toBeInTheDocument()
     expect(screen.queryByText('Select a Service')).not.toBeInTheDocument()

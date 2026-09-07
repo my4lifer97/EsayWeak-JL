@@ -140,14 +140,14 @@ public class AvailabilityServiceTests : IDisposable
     {
         using var db = NewDb();
         var business = SeedBusiness(db, "09:00", "10:00");
-        var service = new Service { BusinessId = business.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 30, Price = 10 };
+        var item = new Item { BusinessId = business.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 30, Price = 10 };
         var customer = new Customer { BusinessId = business.Id, Name = "C", Phone = "+1" };
-        db.Services.Add(service);
+        db.Items.Add(item);
         db.Customers.Add(customer);
         var date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime();
         db.Appointments.Add(new Appointment
         {
-            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ItemId = item.Id,
             Date = date, StartTime = "09:00", EndTime = "09:30", Status = AppointmentStatus.CONFIRMED,
         });
         await db.SaveChangesAsync();
@@ -163,14 +163,14 @@ public class AvailabilityServiceTests : IDisposable
     {
         using var db = NewDb();
         var business = SeedBusiness(db, "09:00", "10:00");
-        var service = new Service { BusinessId = business.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 30, Price = 10 };
+        var item = new Item { BusinessId = business.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 30, Price = 10 };
         var customer = new Customer { BusinessId = business.Id, Name = "C", Phone = "+1" };
-        db.Services.Add(service);
+        db.Items.Add(item);
         db.Customers.Add(customer);
         var date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime();
         db.Appointments.Add(new Appointment
         {
-            BusinessId = business.Id, CustomerId = customer.Id, ServiceId = service.Id,
+            BusinessId = business.Id, CustomerId = customer.Id, ItemId = item.Id,
             Date = date, StartTime = "09:00", EndTime = "09:30", Status = AppointmentStatus.CANCELLED,
         });
         await db.SaveChangesAsync();

@@ -25,9 +25,9 @@ public class AdminController(
     };
     private const long MaxLogoBytes = 5 * 1024 * 1024;
 
-    private static ServiceDto ToServiceDto(Service s) => new(
+    private static ItemDto ToItemDto(Item s) => new(
         s.Id, s.BusinessId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
-        s.PhotoMode.ToString(), s.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList());
+        s.PhotoMode.ToString(), s.IsBookable, s.GalleryPhotos.Select(p => new ItemGalleryPhotoDto(p.Id, p.Url)).ToList());
 
     // ─── Settings ───────────────────────────────────────────────────────────
 
@@ -134,114 +134,125 @@ public class AdminController(
         return Ok(new { b.Id, b.Name, Language = b.Language.ToString() });
     }
 
-    // ─── Services ───────────────────────────────────────────────────────────
+    // ─── Items ──────────────────────────────────────────────────────────────
 
-    [HttpGet("services")]
-    public async Task<IActionResult> GetServices()
+    [HttpGet("items")]
+    public async Task<IActionResult> GetItems()
     {
-        var services = await db.Services
+        var items = await db.Items
             .Include(s => s.GalleryPhotos)
             .Where(s => s.BusinessId == BusinessId && s.IsActive)
             .OrderBy(s => s.NameEn)
             .ToListAsync();
-        return Ok(services.Select(ToServiceDto));
+        return Ok(items.Select(ToItemDto));
     }
 
-    [HttpPost("services")]
-    public async Task<IActionResult> CreateService([FromBody] CreateServiceRequest req)
+    [HttpPost("items")]
+    public async Task<IActionResult> CreateItem([FromBody] CreateItemRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.NameEn) || string.IsNullOrWhiteSpace(req.NameAr) || string.IsNullOrWhiteSpace(req.NameHe))
             return BadRequest(new { error = "All name fields are required" });
-        if (req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0)
+        if (req.IsBookable && (req.DurationMinutes is null || req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0))
             return BadRequest(new { error = "Duration must be a multiple of 15 (min 15)" });
-        if (!Enum.TryParse<ServicePhotoMode>(req.PhotoMode, out var photoMode))
+        if (!Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
             return BadRequest(new { error = "Invalid photo mode" });
 
-        var service = new Service
+        var item = new Item
         {
             BusinessId = BusinessId,
             NameEn = req.NameEn,
             NameAr = req.NameAr,
             NameHe = req.NameHe,
-            DurationMinutes = req.DurationMinutes,
+            DurationMinutes = req.IsBookable ? req.DurationMinutes : null,
             Price = req.Price,
             PhotoMode = photoMode,
+            IsBookable = req.IsBookable,
         };
-        db.Services.Add(service);
+        db.Items.Add(item);
         await db.SaveChangesAsync();
-        this.SetActivityDetail($"Created service: {service.NameEn} ({service.DurationMinutes} min, ₪{service.Price:F2}, {DescribePhotoMode(service.PhotoMode)})");
-        return StatusCode(201, ToServiceDto(service));
+        this.SetActivityDetail($"Created item: {item.NameEn} ({DescribeBookability(item)}, {DescribePhotoMode(item.PhotoMode)})");
+        return StatusCode(201, ToItemDto(item));
     }
 
-    [HttpPatch("services/{id}")]
-    public async Task<IActionResult> UpdateService(string id, [FromBody] CreateServiceRequest req)
+    [HttpPatch("items/{id}")]
+    public async Task<IActionResult> UpdateItem(string id, [FromBody] CreateItemRequest req)
     {
-        if (!Enum.TryParse<ServicePhotoMode>(req.PhotoMode, out var photoMode))
+        if (req.IsBookable && (req.DurationMinutes is null || req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0))
+            return BadRequest(new { error = "Duration must be a multiple of 15 (min 15)" });
+        if (!Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
             return BadRequest(new { error = "Invalid photo mode" });
 
-        var service = await db.Services.Include(s => s.GalleryPhotos)
+        var item = await db.Items.Include(s => s.GalleryPhotos)
             .FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
-        if (service is null) return NotFound();
+        if (item is null) return NotFound();
 
         // Captured before assignment so we can report only the fields that actually changed,
         // same approach as UpdateSettings/SaveWorkingHours above.
-        var oldNameEn = service.NameEn;
-        var oldNameAr = service.NameAr;
-        var oldNameHe = service.NameHe;
-        var oldDuration = service.DurationMinutes;
-        var oldPrice = service.Price;
-        var oldPhotoMode = service.PhotoMode;
+        var oldNameEn = item.NameEn;
+        var oldNameAr = item.NameAr;
+        var oldNameHe = item.NameHe;
+        var oldDuration = item.DurationMinutes;
+        var oldPrice = item.Price;
+        var oldPhotoMode = item.PhotoMode;
+        var oldIsBookable = item.IsBookable;
 
-        service.NameEn = req.NameEn;
-        service.NameAr = req.NameAr;
-        service.NameHe = req.NameHe;
-        service.DurationMinutes = req.DurationMinutes;
-        service.Price = req.Price;
-        service.PhotoMode = photoMode;
+        item.NameEn = req.NameEn;
+        item.NameAr = req.NameAr;
+        item.NameHe = req.NameHe;
+        item.DurationMinutes = req.IsBookable ? req.DurationMinutes : null;
+        item.Price = req.Price;
+        item.PhotoMode = photoMode;
+        item.IsBookable = req.IsBookable;
 
         await db.SaveChangesAsync();
 
         var changes = new List<string>();
-        if (service.NameEn != oldNameEn) changes.Add($"name: \"{oldNameEn}\" → \"{service.NameEn}\"");
-        if (service.NameAr != oldNameAr || service.NameHe != oldNameHe) changes.Add("translated names");
-        if (service.DurationMinutes != oldDuration) changes.Add($"duration: {oldDuration} min → {service.DurationMinutes} min");
-        if (service.Price != oldPrice) changes.Add($"price: ₪{oldPrice:F2} → ₪{service.Price:F2}");
-        if (service.PhotoMode != oldPhotoMode) changes.Add($"photo mode: {DescribePhotoMode(oldPhotoMode)} → {DescribePhotoMode(service.PhotoMode)}");
+        if (item.NameEn != oldNameEn) changes.Add($"name: \"{oldNameEn}\" → \"{item.NameEn}\"");
+        if (item.NameAr != oldNameAr || item.NameHe != oldNameHe) changes.Add("translated names");
+        if (item.IsBookable != oldIsBookable) changes.Add($"bookable: {oldIsBookable} → {item.IsBookable}");
+        if (item.DurationMinutes != oldDuration) changes.Add($"duration: {DescribeDuration(oldDuration)} → {DescribeDuration(item.DurationMinutes)}");
+        if (item.Price != oldPrice) changes.Add($"price: {DescribePrice(oldPrice)} → {DescribePrice(item.Price)}");
+        if (item.PhotoMode != oldPhotoMode) changes.Add($"photo mode: {DescribePhotoMode(oldPhotoMode)} → {DescribePhotoMode(item.PhotoMode)}");
 
         this.SetActivityDetail(changes.Count > 0
-            ? $"Updated service: {string.Join(", ", changes)}"
-            : $"Updated service: {service.NameEn} (no changes)");
+            ? $"Updated item: {string.Join(", ", changes)}"
+            : $"Updated item: {item.NameEn} (no changes)");
 
-        return Ok(ToServiceDto(service));
+        return Ok(ToItemDto(item));
     }
 
-    [HttpDelete("services/{id}")]
-    public async Task<IActionResult> DeleteService(string id)
+    [HttpDelete("items/{id}")]
+    public async Task<IActionResult> DeleteItem(string id)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
-        if (service is null) return NotFound();
-        service.IsActive = false;
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
+        if (item is null) return NotFound();
+        item.IsActive = false;
         await db.SaveChangesAsync();
-        this.SetActivityDetail($"Deleted service: {service.NameEn} ({service.DurationMinutes} min, ₪{service.Price:F2})");
+        this.SetActivityDetail($"Deleted item: {item.NameEn} ({DescribeBookability(item)})");
         return Ok(new { ok = true });
     }
 
-    private static string DescribePhotoMode(ServicePhotoMode mode) => mode switch
+    private static string DescribeDuration(int? minutes) => minutes is null ? "none" : $"{minutes} min";
+    private static string DescribePrice(decimal? price) => price is null ? "none" : $"₪{price:F2}";
+    private static string DescribeBookability(Item item) =>
+        item.IsBookable ? $"{DescribeDuration(item.DurationMinutes)}, {DescribePrice(item.Price)}" : "not bookable";
+
+    private static string DescribePhotoMode(ItemPhotoMode mode) => mode switch
     {
-        ServicePhotoMode.OwnerGallery => "owner gallery photos",
-        ServicePhotoMode.CustomerUpload => "customer-uploaded photo",
-        ServicePhotoMode.Both => "owner gallery or customer-uploaded photo",
+        ItemPhotoMode.OwnerGallery => "owner gallery photos",
+        ItemPhotoMode.CustomerUpload => "customer-uploaded photo",
+        ItemPhotoMode.Both => "owner gallery or customer-uploaded photo",
         _ => "no reference photo",
     };
 
-    // ─── Service gallery photos ─────────────────────────────────────────────
+    // ─── Item gallery photos ────────────────────────────────────────────────
 
-    [HttpPost("services/{id}/gallery")]
+    [HttpPost("items/{id}/gallery")]
     [RequestSizeLimit(MaxLogoBytes)]
     public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
-        if (service is null) return NotFound();
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
+        if (item is null) return NotFound();
 
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (file.Length == 0 || file.Length > MaxLogoBytes
@@ -249,40 +260,40 @@ public class AdminController(
             || file.ContentType != expectedContentType)
             return BadRequest(new { error = "Please upload a JPG, PNG, or WEBP image up to 5MB." });
 
-        var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "gallery", service.Id);
+        var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "gallery", item.Id);
         Directory.CreateDirectory(uploadsDir);
 
         var fileName = $"{Guid.NewGuid():N}{ext}";
         await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
             await file.CopyToAsync(stream);
 
-        var photo = new ServiceGalleryPhoto
+        var photo = new ItemGalleryPhoto
         {
-            ServiceId = service.Id,
-            Url = $"/api/uploads/gallery/{service.Id}/{fileName}",
+            ItemId = item.Id,
+            Url = $"/api/uploads/gallery/{item.Id}/{fileName}",
         };
-        db.ServiceGalleryPhotos.Add(photo);
+        db.ItemGalleryPhotos.Add(photo);
         await db.SaveChangesAsync();
 
-        this.SetActivityDetail($"Uploaded gallery photo for service: {service.NameEn}");
+        this.SetActivityDetail($"Uploaded gallery photo for item: {item.NameEn}");
 
-        return StatusCode(201, new ServiceGalleryPhotoDto(photo.Id, photo.Url));
+        return StatusCode(201, new ItemGalleryPhotoDto(photo.Id, photo.Url));
     }
 
-    [HttpDelete("services/{id}/gallery/{photoId}")]
+    [HttpDelete("items/{id}/gallery/{photoId}")]
     public async Task<IActionResult> DeleteGalleryPhoto(string id, string photoId)
     {
-        var photo = await db.ServiceGalleryPhotos.Include(p => p.Service)
-            .FirstOrDefaultAsync(p => p.Id == photoId && p.ServiceId == id && p.Service.BusinessId == BusinessId);
+        var photo = await db.ItemGalleryPhotos.Include(p => p.Item)
+            .FirstOrDefaultAsync(p => p.Id == photoId && p.ItemId == id && p.Item.BusinessId == BusinessId);
         if (photo is null) return NotFound();
 
         var path = Path.Combine(env.ContentRootPath, "wwwroot", photo.Url.Replace("/api/uploads/", "uploads/").Replace('/', Path.DirectorySeparatorChar));
         if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
 
-        db.ServiceGalleryPhotos.Remove(photo);
+        db.ItemGalleryPhotos.Remove(photo);
         await db.SaveChangesAsync();
 
-        this.SetActivityDetail($"Deleted gallery photo for service: {photo.Service.NameEn}");
+        this.SetActivityDetail($"Deleted gallery photo for item: {photo.Item.NameEn}");
 
         return Ok(new { ok = true });
     }
@@ -420,13 +431,13 @@ public class AdminController(
     {
         // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — bucket weeks by local "now" or this drifts a day near midnight.
-        var now = DateTime.Now;
+        var now = DateTime.Now.Date;
         var weekStart = now.AddDays(week * 7 - (int)now.DayOfWeek);
         var weekEnd = weekStart.AddDays(6);
 
         var appointments = await db.Appointments
             .Include(a => a.Customer)
-            .Include(a => a.Service)
+            .Include(a => a.Item)
             .Where(a => a.BusinessId == BusinessId && a.Date >= weekStart && a.Date <= weekEnd && a.Status != AppointmentStatus.CANCELLED)
             .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
             .ToListAsync();
@@ -435,8 +446,8 @@ public class AdminController(
             a.Id, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
-            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
+            new ItemSummary(a.Item.Id, a.Item.NameEn, a.Item.NameAr, a.Item.NameHe, a.Item.DurationMinutes, a.Item.Price),
+            a.Item.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
     }
 
     // ─── Appointments ────────────────────────────────────────────────────────
@@ -448,7 +459,7 @@ public class AdminController(
         var today = DateTime.Now.Date;
         var query = db.Appointments
             .Include(a => a.Customer)
-            .Include(a => a.Service)
+            .Include(a => a.Item)
             .Where(a => a.BusinessId == BusinessId);
 
         query = filter switch
@@ -465,19 +476,20 @@ public class AdminController(
             a.Id, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
-            new ServiceSummary(a.Service.Id, a.Service.NameEn, a.Service.NameAr, a.Service.NameHe, a.Service.DurationMinutes, a.Service.Price),
-            a.Service.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
+            new ItemSummary(a.Item.Id, a.Item.NameEn, a.Item.NameAr, a.Item.NameHe, a.Item.DurationMinutes, a.Item.Price),
+            a.Item.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
     }
 
     // ─── Manual appointment creation ───────────────────────────────────────
 
     [HttpGet("appointments/availability")]
-    public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string serviceId)
+    public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string itemId)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.BusinessId == BusinessId && s.IsActive);
-        if (service is null) return NotFound(new { error = "Service not found" });
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == BusinessId && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
+        if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
-        var slots = await availability.GetAvailableSlots(BusinessId, date, service.DurationMinutes);
+        var slots = await availability.GetAvailableSlots(BusinessId, date, item.DurationMinutes.Value);
         return Ok(new { slots });
     }
 
@@ -501,31 +513,32 @@ public class AdminController(
     [HttpPost("appointments")]
     public async Task<IActionResult> CreateAppointment([FromBody] CreateAdminAppointmentRequest req)
     {
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BusinessId == BusinessId && s.IsActive);
-        if (service is null) return NotFound(new { error = "Service not found" });
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == BusinessId && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
+        if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
         var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
         if (customerError is not null) return customerError;
 
         string? photoUrl = null;
-        if ((service.PhotoMode == ServicePhotoMode.OwnerGallery || service.PhotoMode == ServicePhotoMode.Both) && !string.IsNullOrWhiteSpace(req.GalleryPhotoId))
+        if ((item.PhotoMode == ItemPhotoMode.OwnerGallery || item.PhotoMode == ItemPhotoMode.Both) && !string.IsNullOrWhiteSpace(req.GalleryPhotoId))
         {
-            var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == service.Id);
+            var photo = await db.ItemGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ItemId == item.Id);
             if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
             photoUrl = photo.Url;
         }
-        else if ((service.PhotoMode == ServicePhotoMode.CustomerUpload || service.PhotoMode == ServicePhotoMode.Both) && !string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
+        else if ((item.PhotoMode == ItemPhotoMode.CustomerUpload || item.PhotoMode == ItemPhotoMode.Both) && !string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
         {
             if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
                 return BadRequest(new { error = "Invalid photo reference." });
             photoUrl = req.CustomerPhotoUrl;
         }
 
-        var endTime = AvailabilityService.AddMinutes(req.StartTime, service.DurationMinutes);
+        var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
 
         if (!req.Force)
         {
-            var slots = await availability.GetAvailableSlots(BusinessId, req.Date, service.DurationMinutes);
+            var slots = await availability.GetAvailableSlots(BusinessId, req.Date, item.DurationMinutes.Value);
             if (!slots.Any(s => s.Start == req.StartTime))
                 return Conflict(new { error = "Slot not available" });
         }
@@ -539,7 +552,7 @@ public class AdminController(
         {
             BusinessId = BusinessId,
             CustomerId = customer!.Id,
-            ServiceId = service.Id,
+            ItemId = item.Id,
             Date = requestedDate,
             StartTime = req.StartTime,
             EndTime = endTime,
@@ -553,14 +566,14 @@ public class AdminController(
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
-        this.SetActivityDetail($"Booked appointment: {service.NameEn} for {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} on {req.Date} at {req.StartTime}");
+        this.SetActivityDetail($"Booked appointment: {item.NameEn} for {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} on {req.Date} at {req.StartTime}");
 
         return StatusCode(201, new DashboardAppointmentDto(
             appointment.Id, req.Date, appointment.StartTime, appointment.EndTime,
             "CONFIRMED", appointment.Notes,
             new CustomerSummary(customer.Id, customer.Name, customer.FamilyName, customer.Phone),
-            new ServiceSummary(service.Id, service.NameEn, service.NameAr, service.NameHe, service.DurationMinutes, service.Price),
-            service.Price, appointment.PhotoUrl, appointment.RecurringSeriesId));
+            new ItemSummary(item.Id, item.NameEn, item.NameAr, item.NameHe, item.DurationMinutes, item.Price),
+            item.Price, appointment.PhotoUrl, appointment.RecurringSeriesId));
     }
 
     [HttpPatch("appointments/{id}")]
@@ -572,7 +585,7 @@ public class AdminController(
             return BadRequest(new { error = "Only cancelling is supported" });
 
         var appt = await db.Appointments
-            .Include(a => a.Customer).Include(a => a.Service)
+            .Include(a => a.Customer).Include(a => a.Item)
             .FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
         if (appt is null) return NotFound();
 
@@ -589,7 +602,7 @@ public class AdminController(
         var verb = wasPendingApproval ? "Resolved cancellation request" : "Cancelled appointment";
         var suffix = offeredToWaitlist ? " (offered to waitlist)" : "";
         this.SetActivityDetail(
-            $"{verb}{suffix}: {appt.Service.NameEn} for {ActivityDetailExtensions.FullName(appt.Customer.Name, appt.Customer.FamilyName)} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
+            $"{verb}{suffix}: {appt.Item.NameEn} for {ActivityDetailExtensions.FullName(appt.Customer.Name, appt.Customer.FamilyName)} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
 
         return Ok(new { appt.Id, Status = appt.Status.ToString() });
     }
@@ -619,7 +632,7 @@ public class AdminController(
     [HttpPatch("appointments/{id}/customer")]
     public async Task<IActionResult> ReplaceCustomer(string id, [FromBody] ReplaceCustomerRequest req)
     {
-        var appt = await db.Appointments.Include(a => a.Service)
+        var appt = await db.Appointments.Include(a => a.Item)
             .FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
         if (appt is null) return NotFound();
         if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
@@ -654,7 +667,7 @@ public class AdminController(
         var verb = wasPendingApproval ? "Resolved cancellation request by replacing customer on appointment"
             : "Replaced customer on appointment";
         this.SetActivityDetail(
-            $"{verb}: {appt.Service.NameEn} on {appt.Date:yyyy-MM-dd} at {appt.StartTime} — now {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)}");
+            $"{verb}: {appt.Item.NameEn} on {appt.Date:yyyy-MM-dd} at {appt.StartTime} — now {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)}");
 
         return Ok(new { appt.Id, appt.CustomerId });
     }

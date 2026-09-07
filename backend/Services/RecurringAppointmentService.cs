@@ -16,7 +16,7 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
         var today = DateTime.Now.Date;
         var horizon = Horizon(today);
 
-        var series = await db.RecurringSeries.Include(s => s.Service).Where(s => s.IsActive).ToListAsync();
+        var series = await db.RecurringSeries.Include(s => s.Item).Where(s => s.IsActive).ToListAsync();
         int total = 0, created = 0, skipped = 0;
 
         foreach (var s in series)
@@ -37,7 +37,7 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
         var today = DateTime.Now.Date;
         var horizon = Horizon(today);
 
-        var s = await db.RecurringSeries.Include(x => x.Service).FirstOrDefaultAsync(x => x.Id == seriesId);
+        var s = await db.RecurringSeries.Include(x => x.Item).FirstOrDefaultAsync(x => x.Id == seriesId);
         if (s is null || !s.IsActive) return;
 
         await GenerateForSeries(s, today, horizon);
@@ -48,7 +48,7 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
     {
         int total = 0, created = 0, skipped = 0;
 
-        if (!s.Service.IsActive)
+        if (!s.Item.IsActive || !s.Item.IsBookable || s.Item.DurationMinutes is null)
         {
             s.IsActive = false;
             db.RecurringSkips.Add(new RecurringSkip { RecurringSeriesId = s.Id, Date = today, Reason = "service_inactive" });
@@ -69,17 +69,17 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
             if (!exists)
             {
                 var dateStr = d.ToString("yyyy-MM-dd");
-                var slots = await availability.GetAvailableSlots(s.BusinessId, dateStr, s.Service.DurationMinutes);
+                var slots = await availability.GetAvailableSlots(s.BusinessId, dateStr, s.Item.DurationMinutes.Value);
                 if (slots.Any(sl => sl.Start == s.StartTime))
                 {
                     db.Appointments.Add(new Appointment
                     {
                         BusinessId = s.BusinessId,
                         CustomerId = s.CustomerId,
-                        ServiceId = s.ServiceId,
+                        ItemId = s.ItemId,
                         Date = d,
                         StartTime = s.StartTime,
-                        EndTime = AvailabilityService.AddMinutes(s.StartTime, s.Service.DurationMinutes),
+                        EndTime = AvailabilityService.AddMinutes(s.StartTime, s.Item.DurationMinutes.Value),
                         Notes = s.Notes,
                         Status = AppointmentStatus.CONFIRMED,
                         RecurringSeriesId = s.Id,

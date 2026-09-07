@@ -25,7 +25,7 @@ public class BookingController(
     public async Task<IActionResult> GetBusinessInfo(string slug)
     {
         var business = await db.Businesses
-            .Include(b => b.Services.Where(s => s.IsActive)).ThenInclude(s => s.GalleryPhotos)
+            .Include(b => b.Items.Where(s => s.IsActive)).ThenInclude(s => s.GalleryPhotos)
             .Include(b => b.WorkingHours.Where(w => w.IsActive))
             .FirstOrDefaultAsync(b => b.Slug == slug);
 
@@ -34,9 +34,9 @@ public class BookingController(
         var isRTL = business.Language is Language.AR or Language.HE;
         var activeDays = business.WorkingHours.Select(w => w.DayOfWeek).ToArray();
 
-        var services = business.Services.Select(s => new ServiceDto(
+        var items = business.Items.Select(s => new ItemDto(
             s.Id, s.BusinessId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
-            s.PhotoMode.ToString(), s.GalleryPhotos.Select(p => new ServiceGalleryPhotoDto(p.Id, p.Url)).ToList())).ToList();
+            s.PhotoMode.ToString(), s.IsBookable, s.GalleryPhotos.Select(p => new ItemGalleryPhotoDto(p.Id, p.Url)).ToList())).ToList();
 
         var isFollowed = false;
         if (User.FindFirst("type")?.Value == "customer")
@@ -47,19 +47,20 @@ public class BookingController(
 
         return Ok(new PublicBusinessDto(
             business.Slug, business.Name, business.Description, business.Logo,
-            business.Language.ToString(), isRTL, activeDays, services, isFollowed, business.WaitlistEnabled));
+            business.Language.ToString(), isRTL, activeDays, items, isFollowed, business.WaitlistEnabled));
     }
 
     [HttpGet("availability")]
-    public async Task<IActionResult> GetAvailability(string slug, [FromQuery] string date, [FromQuery] string serviceId)
+    public async Task<IActionResult> GetAvailability(string slug, [FromQuery] string date, [FromQuery] string itemId)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.BusinessId == business.Id && s.IsActive);
-        if (service is null) return NotFound(new { error = "Service not found" });
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == business.Id && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
+        if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
-        var slots = await availability.GetAvailableSlots(business.Id, date, service.DurationMinutes);
+        var slots = await availability.GetAvailableSlots(business.Id, date, item.DurationMinutes.Value);
         return Ok(new { slots });
     }
 
@@ -67,15 +68,16 @@ public class BookingController(
     // waitlist feature can let a customer see and join the waitlist for an already-booked slot
     // instead of it just disappearing from the schedule.
     [HttpGet("availability/full")]
-    public async Task<IActionResult> GetFullAvailability(string slug, [FromQuery] string date, [FromQuery] string serviceId)
+    public async Task<IActionResult> GetFullAvailability(string slug, [FromQuery] string date, [FromQuery] string itemId)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == serviceId && s.BusinessId == business.Id && s.IsActive);
-        if (service is null) return NotFound(new { error = "Service not found" });
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == business.Id && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
+        if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
-        var slots = await availability.GetSlotsWithBookingInfo(business.Id, date, service.DurationMinutes);
+        var slots = await availability.GetSlotsWithBookingInfo(business.Id, date, item.DurationMinutes.Value);
         return Ok(new { slots });
     }
 
@@ -89,29 +91,30 @@ public class BookingController(
             (business.SubscriptionStatus == SubStatus.TRIAL && business.TrialEndsAt < DateTime.UtcNow))
             return StatusCode(403, new { error = "Booking unavailable" });
 
-        var service = await db.Services.FirstOrDefaultAsync(s => s.Id == req.ServiceId && s.BusinessId == business.Id && s.IsActive);
-        if (service is null) return NotFound(new { error = "Service not found" });
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == business.Id && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
+        if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
         string? photoUrl = null;
-        if (service.PhotoMode == ServicePhotoMode.OwnerGallery)
+        if (item.PhotoMode == ItemPhotoMode.OwnerGallery)
         {
             if (string.IsNullOrWhiteSpace(req.GalleryPhotoId))
                 return BadRequest(new { error = "Please choose a photo for this service." });
-            var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == service.Id);
+            var photo = await db.ItemGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ItemId == item.Id);
             if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
             photoUrl = photo.Url;
         }
-        else if (service.PhotoMode == ServicePhotoMode.CustomerUpload)
+        else if (item.PhotoMode == ItemPhotoMode.CustomerUpload)
         {
             if (string.IsNullOrWhiteSpace(req.CustomerPhotoUrl) || !req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
                 return BadRequest(new { error = "Please upload a photo for this service." });
             photoUrl = req.CustomerPhotoUrl;
         }
-        else if (service.PhotoMode == ServicePhotoMode.Both)
+        else if (item.PhotoMode == ItemPhotoMode.Both)
         {
             if (!string.IsNullOrWhiteSpace(req.GalleryPhotoId))
             {
-                var photo = await db.ServiceGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ServiceId == service.Id);
+                var photo = await db.ItemGalleryPhotos.FirstOrDefaultAsync(p => p.Id == req.GalleryPhotoId && p.ItemId == item.Id);
                 if (photo is null) return BadRequest(new { error = "The selected photo is no longer available." });
                 photoUrl = photo.Url;
             }
@@ -127,11 +130,11 @@ public class BookingController(
             }
         }
 
-        var slots = await availability.GetAvailableSlots(business.Id, req.Date, service.DurationMinutes);
+        var slots = await availability.GetAvailableSlots(business.Id, req.Date, item.DurationMinutes.Value);
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot no longer available" });
 
-        var endTime = AvailabilityService.AddMinutes(req.StartTime, service.DurationMinutes);
+        var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
         var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
 
         // If a logged-in customer token is attached, link the booking to their account and trust
@@ -193,7 +196,7 @@ public class BookingController(
         {
             BusinessId = business.Id,
             CustomerId = customer.Id,
-            ServiceId = service.Id,
+            ItemId = item.Id,
             Date = requestedDate,
             StartTime = req.StartTime,
             EndTime = endTime,
@@ -207,7 +210,7 @@ public class BookingController(
         if (!await availability.TrySaveOrDetectConflict(business.Id, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
-        this.SetActivityDetail($"Booked appointment: {service.NameEn} with {business.Name} on {req.Date} at {req.StartTime}");
+        this.SetActivityDetail($"Booked appointment: {item.NameEn} with {business.Name} on {req.Date} at {req.StartTime}");
 
         return StatusCode(201, new BookAppointmentResponse(appointment.Id, appointment.CancelToken));
     }
@@ -240,19 +243,19 @@ public class BookingController(
     {
         var appointment = await db.Appointments
             .Include(a => a.Customer)
-            .Include(a => a.Service)
+            .Include(a => a.Item)
             .Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Business.Slug == slug);
 
         if (appointment is null) return NotFound(new { error = "Not found" });
 
         return Ok(new AppointmentDetailDto(
-            appointment.Id, appointment.BusinessId, appointment.CustomerId, appointment.ServiceId,
+            appointment.Id, appointment.BusinessId, appointment.CustomerId, appointment.ItemId,
             appointment.Date.ToString("yyyy-MM-dd"), appointment.StartTime, appointment.EndTime,
             appointment.Notes, AppointmentStatusHelper.CustomerFacingStatus(appointment.Status, appointment.PendingCancellationApproval, appointment.Date, appointment.EndTime), appointment.ReminderSent, appointment.CancelToken,
             appointment.CreatedAt,
             new CustomerSummary(appointment.Customer.Id, appointment.Customer.Name, appointment.Customer.FamilyName, appointment.Customer.Phone),
-            new ServiceSummary(appointment.Service.Id, appointment.Service.NameEn, appointment.Service.NameAr, appointment.Service.NameHe, appointment.Service.DurationMinutes, appointment.Service.Price),
+            new ItemSummary(appointment.Item.Id, appointment.Item.NameEn, appointment.Item.NameAr, appointment.Item.NameHe, appointment.Item.DurationMinutes, appointment.Item.Price),
             new BusinessSummary(appointment.Business.Name, appointment.Business.Slug, appointment.Business.Language.ToString()), appointment.PhotoUrl,
             appointment.RecurringSeriesId));
     }
@@ -261,7 +264,7 @@ public class BookingController(
     public async Task<IActionResult> CancelAppointment(string slug, string id, [FromQuery] string token)
     {
         var appointment = await db.Appointments
-            .Include(a => a.Business).Include(a => a.Service)
+            .Include(a => a.Business).Include(a => a.Item)
             .FirstOrDefaultAsync(a => a.Id == id && a.Business.Slug == slug);
 
         if (appointment is null) return NotFound(new { error = "Not found" });
@@ -276,7 +279,7 @@ public class BookingController(
         // finalize the cancellation; it may just freeze the slot pending owner approval instead.
         var verb = appointment.PendingCancellationApproval ? "Requested cancellation (awaiting owner approval)" : "Cancelled appointment";
         this.SetActivityDetail(
-            $"{verb}: {appointment.Service.NameEn} with {appointment.Business.Name} on {appointment.Date:yyyy-MM-dd} at {appointment.StartTime}");
+            $"{verb}: {appointment.Item.NameEn} with {appointment.Business.Name} on {appointment.Date:yyyy-MM-dd} at {appointment.StartTime}");
 
         return Ok(new { ok = true });
     }
@@ -285,7 +288,7 @@ public class BookingController(
     public async Task<IActionResult> RescheduleAppointment(string slug, string id, [FromQuery] string token, [FromBody] RescheduleRequest req)
     {
         var appointment = await db.Appointments
-            .Include(a => a.Service)
+            .Include(a => a.Item)
             .Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Business.Slug == slug);
 
@@ -293,8 +296,10 @@ public class BookingController(
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
         if (appointment.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
+        if (!appointment.Item.IsBookable || appointment.Item.DurationMinutes is null)
+            return Conflict(new { error = "This appointment can no longer be modified" });
 
-        var slots = await availability.GetAvailableSlots(appointment.BusinessId, req.Date, appointment.Service.DurationMinutes);
+        var slots = await availability.GetAvailableSlots(appointment.BusinessId, req.Date, appointment.Item.DurationMinutes.Value);
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 
@@ -303,7 +308,7 @@ public class BookingController(
 
         appointment.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         appointment.StartTime = req.StartTime;
-        appointment.EndTime = AvailabilityService.AddMinutes(req.StartTime, appointment.Service.DurationMinutes);
+        appointment.EndTime = AvailabilityService.AddMinutes(req.StartTime, appointment.Item.DurationMinutes.Value);
         appointment.ReminderSent = false;
 
         await waitlist.ResolveForRebooking(appointment.BusinessId, appointment.Date, req.StartTime);
@@ -311,7 +316,7 @@ public class BookingController(
             return Conflict(new { error = "Slot not available" });
 
         this.SetActivityDetail(
-            $"Rescheduled appointment: {appointment.Service.NameEn} with {appointment.Business.Name} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
+            $"Rescheduled appointment: {appointment.Item.NameEn} with {appointment.Business.Name} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
 
         return Ok(new { appointment.Id, Status = appointment.Status.ToString() });
     }

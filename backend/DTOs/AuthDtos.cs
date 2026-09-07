@@ -8,9 +8,9 @@ public record ResendVerificationRequest(string Email);
 public record ForgotPasswordRequest(string Email);
 public record ResetPasswordRequest(string Email, string Code, string NewPassword);
 
-public record ServiceGalleryPhotoDto(string Id, string Url);
-public record ServiceDto(string Id, string BusinessId, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, bool IsActive, string PhotoMode, List<ServiceGalleryPhotoDto> GalleryPhotos);
-public record CreateServiceRequest(string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price, string PhotoMode = "None");
+public record ItemGalleryPhotoDto(string Id, string Url);
+public record ItemDto(string Id, string BusinessId, string NameEn, string NameAr, string NameHe, int? DurationMinutes, decimal? Price, bool IsActive, string PhotoMode, bool IsBookable, List<ItemGalleryPhotoDto> GalleryPhotos);
+public record CreateItemRequest(string NameEn, string NameAr, string NameHe, int? DurationMinutes, decimal? Price, string PhotoMode = "None", bool IsBookable = true);
 
 public record WorkingHoursDto(string? Id, int DayOfWeek, string StartTime, string EndTime, bool IsActive);
 public record BreakDto(string Id, int DayOfWeek, string StartTime, string EndTime);
@@ -34,7 +34,7 @@ public record UpdateSettingsRequest(
     bool ChatbotEnabled = true, string? ChatbotWelcomeMessage = null, string? ChatbotConfirmationMessage = null);
 
 public record BookAppointmentRequest(
-    string ServiceId, string Date, string StartTime,
+    string ItemId, string Date, string StartTime,
     string CustomerName, string CustomerPhone, string? Notes,
     string? GalleryPhotoId = null, string? CustomerPhotoUrl = null, string? CustomerFamilyName = null);
 
@@ -42,19 +42,19 @@ public record BookAppointmentResponse(string AppointmentId, string CancelToken);
 
 public record CreateAdminAppointmentRequest(
     string? CustomerId, string? CustomerName, string? CustomerPhone,
-    string ServiceId, string Date, string StartTime, string? Notes,
+    string ItemId, string Date, string StartTime, string? Notes,
     string? GalleryPhotoId = null, string? CustomerPhotoUrl = null, bool Force = false,
     string? CustomerFamilyName = null);
 
 public record RecurringSkipDto(string Date, string Reason);
 public record RecurringSeriesDto(
-    string Id, CustomerSummary Customer, ServiceSummary Service,
+    string Id, CustomerSummary Customer, ItemSummary Item,
     int DayOfWeek, string StartTime, string? Notes, bool IsActive,
     string StartDate, string? EndDate, string? NextOccurrenceDate,
     List<RecurringSkipDto> RecentSkips);
 public record CreateRecurringSeriesRequest(
     string? CustomerId, string? CustomerName, string? CustomerPhone,
-    string ServiceId, int DayOfWeek, string StartTime, string? Notes,
+    string ItemId, int DayOfWeek, string StartTime, string? Notes,
     string? StartDate = null, string? EndDate = null, string? CustomerFamilyName = null);
 
 public record TimeSlot(string Start, string End);
@@ -70,21 +70,21 @@ public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, s
 public record WaitlistEntrySummaryDto(string Id, string CustomerAccountId, string Name, string FamilyName, string Phone, string Status, DateTime CreatedAt);
 
 public record AppointmentDetailDto(
-    string Id, string BusinessId, string CustomerId, string ServiceId,
+    string Id, string BusinessId, string CustomerId, string ItemId,
     string Date, string StartTime, string EndTime, string? Notes,
     string Status, bool ReminderSent, string CancelToken, DateTime CreatedAt,
-    CustomerSummary Customer, ServiceSummary Service, BusinessSummary Business, string? PhotoUrl,
+    CustomerSummary Customer, ItemSummary Item, BusinessSummary Business, string? PhotoUrl,
     string? RecurringSeriesId = null);
 
 public record CustomerSummary(string Id, string Name, string FamilyName, string Phone);
-public record ServiceSummary(
-    string Id, string NameEn, string NameAr, string NameHe, int DurationMinutes, decimal Price,
-    string PhotoMode = "None", List<ServiceGalleryPhotoDto>? GalleryPhotos = null);
+public record ItemSummary(
+    string Id, string NameEn, string NameAr, string NameHe, int? DurationMinutes, decimal? Price,
+    string PhotoMode = "None", List<ItemGalleryPhotoDto>? GalleryPhotos = null, bool IsBookable = true);
 public record BusinessSummary(string Name, string Slug, string Language);
 
 public record DashboardAppointmentDto(
     string Id, string Date, string StartTime, string EndTime,
-    string Status, string? Notes, CustomerSummary Customer, ServiceSummary Service, decimal Price, string? PhotoUrl,
+    string Status, string? Notes, CustomerSummary Customer, ItemSummary Item, decimal? Price, string? PhotoUrl,
     string? RecurringSeriesId = null, bool PendingCancellationApproval = false);
 
 public record ScheduleResponse(
@@ -94,14 +94,14 @@ public record ScheduleResponse(
 
 public record PublicBusinessDto(
     string Slug, string Name, string? Description, string? Logo,
-    string Language, bool IsRTL, int[] ActiveDays, List<ServiceDto> Services, bool IsFollowed,
+    string Language, bool IsRTL, int[] ActiveDays, List<ItemDto> Items, bool IsFollowed,
     bool WaitlistEnabled);
 
 public record BusinessSearchResultDto(string Slug, string Name, string? Description, string? Logo, string Language, bool IsFollowed);
 
 public record CustomerAppointmentDto(
     string Id, string BusinessSlug, string BusinessName, string Date, string StartTime, string EndTime,
-    string? Notes, string Status, string CancelToken, ServiceSummary Service, string? PhotoUrl);
+    string? Notes, string Status, string CancelToken, ItemSummary Item, string? PhotoUrl);
 
 public record UpdateAppointmentPhotoRequest(string? GalleryPhotoId, string? CustomerPhotoUrl);
 

@@ -25,11 +25,11 @@ public class ServicePhotoTests : IntegrationTestBase
         return (body!.Token, slug);
     }
 
-    private async Task<ServiceDto> CreateService(string businessToken, string photoMode)
+    private async Task<ItemDto> CreateService(string businessToken, string photoMode)
     {
         Authorize(Client, businessToken);
-        var resp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Haircut", "Haircut", "Haircut", 30, 50m, photoMode));
-        var service = await resp.Content.ReadFromJsonAsync<ServiceDto>();
+        var resp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Haircut", "Haircut", "Haircut", 30, 50m, photoMode));
+        var service = await resp.Content.ReadFromJsonAsync<ItemDto>();
         Client.DefaultRequestHeaders.Authorization = null;
         return service!;
     }
@@ -43,9 +43,9 @@ public class ServicePhotoTests : IntegrationTestBase
         return content;
     }
 
-    private async Task<string> FirstAvailableSlot(string slug, string serviceId, string date = TestDate)
+    private async Task<string> FirstAvailableSlot(string slug, string itemId, string date = TestDate)
     {
-        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&serviceId={serviceId}");
+        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&itemId={itemId}");
         var body = await resp.Content.ReadFromJsonAsync<AvailabilityResponse>();
         Assert.NotEmpty(body!.Slots);
         return body.Slots[0].Start;
@@ -78,24 +78,24 @@ public class ServicePhotoTests : IntegrationTestBase
         var (businessToken, _) = await RegisterAndLoginBusiness("photomode-invalid@example.com", "photomode-invalid-shop");
         Authorize(Client, businessToken);
 
-        var resp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Haircut", "Haircut", "Haircut", 30, 50m, "NotARealMode"));
+        var resp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Haircut", "Haircut", "Haircut", 30, 50m, "NotARealMode"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     [Fact]
-    public async Task UploadGalleryPhoto_ByOwner_Succeeds_AndListedInServiceDto()
+    public async Task UploadGalleryPhoto_ByOwner_Succeeds_AndListedInItemDto()
     {
         var (businessToken, _) = await RegisterAndLoginBusiness("gallery-upload@example.com", "gallery-upload-shop");
         var service = await CreateService(businessToken, "OwnerGallery");
 
         Authorize(Client, businessToken);
-        var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
+        var uploadResp = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
         Assert.Equal(HttpStatusCode.Created, uploadResp.StatusCode);
-        var uploaded = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var uploaded = await uploadResp.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
         Assert.False(string.IsNullOrWhiteSpace(uploaded!.Url));
 
-        var services = await Client.GetFromJsonAsync<List<ServiceDto>>("/api/admin/services");
+        var services = await Client.GetFromJsonAsync<List<ItemDto>>("/api/admin/items");
         var updated = services!.Single(s => s.Id == service.Id);
         Assert.Single(updated.GalleryPhotos);
         Assert.Equal(uploaded.Id, updated.GalleryPhotos[0].Id);
@@ -108,7 +108,7 @@ public class ServicePhotoTests : IntegrationTestBase
         var service = await CreateService(businessToken, "OwnerGallery");
 
         Authorize(Client, businessToken);
-        var resp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage(fileName: "photo.jpg", contentType: "text/plain"));
+        var resp = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage(fileName: "photo.jpg", contentType: "text/plain"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -121,7 +121,7 @@ public class ServicePhotoTests : IntegrationTestBase
         var (intruderToken, _) = await RegisterAndLoginBusiness("gallery-intruder@example.com", "gallery-intruder-shop");
 
         Authorize(Client, intruderToken);
-        var resp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
+        var resp = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
@@ -133,13 +133,13 @@ public class ServicePhotoTests : IntegrationTestBase
         var service = await CreateService(businessToken, "OwnerGallery");
 
         Authorize(Client, businessToken);
-        var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
-        var uploaded = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var uploadResp = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
+        var uploaded = await uploadResp.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
 
-        var deleteResp = await Client.DeleteAsync($"/api/admin/services/{service.Id}/gallery/{uploaded!.Id}");
+        var deleteResp = await Client.DeleteAsync($"/api/admin/items/{service.Id}/gallery/{uploaded!.Id}");
         Assert.Equal(HttpStatusCode.OK, deleteResp.StatusCode);
 
-        var services = await Client.GetFromJsonAsync<List<ServiceDto>>("/api/admin/services");
+        var services = await Client.GetFromJsonAsync<List<ItemDto>>("/api/admin/items");
         Assert.Empty(services!.Single(s => s.Id == service.Id).GalleryPhotos);
     }
 
@@ -149,12 +149,12 @@ public class ServicePhotoTests : IntegrationTestBase
         var (ownerToken, _) = await RegisterAndLoginBusiness("gallery-del-owner@example.com", "gallery-del-owner-shop");
         var service = await CreateService(ownerToken, "OwnerGallery");
         Authorize(Client, ownerToken);
-        var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
-        var uploaded = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var uploadResp = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
+        var uploaded = await uploadResp.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
 
         var (intruderToken, _) = await RegisterAndLoginBusiness("gallery-del-intruder@example.com", "gallery-del-intruder-shop");
         Authorize(Client, intruderToken);
-        var deleteResp = await Client.DeleteAsync($"/api/admin/services/{service.Id}/gallery/{uploaded!.Id}");
+        var deleteResp = await Client.DeleteAsync($"/api/admin/items/{service.Id}/gallery/{uploaded!.Id}");
 
         Assert.Equal(HttpStatusCode.NotFound, deleteResp.StatusCode);
     }
@@ -178,8 +178,8 @@ public class ServicePhotoTests : IntegrationTestBase
         var (businessToken, slug) = await RegisterAndLoginBusiness("book-gallery-ok@example.com", "book-gallery-ok-shop");
         var service = await CreateService(businessToken, "OwnerGallery");
         Authorize(Client, businessToken);
-        var uploadResp = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
-        var photo = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var uploadResp = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
+        var photo = await uploadResp.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
         var slot = await FirstAvailableSlot(slug, service.Id);
@@ -199,8 +199,8 @@ public class ServicePhotoTests : IntegrationTestBase
         var service = await CreateService(businessToken, "OwnerGallery");
         var otherService = await CreateService(businessToken, "OwnerGallery");
         Authorize(Client, businessToken);
-        var uploadResp = await Client.PostAsync($"/api/admin/services/{otherService.Id}/gallery", FakeImage());
-        var photoOnOtherService = await uploadResp.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var uploadResp = await Client.PostAsync($"/api/admin/items/{otherService.Id}/gallery", FakeImage());
+        var photoOnOtherService = await uploadResp.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
         var slot = await FirstAvailableSlot(slug, service.Id);
@@ -278,10 +278,10 @@ public class ServicePhotoTests : IntegrationTestBase
         var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-gallery@example.com", "changephoto-gallery-shop");
         var service = await CreateService(businessToken, "OwnerGallery");
         Authorize(Client, businessToken);
-        var firstUpload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
-        var firstPhoto = await firstUpload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
-        var secondUpload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
-        var secondPhoto = await secondUpload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var firstUpload = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
+        var firstPhoto = await firstUpload.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
+        var secondUpload = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
+        var secondPhoto = await secondUpload.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
         var customerToken = await GetCustomerToken("+15559990101");
@@ -309,8 +309,8 @@ public class ServicePhotoTests : IntegrationTestBase
         var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-gallery-missing@example.com", "changephoto-gallery-missing-shop");
         var service = await CreateService(businessToken, "OwnerGallery");
         Authorize(Client, businessToken);
-        var upload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
-        var photo = await upload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var upload = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
+        var photo = await upload.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
         var customerToken = await GetCustomerToken("+15559990102");
@@ -364,8 +364,8 @@ public class ServicePhotoTests : IntegrationTestBase
         var (businessToken, slug) = await RegisterAndLoginBusiness("changephoto-intruder@example.com", "changephoto-intruder-shop");
         var service = await CreateService(businessToken, "OwnerGallery");
         Authorize(Client, businessToken);
-        var upload = await Client.PostAsync($"/api/admin/services/{service.Id}/gallery", FakeImage());
-        var photo = await upload.Content.ReadFromJsonAsync<ServiceGalleryPhotoDto>();
+        var upload = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage());
+        var photo = await upload.Content.ReadFromJsonAsync<ItemGalleryPhotoDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
         var ownerToken = await GetCustomerToken("+15559990104");

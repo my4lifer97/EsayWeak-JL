@@ -20,7 +20,7 @@ public abstract class IntegrationTestBase : IDisposable
     // login token happened to be minted for), so every test in a class can safely share the same
     // one instead of each call seeding its own business.
     private string? _loginBusinessId;
-    private string? _loginServiceId;
+    private string? _loginItemId;
 
     protected IntegrationTestBase() : this(configureCardcom: false) { }
 
@@ -49,7 +49,7 @@ public abstract class IntegrationTestBase : IDisposable
         using var scope = Factory.Services.CreateScope();
         var tokens = scope.ServiceProvider.GetRequiredService<WhatsAppBookingTokenService>();
         var profileName = string.IsNullOrWhiteSpace(familyName) ? name : $"{name} {familyName}";
-        var tokenRow = await tokens.CreateAsync(_loginBusinessId!, _loginServiceId!, phone, profileName);
+        var tokenRow = await tokens.CreateAsync(_loginBusinessId!, _loginItemId!, phone, profileName);
 
         var resp = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new { token = tokenRow.Id });
         resp.EnsureSuccessStatusCode();
@@ -63,12 +63,12 @@ public abstract class IntegrationTestBase : IDisposable
         using var db = Db();
         var business = new Business { Name = "Login Seed Business", Email = $"{Guid.NewGuid():N}@login-seed.test", Slug = $"login-seed-{Guid.NewGuid():N}" };
         db.Businesses.Add(business);
-        var service = new Service { BusinessId = business.Id, NameEn = "Seed Service", NameAr = "Seed Service", NameHe = "Seed Service", DurationMinutes = 30, Price = 0 };
-        db.Services.Add(service);
+        var item = new Item { BusinessId = business.Id, NameEn = "Seed Service", NameAr = "Seed Service", NameHe = "Seed Service", DurationMinutes = 30, Price = 0 };
+        db.Items.Add(item);
         await db.SaveChangesAsync();
 
         _loginBusinessId = business.Id;
-        _loginServiceId = service.Id;
+        _loginItemId = item.Id;
     }
 
     public void Dispose()
@@ -79,4 +79,4 @@ public abstract class IntegrationTestBase : IDisposable
     }
 }
 
-public record WhatsAppLoginResult(string Token, string CustomerId, string Name, string FamilyName, string Phone, string BusinessSlug, string ServiceId);
+public record WhatsAppLoginResult(string Token, string CustomerId, string Name, string FamilyName, string Phone, string BusinessSlug, string ItemId);

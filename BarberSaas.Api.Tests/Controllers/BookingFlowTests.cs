@@ -47,8 +47,8 @@ public class BookingFlowTests : IntegrationTestBase
     private async Task<string> CreateService(string businessToken)
     {
         Authorize(Client, businessToken);
-        var resp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Haircut", "Haircut", "Haircut", 30, 50m));
-        var service = await resp.Content.ReadFromJsonAsync<ServiceDto>();
+        var resp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Haircut", "Haircut", "Haircut", 30, 50m));
+        var service = await resp.Content.ReadFromJsonAsync<ItemDto>();
         Client.DefaultRequestHeaders.Authorization = null;
         return service!.Id;
     }
@@ -56,17 +56,17 @@ public class BookingFlowTests : IntegrationTestBase
     private async Task<string> GetCustomerToken(string phone, string name = "First", string familyName = "Last") =>
         (await LoginCustomerViaWhatsAppAsync(phone, name, familyName)).Token;
 
-    private async Task<List<TimeSlot>> AvailableSlots(string slug, string serviceId, string? date = null)
+    private async Task<List<TimeSlot>> AvailableSlots(string slug, string itemId, string? date = null)
     {
         date ??= TestDate;
-        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&serviceId={serviceId}");
+        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&itemId={itemId}");
         var body = await resp.Content.ReadFromJsonAsync<AvailabilityResponse>();
         return body!.Slots;
     }
 
-    private async Task<string> FirstAvailableSlot(string slug, string serviceId, string? date = null)
+    private async Task<string> FirstAvailableSlot(string slug, string itemId, string? date = null)
     {
-        var slots = await AvailableSlots(slug, serviceId, date);
+        var slots = await AvailableSlots(slug, itemId, date);
         Assert.NotEmpty(slots);
         return slots[0].Start;
     }
@@ -80,18 +80,18 @@ public class BookingFlowTests : IntegrationTestBase
         Client.DefaultRequestHeaders.Authorization = null;
     }
 
-    private Task<HttpResponseMessage> Book(string slug, string serviceId, string date, string startTime, string phone) =>
-        Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(serviceId, date, startTime, "Customer", phone, null));
+    private Task<HttpResponseMessage> Book(string slug, string itemId, string date, string startTime, string phone) =>
+        Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(itemId, date, startTime, "Customer", phone, null));
 
     [Fact]
     public async Task Booking_StoresFirstAndFamilyNameSeparately()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("split-name-flow@example.com", "split-name-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slot = await FirstAvailableSlot(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(
-            serviceId, TestDate, slot, "Jane", "+15553330099", null, CustomerFamilyName: "Doe"));
+            itemId, TestDate, slot, "Jane", "+15553330099", null, CustomerFamilyName: "Doe"));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
@@ -104,11 +104,11 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task GuestBooking_CanBookViewAndCancel_WithoutAuth()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("guest-flow@example.com", "guest-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slot = await FirstAvailableSlot(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
-            new BookAppointmentRequest(serviceId, TestDate, slot, "Guest Person", "+15553330001", "note"));
+            new BookAppointmentRequest(itemId, TestDate, slot, "Guest Person", "+15553330001", "note"));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
@@ -128,8 +128,8 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task AuthenticatedBooking_PhoneIsOverriddenFromTokenNotSpoofedBody()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("auth-flow@example.com", "auth-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slot = await FirstAvailableSlot(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
 
         const string verifiedPhone = "+15553330002";
         const string spoofedPhone = "+19998887777";
@@ -137,7 +137,7 @@ public class BookingFlowTests : IntegrationTestBase
 
         Authorize(Client, customerToken);
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
-            new BookAppointmentRequest(serviceId, TestDate, slot, "Spoofed Name", spoofedPhone, null));
+            new BookAppointmentRequest(itemId, TestDate, slot, "Spoofed Name", spoofedPhone, null));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
@@ -154,8 +154,8 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task Booking_AutomaticallyFollowsTheBusiness_ForAnAuthenticatedCustomer()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("autofollow-flow@example.com", "autofollow-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slot = await FirstAvailableSlot(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
         var customerToken = await GetCustomerToken("+15553330006");
 
         Authorize(Client, customerToken);
@@ -163,7 +163,7 @@ public class BookingFlowTests : IntegrationTestBase
         Assert.DoesNotContain(followedBefore!, b => b.Slug == slug);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
-            new BookAppointmentRequest(serviceId, TestDate, slot, "Auto Follow", "+15553330006", null));
+            new BookAppointmentRequest(itemId, TestDate, slot, "Auto Follow", "+15553330006", null));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
 
         var followedAfter = await Client.GetFromJsonAsync<List<BusinessSearchResultDto>>("/api/businesses/followed");
@@ -174,11 +174,11 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task GuestBooking_DoesNotCreateAFollow_NoAccountToAttachItTo()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("guestfollow-flow@example.com", "guestfollow-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slot = await FirstAvailableSlot(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
 
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
-            new BookAppointmentRequest(serviceId, TestDate, slot, "Guest", "+15553330007", null));
+            new BookAppointmentRequest(itemId, TestDate, slot, "Guest", "+15553330007", null));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
 
         // Same phone later creates an account — should NOT have inherited a follow from the
@@ -216,13 +216,13 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task CustomerAppointments_OwnershipIsEnforced()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("owner-flow@example.com", "owner-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slot = await FirstAvailableSlot(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
 
         var ownerToken = await GetCustomerToken("+15553330004");
         Authorize(Client, ownerToken);
         var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
-            new BookAppointmentRequest(serviceId, TestDate, slot, "Owner", "+15553330004", null));
+            new BookAppointmentRequest(itemId, TestDate, slot, "Owner", "+15553330004", null));
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
         var intruderToken = await GetCustomerToken("+15553330005");
@@ -242,12 +242,12 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task NoLimitSet_AllowsMultipleBookingsSameDay()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("nolimit-flow@example.com", "nolimit-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slots = await AvailableSlots(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slots = await AvailableSlots(slug, itemId);
         Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
 
-        var first = await Book(slug, serviceId, TestDate, slots[0].Start, "+15553330010");
-        var second = await Book(slug, serviceId, TestDate, slots[1].Start, "+15553330010");
+        var first = await Book(slug, itemId, TestDate, slots[0].Start, "+15553330010");
+        var second = await Book(slug, itemId, TestDate, slots[1].Start, "+15553330010");
 
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
@@ -257,13 +257,13 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task MaxBookingsPerDay_RejectsOnceLimitReached()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("perday-flow@example.com", "perday-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slots = await AvailableSlots(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slots = await AvailableSlots(slug, itemId);
         Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
         await SetBookingLimits(businessToken, perDay: 1, perWeek: null);
 
-        var first = await Book(slug, serviceId, TestDate, slots[0].Start, "+15553330011");
-        var second = await Book(slug, serviceId, TestDate, slots[1].Start, "+15553330011");
+        var first = await Book(slug, itemId, TestDate, slots[0].Start, "+15553330011");
+        var second = await Book(slug, itemId, TestDate, slots[1].Start, "+15553330011");
 
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
@@ -273,12 +273,12 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task MaxBookingsPerWeek_RejectsOnceLimitReachedAcrossDifferentDays()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("perweek-flow@example.com", "perweek-flow-shop");
-        var serviceId = await CreateService(businessToken);
+        var itemId = await CreateService(businessToken);
         var (mondayDate, tuesdaySameWeek) = TwoWeekdaysInSameFutureWeek();
         await SetBookingLimits(businessToken, perDay: null, perWeek: 1);
 
-        var monday = await Book(slug, serviceId, mondayDate, (await FirstAvailableSlot(slug, serviceId, mondayDate)), "+15553330012");
-        var tuesday = await Book(slug, serviceId, tuesdaySameWeek, (await FirstAvailableSlot(slug, serviceId, tuesdaySameWeek)), "+15553330012");
+        var monday = await Book(slug, itemId, mondayDate, (await FirstAvailableSlot(slug, itemId, mondayDate)), "+15553330012");
+        var tuesday = await Book(slug, itemId, tuesdaySameWeek, (await FirstAvailableSlot(slug, itemId, tuesdaySameWeek)), "+15553330012");
 
         Assert.Equal(HttpStatusCode.Created, monday.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, tuesday.StatusCode);
@@ -288,19 +288,19 @@ public class BookingFlowTests : IntegrationTestBase
     public async Task MaxBookingsPerDay_AppliesRegardlessOfLoginState_MatchedByPhone()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("mixed-flow@example.com", "mixed-flow-shop");
-        var serviceId = await CreateService(businessToken);
-        var slots = await AvailableSlots(slug, serviceId);
+        var itemId = await CreateService(businessToken);
+        var slots = await AvailableSlots(slug, itemId);
         Assert.True(slots.Count >= 2, "test needs at least two available slots the same day");
         await SetBookingLimits(businessToken, perDay: 1, perWeek: null);
         const string phone = "+15553330013";
 
         var customerToken = await GetCustomerToken(phone);
         Authorize(Client, customerToken);
-        var authenticated = await Book(slug, serviceId, TestDate, slots[0].Start, phone);
+        var authenticated = await Book(slug, itemId, TestDate, slots[0].Start, phone);
         Client.DefaultRequestHeaders.Authorization = null;
 
         // Same phone, now booking as a guest — must still count toward the same limit.
-        var guest = await Book(slug, serviceId, TestDate, slots[1].Start, phone);
+        var guest = await Book(slug, itemId, TestDate, slots[1].Start, phone);
 
         Assert.Equal(HttpStatusCode.Created, authenticated.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, guest.StatusCode);

@@ -23,18 +23,18 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
             .ToListAsync();
         if (entries.Count == 0) return;
 
-        var service = await db.Services.FindAsync(cancelledAppointment.ServiceId);
+        var item = await db.Items.FindAsync(cancelledAppointment.ItemId);
         var lang = business.Language.ToString();
-        var serviceName = lang switch
+        var itemName = lang switch
         {
-            "AR" => service?.NameAr,
-            "HE" => service?.NameHe,
-            _ => service?.NameEn,
+            "AR" => item?.NameAr,
+            "HE" => item?.NameHe,
+            _ => item?.NameEn,
         };
 
         var appUrl = config["AppUrl"] ?? "";
         var dateStr = cancelledAppointment.Date.ToString("yyyy-MM-dd");
-        var deepLink = $"{appUrl}/{business.Slug}/book?serviceId={cancelledAppointment.ServiceId}&date={dateStr}&time={cancelledAppointment.StartTime}";
+        var deepLink = $"{appUrl}/{business.Slug}/book?itemId={cancelledAppointment.ItemId}&date={dateStr}&time={cancelledAppointment.StartTime}";
 
         foreach (var entry in entries)
         {
@@ -44,7 +44,7 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
                 {
                     ["customerName"] = entry.CustomerAccount.Name,
                     ["businessName"] = business.Name,
-                    ["service"] = serviceName ?? "",
+                    ["service"] = itemName ?? "",
                     ["date"] = dateStr,
                     ["time"] = cancelledAppointment.StartTime,
                     ["url"] = deepLink,

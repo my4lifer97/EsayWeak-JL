@@ -12,7 +12,7 @@ public class WhatsAppBookingToken
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string BusinessId { get; set; } = "";
-    public string ServiceId { get; set; } = "";
+    public string ItemId { get; set; } = "";
     public string Phone { get; set; } = "";
     // WhatsApp's inbound-message "ProfileName" field -- the sender's WhatsApp display name.
     // Null when Twilio doesn't supply one; the redemption endpoint falls back to a generic name.
@@ -25,5 +25,5 @@ public class WhatsAppBookingToken
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Business Business { get; set; } = null!;
-    public Service Service { get; set; } = null!;
+    public Item Item { get; set; } = null!;
 }

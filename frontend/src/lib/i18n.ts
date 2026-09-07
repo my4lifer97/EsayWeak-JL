@@ -95,6 +95,7 @@ const translations = {
     timeTo: 'to',
     reasonOptional: 'Reason (optional)',
     addService: '+ Add Service',
+    isBookable: 'Customers can book this as an appointment',
     noServicesYet: 'No services yet.',
     addFirstService: 'Add your first service.',
     editServiceTitle: 'Edit Service',
@@ -369,6 +370,7 @@ const translations = {
     timeTo: 'إلى',
     reasonOptional: 'السبب (اختياري)',
     addService: '+ إضافة خدمة',
+    isBookable: 'يمكن للعملاء حجز هذا كموعد',
     noServicesYet: 'لا توجد خدمات بعد.',
     addFirstService: 'أضف خدمتك الأولى.',
     editServiceTitle: 'تعديل الخدمة',
@@ -643,6 +645,7 @@ const translations = {
     timeTo: 'עד',
     reasonOptional: 'סיבה (אופציונלי)',
     addService: '+ הוסף שירות',
+    isBookable: 'לקוחות יכולים לקבוע תור עבור זה',
     noServicesYet: 'אין שירותים עדיין.',
     addFirstService: 'הוסף את השירות הראשון שלך.',
     editServiceTitle: 'ערוך שירות',
@@ -831,7 +834,7 @@ export function t(lang: string, key: TKey): string {
   return translations[locale][key]
 }
 
-export function serviceName(
+export function itemName(
   s: { nameEn: string; nameAr: string; nameHe: string },
   lang: string
 ): string {

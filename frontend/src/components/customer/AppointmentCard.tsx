@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
-import { t, serviceName } from '../../lib/i18n'
+import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 
 type GalleryPhoto = { id: string; url: string }
@@ -11,8 +11,8 @@ export type Appointment = {
   id: string; businessSlug: string; businessName: string
   date: string; startTime: string; endTime: string
   notes: string | null; status: string; cancelToken: string
-  service: {
-    id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
+  item: {
+    id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null; price: number | null
     photoMode?: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; galleryPhotos?: GalleryPhoto[] | null
   }
   photoUrl: string | null
@@ -48,7 +48,7 @@ export default function AppointmentCard({
     enabled: expandedReschedule && !!rescheduleDate,
     queryFn: () =>
       customerApi
-        .get(`/${appt.businessSlug}/availability?date=${rescheduleDate}&serviceId=${appt.service.id}`)
+        .get(`/${appt.businessSlug}/availability?date=${rescheduleDate}&itemId=${appt.item.id}`)
         .then((r) => r.data.slots),
   })
 
@@ -110,7 +110,7 @@ export default function AppointmentCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {showBusinessName && <div className="font-semibold text-white truncate">{appt.businessName}</div>}
-          <div className="text-gray-400 text-sm mt-1">{serviceName(appt.service, lang)}</div>
+          <div className="text-gray-400 text-sm mt-1">{itemName(appt.item, lang)}</div>
           <div className="text-gray-500 text-sm mt-1">
             {format(parseISO(appt.date), 'EEE, MMM d yyyy', { locale: lang === 'AR' ? ar : lang === 'HE' ? he : enUS })}
             {' · '}{appt.startTime}–{appt.endTime}
@@ -142,7 +142,7 @@ export default function AppointmentCard({
             className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
             {appt.notes ? t(lang, 'editNote') : t(lang, 'addNote')}
           </button>
-          {appt.service.photoMode && appt.service.photoMode !== 'None' && (
+          {appt.item.photoMode && appt.item.photoMode !== 'None' && (
             <button
               onClick={() => { setExpandedPhoto(!expandedPhoto); setPhotoError('') }}
               className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
@@ -160,9 +160,9 @@ export default function AppointmentCard({
 
       {expandedPhoto && (
         <div className="mt-3 space-y-2">
-          {(appt.service.photoMode === 'OwnerGallery' || appt.service.photoMode === 'Both') && (
+          {(appt.item.photoMode === 'OwnerGallery' || appt.item.photoMode === 'Both') && (
             <div className="grid grid-cols-4 gap-2">
-              {(appt.service.galleryPhotos ?? []).map((p) => (
+              {(appt.item.galleryPhotos ?? []).map((p) => (
                 <button key={p.id} type="button" disabled={busy} onClick={() => pickGalleryPhoto(p.id)}
                   className="aspect-square rounded-lg overflow-hidden border-2 border-gray-700 hover:border-blue-500 transition-colors disabled:opacity-50">
                   <img src={mediaUrl(p.url)} alt="" className="w-full h-full object-cover" />
@@ -170,7 +170,7 @@ export default function AppointmentCard({
               ))}
             </div>
           )}
-          {(appt.service.photoMode === 'CustomerUpload' || appt.service.photoMode === 'Both') && (
+          {(appt.item.photoMode === 'CustomerUpload' || appt.item.photoMode === 'Both') && (
             <label className="inline-block cursor-pointer bg-gray-800 border border-gray-700 hover:border-blue-500 rounded-xl px-4 py-2 text-sm text-gray-300">
               {photoUploading ? t(lang, 'uploading') : t(lang, 'uploadYourPhoto')}
               <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={photoUploading}

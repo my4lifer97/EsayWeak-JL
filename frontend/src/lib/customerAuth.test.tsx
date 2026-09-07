@@ -49,7 +49,7 @@ describe('CustomerAuthProvider', () => {
 
   it('loginWithWhatsAppToken redeems the token, stores the session, and returns the redirect target', async () => {
     vi.mocked(customerApi.post).mockResolvedValue({
-      data: { token: 't1', customerId: '1', name: 'First', familyName: 'Last', phone: '+15550001111', businessSlug: 'test-business', serviceId: 'svc-1' },
+      data: { token: 't1', customerId: '1', name: 'First', familyName: 'Last', phone: '+15550001111', businessSlug: 'test-business', itemId: 'svc-1' },
     })
     renderWithProvider()
 
@@ -64,7 +64,7 @@ describe('CustomerAuthProvider', () => {
   it('loginWithWhatsAppToken adopts the language detected server-side from the WhatsApp conversation', async () => {
     localStorage.setItem('customerLang', 'HE') // whatever was last stored in this browser
     vi.mocked(customerApi.post).mockResolvedValue({
-      data: { token: 't1', customerId: '1', name: 'First', familyName: 'Last', phone: '+15550001111', businessSlug: 'test-business', serviceId: 'svc-1', language: 'AR' },
+      data: { token: 't1', customerId: '1', name: 'First', familyName: 'Last', phone: '+15550001111', businessSlug: 'test-business', itemId: 'svc-1', language: 'AR' },
     })
     renderWithProvider()
 

@@ -4,19 +4,19 @@ import { format, addDays } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
-import { t, serviceName } from '../../lib/i18n'
+import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import BackButton from '../BackButton'
 import LanguageSwitcher from '../customer/LanguageSwitcher'
 import SlotBookedModal from './SlotBookedModal'
 
 type GalleryPhoto = { id: string; url: string }
-type Service = {
-  id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
-  photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; galleryPhotos: GalleryPhoto[]
+type Item = {
+  id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null; price: number | null
+  photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; isBookable: boolean; galleryPhotos: GalleryPhoto[]
 }
 type BusinessInfo = {
-  slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; services: Service[]
+  slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; items: Item[]
   waitlistEnabled: boolean
 }
 type Slot = { start: string; end: string; available: boolean; appointmentId?: string }
@@ -27,7 +27,8 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [step, setStep] = useState<Step>(1)
-  const [service, setService] = useState<Service | null>(null)
+  const [item, setItem] = useState<Item | null>(null)
+  const bookableItems = business.items.filter((s) => s.isBookable)
   const [date, setDate] = useState('')
   const [slot, setSlot] = useState<Slot | null>(null)
   const prefillName = () => user?.name ?? ''
@@ -54,16 +55,16 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
 
-  async function fetchSlots(d: string, svc: Service) {
+  async function fetchSlots(d: string, it: Item) {
     setSlotsLoading(true); setSlots([])
-    const { data } = await customerApi.get(`/${business.slug}/availability/full?date=${d}&serviceId=${svc.id}`)
+    const { data } = await customerApi.get(`/${business.slug}/availability/full?date=${d}&itemId=${it.id}`)
     setSlots(data.slots ?? [])
     setSlotsLoading(false)
   }
 
   function pickDate(d: string) {
     setDate(d); setSlot(null)
-    if (service) fetchSlots(d, service)
+    if (item) fetchSlots(d, item)
     setStep(3)
   }
 
@@ -82,30 +83,30 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     } finally { setJoiningWaitlist(false) }
   }
 
-  // Deep-link prefill from a WhatsApp notification or booking link (?serviceId=&date=&time=):
+  // Deep-link prefill from a WhatsApp notification or booking link (?itemId=&date=&time=):
   // jump straight past whichever steps are already decided instead of making the customer re-pick
   // from scratch.
-  // - serviceId + date (+ time): a waitlist "slot opened up" notification -- jump to that slot; if
+  // - itemId + date (+ time): a waitlist "slot opened up" notification -- jump to that slot; if
   //   it's already gone by the time they arrive (someone beat them to it), they land on step 3
   //   seeing the real current state, no special-case error needed.
-  // - serviceId only: the WhatsApp chatbot booking link (WhatsAppLandingPage) -- the customer
-  //   already picked their service in the chat, so skip step 1 entirely and land on date
-  //   selection (step 2), with no sign-up/service-selection step in between.
+  // - itemId only: the WhatsApp chatbot booking link (WhatsAppLandingPage) -- the customer
+  //   already picked their item in the chat, so skip step 1 entirely and land on date
+  //   selection (step 2), with no sign-up/item-selection step in between.
   useEffect(() => {
-    const prefillServiceId = searchParams.get('serviceId')
+    const prefillItemId = searchParams.get('itemId')
     const prefillDate = searchParams.get('date')
     const prefillTime = searchParams.get('time')
-    if (!prefillServiceId) return
+    if (!prefillItemId) return
 
-    const svc = business.services.find((s) => s.id === prefillServiceId)
-    if (!svc) return
+    const it = business.items.find((s) => s.id === prefillItemId)
+    if (!it) return
 
-    setService(svc)
+    setItem(it)
     if (!prefillDate) { setStep(2); return }
 
     setDate(prefillDate)
     setStep(3)
-    customerApi.get(`/${business.slug}/availability/full?date=${prefillDate}&serviceId=${svc.id}`).then(({ data }) => {
+    customerApi.get(`/${business.slug}/availability/full?date=${prefillDate}&itemId=${it.id}`).then(({ data }) => {
       const fetchedSlots: Slot[] = data.slots ?? []
       setSlots(fetchedSlots)
       const match = prefillTime && fetchedSlots.find((s) => s.start === prefillTime && s.available)
@@ -127,17 +128,17 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   }
 
   const photoSatisfied =
-    service?.photoMode === 'OwnerGallery' ? !!selectedGalleryPhotoId
-      : service?.photoMode === 'CustomerUpload' ? !!uploadedPhotoUrl
-      : service?.photoMode === 'Both' ? !!selectedGalleryPhotoId || !!uploadedPhotoUrl
+    item?.photoMode === 'OwnerGallery' ? !!selectedGalleryPhotoId
+      : item?.photoMode === 'CustomerUpload' ? !!uploadedPhotoUrl
+      : item?.photoMode === 'Both' ? !!selectedGalleryPhotoId || !!uploadedPhotoUrl
       : true
 
   async function confirm() {
-    if (!service || !date || !slot || !photoSatisfied) return
+    if (!item || !date || !slot || !photoSatisfied) return
     setConfirmLoading(true); setError('')
     try {
       await customerApi.post(`/${business.slug}/appointments`, {
-        serviceId: service.id, date, startTime: slot.start,
+        itemId: item.id, date, startTime: slot.start,
         customerName: name, customerFamilyName: familyName, customerPhone: phone, notes: notes || undefined,
         galleryPhotoId: selectedGalleryPhotoId ?? undefined,
         customerPhotoUrl: uploadedPhotoUrl ?? undefined,
@@ -178,16 +179,16 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           <div>
             <p className="text-gray-400 mb-6">{t(lang, 'selectService')}</p>
             <div className="space-y-3">
-              {business.services.map((s) => (
+              {bookableItems.map((s) => (
                 <button key={s.id} onClick={() => {
-                  setService(s); setSelectedGalleryPhotoId(null); setUploadedPhotoUrl(null); setPhotoError(''); setStep(2)
+                  setItem(s); setSelectedGalleryPhotoId(null); setUploadedPhotoUrl(null); setPhotoError(''); setStep(2)
                 }}
                   className="w-full bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-blue-500 rounded-xl px-5 py-4 flex justify-between items-center transition-colors text-start">
                   <div>
-                    <div className="font-medium">{serviceName(s, lang)}</div>
+                    <div className="font-medium">{itemName(s, lang)}</div>
                     <div className="text-gray-400 text-sm mt-0.5">{s.durationMinutes} {t(lang, 'min')}</div>
                   </div>
-                  <div className="text-blue-400 font-semibold">₪{Number(s.price).toFixed(0)}</div>
+                  <div className="text-blue-400 font-semibold">{s.price !== null ? `₪${Number(s.price).toFixed(0)}` : ''}</div>
                 </button>
               ))}
             </div>
@@ -272,12 +273,12 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                   placeholder={t(lang, 'notesPlaceholder')}
                   className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
               </div>
-              {(service?.photoMode === 'OwnerGallery' || service?.photoMode === 'Both') && (
+              {(item?.photoMode === 'OwnerGallery' || item?.photoMode === 'Both') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'choosePhoto')}</label>
                   <p className="text-gray-500 text-xs mb-2">{t(lang, 'choosePhotoHint')}</p>
                   <div className="grid grid-cols-3 gap-2">
-                    {service.galleryPhotos.map((p) => (
+                    {item.galleryPhotos.map((p) => (
                       <button key={p.id} type="button" onClick={() => setSelectedGalleryPhotoId(p.id)}
                         className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
                           selectedGalleryPhotoId === p.id ? 'border-blue-500' : 'border-gray-700 hover:border-gray-500'
@@ -289,7 +290,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                 </div>
               )}
 
-              {(service?.photoMode === 'CustomerUpload' || service?.photoMode === 'Both') && (
+              {(item?.photoMode === 'CustomerUpload' || item?.photoMode === 'Both') && (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'uploadYourPhoto')}</label>
                   <p className="text-gray-500 text-xs mb-2">{t(lang, 'uploadYourPhotoHint')}</p>
@@ -312,9 +313,9 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                 </div>
               )}
 
-              {service && slot && (
+              {item && slot && (
                 <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 text-sm space-y-1">
-                  <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'service')}</span><span className="text-white">{serviceName(service, lang)}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'service')}</span><span className="text-white">{itemName(item, lang)}</span></div>
                   <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'date')}</span><span className="text-white">{date}</span></div>
                   <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'time')}</span><span className="text-white">{slot.start} – {slot.end}</span></div>
                 </div>

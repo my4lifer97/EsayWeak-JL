@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
-import { t } from '../../lib/i18n'
+import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
@@ -12,7 +12,7 @@ import AppointmentCard, { type Appointment } from '../../components/customer/App
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
   language: string; isRTL: boolean; activeDays: number[]
-  services: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number }[]
+  items: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null; price: number | null; isBookable: boolean }[]
   isFollowed: boolean
 }
 
@@ -90,10 +90,12 @@ export default function BusinessPage() {
         </div>
 
         <div className="space-y-3">
-          <button onClick={() => navigate(`/${slug}/book`)}
-            className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-colors">
-            ✂️ {t(lang, 'bookAppointment')}
-          </button>
+          {business.items.some((i) => i.isBookable) && (
+            <button onClick={() => navigate(`/${slug}/book`)}
+              className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-colors">
+              ✂️ {t(lang, 'bookAppointment')}
+            </button>
+          )}
 
           <button
             disabled={followLoading}
@@ -120,6 +122,18 @@ export default function BusinessPage() {
           <div className="space-y-3 mt-4">
             {activeAppointments.map((appt) => (
               <AppointmentCard key={appt.id} appt={appt} lang={lang} showBusinessName={false} onChanged={invalidateAppointments} />
+            ))}
+          </div>
+        )}
+
+        {/* Showcase items -- no booking flow, just what the business offers. */}
+        {business.items.some((i) => !i.isBookable) && (
+          <div className="space-y-2 mt-6">
+            {business.items.filter((i) => !i.isBookable).map((i) => (
+              <div key={i.id} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex justify-between items-center">
+                <span className="text-white text-sm">{itemName(i, lang)}</span>
+                {i.price !== null && <span className="text-blue-400 text-sm font-semibold">₪{Number(i.price).toFixed(0)}</span>}
+              </div>
             ))}
           </div>
         )}

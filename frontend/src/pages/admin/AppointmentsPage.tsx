@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { t, serviceName, type TKey } from '../../lib/i18n'
+import { t, itemName, type TKey } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
 import CancelOptionsModal from '../../components/admin/CancelOptionsModal'
@@ -12,13 +12,13 @@ type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
   customer: { name: string; familyName: string; phone: string }
-  service: { id: string; nameEn: string; nameAr: string; nameHe: string }
+  item: { id: string; nameEn: string; nameAr: string; nameHe: string }
   price: number
   photoUrl: string | null
   recurringSeriesId: string | null
   pendingCancellationApproval: boolean
 }
-type Service = { id: string; nameEn: string; nameAr: string; nameHe: string }
+type Item = { id: string; nameEn: string; nameAr: string; nameHe: string }
 
 const FILTERS: { value: string; key: TKey }[] = [
   { value: 'upcoming', key: 'upcoming' },
@@ -50,9 +50,9 @@ export default function AppointmentsPage() {
     queryFn: () => api.get(`/admin/appointments?filter=${filter}`).then((r) => r.data),
   })
 
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: services = [] } = useQuery<Item[]>({
     queryKey: ['services'],
-    queryFn: () => api.get('/admin/services').then((r) => r.data),
+    queryFn: () => api.get('/admin/items').then((r) => r.data),
   })
 
   const { data: settings } = useQuery<{ waitlistEnabled: boolean }>({
@@ -72,7 +72,7 @@ export default function AppointmentsPage() {
     // their full name) matched nothing even though they were right there in the list.
     const fullName = `${a.customer.name} ${a.customer.familyName}`.toLowerCase()
     if (search && !fullName.includes(search.toLowerCase()) && !a.customer.phone.includes(search)) return false
-    if (serviceFilter && a.service.id !== serviceFilter) return false
+    if (serviceFilter && a.item.id !== serviceFilter) return false
     if (statusFilter && a.status !== statusFilter) return false
     if (typeFilter === 'recurring' && !a.recurringSeriesId) return false
     if (typeFilter === 'onetime' && a.recurringSeriesId) return false
@@ -118,7 +118,7 @@ export default function AppointmentsPage() {
       <div className="flex flex-wrap gap-3 mb-4 items-center">
         <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className={selectClass}>
           <option value="">{t(lang, 'allServices')}</option>
-          {services.map((s) => <option key={s.id} value={s.id}>{serviceName(s, lang)}</option>)}
+          {services.map((s) => <option key={s.id} value={s.id}>{itemName(s, lang)}</option>)}
         </select>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
           <option value="">{t(lang, 'allStatuses')}</option>
@@ -156,7 +156,7 @@ export default function AppointmentsPage() {
                     {a.recurringSeriesId && <span title={t(lang, 'partOfSeries')}>🔁 </span>}{a.customer.name}
                   </td>
                   <td className="px-4 py-3 text-gray-300">{a.customer.phone}</td>
-                  <td className="px-4 py-3 text-gray-300">{serviceName(a.service, lang)}</td>
+                  <td className="px-4 py-3 text-gray-300">{itemName(a.item, lang)}</td>
                   <td className="px-4 py-3">
                     {a.photoUrl && (
                       <a href={mediaUrl(a.photoUrl)} target="_blank" rel="noreferrer">

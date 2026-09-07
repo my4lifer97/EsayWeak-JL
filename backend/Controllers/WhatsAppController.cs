@@ -159,10 +159,12 @@ public class WhatsAppController(
         await db.SaveChangesAsync();
     }
 
+    // Only bookable items make sense to offer through the booking chatbot -- a showcase-only
+    // item has nothing for this flow to schedule.
     private async Task<List<(string Id, string Name)>> ActiveServices(string businessId, string lang)
     {
-        var services = await db.Services
-            .Where(s => s.BusinessId == businessId && s.IsActive)
+        var services = await db.Items
+            .Where(s => s.BusinessId == businessId && s.IsActive && s.IsBookable)
             .OrderBy(s => s.Id)
             .ToListAsync();
         return services.Select(s => (s.Id, lang switch

@@ -22,11 +22,11 @@ public class GlobalExceptionHandlerTests : IntegrationTestBase
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("exc-flow@example.com", registerBody!.DevCode!));
         var loginBody = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         Authorize(Client, loginBody!.Token);
-        var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
-        var service = await serviceResp.Content.ReadFromJsonAsync<ServiceDto>();
+        var serviceResp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m));
+        var service = await serviceResp.Content.ReadFromJsonAsync<ItemDto>();
         Client.DefaultRequestHeaders.Authorization = null;
 
-        var resp = await Client.GetAsync($"/api/exc-flow-shop/availability?date=not-a-date&serviceId={service!.Id}");
+        var resp = await Client.GetAsync($"/api/exc-flow-shop/availability?date=not-a-date&itemId={service!.Id}");
 
         Assert.Equal(HttpStatusCode.InternalServerError, resp.StatusCode);
         Assert.Equal("application/json", resp.Content.Headers.ContentType?.MediaType);

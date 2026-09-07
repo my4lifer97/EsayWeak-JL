@@ -3,7 +3,7 @@ import { format, addDays, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { t, serviceName } from '../../lib/i18n'
+import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import CancelOptionsModal from './CancelOptionsModal'
 
@@ -11,7 +11,7 @@ type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
   customer: { name: string; phone: string }
-  service: { nameEn: string; nameAr: string; nameHe: string; durationMinutes: number }
+  item: { nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null }
   price: number
   photoUrl: string | null
   recurringSeriesId: string | null
@@ -131,7 +131,7 @@ export default function WeeklyCalendar({
                             room for a single text-xs line; a second stacked line gets silently
                             clipped by overflow-hidden, hiding the service name entirely. */}
                         <div className="text-white text-xs font-medium truncate">
-                          {appt.pendingCancellationApproval ? '⚠️ ' : appt.recurringSeriesId && '🔁 '}{appt.customer.name} · {serviceName(appt.service, lang)}
+                          {appt.pendingCancellationApproval ? '⚠️ ' : appt.recurringSeriesId && '🔁 '}{appt.customer.name} · {itemName(appt.item, lang)}
                         </div>
                       </button>
                     )
@@ -161,7 +161,7 @@ export default function WeeklyCalendar({
                 aria-label="Close">✕</button>
             </div>
             <div className="space-y-2 text-sm mb-6">
-              <Row label={t(lang, 'service')} value={serviceName(selected.service, lang)} />
+              <Row label={t(lang, 'service')} value={itemName(selected.item, lang)} />
               <Row label={t(lang, 'date')} value={selected.date.slice(0, 10)} />
               <Row label={t(lang, 'time')} value={`${selected.startTime} – ${selected.endTime}`} />
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />

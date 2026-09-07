@@ -32,12 +32,12 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     // Registers a business, opens working hours for tomorrow, and (unless overridden) fully
     // configures Twilio + a personal phone + RequireApprovalOnCustomerCancel so the approval
     // path is actually reachable -- individual tests override pieces of this to hit fallbacks.
-    private async Task<(string BusinessId, string ServiceId, DateTime Date)> SeedApprovalBusiness(
+    private async Task<(string BusinessId, string ItemId, DateTime Date)> SeedApprovalBusiness(
         string token, string slug, bool requireApproval = true, bool configureTwilio = true, bool setOwnerPhone = true)
     {
         Authorize(Client, token);
-        var serviceResp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
-        var service = await serviceResp.Content.ReadFromJsonAsync<ServiceDto>();
+        var serviceResp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m));
+        var service = await serviceResp.Content.ReadFromJsonAsync<ItemDto>();
 
         var date = DateTime.Now.Date.AddDays(1);
         await Client.PostAsJsonAsync("/api/admin/schedule",
@@ -61,11 +61,11 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         return (business.Id, service!.Id, date);
     }
 
-    private Task<HttpResponseMessage> BookAs(string customerToken, string slug, string serviceId, string date, string startTime)
+    private Task<HttpResponseMessage> BookAs(string customerToken, string slug, string itemId, string date, string startTime)
     {
         var req = new HttpRequestMessage(HttpMethod.Post, $"/api/{slug}/appointments")
         {
-            Content = JsonContent.Create(new BookAppointmentRequest(serviceId, date, startTime, "Customer", "", null)),
+            Content = JsonContent.Create(new BookAppointmentRequest(itemId, date, startTime, "Customer", "", null)),
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
         return Client.SendAsync(req);
@@ -75,11 +75,11 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     public async Task CustomerCancel_WithApprovalRequired_FreezesSlotAndNotifiesOwner()
     {
         var token = await RegisterAndLoginBusiness("approval-freeze@example.com", "approval-freeze-shop");
-        var (businessId, serviceId, date) = await SeedApprovalBusiness(token, "approval-freeze-shop");
+        var (businessId, itemId, date) = await SeedApprovalBusiness(token, "approval-freeze-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110001");
-        var booked = await BookAs(customerToken, "approval-freeze-shop", serviceId, dateStr, "09:00");
+        var booked = await BookAs(customerToken, "approval-freeze-shop", itemId, dateStr, "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
         var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt!.AppointmentId}/cancel");
@@ -101,7 +101,7 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
 
         // The slot is still frozen -- nobody else can book over it while pending.
         var otherCustomerToken = await GetCustomerToken("+15551110002", "Someone", "Else");
-        var conflicting = await BookAs(otherCustomerToken, "approval-freeze-shop", serviceId, dateStr, "09:00");
+        var conflicting = await BookAs(otherCustomerToken, "approval-freeze-shop", itemId, dateStr, "09:00");
         Assert.Equal(HttpStatusCode.Conflict, conflicting.StatusCode);
 
         // The customer's own view already reads as cancelled, even though it's admin-CONFIRMED.
@@ -120,11 +120,11 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     public async Task OwnerFinalizesCancelSilently_AfterApprovalFreeze_FreesTheSlot()
     {
         var token = await RegisterAndLoginBusiness("approval-finalize@example.com", "approval-finalize-shop");
-        var (_, serviceId, date) = await SeedApprovalBusiness(token, "approval-finalize-shop");
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-finalize-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110003");
-        var booked = await BookAs(customerToken, "approval-finalize-shop", serviceId, dateStr, "09:00");
+        var booked = await BookAs(customerToken, "approval-finalize-shop", itemId, dateStr, "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
         var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt!.AppointmentId}/cancel");
@@ -145,7 +145,7 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         Client.DefaultRequestHeaders.Authorization = null;
 
         var otherCustomerToken = await GetCustomerToken("+15551110004", "New", "Booker");
-        var rebooked = await BookAs(otherCustomerToken, "approval-finalize-shop", serviceId, dateStr, "09:00");
+        var rebooked = await BookAs(otherCustomerToken, "approval-finalize-shop", itemId, dateStr, "09:00");
         Assert.Equal(HttpStatusCode.Created, rebooked.StatusCode);
     }
 
@@ -153,11 +153,11 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     public async Task OwnerReplacesCustomer_AfterApprovalFreeze_KeepsSlotConfirmedForNewCustomer()
     {
         var token = await RegisterAndLoginBusiness("approval-replace@example.com", "approval-replace-shop");
-        var (_, serviceId, date) = await SeedApprovalBusiness(token, "approval-replace-shop");
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-replace-shop");
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110005");
-        var booked = await BookAs(customerToken, "approval-replace-shop", serviceId, dateStr, "09:00");
+        var booked = await BookAs(customerToken, "approval-replace-shop", itemId, dateStr, "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
         var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt!.AppointmentId}/cancel");
@@ -180,11 +180,11 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     public async Task CustomerCancel_ApprovalRequiredButTwilioNotConfigured_FallsBackToImmediateCancel()
     {
         var token = await RegisterAndLoginBusiness("approval-notwilio@example.com", "approval-notwilio-shop");
-        var (_, serviceId, date) = await SeedApprovalBusiness(token, "approval-notwilio-shop", configureTwilio: false);
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-notwilio-shop", configureTwilio: false);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110006");
-        var booked = await BookAs(customerToken, "approval-notwilio-shop", serviceId, dateStr, "09:00");
+        var booked = await BookAs(customerToken, "approval-notwilio-shop", itemId, dateStr, "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
         var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt!.AppointmentId}/cancel");
@@ -202,11 +202,11 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     public async Task CustomerCancel_WithoutApprovalRequired_CancelsImmediatelyAsBefore()
     {
         var token = await RegisterAndLoginBusiness("no-approval@example.com", "no-approval-shop");
-        var (_, serviceId, date) = await SeedApprovalBusiness(token, "no-approval-shop", requireApproval: false);
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "no-approval-shop", requireApproval: false);
         var dateStr = date.ToString("yyyy-MM-dd");
 
         var customerToken = await GetCustomerToken("+15551110007");
-        var booked = await BookAs(customerToken, "no-approval-shop", serviceId, dateStr, "09:00");
+        var booked = await BookAs(customerToken, "no-approval-shop", itemId, dateStr, "09:00");
         var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
         var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt!.AppointmentId}/cancel");

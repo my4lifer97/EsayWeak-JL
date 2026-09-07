@@ -5,7 +5,7 @@ namespace BarberSaas.Api.Models;
 public enum Language { EN, AR, HE }
 public enum SubStatus { TRIAL, ACTIVE, EXPIRED }
 public enum AppointmentStatus { CONFIRMED, CANCELLED, COMPLETED }
-public enum ServicePhotoMode { None, OwnerGallery, CustomerUpload, Both }
+public enum ItemPhotoMode { None, OwnerGallery, CustomerUpload, Both }
 public enum WaitlistEntryStatus { WAITING, NOTIFIED, RESOLVED }
 // Coarse business-level classification. Appointment: scheduling only. Showcase: a
 // product/service catalog with no booking. Both: mixes bookable and non-bookable items.
@@ -65,7 +65,7 @@ public class Business
     public BusinessModel BusinessModel { get; set; } = BusinessModel.Appointment;
 
     public BusinessTypeDefinition? BusinessType { get; set; }
-    public ICollection<Service> Services { get; set; } = [];
+    public ICollection<Item> Items { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];
     public ICollection<BlockedSlot> BlockedSlots { get; set; } = [];
@@ -89,32 +89,37 @@ public class BusinessTypeDefinition
     public ICollection<Business> Businesses { get; set; } = [];
 }
 
-public class Service
+public class Item
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string BusinessId { get; set; } = "";
     public string NameEn { get; set; } = "";
     public string NameAr { get; set; } = "";
     public string NameHe { get; set; } = "";
-    public int DurationMinutes { get; set; }
-    public decimal Price { get; set; }
+    // Null when IsBookable is false -- a showcase-only item has no appointment duration.
+    public int? DurationMinutes { get; set; }
+    // Null means no price shown (e.g. "contact for price") -- meaningful for showcase items.
+    public decimal? Price { get; set; }
     public bool IsActive { get; set; } = true;
-    public ServicePhotoMode PhotoMode { get; set; } = ServicePhotoMode.None;
+    public ItemPhotoMode PhotoMode { get; set; } = ItemPhotoMode.None;
+    // Whether this item can be booked as an appointment. A Both-model business can mix bookable
+    // and non-bookable items, so this lives per-item rather than only on Business.BusinessModel.
+    public bool IsBookable { get; set; } = true;
 
     public Business Business { get; set; } = null!;
     public ICollection<Appointment> Appointments { get; set; } = [];
-    public ICollection<ServiceGalleryPhoto> GalleryPhotos { get; set; } = [];
+    public ICollection<ItemGalleryPhoto> GalleryPhotos { get; set; } = [];
     public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
 }
 
-public class ServiceGalleryPhoto
+public class ItemGalleryPhoto
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string ServiceId { get; set; } = "";
+    public string ItemId { get; set; } = "";
     public string Url { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public Service Service { get; set; } = null!;
+    public Item Item { get; set; } = null!;
 }
 
 public class WorkingHours
@@ -172,7 +177,7 @@ public class Appointment
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string BusinessId { get; set; } = "";
     public string CustomerId { get; set; } = "";
-    public string ServiceId { get; set; } = "";
+    public string ItemId { get; set; } = "";
     public DateTime Date { get; set; }
     public string StartTime { get; set; } = "";
     public string EndTime { get; set; } = "";
@@ -190,7 +195,7 @@ public class Appointment
 
     public Business Business { get; set; } = null!;
     public Customer Customer { get; set; } = null!;
-    public Service Service { get; set; } = null!;
+    public Item Item { get; set; } = null!;
     public RecurringSeries? RecurringSeries { get; set; }
     public ICollection<WaitlistEntry> WaitlistEntries { get; set; } = [];
 }
@@ -200,7 +205,7 @@ public class RecurringSeries
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string BusinessId { get; set; } = "";
     public string CustomerId { get; set; } = "";
-    public string ServiceId { get; set; } = "";
+    public string ItemId { get; set; } = "";
     public int DayOfWeek { get; set; }
     public string StartTime { get; set; } = "";
     public string? Notes { get; set; }
@@ -213,7 +218,7 @@ public class RecurringSeries
 
     public Business Business { get; set; } = null!;
     public Customer Customer { get; set; } = null!;
-    public Service Service { get; set; } = null!;
+    public Item Item { get; set; } = null!;
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<RecurringSkip> Skips { get; set; } = [];
 }

@@ -24,7 +24,7 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
   // Registration leaves the business unverified; verify via API to get a token directly.
   const verify = await api.post(`${API}/auth/verify-email`, { data: { email, code: devCode } })
   const { token } = await verify.json()
-  await api.post(`${API}/admin/services`, {
+  await api.post(`${API}/admin/items`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { nameEn: 'Haircut', nameAr: 'Haircut', nameHe: 'Haircut', durationMinutes: 30, price: 40 },
   })
@@ -80,7 +80,7 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
   // Opening the link logs the customer in (no sign-up/sign-in page) and skips straight to date
   // selection (no service-selection page — already chosen via WhatsApp).
   await page.goto(relativePath)
-  await expect(page).toHaveURL(new RegExp(`/${slug}/book\\?serviceId=`))
+  await expect(page).toHaveURL(new RegExp(`/${slug}/book\\?itemId=`))
   await expect(page.getByText('Select a Date')).toBeVisible()
   await expect(page.getByText('Select a Service')).not.toBeVisible()
 

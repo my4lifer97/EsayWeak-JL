@@ -33,7 +33,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
 
         Authorize(Client, businessBody!.Token);
         for (var i = 0; i < serviceCount; i++)
-            await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest($"Service {i}", $"Service {i}", $"Service {i}", 30, 50m));
+            await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest($"Service {i}", $"Service {i}", $"Service {i}", 30, 50m));
         Client.DefaultRequestHeaders.Authorization = null;
 
         using var db = Db();
@@ -45,7 +45,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
         await db.SaveChangesAsync();
         // Same ordering WhatsAppController uses (OrderBy Id) -- so tests can pick "the Nth item
         // the bot listed" without depending on service-creation order.
-        var idsInBotOrder = await db.Services.Where(s => s.BusinessId == businessId).OrderBy(s => s.Id).Select(s => s.Id).ToListAsync();
+        var idsInBotOrder = await db.Items.Where(s => s.BusinessId == businessId).OrderBy(s => s.Id).Select(s => s.Id).ToListAsync();
         return (businessId, slug, idsInBotOrder);
     }
 
@@ -112,7 +112,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
         using var db = Db();
         Assert.False(await db.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone));
         var token = await db.WhatsAppBookingTokens.SingleAsync(t => t.BusinessId == businessId && t.Phone == phone);
-        Assert.Equal(serviceIds[0], token.ServiceId);
+        Assert.Equal(serviceIds[0], token.ItemId);
         Assert.Equal("Jane Doe", token.ProfileName);
     }
 
@@ -148,7 +148,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
             {
                 BusinessId = businessId,
                 CustomerId = customer.Id,
-                ServiceId = serviceIds[0],
+                ItemId = serviceIds[0],
                 Date = DateTime.Now.Date.AddDays(1),
                 StartTime = "10:00",
                 EndTime = "10:30",

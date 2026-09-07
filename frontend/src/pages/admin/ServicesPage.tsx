@@ -7,35 +7,39 @@ import { mediaUrl } from '../../lib/media'
 
 type GalleryPhoto = { id: string; url: string }
 type PhotoMode = 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'
-type Service = {
-  id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number; price: number
-  photoMode: PhotoMode; galleryPhotos: GalleryPhoto[]
+type Item = {
+  id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null; price: number | null
+  photoMode: PhotoMode; isBookable: boolean; galleryPhotos: GalleryPhoto[]
 }
-const EMPTY = { nameEn: '', nameAr: '', nameHe: '', durationMinutes: 30, price: '', photoMode: 'None' as PhotoMode }
+const EMPTY = { nameEn: '', nameAr: '', nameHe: '', durationMinutes: 30, price: '', photoMode: 'None' as PhotoMode, isBookable: true }
 
 export default function ServicesPage() {
   const queryClient = useQueryClient()
   const { language: lang } = useAuth()
   const [showForm, setShowForm] = useState(false)
-  const [editing, setEditing] = useState<Service | null>(null)
+  const [editing, setEditing] = useState<Item | null>(null)
   const [form, setForm] = useState(EMPTY)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [uploadingGallery, setUploadingGallery] = useState(false)
   const [galleryError, setGalleryError] = useState('')
 
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: services = [] } = useQuery<Item[]>({
     queryKey: ['services'],
-    queryFn: () => api.get('/admin/services').then((r) => r.data),
+    queryFn: () => api.get('/admin/items').then((r) => r.data),
   })
 
   // Keep the modal's gallery list in sync with the latest fetched data while editing.
   const editingService = editing ? services.find((s) => s.id === editing.id) ?? editing : null
 
   function openCreate() { setEditing(null); setForm(EMPTY); setError(''); setGalleryError(''); setShowForm(true) }
-  function openEdit(s: Service) {
+  function openEdit(s: Item) {
     setEditing(s)
-    setForm({ nameEn: s.nameEn, nameAr: s.nameAr, nameHe: s.nameHe, durationMinutes: s.durationMinutes, price: String(s.price), photoMode: s.photoMode })
+    setForm({
+      nameEn: s.nameEn, nameAr: s.nameAr, nameHe: s.nameHe,
+      durationMinutes: s.durationMinutes ?? 30, price: s.price === null ? '' : String(s.price),
+      photoMode: s.photoMode, isBookable: s.isBookable,
+    })
     setError(''); setGalleryError(''); setShowForm(true)
   }
 
@@ -43,12 +47,16 @@ export default function ServicesPage() {
     e.preventDefault(); setLoading(true); setError('')
     const wasCreating = !editing
     try {
-      const payload = { ...form, durationMinutes: Number(form.durationMinutes), price: Number(form.price) }
+      const payload = {
+        ...form,
+        durationMinutes: form.isBookable ? Number(form.durationMinutes) : null,
+        price: form.price === '' ? null : Number(form.price),
+      }
       if (editing) {
-        const { data } = await api.patch(`/admin/services/${editing.id}`, payload)
+        const { data } = await api.patch(`/admin/items/${editing.id}`, payload)
         setEditing(data)
       } else {
-        const { data } = await api.post('/admin/services', payload)
+        const { data } = await api.post('/admin/items', payload)
         setEditing(data)
       }
       // On first creation of a gallery/both-mode service, keep the modal open so gallery photos
@@ -64,7 +72,7 @@ export default function ServicesPage() {
 
   async function handleDelete(id: string) {
     if (!confirm(t(lang, 'deleteConfirm'))) return
-    await api.delete(`/admin/services/${id}`)
+    await api.delete(`/admin/items/${id}`)
     queryClient.invalidateQueries({ queryKey: ['services'] })
   }
 
@@ -76,7 +84,7 @@ export default function ServicesPage() {
     try {
       const formData = new FormData()
       formData.append('file', file)
-      await api.post(`/admin/services/${editing.id}/gallery`, formData)
+      await api.post(`/admin/items/${editing.id}/gallery`, formData)
       queryClient.invalidateQueries({ queryKey: ['services'] })
     } catch {
       setGalleryError(t(lang, 'photoUploadError'))
@@ -85,7 +93,7 @@ export default function ServicesPage() {
 
   async function handleGalleryDelete(photoId: string) {
     if (!editing || !confirm(t(lang, 'deletePhotoConfirm'))) return
-    await api.delete(`/admin/services/${editing.id}/gallery/${photoId}`)
+    await api.delete(`/admin/items/${editing.id}/gallery/${photoId}`)
     queryClient.invalidateQueries({ queryKey: ['services'] })
   }
 
@@ -110,7 +118,10 @@ export default function ServicesPage() {
                 <div className="text-white font-medium">{s.nameEn}</div>
                 <div className="text-gray-400 text-sm mt-0.5">{s.nameAr} · {s.nameHe}</div>
                 <div className="text-gray-500 text-xs mt-1">
-                  <span dir="ltr">{s.durationMinutes} min · ₪{s.price}</span>
+                  <span dir="ltr">
+                    {s.isBookable ? `${s.durationMinutes} min · ` : ''}
+                    {s.price !== null ? `₪${s.price}` : ''}
+                  </span>
                 </div>
                 {s.photoMode !== 'None' && (
                   <div className="text-xs text-blue-400 mt-1">
@@ -142,22 +153,30 @@ export default function ServicesPage() {
               {[['Name (English)', 'nameEn'], ['Name (Arabic)', 'nameAr'], ['Name (Hebrew)', 'nameHe']].map(([label, key]) => (
                 <div key={key}>
                   <label htmlFor={`service-${key}`} className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
-                  <input id={`service-${key}`} type="text" required value={form[key as keyof typeof form]}
+                  <input id={`service-${key}`} type="text" required value={form[key as keyof typeof form] as string}
                     onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               ))}
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
+                <input type="checkbox" checked={form.isBookable}
+                  onChange={(e) => setForm((f) => ({ ...f, isBookable: e.target.checked }))}
+                  className="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500" />
+                {t(lang, 'isBookable')}
+              </label>
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="service-duration" className="block text-sm font-medium text-gray-300 mb-1.5">Duration (min)</label>
-                  <select id="service-duration" value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {[15, 30, 45, 60, 75, 90, 120].map((v) => <option key={v} value={v}>{v} min</option>)}
-                  </select>
-                </div>
+                {form.isBookable && (
+                  <div>
+                    <label htmlFor="service-duration" className="block text-sm font-medium text-gray-300 mb-1.5">Duration (min)</label>
+                    <select id="service-duration" value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {[15, 30, 45, 60, 75, 90, 120].map((v) => <option key={v} value={v}>{v} min</option>)}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label htmlFor="service-price" className="block text-sm font-medium text-gray-300 mb-1.5">Price</label>
-                  <input id="service-price" type="number" required min="0" step="0.01" value={form.price}
+                  <input id="service-price" type="number" min="0" step="0.01" value={form.price}
                     onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="25.00"
                     className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>

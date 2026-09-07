@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
-import { t, serviceName } from '../../lib/i18n'
+import { t, itemName } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
 
 type AppointmentDetail = {
   id: string; date: string; startTime: string; endTime: string; status: string; notes: string | null; cancelToken: string
-  service: { nameEn: string; nameAr: string; nameHe: string }
+  item: { nameEn: string; nameAr: string; nameHe: string }
   customer: { name: string; phone: string }
   business: { name: string; language: string }
 }
@@ -47,7 +47,7 @@ export default function AppointmentPage() {
       : t(lang, 'statusConfirmed')
 
   const rows = [
-    { label: t(lang, 'service'), value: serviceName(appt.service, lang) },
+    { label: t(lang, 'service'), value: itemName(appt.item, lang) },
     { label: t(lang, 'date'), value: appt.date.slice(0, 10) },
     { label: t(lang, 'time'), value: `${appt.startTime} – ${appt.endTime}` },
     { label: t(lang, 'name'), value: appt.customer.name },

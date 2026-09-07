@@ -21,8 +21,8 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     private async Task<string> SeedService(string token)
     {
         Authorize(Client, token);
-        var resp = await Client.PostAsJsonAsync("/api/admin/services", new CreateServiceRequest("Cut", "Cut", "Cut", 30, 20m));
-        var service = await resp.Content.ReadFromJsonAsync<ServiceDto>();
+        var resp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m));
+        var service = await resp.Content.ReadFromJsonAsync<ItemDto>();
         return service!.Id;
     }
 
@@ -31,11 +31,11 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-create";
         var token = await RegisterAndLoginBusiness("recurring-create@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceId, 0, "13:00", null));
+            null, "Mohamed", "+15551112222", itemId, 0, "13:00", null));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         var dto = await resp.Content.ReadFromJsonAsync<RecurringSeriesDto>();
@@ -52,12 +52,12 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-immediate";
         var token = await RegisterAndLoginBusiness("recurring-immediate@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         const int monday = 1; // AuthController.Register seeds default Mon-Fri 09:00-18:00 hours
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551119999", serviceId, monday, "09:00", null));
+            null, "Mohamed", "+15551119999", itemId, monday, "09:00", null));
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         var series = await resp.Content.ReadFromJsonAsync<RecurringSeriesDto>();
 
@@ -72,7 +72,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         Assert.Equal("09:00", generated.StartTime);
 
         var slots = await Client.GetFromJsonAsync<AvailabilityWrapper>(
-            $"/api/admin/appointments/availability?date={generated.Date}&serviceId={serviceId}");
+            $"/api/admin/appointments/availability?date={generated.Date}&itemId={itemId}");
         Assert.DoesNotContain(slots!.Slots, s => s.Start == "09:00");
     }
 
@@ -81,15 +81,15 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-existing";
         var token = await RegisterAndLoginBusiness("recurring-existing@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         var bookResp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            null, "Mohamed", "+15551112222", serviceId, DateTime.Now.Date.AddDays(30).ToString("yyyy-MM-dd"), "09:00", null, Force: true));
+            null, "Mohamed", "+15551112222", itemId, DateTime.Now.Date.AddDays(30).ToString("yyyy-MM-dd"), "09:00", null, Force: true));
         var booked = await bookResp.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
 
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            booked!.Customer.Id, null, null, serviceId, 0, "13:00", null));
+            booked!.Customer.Id, null, null, itemId, 0, "13:00", null));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
         var dto = await resp.Content.ReadFromJsonAsync<RecurringSeriesDto>();
@@ -101,11 +101,11 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-bad-day";
         var token = await RegisterAndLoginBusiness("recurring-bad-day@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceId, 7, "13:00", null));
+            null, "Mohamed", "+15551112222", itemId, 7, "13:00", null));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -115,12 +115,12 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-past-start";
         var token = await RegisterAndLoginBusiness("recurring-past-start@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         var pastDate = DateTime.Now.Date.AddDays(-7).ToString("yyyy-MM-dd");
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceId, 0, "13:00", null, pastDate));
+            null, "Mohamed", "+15551112222", itemId, 0, "13:00", null, pastDate));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -130,13 +130,13 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-bad-range";
         var token = await RegisterAndLoginBusiness("recurring-bad-range@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         var startDate = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
         var endDate = DateTime.Now.Date.AddDays(1).ToString("yyyy-MM-dd");
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceId, 0, "13:00", null, startDate, endDate));
+            null, "Mohamed", "+15551112222", itemId, 0, "13:00", null, startDate, endDate));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -146,11 +146,11 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-list";
         var token = await RegisterAndLoginBusiness("recurring-list@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceId, 0, "13:00", null));
+            null, "Mohamed", "+15551112222", itemId, 0, "13:00", null));
 
         var list = await Client.GetFromJsonAsync<List<RecurringSeriesDto>>("/api/admin/recurring");
 
@@ -162,11 +162,11 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-delete";
         var token = await RegisterAndLoginBusiness("recurring-delete@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         var createResp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceId, 0, "13:00", null));
+            null, "Mohamed", "+15551112222", itemId, 0, "13:00", null));
         var created = await createResp.Content.ReadFromJsonAsync<RecurringSeriesDto>();
 
         var deleteResp = await Client.DeleteAsync($"/api/admin/recurring/{created!.Id}");
@@ -181,12 +181,12 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slug = "recurring-delete-cancels";
         var token = await RegisterAndLoginBusiness("recurring-delete-cancels@example.com", slug);
-        var serviceId = await SeedService(token);
+        var itemId = await SeedService(token);
 
         Authorize(Client, token);
         const int monday = 1; // AuthController.Register seeds default Mon-Fri 09:00-18:00 hours
         var createResp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceId, monday, "09:00", null));
+            null, "Mohamed", "+15551112222", itemId, monday, "09:00", null));
         var created = await createResp.Content.ReadFromJsonAsync<RecurringSeriesDto>();
 
         // Creation generates real appointments immediately (see the earlier test) -- confirm
@@ -207,7 +207,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         Assert.All(linkedAfter, a => Assert.Equal("CANCELLED", a.Status));
 
         var slots = await Client.GetFromJsonAsync<AvailabilityWrapper>(
-            $"/api/admin/appointments/availability?date={linkedBefore[0].Date}&serviceId={serviceId}");
+            $"/api/admin/appointments/availability?date={linkedBefore[0].Date}&itemId={itemId}");
         Assert.Contains(slots!.Slots, s => s.Start == "09:00");
     }
 
@@ -216,11 +216,11 @@ public class RecurringAppointmentsTests : IntegrationTestBase
     {
         var slugA = "recurring-owner";
         var tokenA = await RegisterAndLoginBusiness("recurring-owner@example.com", slugA);
-        var serviceIdA = await SeedService(tokenA);
+        var itemIdA = await SeedService(tokenA);
 
         Authorize(Client, tokenA);
         var createResp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", serviceIdA, 0, "13:00", null));
+            null, "Mohamed", "+15551112222", itemIdA, 0, "13:00", null));
         var created = await createResp.Content.ReadFromJsonAsync<RecurringSeriesDto>();
 
         var slugB = "recurring-intruder";

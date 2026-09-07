@@ -2,7 +2,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { customerApi } from './customerApi'
 
 interface CustomerUser { id: string; name: string; familyName: string; phone: string }
-interface WhatsAppLoginResult { businessSlug: string; serviceId: string }
+interface WhatsAppLoginResult { businessSlug: string; itemId: string }
 interface CustomerAuthCtx {
   user: CustomerUser | null
   loginWithWhatsAppToken: (token: string) => Promise<WhatsAppLoginResult>
@@ -40,7 +40,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     // WhatsAppController.DetectLanguage) -- carry it over so the wizard opens in the language
     // they were just chatting in, rather than whatever was last stored in this browser.
     if (data.language) setLang(data.language)
-    return { businessSlug: data.businessSlug, serviceId: data.serviceId }
+    return { businessSlug: data.businessSlug, itemId: data.itemId }
   }
 
   function logout() {

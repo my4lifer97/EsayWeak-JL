@@ -27,7 +27,7 @@ beforeEach(() => vi.clearAllMocks())
 
 describe('WhatsAppLandingPage', () => {
   it('redeems the token and redirects into the booking wizard with the service preselected', async () => {
-    const login = vi.fn().mockResolvedValue({ businessSlug: 'test-business', serviceId: 'svc-1' })
+    const login = vi.fn().mockResolvedValue({ businessSlug: 'test-business', itemId: 'svc-1' })
 
     renderAt('/test-business/w/abc123', login)
 

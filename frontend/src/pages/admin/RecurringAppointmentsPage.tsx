@@ -3,19 +3,19 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { t, serviceName, type TKey } from '../../lib/i18n'
+import { t, itemName, type TKey } from '../../lib/i18n'
 import CustomerPicker, { type CustomerSelection } from '../../components/admin/CustomerPicker'
 
 type CustomerSummary = { id: string; name: string; familyName: string; phone: string }
-type ServiceSummary = { id: string; nameEn: string; nameAr: string; nameHe: string }
+type ItemSummary = { id: string; nameEn: string; nameAr: string; nameHe: string }
 type RecurringSkip = { date: string; reason: string }
 type RecurringSeries = {
-  id: string; customer: CustomerSummary; service: ServiceSummary
+  id: string; customer: CustomerSummary; item: ItemSummary
   dayOfWeek: number; startTime: string; notes: string | null; isActive: boolean
   startDate: string; endDate: string | null; nextOccurrenceDate: string | null
   recentSkips: RecurringSkip[]
 }
-type Service = { id: string; nameEn: string; nameAr: string; nameHe: string }
+type Item = { id: string; nameEn: string; nameAr: string; nameHe: string; isBookable: boolean }
 type Slot = { start: string; end: string }
 
 const DAY_KEYS: TKey[] = ['daySun', 'dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat']
@@ -43,10 +43,11 @@ export default function RecurringAppointmentsPage() {
 
   const effectiveDate = dayOfWeek === null ? '' : nextDateForWeekday(dayOfWeek)
 
-  const { data: services = [] } = useQuery<Service[]>({
+  const { data: allItems = [] } = useQuery<Item[]>({
     queryKey: ['services'],
-    queryFn: () => api.get('/admin/services').then((r) => r.data),
+    queryFn: () => api.get('/admin/items').then((r) => r.data),
   })
+  const services = allItems.filter((s) => s.isBookable)
 
   const { data: series = [] } = useQuery<RecurringSeries[]>({
     queryKey: ['recurring-series'],
@@ -55,7 +56,7 @@ export default function RecurringAppointmentsPage() {
 
   const { data: slots = [], isFetching: slotsLoading } = useQuery<Slot[]>({
     queryKey: ['admin-availability', effectiveDate, serviceId],
-    queryFn: () => api.get(`/admin/appointments/availability?date=${effectiveDate}&serviceId=${serviceId}`).then((r) => r.data.slots),
+    queryFn: () => api.get(`/admin/appointments/availability?date=${effectiveDate}&itemId=${serviceId}`).then((r) => r.data.slots),
     enabled: !!effectiveDate && !!serviceId,
   })
 
@@ -72,7 +73,7 @@ export default function RecurringAppointmentsPage() {
         ...('customerId' in customer ? { customerId: customer.customerId }
           : 'customerName' in customer ? { customerName: customer.customerName, customerFamilyName: customer.customerFamilyName, customerPhone: customer.customerPhone }
           : {}),
-        serviceId, dayOfWeek, startTime: slot.start, notes: notes || undefined,
+        itemId: serviceId, dayOfWeek, startTime: slot.start, notes: notes || undefined,
         startDate: effectiveDate,
       })
       queryClient.invalidateQueries({ queryKey: ['recurring-series'] })
@@ -128,7 +129,7 @@ export default function RecurringAppointmentsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-white font-medium">{s.customer.name} {s.customer.familyName} · {s.customer.phone}</div>
-                  <div className="text-gray-400 text-sm mt-0.5">{serviceName(s.service, lang)}</div>
+                  <div className="text-gray-400 text-sm mt-0.5">{itemName(s.item, lang)}</div>
                   <div className="text-gray-500 text-xs mt-1">
                     {t(lang, 'everyWeekAt')} {t(lang, DAY_KEYS[s.dayOfWeek])} {t(lang, 'atTime')} {s.startTime}
                     {s.nextOccurrenceDate && ` · ${t(lang, 'nextOccurrence')}: ${s.nextOccurrenceDate}`}
@@ -168,7 +169,7 @@ export default function RecurringAppointmentsPage() {
                 <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <option value="">—</option>
-                  {services.map((s) => <option key={s.id} value={s.id}>{serviceName(s, lang)}</option>)}
+                  {services.map((s) => <option key={s.id} value={s.id}>{itemName(s, lang)}</option>)}
                 </select>
               </div>
               <div>

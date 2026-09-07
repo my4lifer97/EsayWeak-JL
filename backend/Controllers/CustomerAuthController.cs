@@ -24,11 +24,11 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             return BadRequest(new { error = "This link has expired or is invalid" });
 
         var business = await db.Businesses.Where(b => b.Id == tokenRow.BusinessId).Select(b => new { b.Slug }).FirstOrDefaultAsync();
-        // Services are soft-deleted (IsActive = false), never hard-deleted -- so this also covers
-        // the business deactivating the service after the WhatsApp link was already sent.
-        var service = await db.Services.Where(s => s.Id == tokenRow.ServiceId && s.IsActive).Select(s => new { s.Id }).FirstOrDefaultAsync();
-        if (business is null || service is null)
-            return NotFound(new { error = "This business or service is no longer available" });
+        // Items are soft-deleted (IsActive = false), never hard-deleted -- so this also covers
+        // the business deactivating the item after the WhatsApp link was already sent.
+        var item = await db.Items.Where(s => s.Id == tokenRow.ItemId && s.IsActive).Select(s => new { s.Id }).FirstOrDefaultAsync();
+        if (business is null || item is null)
+            return NotFound(new { error = "This business or item is no longer available" });
 
         var phone = PhoneNormalizer.Normalize(tokenRow.Phone);
         var account = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == phone);
@@ -53,7 +53,7 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             familyName = account.FamilyName,
             phone = account.Phone,
             businessSlug = business.Slug,
-            serviceId = service.Id,
+            itemId = item.Id,
             language = tokenRow.Language,
         });
     }
