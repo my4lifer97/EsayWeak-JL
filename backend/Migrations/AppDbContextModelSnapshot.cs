@@ -205,9 +205,6 @@ namespace BarberSaas.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
-                    b.Property<string>("AddressLine")
-                        .HasColumnType("text");
-
                     b.Property<string>("BusinessModel")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -237,9 +234,6 @@ namespace BarberSaas.Api.Migrations
                     b.Property<string>("ChatbotWelcomeMessage")
                         .HasColumnType("text");
 
-                    b.Property<string>("City")
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -253,19 +247,11 @@ namespace BarberSaas.Api.Migrations
                     b.Property<bool>("EmailVerified")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsListed")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true);
-
                     b.Property<string>("Language")
                         .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("Logo")
-                        .HasColumnType("text");
-
-                    b.Property<string>("MapUrl")
                         .HasColumnType("text");
 
                     b.Property<int?>("MaxBookingsPerDay")
@@ -329,12 +315,8 @@ namespace BarberSaas.Api.Migrations
 
                     b.HasIndex("BusinessTypeId");
 
-                    b.HasIndex("City");
-
                     b.HasIndex("Email")
                         .IsUnique();
-
-                    b.HasIndex("IsListed");
 
                     b.HasIndex("Slug")
                         .IsUnique();

@@ -8,16 +8,13 @@ vi.mock('../lib/customerAuth', () => ({
   useCustomerAuth: vi.fn(),
 }))
 
-// Mirrors the real route layout in App.tsx: the public storefront `/:slug` sits OUTSIDE the
-// guard, while booking (`/:slug/book`) and the account area stay inside it.
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
-        <Route path="/:slug" element={<div>Business Page</div>} />
         <Route element={<CustomerProtectedRoute />}>
           <Route path="/account/bookings" element={<div>My Bookings Page</div>} />
-          <Route path="/:slug/book" element={<div>Booking Page</div>} />
+          <Route path="/:slug" element={<div>Business Page</div>} />
         </Route>
       </Routes>
     </MemoryRouter>
@@ -41,19 +38,11 @@ describe('CustomerProtectedRoute', () => {
     expect(screen.getByText('My Bookings Page')).toBeInTheDocument()
   })
 
-  it('gates the booking page (/:slug/book) when not authenticated', () => {
-    vi.mocked(useCustomerAuth).mockReturnValue({ isAuthenticated: false, language: 'EN' } as ReturnType<typeof useCustomerAuth>)
-
-    renderAt('/jamelmarie85/book')
-
-    expect(screen.queryByText('Booking Page')).not.toBeInTheDocument()
-  })
-
-  it('leaves the public storefront (/:slug) ungated for anonymous visitors', () => {
+  it('gates a business page (/:slug) the same way when not authenticated', () => {
     vi.mocked(useCustomerAuth).mockReturnValue({ isAuthenticated: false, language: 'EN' } as ReturnType<typeof useCustomerAuth>)
 
     renderAt('/jamelmarie85')
 
-    expect(screen.getByText('Business Page')).toBeInTheDocument()
+    expect(screen.queryByText('Business Page')).not.toBeInTheDocument()
   })
 })

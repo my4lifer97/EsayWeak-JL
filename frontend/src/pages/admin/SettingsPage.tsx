@@ -17,10 +17,6 @@ type BusinessSettings = {
   chatbotEnabled: boolean
   chatbotWelcomeMessage: string | null
   chatbotConfirmationMessage: string | null
-  city: string | null
-  addressLine: string | null
-  mapUrl: string | null
-  isListed: boolean
 }
 
 export default function SettingsPage() {
@@ -35,7 +31,6 @@ export default function SettingsPage() {
     name: '', phone: '', description: '', language: 'EN' as 'EN' | 'AR' | 'HE',
     maxBookingsPerDay: '', maxBookingsPerWeek: '',
     chatbotWelcomeMessage: '', chatbotConfirmationMessage: '',
-    city: '', addressLine: '', mapUrl: '',
   })
   // Kept out of `form` above -- that object's values are read generically via
   // form[key as keyof typeof form] in the text-input .map()s below, and mixing in a boolean
@@ -43,7 +38,6 @@ export default function SettingsPage() {
   const [waitlistEnabled, setWaitlistEnabled] = useState(false)
   const [requireApprovalOnCustomerCancel, setRequireApprovalOnCustomerCancel] = useState(false)
   const [chatbotEnabled, setChatbotEnabled] = useState(true)
-  const [isListed, setIsListed] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -83,12 +77,10 @@ export default function SettingsPage() {
       maxBookingsPerWeek: business.maxBookingsPerWeek?.toString() ?? '',
       chatbotWelcomeMessage: business.chatbotWelcomeMessage ?? '',
       chatbotConfirmationMessage: business.chatbotConfirmationMessage ?? '',
-      city: business.city ?? '', addressLine: business.addressLine ?? '', mapUrl: business.mapUrl ?? '',
     })
     setWaitlistEnabled(business.waitlistEnabled)
     setRequireApprovalOnCustomerCancel(business.requireApprovalOnCustomerCancel)
     setChatbotEnabled(business.chatbotEnabled)
-    setIsListed(business.isListed)
     setLang(business.language)
     setInitialized(true)
   }
@@ -105,19 +97,14 @@ export default function SettingsPage() {
       chatbotEnabled,
       chatbotWelcomeMessage: form.chatbotWelcomeMessage || null,
       chatbotConfirmationMessage: form.chatbotConfirmationMessage || null,
-      city: form.city || null,
-      addressLine: form.addressLine || null,
-      mapUrl: form.mapUrl || null,
-      isListed,
     }
     try {
       await api.patch('/admin/settings', payload)
       setLang(form.language)
       setSaved(true); setTimeout(() => setSaved(false), 2000)
       queryClient.invalidateQueries({ queryKey: ['settings'] })
-    } catch (err) {
-      const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error
-      setError(msg || 'Failed to save')
+    } catch {
+      setError('Failed to save')
     } finally { setSaving(false) }
   }
 
@@ -246,39 +233,6 @@ export default function SettingsPage() {
               <option value="HE">עברית (Hebrew)</option>
             </select>
           </div>
-        </div>
-
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-white font-semibold mb-1">{t(lang, 'businessLocation')}</h2>
-          <div>
-            <label htmlFor="settings-city" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'city')}</label>
-            <input id="settings-city" type="text" value={form.city}
-              placeholder={t(lang, 'cityPlaceholder')}
-              onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label htmlFor="settings-address" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'addressLine')}</label>
-            <input id="settings-address" type="text" value={form.addressLine}
-              onChange={(e) => setForm((f) => ({ ...f, addressLine: e.target.value }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label htmlFor="settings-mapurl" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'mapUrl')}</label>
-            <input id="settings-mapurl" type="url" value={form.mapUrl}
-              placeholder={t(lang, 'mapUrlPlaceholder')}
-              onChange={(e) => setForm((f) => ({ ...f, mapUrl: e.target.value }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <label className="flex items-start gap-3 cursor-pointer border-t border-gray-800 pt-4">
-            <input type="checkbox" checked={isListed}
-              onChange={(e) => setIsListed(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
-            <span>
-              <span className="block text-sm font-medium text-gray-200">{t(lang, 'listInDirectory')}</span>
-              <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'listInDirectoryHint')}</span>
-            </span>
-          </label>
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">

@@ -43,11 +43,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => x.BusinessTypeId);
         b.Entity<Business>()
             .HasIndex(x => x.BusinessModel);
-        // Discovery filters: city is matched directly, IsListed gates every directory query.
-        b.Entity<Business>()
-            .HasIndex(x => x.City);
-        b.Entity<Business>()
-            .HasIndex(x => x.IsListed);
 
         b.Entity<BusinessTypeDefinition>()
             .HasIndex(x => x.Key).IsUnique();
@@ -186,11 +181,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Business>()
             .Property(x => x.RatingAverage)
             .HasDefaultValue(0d);
-        // Explicit DB-level default -- see the ChatbotEnabled comment above; every business that
-        // predates the directory must backfill as listed so it stays discoverable.
-        b.Entity<Business>()
-            .Property(x => x.IsListed)
-            .HasDefaultValue(true);
         b.Entity<Review>()
             .Property(x => x.IsHidden)
             .HasDefaultValue(false);

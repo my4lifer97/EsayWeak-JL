@@ -26,18 +26,13 @@ public record SettingsDto(
     string? Description, string? Logo, string Language, string? TwilioNumber,
     DateTime TrialEndsAt, string SubscriptionStatus,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel,
-    bool ChatbotEnabled, string? ChatbotWelcomeMessage, string? ChatbotConfirmationMessage,
-    string? City, string? AddressLine, string? MapUrl, bool IsListed);
+    bool ChatbotEnabled, string? ChatbotWelcomeMessage, string? ChatbotConfirmationMessage);
 
 public record UpdateSettingsRequest(
     string? Name, string? Phone, string? Description, string? Language,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled = false,
     bool RequireApprovalOnCustomerCancel = false,
-    bool ChatbotEnabled = true, string? ChatbotWelcomeMessage = null, string? ChatbotConfirmationMessage = null,
-    // The settings form always submits every field, so (like WaitlistEnabled) these are assigned
-    // unconditionally rather than treated as "omitted when null". IsListed defaults true to match
-    // Business.IsListed's default.
-    string? City = null, string? AddressLine = null, string? MapUrl = null, bool IsListed = true);
+    bool ChatbotEnabled = true, string? ChatbotWelcomeMessage = null, string? ChatbotConfirmationMessage = null);
 
 public record BookAppointmentRequest(
     string ItemId, string Date, string StartTime,
@@ -101,14 +96,9 @@ public record ScheduleResponse(
 public record PublicBusinessDto(
     string Slug, string Name, string? Description, string? Logo,
     string Language, bool IsRTL, int[] ActiveDays, List<ItemDto> Items, bool IsFollowed,
-    bool WaitlistEnabled,
-    string? City, string? AddressLine, string? MapUrl, int RatingCount, double RatingAverage);
+    bool WaitlistEnabled);
 
-// Shared by BusinessesController.Search (the public directory) and .GetFollowed (the customer's
-// followed list). BusinessTypeKey/City/rating/follower fields back the discovery result cards.
-public record BusinessSearchResultDto(
-    string Slug, string Name, string? Description, string? Logo, string Language, bool IsFollowed,
-    string? BusinessTypeKey, string? City, double RatingAverage, int RatingCount, int FollowerCount);
+public record BusinessSearchResultDto(string Slug, string Name, string? Description, string? Logo, string Language, bool IsFollowed);
 
 public record CustomerAppointmentDto(
     string Id, string BusinessSlug, string BusinessName, string Date, string StartTime, string EndTime,

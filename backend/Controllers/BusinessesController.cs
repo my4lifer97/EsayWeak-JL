@@ -16,88 +16,36 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
     private string? CustomerAccountId =>
         User.FindFirst("type")?.Value == "customer" ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null;
 
-    // Public business directory. Base filter: listed businesses whose subscription hasn't expired.
-    // Filters (query / businessTypeKey / city) and sort combine; results are paged.
     [HttpGet("search")]
-    public async Task<IActionResult> Search(
-        [FromQuery] string? query,
-        [FromQuery] string? businessTypeKey,
-        [FromQuery] string? city,
-        [FromQuery] string? sort,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> Search([FromQuery] string? query)
     {
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 50);
-
-        var q = db.Businesses.Where(b => b.IsListed && b.SubscriptionStatus != SubStatus.EXPIRED);
-
-        // Case-insensitive substring / exact match via lower() rather than EF.Functions.ILike --
-        // ILike is Npgsql-only and can't run under the SQLite provider the tests use. lower()
-        // translates on both, treats the user's input literally (no % / _ wildcard injection),
-        // and stays case-insensitive on Postgres.
+        var q = db.Businesses.AsQueryable();
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var term = query.Trim().ToLower();
+            var pattern = $"%{query.Trim()}%";
             q = q.Where(b =>
-                b.Name.ToLower().Contains(term) ||
-                b.Slug.ToLower().Contains(term) ||
-                (b.Description != null && b.Description.ToLower().Contains(term)));
+                EF.Functions.ILike(b.Name, pattern) ||
+                EF.Functions.ILike(b.Slug, pattern) ||
+                (b.Description != null && EF.Functions.ILike(b.Description, pattern)));
         }
 
-        if (!string.IsNullOrWhiteSpace(businessTypeKey))
-            q = q.Where(b => b.BusinessType != null && b.BusinessType.Key == businessTypeKey);
+        var businesses = await q.OrderBy(b => b.Name).Take(30).ToListAsync();
 
-        if (!string.IsNullOrWhiteSpace(city))
-        {
-            var c = city.Trim().ToLower();
-            q = q.Where(b => b.City != null && b.City.ToLower() == c);
-        }
-
-        q = sort switch
-        {
-            "popular" => q.OrderByDescending(b => b.Follows.Count).ThenBy(b => b.Name),
-            "newest" => q.OrderByDescending(b => b.CreatedAt),
-            "name" => q.OrderBy(b => b.Name),
-            // default: highest-rated first, then most-reviewed, then alphabetical.
-            _ => q.OrderByDescending(b => b.RatingAverage).ThenByDescending(b => b.RatingCount).ThenBy(b => b.Name),
-        };
-
-        var total = await q.CountAsync();
-
+        var followedSlugs = new HashSet<string>();
         var accountId = CustomerAccountId;
-        var rows = await q
-            .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(b => new
-            {
-                b.Slug, b.Name, b.Description, b.Logo, b.Language,
-                BusinessTypeKey = b.BusinessType != null ? b.BusinessType.Key : null,
-                b.City, b.RatingAverage, b.RatingCount,
-                FollowerCount = b.Follows.Count,
-                IsFollowed = accountId != null && b.Follows.Any(f => f.CustomerAccountId == accountId),
-            })
-            .ToListAsync();
+        if (accountId is not null)
+        {
+            followedSlugs = (await db.Follows
+                .Where(f => f.CustomerAccountId == accountId)
+                .Select(f => f.Business.Slug)
+                .ToListAsync())
+                .ToHashSet();
+        }
 
-        var items = rows.Select(b => new BusinessSearchResultDto(
-            b.Slug, b.Name, b.Description, b.Logo, b.Language.ToString(), b.IsFollowed,
-            b.BusinessTypeKey, b.City, b.RatingAverage, b.RatingCount, b.FollowerCount)).ToList();
+        var results = businesses.Select(b => new BusinessSearchResultDto(
+            b.Slug, b.Name, b.Description, b.Logo, b.Language.ToString(), followedSlugs.Contains(b.Slug)));
 
-        return Ok(new PagedResult<BusinessSearchResultDto>(items, page, pageSize, total, page * pageSize < total));
-    }
-
-    // Distinct cities among listed, non-expired businesses -- backs the /browse city filter.
-    [HttpGet("cities")]
-    public async Task<IActionResult> GetCities()
-    {
-        var cities = await db.Businesses
-            .Where(b => b.IsListed && b.SubscriptionStatus != SubStatus.EXPIRED
-                && b.City != null && b.City != "")
-            .Select(b => b.City!.Trim())
-            .Distinct()
-            .OrderBy(c => c)
-            .ToListAsync();
-
-        return Ok(cities);
+        return Ok(results);
     }
 
     [HttpGet("followed")]
@@ -108,11 +56,7 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
             .Where(f => f.CustomerAccountId == CustomerAccountId)
             .OrderByDescending(f => f.CreatedAt)
             .Select(f => new BusinessSearchResultDto(
-                f.Business.Slug, f.Business.Name, f.Business.Description, f.Business.Logo,
-                f.Business.Language.ToString(), true,
-                f.Business.BusinessType != null ? f.Business.BusinessType.Key : null,
-                f.Business.City, f.Business.RatingAverage, f.Business.RatingCount,
-                f.Business.Follows.Count))
+                f.Business.Slug, f.Business.Name, f.Business.Description, f.Business.Logo, f.Business.Language.ToString(), true))
             .ToListAsync();
 
         return Ok(results);

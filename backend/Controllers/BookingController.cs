@@ -45,13 +45,9 @@ public class BookingController(
             isFollowed = await db.Follows.AnyAsync(f => f.CustomerAccountId == accountId && f.BusinessId == business.Id);
         }
 
-        // Resolved by slug regardless of IsListed -- unlisting hides a business from the directory
-        // only; a direct or shared storefront link keeps working.
         return Ok(new PublicBusinessDto(
             business.Slug, business.Name, business.Description, business.Logo,
-            business.Language.ToString(), isRTL, activeDays, items, isFollowed, business.WaitlistEnabled,
-            business.City, business.AddressLine, business.MapUrl,
-            business.RatingCount, business.RatingAverage));
+            business.Language.ToString(), isRTL, activeDays, items, isFollowed, business.WaitlistEnabled));
     }
 
     [HttpGet("availability")]
