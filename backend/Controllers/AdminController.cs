@@ -41,7 +41,8 @@ public class AdminController(
             b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
-            b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage));
+            b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage,
+            b.City, b.AddressLine, b.MapUrl, b.IsListed));
     }
 
     [HttpPost("settings/logo")]
@@ -82,6 +83,12 @@ public class AdminController(
         var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
 
+        var mapUrl = string.IsNullOrWhiteSpace(req.MapUrl) ? null : req.MapUrl.Trim();
+        if (mapUrl is not null
+            && !mapUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            && !mapUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "Map link must start with http:// or https://" });
+
         // Captured before assignment so we can report only the fields that actually changed --
         // the settings form always submits every field on every save, so "field is present in
         // the request" alone would make virtually every save claim to change everything.
@@ -96,6 +103,10 @@ public class AdminController(
         var oldChatbotEnabled = b.ChatbotEnabled;
         var oldChatbotWelcomeMessage = b.ChatbotWelcomeMessage;
         var oldChatbotConfirmationMessage = b.ChatbotConfirmationMessage;
+        var oldCity = b.City;
+        var oldAddressLine = b.AddressLine;
+        var oldMapUrl = b.MapUrl;
+        var oldIsListed = b.IsListed;
 
         if (req.Name is not null) b.Name = req.Name;
         if (req.Phone is not null) b.Phone = req.Phone;
@@ -110,6 +121,12 @@ public class AdminController(
         b.ChatbotEnabled = req.ChatbotEnabled;
         b.ChatbotWelcomeMessage = req.ChatbotWelcomeMessage;
         b.ChatbotConfirmationMessage = req.ChatbotConfirmationMessage;
+        // Discovery fields -- like the booking limits above, the form always submits all of these,
+        // so null/false is a real value, not "omitted". Empty strings are normalized to null.
+        b.City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim();
+        b.AddressLine = string.IsNullOrWhiteSpace(req.AddressLine) ? null : req.AddressLine.Trim();
+        b.MapUrl = mapUrl;
+        b.IsListed = req.IsListed;
 
         await db.SaveChangesAsync();
 
@@ -128,6 +145,10 @@ public class AdminController(
         if (b.ChatbotEnabled != oldChatbotEnabled) changes.Add($"chatbot {(b.ChatbotEnabled ? "enabled" : "disabled")}");
         if (b.ChatbotWelcomeMessage != oldChatbotWelcomeMessage) changes.Add("chatbot welcome message");
         if (b.ChatbotConfirmationMessage != oldChatbotConfirmationMessage) changes.Add("chatbot confirmation message");
+        if (b.City != oldCity) changes.Add($"city: \"{oldCity}\" → \"{b.City}\"");
+        if (b.AddressLine != oldAddressLine) changes.Add("address");
+        if (b.MapUrl != oldMapUrl) changes.Add("map link");
+        if (b.IsListed != oldIsListed) changes.Add($"directory listing {(b.IsListed ? "on" : "off")}");
 
         this.SetActivityDetail(changes.Count > 0 ? $"Updated settings: {string.Join(", ", changes)}" : "Updated settings (no fields changed)");
 

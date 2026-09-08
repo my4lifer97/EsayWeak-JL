@@ -97,8 +97,9 @@ barber-saas/
 │   ├── Controllers/
 │   │   ├── AuthController.cs              # POST /api/auth/register|login|verify-email|resend-verification (barber accounts)
 │   │   ├── AdminController.cs             # Protected admin CRUD (JWT required, BarberOnly policy)
-│   │   ├── BarbersController.cs           # GET /api/barbers/search|followed, POST/DELETE .../follow (CustomerOnly)
-│   │   ├── BookingController.cs           # Public booking API (GetAppointment/etc. accept anonymous)
+│   │   ├── BusinessesController.cs        # GET /api/businesses/search|cities|followed|{slug}/reviews, POST/DELETE .../follow — public directory + reviews list (follow endpoints CustomerOnly)
+│   │   ├── ReviewsController.cs           # api/reviews — CustomerOnly: eligibility, create (403 no completed appt / 409 dup), author-scoped PATCH/DELETE
+│   │   ├── BookingController.cs           # Public booking API (GetAppointment/etc. accept anonymous); GET /api/{slug}/info also carries city/address/map + rating aggregate
 │   │   ├── CustomerAuthController.cs      # POST /api/customer/auth/whatsapp — redeems a WhatsApp booking-link token into a customer session
 │   │   ├── CustomerAppointmentsController.cs  # GET/PATCH /api/customer/appointments/* (CustomerOnly)
 │   │   ├── RecurringAppointmentsController.cs # GET/POST/DELETE /api/admin/recurring — owner-managed recurring series
@@ -117,6 +118,7 @@ barber-saas/
 │   │   └── Follow.cs                # CustomerAccount <-> Barber follow relationship
 │   ├── Services/
 │   │   ├── AvailabilityService.cs      # Slot generation + conflict filtering
+│   │   ├── ReviewService.cs            # HasCompletedAppointment / MostRecentCompletedAppointment / RecomputeAggregate (denormalized Business.RatingCount/RatingAverage from non-hidden rows)
 │   │   ├── RecurringAppointmentService.cs  # Generates real Appointment rows for active RecurringSeries (rolling horizon)
 │   │   ├── AppointmentStatusHelper.cs  # Computes effective COMPLETED status without touching the DB row
 │   │   ├── I18nService.cs              # Server-side translations (EN/AR/HE) for WhatsApp messages
@@ -135,7 +137,7 @@ barber-saas/
         ├── components/
         │   ├── admin/          # AdminLayout, AdminSidebar, WeeklyCalendar, CustomerPicker, NewAppointmentModal
         │   ├── booking/        # BookingWizard (5-step)
-        │   ├── customer/       # CustomerAccountNav, LanguageSwitcher
+        │   ├── customer/       # CustomerAccountNav, LanguageSwitcher, StarRating, BusinessReviews
         │   ├── BackButton.tsx           # Browser-history back button, used on all customer pages
         │   ├── ProtectedRoute.tsx       # Guards /admin/* routes (barber auth)
         │   └── CustomerProtectedRoute.tsx  # Guards customer routes; renders an inline "message us on WhatsApp" notice when unauthenticated (no login page to redirect to)
@@ -146,9 +148,9 @@ barber-saas/
         │   └── i18n.ts          # Client-side translations (EN/AR/HE) + t() + serviceName()
         └── pages/
             ├── admin/        # LoginPage, RegisterPage, DashboardPage,
-            │                 #   AppointmentsPage, RecurringAppointmentsPage, ServicesPage, SchedulePage, SettingsPage
-            └── public/       # BarberPage, BookPage, AppointmentPage, WhatsAppLandingPage,
-                              #   BrowseBarbersPage (search + followed list), MyBookingsPage
+            │                 #   AppointmentsPage, RecurringAppointmentsPage, ServicesPage, SchedulePage, SettingsPage, ReviewsPage
+            └── public/       # BusinessPage (public storefront), BookPage, AppointmentPage, WhatsAppLandingPage,
+                              #   BrowseBusinessesPage (discovery directory: category/city/sort + followed list), MyBookingsPage
 ```
 
 ## Architecture
@@ -166,7 +168,9 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `POST /api/auth/reset-password` — `{ email, code, newPassword }`; verifies the code, updates the password, and returns a JWT (`LoginResponse`), logging them in directly
 
 **Admin (JWT required — barber ID read from token claims, never from body, `BarberOnly` policy)**
-- `GET/PATCH /api/admin/settings` — barber profile, language, booking limits (WhatsApp number is read-only here — see [Twilio / WhatsApp](#twilio--whatsapp))
+- `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). WhatsApp number is read-only here — see [Twilio / WhatsApp](#twilio--whatsapp)
+- `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
+- `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
 - `GET/POST /api/admin/services` — services CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/services/{id}` — update / soft-delete (IsActive = false)
 - `POST /api/admin/services/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)
@@ -185,7 +189,7 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `DELETE /api/admin/recurring/{id}` — deletes the series **and cancels every not-yet-completed appointment it generated** (frees the slot for other bookings); already-completed appointments are left untouched as history
 
 **Public booking (no JWT — `{slug}` identifies the tenant)**
-- `GET /api/{slug}/info` — barber name, services, active days, isRTL flag
+- `GET /api/{slug}/info` — business name, services, active days, isRTL flag, plus `city`/`addressLine`/`mapUrl` and the rating aggregate (`ratingCount`, `ratingAverage`). Resolves by slug **regardless of `IsListed`** — unlisting only removes a business from the directory; a direct/shared link still works
 - `GET /api/{slug}/availability?date=&serviceId=` — available 30-min slots
 - `POST /api/{slug}/appointments/photo` — upload a reference photo for a `CustomerUpload`-mode service (anonymous, guest booking allowed); returns `{ url }` to pass as `customerPhotoUrl` below
 - `POST /api/{slug}/appointments` — book appointment; returns `{ appointmentId, cancelToken }`; auto-follows the barber if the caller is a logged-in customer; if the service's `photoMode` is `OwnerGallery`/`CustomerUpload`, `galleryPhotoId`/`customerPhotoUrl` respectively is required
@@ -196,9 +200,17 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 **Customer auth (no JWT)**
 - `POST /api/customer/auth/whatsapp` — `{ token }`; redeems a `WhatsAppBookingToken` (issued by `WhatsAppController` once the customer picks a service in the chatbot) into a customer session — returns a customer JWT (`"type": "customer"` claim) plus `{ barberSlug, serviceId }` so the frontend can land directly on date selection with the service preselected. 400 if the token is missing/expired, 404 if the barber/service it points at is gone. See [Customer login via WhatsApp](#customer-login-via-whatsapp).
 
-**Barbers directory**
-- `GET /api/barbers/search?query=` — search barbers by name/slug (public, no auth)
-- `GET /api/barbers/followed`, `POST/DELETE /api/barbers/{slug}/follow` — manage followed barbers (customer JWT required, `CustomerOnly` policy)
+**Business directory / discovery (no JWT except follow)**
+- `GET /api/businesses/search?query=&businessTypeKey=&city=&sort=&page=&pageSize=` — public directory. Base filter `IsListed && SubscriptionStatus != EXPIRED`. `sort`: `rating` (default — avg desc, then count, then name), `popular` (follower count), `newest`, `name`. Returns `PagedResult<BusinessSearchResultDto>` (`{ items, page, pageSize, total, hasMore }`); each item carries `businessTypeKey`, `city`, `ratingAverage`, `ratingCount`, `followerCount`, `isFollowed`. `query`/`city` match case-insensitively via `lower()` (not `EF.Functions.ILike`, which the SQLite test provider can't run)
+- `GET /api/businesses/cities` — distinct trimmed cities among listed, non-expired businesses (backs the browse city filter)
+- `GET /api/businesses/{slug}/reviews?page=&pageSize=` — public, non-hidden reviews newest-first as `PublicReviewListDto` (rating aggregate + `PagedResult<PublicReviewDto>`); reviewer shown as "First L."
+- `GET /api/businesses/followed`, `POST/DELETE /api/businesses/{slug}/follow` — manage followed businesses (customer JWT, `CustomerOnly`)
+
+**Reviews (customer JWT, `CustomerOnly`)**
+- `GET /api/reviews/eligibility?businessSlug=` — `{ canReview, alreadyReviewed, review? }`. `canReview` needs a **completed** appointment (Status `CONFIRMED` + effective end time past, per `AppointmentStatusHelper`; no stored `COMPLETED`) and `!PendingCancellationApproval`
+- `POST /api/reviews` — `{ businessSlug, rating (1–5), comment? }`. **403** without a completed appointment, **409** if a review already exists (frontend PATCHes instead). Stamps `AppointmentId` from the most-recent completed visit; recomputes the business aggregate
+- `PATCH/DELETE /api/reviews/{id}` — author-scoped (`r.CustomerAccountId == accountId`, else 404); both recompute the aggregate
+- Platform-admin moderation: `GET /api/platform-admin/reviews?businessId=`, `POST /api/platform-admin/reviews/{id}/hide|unhide` (toggles `IsHidden`, recomputes aggregate)
 
 **Customer account (customer JWT required, `CustomerOnly` policy)**
 - `GET /api/customer/appointments?filter=` — this customer's appointment history across all barbers, matched by phone
@@ -219,8 +231,10 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 - `/admin/recurring` — manage recurring series: create (service → customer → day-of-week button → real availability slot grid → notes) and delete (no pause/resume — see below)
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — services CRUD
-- `/admin/settings` — business info, chatbot customization, read-only assigned WhatsApp number
-- `/:slug` — public barber page — **requires a customer session** (see below)
+- `/admin/reviews` — this business's reviews with an inline owner-reply editor; hidden reviews shown greyed
+- `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), chatbot customization, read-only assigned WhatsApp number
+- `/browse` — public discovery directory (`BrowseBusinessesPage`): category chips (`GET /api/business-types`), city + sort filters, a default top-rated list (no "type first" gate), "Load more" paging, rich cards linking to `/:slug`; the authenticated-only "Businesses You Follow" list stays below
+- `/:slug` — **public** business storefront (`BusinessPage`) — viewable logged-out (stars, location, reviews); the Follow button is disabled with a WhatsApp-only tooltip for anonymous visitors
 - `/:slug/book` — booking wizard (service → date → time → details) — **requires a customer session**; `?serviceId=` alone (from a WhatsApp booking link) skips service selection straight to date selection, `?serviceId=&date=&time=` (from a waitlist notification) skips straight to the confirm step if the slot's still open
 - `/:slug/w/:token` — WhatsApp booking-link landing point (`WhatsAppLandingPage`); redeems the token itself and establishes the session, then redirects into `/:slug/book?serviceId=`; public, not guarded
 - `/:slug/appointments/:id?token=<cancelToken>` — view/cancel/reschedule appointment — public, token-secured, no login (opened directly from a WhatsApp/SMS reminder)
@@ -228,13 +242,13 @@ Multi-tenant SaaS. Each barber is a **tenant** identified by a URL slug.
 ### Auth
 JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via request interceptor. 401 responses redirect to `/admin/login` — **except** a 401 from `/auth/login` itself (wrong password), which must NOT redirect or it wipes `LoginPage`'s own error message via a full page reload before React can render it. Admin routes are wrapped in `ProtectedRoute` (`frontend/src/components/ProtectedRoute.tsx`) which checks `useAuth().isAuthenticated`.
 
-**Customer routes**: `/:slug`, `/:slug/book`, `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — there is no manual sign-in page anymore (see [Customer login via WhatsApp](#customer-login-via-whatsapp)), so an anonymous visitor here just sees an inline "message us on WhatsApp for a booking link" notice instead of a redirect. There is deliberately no guest-browsing fallback for these routes either — this carries forward the earlier "guest booking must work" reversal from the customer-accounts feature. The backend (`BookingController.BookAppointment`) still technically accepts anonymous requests; only the frontend routing enforces a session. `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are intentionally left outside this guard.
+**Customer routes**: `/:slug/book` and `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — there is no manual sign-in page anymore (see [Customer login via WhatsApp](#customer-login-via-whatsapp)), so an anonymous visitor to a guarded route sees an inline "message us on WhatsApp for a booking link" notice instead of a redirect. As of the Discovery phase, **`/:slug` and `/browse` are public** (read-only storefront + directory) — moved out of the guard so a logged-out visitor who finds a business can view it; booking still needs the WhatsApp-link session. `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are also outside the guard.
 
-**Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBarbersPage` (`/browse`) fetches `GET /api/barbers/followed` itself and renders a "Barbers You Follow" list right under the search bar, with a "Remove" button per entry. A customer is auto-followed to a barber the moment they book an appointment while logged in (`BookingController.BookAppointment`), not just via an explicit Follow click — guest bookings don't create a follow (no account to attach it to).
+**Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBusinessesPage` (`/browse`) fetches `GET /api/businesses/followed` itself and renders a "Businesses You Follow" list below the directory results (authenticated only). A customer is auto-followed to a business the moment they book an appointment while logged in (`BookingController.BookAppointment`), not just via an explicit Follow click — guest bookings don't create a follow (no account to attach it to). The Follow button on `/:slug` and on browse cards is rendered **disabled** (with a WhatsApp-only tooltip) for anonymous visitors, since there's no sign-in page to send them to.
 
 ### i18n (Translations)
-- **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings.  
-  Use `t(lang, 'key')` for UI strings and `serviceName(service, lang)` for multilingual service names.  
+- **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings (every new key must be added to all three).  
+  Use `t(lang, 'key')` for UI strings and `itemName(item, lang)` for multilingual item names.  
   **Customer-facing pages** (browse/account/*, a barber's public page, the booking wizard) use the
   customer's own language preference — `useCustomerAuth().language`/`setLang()`, stored under
   `localStorage['customerLang']`, defaulting to **Hebrew** when unset. This is independent of, and
@@ -242,7 +256,7 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
   setting) — a customer who picks English sees English everywhere, even on a Hebrew-configured
   barber's page. RTL is derived from the customer's chosen language (`AR`/`HE` → `rtl`), not the
   barber's `isRTL` flag. `<LanguageSwitcher />` (`frontend/src/components/customer/`) exposes the
-  picker; it's on `CustomerAccountNav`, `BarberPage`, and `BookingWizard`.
+  picker; it's on `CustomerAccountNav`, `BusinessPage`, and `BookingWizard`.
   **Admin/barber dashboard pages** are unaffected — they still use `useAuth().language`, set from the
   barber's own `Settings > Language` field, unrelated to any customer's choice.
 - **Backend**: `backend/Services/I18nService.cs` — static `T(lang, key, args)` for WhatsApp/reminder messages.
@@ -250,7 +264,7 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
 ### Back navigation (customer pages)
 `frontend/src/components/BackButton.tsx` — browser-history back (`navigate(-1)`), not a fixed
 route, so it works regardless of how the customer arrived. Used on every customer-facing page
-(BarberPage, BookPage/BookingWizard step 1, MyBookingsPage, BrowseBarbersPage,
+(BusinessPage, BookPage/BookingWizard step 1, MyBookingsPage, BrowseBusinessesPage,
 AppointmentPage). BookingWizard steps 2-4 keep their own in-wizard step-back button instead
 (moving between wizard steps, not pages).
 
@@ -274,12 +288,56 @@ The resolved photo URL is stored on `Appointment.PhotoUrl` (nullable, `None` mod
 and surfaced back to the barber in the admin appointments table, the Dashboard's appointment-detail
 modal (`WeeklyCalendar`), and to both parties in appointment detail views. The customer can change
 it later — while the appointment is still CONFIRMED — from either "My Appointments With This
-Business" (`BarberPage`) or "My Bookings" (`MyBookingsPage`); both render the shared
+Business" (`BusinessPage`) or "My Bookings" (`MyBookingsPage`); both render the shared
 `AppointmentCard`, whose "Change Photo" action calls `PATCH /api/customer/appointments/{id}/photo`.
 Uploads reuse the same JPG/PNG/WEBP/5MB validation as the barber's own logo upload;
 gallery photos live under `wwwroot/uploads/gallery/{serviceId}/`, customer-uploaded reference
 photos under `wwwroot/uploads/appointment-photos/` — both served via the existing `/api/uploads`
 static file route.
+
+### Reviews
+`Models/Review.cs` (own file) — `Business` + `CustomerAccount` + `Appointment` FKs, `Rating` 1–5,
+`Comment?`, `OwnerReply?`/`OwnerRepliedAt?`, `IsHidden` (platform moderation). Unique index
+`(CustomerAccountId, BusinessId)` — **one review per customer per business**, edited in place, never
+duplicated. `Business.RatingCount`/`RatingAverage` are **denormalized**, recomputed from non-hidden
+rows by `ReviewService.RecomputeAggregate` on every review mutation (create/edit/delete/hide) — a
+whole-recompute, not incremental deltas (race-tolerant, cheap at this scale); average is 0 when
+count is 0.
+
+**Eligibility = a completed appointment only.** `ReviewService.HasCompletedAppointment` materializes
+`{ Date, EndTime }` for the customer's `CONFIRMED`, non-`PendingCancellationApproval` appointments at
+that business and checks any effective end time is in the past, using the same wall-clock math as
+`AppointmentStatusHelper.EffectiveStatus` (there is no stored `COMPLETED`). Showcase-only businesses
+therefore can't be reviewed yet. `POST /api/reviews` 403s without one and 409s on a duplicate (the
+frontend switches to `PATCH`); `AppointmentId` is stamped from `MostRecentCompletedAppointment` as a
+"verified visit" marker.
+
+Frontend: `components/customer/StarRating.tsx` (read-only row, or an editable picker when `onChange`
+is passed), `components/customer/BusinessReviews.tsx` (mounted on `BusinessPage`, opens the form when
+the URL hash is `#reviews`), a "Leave a review" action on a COMPLETED `AppointmentCard`,
+`pages/admin/ReviewsPage.tsx` (`/admin/reviews`) for owner replies, and a hide/unhide list on the
+platform-admin business detail page. i18n keys for reviews live in all of EN/AR/HE in `i18n.ts`.
+
+### Discovery (public directory)
+`Business` carries `City` / `AddressLine` / `MapUrl` (all free text — no geocoding or lookup table)
+and `IsListed` (bool, DB default `true` so every existing tenant stays discoverable). `City` and
+`IsListed` are indexed. All four are edited on `Settings > Location` (`MapUrl` validated to start
+`http(s)://`).
+
+`BusinessesController.Search` is the directory: base filter `IsListed && SubscriptionStatus !=
+EXPIRED`, combinable `query` / `businessTypeKey` / `city` filters, `sort` of `rating` (default) /
+`popular` / `newest` / `name`, and a `PagedResult<T>` envelope (`{ items, page, pageSize, total,
+hasMore }` — the codebase's one pagination shape, shared with the reviews list). `query`/`city` match
+case-insensitively via `lower()` — **not `EF.Functions.ILike`**, which is Npgsql-only and throws
+under the SQLite provider the tests use. `GET /api/businesses/cities` feeds the city filter.
+`GET /api/{slug}/info` still resolves by slug **regardless of `IsListed`** — unlisting removes a
+business from the directory only, a shared link keeps working.
+
+Frontend: `/:slug` (`BusinessPage`) and `/browse` (`BrowseBusinessesPage`) are **public** — moved
+out of `CustomerProtectedRoute` (see [Auth](#auth)). `BrowseBusinessesPage` uses `useInfiniteQuery`
+against `PagedResult`, shows a default top-rated list (no "type something first" gate), category
+chips from `GET /api/business-types`, city + sort `<select>`s, "Load more" paging, and keeps the
+authenticated-only "Businesses You Follow" list. Discovery i18n keys are in all of EN/AR/HE.
 
 ### Owner-created & recurring appointments
 Two ways for the barber to book without the customer using the self-service flow:
@@ -296,7 +354,7 @@ Two ways for the barber to book without the customer using the self-service flow
 ### Database
 EF Core + Npgsql. Dev DB: `barbersaas_dev` (appsettings.Development.json). Prod DB: `barbersaas` (appsettings.json). Auto-migrates in Development on startup.  
 All times stored as `"HH:MM"` strings — zero-padded so string comparison is safe.  
-Migrations: `InitialCreate` ... `AddRecurringAppointments` (adds `RecurringSeries`, `RecurringSkips`, `Appointments.RecurringSeriesId`) already applied.
+Migrations: `InitialCreate` ... `AddReviews` (adds `Reviews` + `Businesses.RatingCount`/`RatingAverage`) ... `AddBusinessDiscoveryFields` (adds `Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) — the latest as of the Discovery phase. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel in the same step as the push (see the deploy notes) — this has caused three separate prod outages when skipped.
 
 ### Availability Engine
 `Services/AvailabilityService.cs` — generates 30-min slots between working hours start/end, then removes any slot that overlaps with: breaks, blocked slots, or existing CONFIRMED appointments. Also drops slots where `startTime + serviceDuration > workingHours.EndTime`. For **today's date specifically**, also drops any slot whose start time is at or before the current time — a customer booking at 15:00 can't grab a 10:00 slot. `WorkingHours`/`Appointment` start/end times (`"09:00"`, `"17:30"`, ...) are the barber's local wall-clock hours and are never converted to/from UTC anywhere in this app, so "now" is taken as `DateTime.Now` (local server time), not `DateTime.UtcNow` — comparing against UTC would be off by the server's UTC offset (this was a real bug: a customer could book a slot that had already passed).

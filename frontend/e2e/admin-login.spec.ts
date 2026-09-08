@@ -31,6 +31,6 @@ test('shows an error message for wrong credentials', async ({ page }) => {
   await page.getByPlaceholder('Password').fill('wrong-password')
   await page.getByRole('button', { name: 'Log In' }).click()
 
-  await expect(page.getByText('Invalid email or password')).toBeVisible()
+  await expect(page.getByText('Invalid email/username or password')).toBeVisible()
   await expect(page).toHaveURL(/\/admin\/login$/)
 })

@@ -9,12 +9,15 @@ import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
 import AppointmentCard, { type Appointment } from '../../components/customer/AppointmentCard'
 import BusinessReviews from '../../components/customer/BusinessReviews'
+import StarRating from '../../components/customer/StarRating'
 
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
   language: string; isRTL: boolean; activeDays: number[]
   items: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null; price: number | null; isBookable: boolean }[]
   isFollowed: boolean
+  city: string | null; addressLine: string | null; mapUrl: string | null
+  ratingCount: number; ratingAverage: number
 }
 
 export default function BusinessPage() {
@@ -47,7 +50,9 @@ export default function BusinessPage() {
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
 
   async function toggleFollow() {
-    if (!isAuthenticated) { navigate(`/login?next=/${slug}`); return }
+    // Following needs a customer session (WhatsApp-link only) -- the button is disabled for
+    // logged-out visitors, so this is just a guard, not a redirect (there's no sign-in page).
+    if (!isAuthenticated) return
     setFollowLoading(true)
     try {
       if (business?.isFollowed) await customerApi.delete(`/businesses/${slug}/follow`)
@@ -86,8 +91,26 @@ export default function BusinessPage() {
             <div className="text-5xl mb-4">✂️</div>
           )}
           <h1 className="text-3xl font-bold text-white">{business.name}</h1>
+          {business.ratingCount > 0 && (
+            <div className="flex justify-center mt-2">
+              <StarRating value={business.ratingAverage} count={business.ratingCount} size="sm" />
+            </div>
+          )}
           {business.description && (
             <p className="text-gray-400 mt-2 text-sm">{business.description}</p>
+          )}
+          {(business.city || business.addressLine || business.mapUrl) && (
+            <div className="text-gray-500 text-sm mt-3 space-y-0.5">
+              {(business.city || business.addressLine) && (
+                <div>📍 {[business.addressLine, business.city].filter(Boolean).join(', ')}</div>
+              )}
+              {business.mapUrl && (
+                <a href={business.mapUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300">
+                  {t(lang, 'viewOnMap')}
+                </a>
+              )}
+            </div>
           )}
         </div>
 
@@ -100,8 +123,9 @@ export default function BusinessPage() {
           )}
 
           <button
-            disabled={followLoading}
+            disabled={followLoading || !isAuthenticated}
             onClick={toggleFollow}
+            title={isAuthenticated ? undefined : t(lang, 'whatsappOnlyAccess')}
             className={`w-full font-semibold py-3 rounded-2xl transition-colors disabled:opacity-50 ${
               business.isFollowed
                 ? 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700'
