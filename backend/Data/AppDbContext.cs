@@ -26,6 +26,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PlatformAdmin> PlatformAdmins => Set<PlatformAdmin>();
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
     public DbSet<BusinessOwnerRequest> BusinessOwnerRequests => Set<BusinessOwnerRequest>();
+    public DbSet<Review> Reviews => Set<Review>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -94,6 +95,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => x.Email);
         b.Entity<BusinessOwnerRequest>()
             .HasIndex(x => x.Status);
+
+        // One review per customer per business -- edited in place, never duplicated.
+        b.Entity<Review>()
+            .HasIndex(x => new { x.CustomerAccountId, x.BusinessId }).IsUnique();
+        // Backs the public reviews list (non-hidden, newest first) for a business.
+        b.Entity<Review>()
+            .HasIndex(x => new { x.BusinessId, x.IsHidden, x.CreatedAt });
 
         // Closes a pre-existing TOCTOU gap (check-then-insert, no DB-level guard): only one
         // CONFIRMED appointment may occupy a given business/date/start-time slot. Filtered so
@@ -164,6 +172,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // business predates this flag and was never issued a system-generated temp password.
         b.Entity<Business>()
             .Property(x => x.MustChangePassword)
+            .HasDefaultValue(false);
+        // Explicit DB-level defaults so the AddReviews migration backfills every existing business
+        // with a zeroed aggregate rather than NULL.
+        b.Entity<Business>()
+            .Property(x => x.RatingCount)
+            .HasDefaultValue(0);
+        b.Entity<Business>()
+            .Property(x => x.RatingAverage)
+            .HasDefaultValue(0d);
+        b.Entity<Review>()
+            .Property(x => x.IsHidden)
             .HasDefaultValue(false);
         b.Entity<BusinessOwnerRequest>()
             .Property(x => x.Status)
@@ -272,5 +291,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<BusinessOwnerRequest>()
             .HasOne(x => x.CreatedBusiness).WithMany()
             .HasForeignKey(x => x.CreatedBusinessId).OnDelete(DeleteBehavior.SetNull);
+
+        b.Entity<Review>()
+            .HasOne(x => x.Business).WithMany(x => x.Reviews)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<Review>()
+            .HasOne(x => x.CustomerAccount).WithMany(x => x.Reviews)
+            .HasForeignKey(x => x.CustomerAccountId).OnDelete(DeleteBehavior.Cascade);
+        // Restrict (like Appointment's own FKs): appointments are never hard-deleted, and a review
+        // must not disappear if one somehow were.
+        b.Entity<Review>()
+            .HasOne(x => x.Appointment).WithMany()
+            .HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Restrict);
     }
 }

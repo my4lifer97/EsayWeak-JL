@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
@@ -8,6 +8,7 @@ import { mediaUrl } from '../../lib/media'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
 import AppointmentCard, { type Appointment } from '../../components/customer/AppointmentCard'
+import BusinessReviews from '../../components/customer/BusinessReviews'
 
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
@@ -19,6 +20,7 @@ type BusinessInfo = {
 export default function BusinessPage() {
   const { slug } = useParams<{ slug: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const { isAuthenticated, language: lang } = useCustomerAuth()
   const [followLoading, setFollowLoading] = useState(false)
@@ -137,6 +139,13 @@ export default function BusinessPage() {
             ))}
           </div>
         )}
+
+        <BusinessReviews
+          slug={slug!}
+          lang={lang}
+          isAuthenticated={isAuthenticated}
+          openForm={location.hash === '#reviews'}
+        />
       </div>
     </div>
   )

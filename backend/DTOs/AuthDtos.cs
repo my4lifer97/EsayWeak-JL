@@ -142,3 +142,33 @@ public record ApproveBusinessOwnerRequestRequest(string Slug);
 public record ApproveBusinessOwnerRequestResponse(
     string BusinessId, string Slug, string Username, string TempPassword, bool EmailSent);
 public record RejectBusinessOwnerRequestRequest(string? Note);
+
+// ---- Reviews & discovery ----
+
+// Generic paged envelope. First paginated endpoint in the codebase -- kept minimal.
+public record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, int Total, bool HasMore);
+
+public record BusinessRatingDto(int Count, double Average);
+
+// What the public sees on a business page. ReviewerName is a first name + family initial.
+public record PublicReviewDto(
+    string Id, int Rating, string? Comment, string ReviewerName, DateTime CreatedAt,
+    string? OwnerReply, DateTime? OwnerRepliedAt);
+
+public record PublicReviewListDto(BusinessRatingDto Rating, PagedResult<PublicReviewDto> Reviews);
+
+// The customer's own review (author view -- editable).
+public record ReviewDto(
+    string Id, string BusinessSlug, int Rating, string? Comment, DateTime CreatedAt, DateTime UpdatedAt,
+    string? OwnerReply, DateTime? OwnerRepliedAt);
+
+public record ReviewEligibilityDto(bool CanReview, bool AlreadyReviewed, ReviewDto? Review);
+
+public record CreateReviewRequest(string BusinessSlug, int Rating, string? Comment);
+public record UpdateReviewRequest(int Rating, string? Comment);
+public record OwnerReplyRequest(string Reply);
+
+// Owner-facing (admin) and platform-admin moderation view.
+public record AdminReviewDto(
+    string Id, int Rating, string? Comment, string ReviewerName, string? ItemName,
+    DateTime CreatedAt, DateTime UpdatedAt, bool IsHidden, string? OwnerReply, DateTime? OwnerRepliedAt);

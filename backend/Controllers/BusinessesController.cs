@@ -62,6 +62,44 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
         return Ok(results);
     }
 
+    // Public: a business's non-hidden reviews, newest first, plus its rating aggregate.
+    [HttpGet("{slug}/reviews")]
+    public async Task<IActionResult> GetReviews(string slug, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        if (business is null) return NotFound(new { error = "Not found" });
+
+        var q = db.Reviews.Where(r => r.BusinessId == business.Id && !r.IsHidden);
+        var total = await q.CountAsync();
+
+        var rows = await q
+            .OrderByDescending(r => r.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(r => new
+            {
+                r.Id, r.Rating, r.Comment, r.CreatedAt, r.OwnerReply, r.OwnerRepliedAt,
+                r.CustomerAccount.Name, r.CustomerAccount.FamilyName,
+            })
+            .ToListAsync();
+
+        var items = rows.Select(r => new PublicReviewDto(
+            r.Id, r.Rating, r.Comment, ReviewerName(r.Name, r.FamilyName), r.CreatedAt, r.OwnerReply, r.OwnerRepliedAt)).ToList();
+
+        var paged = new PagedResult<PublicReviewDto>(items, page, pageSize, total, page * pageSize < total);
+        return Ok(new PublicReviewListDto(new BusinessRatingDto(business.RatingCount, business.RatingAverage), paged));
+    }
+
+    // "Sarah M." -- first name plus family initial, never the full family name.
+    private static string ReviewerName(string name, string familyName)
+    {
+        var first = string.IsNullOrWhiteSpace(name) ? "Customer" : name.Trim();
+        var initial = string.IsNullOrWhiteSpace(familyName) ? "" : $" {familyName.Trim()[0]}.";
+        return first + initial;
+    }
+
     [HttpPost("{slug}/follow")]
     [Authorize(Policy = "CustomerOnly")]
     public async Task<IActionResult> Follow(string slug)

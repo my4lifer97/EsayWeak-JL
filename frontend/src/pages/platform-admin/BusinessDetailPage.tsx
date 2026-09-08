@@ -9,6 +9,11 @@ type BusinessDetail = {
   trialEndsAt: string; subscriptionStatus: string; createdAt: string; twilioNumber: string | null
 }
 
+type PlatformReview = {
+  id: string; rating: number; comment: string | null; reviewerName: string; itemName: string | null
+  createdAt: string; isHidden: boolean; ownerReply: string | null
+}
+
 export default function PlatformAdminBusinessDetailPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
@@ -47,6 +52,16 @@ export default function PlatformAdminBusinessDetailPage() {
     queryKey: ['platform-admin-business-activity', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/businesses/${id}/activity`).then((r) => r.data),
   })
+
+  const { data: reviews = [] } = useQuery<PlatformReview[]>({
+    queryKey: ['platform-admin-business-reviews', id],
+    queryFn: () => platformAdminApi.get(`/platform-admin/reviews?businessId=${id}`).then((r) => r.data),
+  })
+
+  async function toggleHidden(reviewId: string, hidden: boolean) {
+    await platformAdminApi.post(`/platform-admin/reviews/${reviewId}/${hidden ? 'unhide' : 'hide'}`)
+    queryClient.invalidateQueries({ queryKey: ['platform-admin-business-reviews', id] })
+  }
 
   async function handleImpersonate() {
     if (!business) return
@@ -109,6 +124,33 @@ export default function PlatformAdminBusinessDetailPage() {
               {savingTwilio ? 'Saving...' : 'Save'}
             </button>
           </div>
+        </div>
+
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
+          <h2 className="font-semibold mb-4">Reviews ({reviews.length})</h2>
+          {reviews.length === 0 ? (
+            <p className="text-gray-500 text-sm">No reviews.</p>
+          ) : (
+            <div className="space-y-3">
+              {reviews.map((r) => (
+                <div key={r.id} className={`border rounded-xl p-3 ${r.isHidden ? 'border-gray-800 opacity-60' : 'border-gray-800'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm">
+                      {'★'.repeat(r.rating)}<span className="text-gray-600">{'★'.repeat(5 - r.rating)}</span>
+                      <span className="text-gray-400 ms-2">{r.reviewerName}</span>
+                      {r.itemName && <span className="text-gray-600 text-xs ms-1">· {r.itemName}</span>}
+                    </span>
+                    <button onClick={() => toggleHidden(r.id, r.isHidden)}
+                      className="text-xs border border-gray-700 text-gray-300 hover:bg-gray-800 px-2 py-1 rounded-lg transition-colors">
+                      {r.isHidden ? 'Unhide' : 'Hide'}
+                    </button>
+                  </div>
+                  {r.comment && <p className="text-gray-300 text-sm mt-1">{r.comment}</p>}
+                  {r.ownerReply && <p className="text-gray-500 text-xs mt-1 border-s-2 border-gray-700 ps-2">Reply: {r.ownerReply}</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">

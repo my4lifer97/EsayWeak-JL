@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
@@ -34,6 +35,7 @@ export default function AppointmentCard({
   showBusinessName?: boolean
   onChanged: () => void
 }) {
+  const navigate = useNavigate()
   const [expandedReschedule, setExpandedReschedule] = useState(false)
   const [expandedNotes, setExpandedNotes] = useState(false)
   const [expandedPhoto, setExpandedPhoto] = useState(false)
@@ -154,6 +156,16 @@ export default function AppointmentCard({
             onClick={cancelAppointment}
             className="flex-1 border border-red-800/60 text-red-400 hover:bg-red-900/30 text-sm font-medium py-2 rounded-xl transition-colors disabled:opacity-50">
             {t(lang, 'cancelAppointment')}
+          </button>
+        </div>
+      )}
+
+      {appt.status === 'COMPLETED' && (
+        <div className="mt-3">
+          <button
+            onClick={() => navigate(`/${appt.businessSlug}#reviews`)}
+            className="w-full border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
+            ★ {t(lang, 'leaveReview')}
           </button>
         </div>
       )}

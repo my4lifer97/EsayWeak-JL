@@ -14,7 +14,8 @@ namespace BarberSaas.Api.Controllers;
 [Route("api/platform-admin")]
 public class PlatformAdminController(
     AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt,
-    IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger) : ControllerBase
+    IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger,
+    ReviewService reviews) : ControllerBase
 {
     private string AdminId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -368,6 +369,54 @@ public class PlatformAdminController(
         await db.SaveChangesAsync();
 
         return Ok(new { ok = true });
+    }
+
+    // ─── Review moderation ──────────────────────────────────────────────────
+
+    [HttpGet("reviews")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> ListReviews([FromQuery] string? businessId)
+    {
+        var q = db.Reviews.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(businessId))
+            q = q.Where(r => r.BusinessId == businessId);
+
+        var rows = await q
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(200)
+            .Select(r => new
+            {
+                r.Id, r.Rating, r.Comment, r.CreatedAt, r.UpdatedAt, r.IsHidden, r.OwnerReply, r.OwnerRepliedAt,
+                r.CustomerAccount.Name, r.CustomerAccount.FamilyName,
+                ItemName = r.Appointment.Item.NameEn,
+            })
+            .ToListAsync();
+
+        var dtos = rows.Select(r => new AdminReviewDto(
+            r.Id, r.Rating, r.Comment, $"{r.Name} {r.FamilyName}".Trim(), r.ItemName,
+            r.CreatedAt, r.UpdatedAt, r.IsHidden, r.OwnerReply, r.OwnerRepliedAt));
+
+        return Ok(dtos);
+    }
+
+    [HttpPost("reviews/{id}/hide")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public Task<IActionResult> HideReview(string id) => SetReviewHidden(id, true);
+
+    [HttpPost("reviews/{id}/unhide")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public Task<IActionResult> UnhideReview(string id) => SetReviewHidden(id, false);
+
+    private async Task<IActionResult> SetReviewHidden(string id, bool hidden)
+    {
+        var review = await db.Reviews.FindAsync(id);
+        if (review is null) return NotFound();
+
+        review.IsHidden = hidden;
+        await db.SaveChangesAsync();
+        await reviews.RecomputeAggregate(review.BusinessId);
+
+        return Ok(new { review.Id, review.IsHidden });
     }
 
     // 12 characters from an alphabet that excludes visually-ambiguous characters (0/O, 1/l/I) --

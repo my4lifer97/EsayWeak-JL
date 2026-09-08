@@ -77,6 +77,12 @@ public class Business
     // action except AuthController.ChangePassword until this is cleared.
     public bool MustChangePassword { get; set; } = false;
 
+    // Denormalized review aggregate, recomputed from non-hidden Reviews on every review mutation
+    // (see ReviewService.RecomputeAggregate) so discovery can sort/filter by rating without a
+    // per-request GROUP BY. RatingAverage is 0 when RatingCount is 0.
+    public int RatingCount { get; set; }
+    public double RatingAverage { get; set; }
+
     public ICollection<Item> Items { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];
@@ -85,6 +91,7 @@ public class Business
     public ICollection<Customer> Customers { get; set; } = [];
     public ICollection<Follow> Follows { get; set; } = [];
     public ICollection<RecurringSeries> RecurringSeries { get; set; } = [];
+    public ICollection<Review> Reviews { get; set; } = [];
 }
 
 // Extensible lookup of business verticals ("business", "dentist", "car_dealer", ...) -- adding a

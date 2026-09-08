@@ -723,6 +723,61 @@ public class AdminController(
         }
         return customer;
     }
+
+    // ─── Reviews ────────────────────────────────────────────────────────────
+
+    [HttpGet("reviews")]
+    public async Task<IActionResult> GetReviews()
+    {
+        var rows = await db.Reviews
+            .Where(r => r.BusinessId == BusinessId)
+            .OrderByDescending(r => r.CreatedAt)
+            .Select(r => new
+            {
+                r.Id, r.Rating, r.Comment, r.CreatedAt, r.UpdatedAt, r.IsHidden, r.OwnerReply, r.OwnerRepliedAt,
+                r.CustomerAccount.Name, r.CustomerAccount.FamilyName,
+                ItemName = r.Appointment.Item.NameEn,
+            })
+            .ToListAsync();
+
+        var dtos = rows.Select(r => new AdminReviewDto(
+            r.Id, r.Rating, r.Comment, $"{r.Name} {r.FamilyName}".Trim(), r.ItemName,
+            r.CreatedAt, r.UpdatedAt, r.IsHidden, r.OwnerReply, r.OwnerRepliedAt));
+
+        return Ok(dtos);
+    }
+
+    [HttpPost("reviews/{id}/reply")]
+    public async Task<IActionResult> ReplyToReview(string id, [FromBody] OwnerReplyRequest req)
+    {
+        var reply = req.Reply?.Trim();
+        if (string.IsNullOrEmpty(reply)) return BadRequest(new { error = "Reply cannot be empty" });
+        if (reply.Length > 1000) return BadRequest(new { error = "Reply must be 1000 characters or fewer" });
+
+        var review = await db.Reviews.FirstOrDefaultAsync(r => r.Id == id && r.BusinessId == BusinessId);
+        if (review is null) return NotFound(new { error = "Not found" });
+
+        review.OwnerReply = reply;
+        review.OwnerRepliedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        this.SetActivityDetail("Replied to a customer review");
+        return Ok(new { review.Id, review.OwnerReply, review.OwnerRepliedAt });
+    }
+
+    [HttpDelete("reviews/{id}/reply")]
+    public async Task<IActionResult> DeleteReviewReply(string id)
+    {
+        var review = await db.Reviews.FirstOrDefaultAsync(r => r.Id == id && r.BusinessId == BusinessId);
+        if (review is null) return NotFound(new { error = "Not found" });
+
+        review.OwnerReply = null;
+        review.OwnerRepliedAt = null;
+        await db.SaveChangesAsync();
+
+        this.SetActivityDetail("Removed a reply to a customer review");
+        return Ok(new { ok = true });
+    }
 }
 
 public record UpdateStatusRequest(string Status, bool NotifyWaitlist = false);

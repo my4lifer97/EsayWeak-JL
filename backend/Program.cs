@@ -49,6 +49,7 @@ builder.Services.AddScoped<PlatformAdminJwtService>();
 builder.Services.AddScoped<AvailabilityService>();
 builder.Services.AddScoped<RecurringAppointmentService>();
 builder.Services.AddScoped<FollowService>();
+builder.Services.AddScoped<ReviewService>();
 builder.Services.AddScoped<IWhatsAppSender, TwilioWhatsAppSender>();
 builder.Services.AddScoped<WaitlistService>();
 builder.Services.AddScoped<AppointmentCancellationService>();
