@@ -65,9 +65,11 @@ export default function App() {
                   </Route>
                 </Route>
                 <Route path="/browse" element={<BrowseBusinessesPage />} />
+                {/* Public, read-only storefront — a logged-out visitor who finds a business via
+                    the directory can view it; booking still needs the WhatsApp-link session. */}
+                <Route path="/:slug" element={<BusinessPage />} />
                 <Route element={<CustomerProtectedRoute />}>
                   <Route path="/account/bookings" element={<MyBookingsPage />} />
-                  <Route path="/:slug" element={<BusinessPage />} />
                   <Route path="/:slug/book" element={<BookPage />} />
                 </Route>
                 {/* Magic-link view stays public and token-secured — opened directly from a

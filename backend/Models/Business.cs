@@ -83,6 +83,18 @@ public class Business
     public int RatingCount { get; set; }
     public double RatingAverage { get; set; }
 
+    // Discovery / storefront location. All free text entered by the business -- no geocoding or
+    // lookup table. City is the filterable field (indexed, matched case-insensitively in
+    // BusinessesController.Search / /cities); AddressLine and MapUrl (a pasted maps link) are
+    // display-only on the public storefront.
+    public string? City { get; set; }
+    public string? AddressLine { get; set; }
+    public string? MapUrl { get; set; }
+    // Whether this business appears in the public directory (/browse, BusinessesController.Search).
+    // Defaults true so every existing tenant stays discoverable; a direct /{slug} link keeps
+    // working regardless (BookingController resolves by slug without checking this).
+    public bool IsListed { get; set; } = true;
+
     public ICollection<Item> Items { get; set; } = [];
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];
