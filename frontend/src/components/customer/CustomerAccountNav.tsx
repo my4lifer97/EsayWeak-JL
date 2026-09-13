@@ -37,9 +37,9 @@ export default function CustomerAccountNav() {
               {t(lang, 'signOutPortal')}
             </button>
           ) : (
-            // No manual sign-in page exists anymore -- a session only starts from a WhatsApp
-            // booking link, so there's nothing to link to here.
-            <span className="text-gray-600 text-sm">{t(lang, 'whatsappOnlyAccess')}</span>
+            <Link to="/login" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">
+              {t(lang, 'navLogin')}
+            </Link>
           )}
           <LanguageSwitcher />
         </div>

@@ -27,6 +27,7 @@ import WhatsAppLandingPage from './pages/public/WhatsAppLandingPage'
 import BrowseBusinessesPage from './pages/public/BrowseBusinessesPage'
 import MyBookingsPage from './pages/public/MyBookingsPage'
 import RequestBusinessAccountPage from './pages/public/RequestBusinessAccountPage'
+import CustomerLoginPage from './pages/public/CustomerLoginPage'
 import HomePage from './pages/HomePage'
 import PlatformAdminLoginPage from './pages/platform-admin/LoginPage'
 import PlatformAdminDashboardPage from './pages/platform-admin/DashboardPage'
@@ -64,6 +65,10 @@ export default function App() {
                     <Route path="/admin/settings" element={<SettingsPage />} />
                   </Route>
                 </Route>
+                {/* Second, parallel entry point alongside the WhatsApp booking-link flow --
+                    mainly for a future native mobile app, which can't rely on the customer
+                    having already messaged the business on WhatsApp. */}
+                <Route path="/login" element={<CustomerLoginPage />} />
                 <Route path="/browse" element={<BrowseBusinessesPage />} />
                 {/* Public, read-only storefront — a logged-out visitor who finds a business via
                     the directory can view it; booking still needs the WhatsApp-link session. */}

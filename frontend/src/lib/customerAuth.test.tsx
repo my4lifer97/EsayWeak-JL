@@ -9,13 +9,15 @@ vi.mock('./customerApi', () => ({
 }))
 
 function TestConsumer() {
-  const { user, loginWithWhatsAppToken, logout, isAuthenticated, language } = useCustomerAuth()
+  const { user, loginWithWhatsAppToken, requestOtp, verifyOtp, logout, isAuthenticated, language } = useCustomerAuth()
   return (
     <div>
       <div data-testid="authed">{String(isAuthenticated)}</div>
       <div data-testid="user">{user ? user.phone : 'none'}</div>
       <div data-testid="language">{language}</div>
       <button onClick={() => loginWithWhatsAppToken('wa-token-1')}>login</button>
+      <button onClick={() => requestOtp('+15550009999')}>request-otp</button>
+      <button onClick={() => verifyOtp('+15550009999', '123456', 'First', 'Last')}>verify-otp</button>
       <button onClick={logout}>logout</button>
     </div>
   )
@@ -72,6 +74,32 @@ describe('CustomerAuthProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('language').textContent).toBe('AR'))
     expect(localStorage.getItem('customerLang')).toBe('AR')
+  })
+
+  it('requestOtp posts the phone to the otp endpoint', async () => {
+    vi.mocked(customerApi.post).mockResolvedValue({ data: { isNewCustomer: true, devOtp: '654321' } })
+    renderWithProvider()
+
+    await userEvent.click(screen.getByText('request-otp'))
+
+    await waitFor(() =>
+      expect(customerApi.post).toHaveBeenCalledWith('/customer/auth/otp', { phone: '+15550009999' })
+    )
+  })
+
+  it('verifyOtp posts phone/otp/name/familyName and stores the session, same as WhatsApp login', async () => {
+    vi.mocked(customerApi.post).mockResolvedValue({
+      data: { token: 't2', customerId: '2', name: 'First', familyName: 'Last', phone: '+15550009999' },
+    })
+    renderWithProvider()
+
+    await userEvent.click(screen.getByText('verify-otp'))
+
+    expect(customerApi.post).toHaveBeenCalledWith('/customer/auth/verify', {
+      phone: '+15550009999', otp: '123456', name: 'First', familyName: 'Last',
+    })
+    await waitFor(() => expect(screen.getByTestId('authed').textContent).toBe('true'))
+    expect(localStorage.getItem('customerToken')).toBe('t2')
   })
 
   it('logout clears storage and context', async () => {

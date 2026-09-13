@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<CustomerAccount> CustomerAccounts => Set<CustomerAccount>();
+    public DbSet<CustomerOtp> CustomerOtps => Set<CustomerOtp>();
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<WhatsAppBookingToken> WhatsAppBookingTokens => Set<WhatsAppBookingToken>();
     public DbSet<WhatsAppConversationState> WhatsAppConversationStates => Set<WhatsAppConversationState>();

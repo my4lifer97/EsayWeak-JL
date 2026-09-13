@@ -56,4 +56,13 @@ describe('CustomerProtectedRoute', () => {
 
     expect(screen.getByText('Business Page')).toBeInTheDocument()
   })
+
+  it('offers a phone+OTP sign-in link (alongside the WhatsApp message) when not authenticated', () => {
+    vi.mocked(useCustomerAuth).mockReturnValue({ isAuthenticated: false, language: 'EN' } as ReturnType<typeof useCustomerAuth>)
+
+    renderAt('/account/bookings')
+
+    const link = screen.getByRole('link', { name: 'Sign In' })
+    expect(link).toHaveAttribute('href', `/login?next=${encodeURIComponent('/account/bookings')}`)
+  })
 })

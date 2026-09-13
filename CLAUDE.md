@@ -108,7 +108,7 @@ barber-saas/
 │   │   ├── BusinessOwnerRequestsController.cs # GET /api/business-types, POST /api/business-owner-requests — public submission side of the admin-approved onboarding flow
 │   │   ├── ReviewsController.cs           # api/reviews — CustomerOnly: eligibility, create (403 no completed appt / 409 dup), author-scoped PATCH/DELETE
 │   │   ├── BookingController.cs           # Public booking API (GetAppointment/etc. accept anonymous); GET /api/{slug}/info also carries city/address/map + rating aggregate
-│   │   ├── CustomerAuthController.cs      # POST /api/customer/auth/whatsapp — redeems a WhatsApp booking-link token into a customer session
+│   │   ├── CustomerAuthController.cs      # POST /api/customer/auth/whatsapp (booking-link token) + /otp + /verify (direct phone+OTP, a parallel entry point) — both mint the same kind of customer session
 │   │   ├── CustomerAppointmentsController.cs  # GET/PATCH /api/customer/appointments/* (CustomerOnly)
 │   │   ├── RecurringAppointmentsController.cs # GET/POST/DELETE /api/admin/recurring — owner-managed recurring series
 │   │   ├── WaitlistController.cs          # POST /api/{slug}/waitlist/{appointmentId} — CustomerOnly, joins the waitlist for a booked slot
@@ -233,6 +233,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 
 **Customer auth (no JWT)**
 - `POST /api/customer/auth/whatsapp` — `{ token }`; redeems a `WhatsAppBookingToken` (issued by `WhatsAppController` once the customer picks an item in the chatbot) into a customer session — returns a customer JWT (`"type": "customer"` claim) plus `{ businessSlug, itemId }` so the frontend can land directly on date selection with the item preselected. 400 if the token is missing/expired, 404 if the business/item it points at is gone. See [Customer login via WhatsApp](#customer-login-via-whatsapp).
+- `POST /api/customer/auth/otp` — `{ phone }`; sends a 6-digit SMS code (`devOtp` in the response body in Development), 45s cooldown + 5/hour cap; returns `{ isNewCustomer }`. `POST /api/customer/auth/verify` — `{ phone, otp, name?, familyName? }`; verifies the code and returns the same customer-JWT shape as the WhatsApp login (`name`/`familyName` required only for a brand-new account). A second, parallel entry point alongside WhatsApp login — see [Customer login via phone+OTP](#customer-login-via-phoneotp).
 
 **Business directory / discovery (no JWT except follow)**
 - `GET /api/businesses/search?query=&businessTypeKey=&city=&sort=&page=&pageSize=` — public directory. Base filter `IsListed && SubscriptionStatus != EXPIRED`. `sort`: `rating` (default — avg desc, then count, then name), `popular` (follower count), `newest`, `name`. Returns `PagedResult<BusinessSearchResultDto>` (`{ items, page, pageSize, total, hasMore }`); each item carries `businessTypeKey`, `city`, `ratingAverage`, `ratingCount`, `followerCount`, `isFollowed`. `query`/`city` match case-insensitively via `lower()` (not `EF.Functions.ILike`, which the SQLite test provider can't run)
@@ -282,6 +283,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `/admin/login`, `/admin/register`, `/admin/forgot-password` — auth pages
 - `/admin/set-password` — forced password-change screen shown while the JWT's `mustChangePassword` claim is set (admin-issued temp password); every other `/admin/*` route redirects here until it's cleared
 - `/request-business-account` — public onboarding form (`RequestBusinessAccountPage`) feeding `POST /api/business-owner-requests`
+- `/login` — customer phone+OTP sign-in (`CustomerLoginPage`), a second entry point alongside the WhatsApp booking-link flow; `?next=` (default `/browse`) controls where it redirects after verifying — see [Customer login via phone+OTP](#customer-login-via-phoneotp)
 - `/admin/dashboard` — weekly calendar view; recurring appointments render in purple (instead of the usual confirmed-blue) with a 🔁 badge
 - `/admin/appointments` — appointments table with a two-row filter bar: date range (today/upcoming/past/all, server-side) plus client-side name/phone search, service, status, and recurring-vs-one-time filters (all combinable), a live filtered/total count, and a "Clear Filters" link
 - `/admin/recurring` — manage recurring series: create (item → customer → day-of-week button → real availability slot grid → notes) and delete (no pause/resume — see below)
@@ -300,7 +302,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 ### Auth
 JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via request interceptor. 401 responses redirect to `/admin/login` — **except** a 401 from `/auth/login` itself (wrong password), which must NOT redirect or it wipes `LoginPage`'s own error message via a full page reload before React can render it. Admin routes are wrapped in `ProtectedRoute` (`frontend/src/components/ProtectedRoute.tsx`) which checks `useAuth().isAuthenticated`, and further gated by `/admin/set-password` while `mustChangePassword` is set (see [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved)). The platform-admin panel is a fully separate auth stack (`platformAdminAuth.tsx`, `PlatformAdminProtectedRoute`) — its JWT is never sent on business/customer requests or vice versa.
 
-**Customer routes**: `/:slug/book` and `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — there is no manual sign-in page anymore (see [Customer login via WhatsApp](#customer-login-via-whatsapp)), so an anonymous visitor to a guarded route sees an inline "message us on WhatsApp for a booking link" notice instead of a redirect. As of the Discovery phase, **`/:slug` and `/browse` are public** (read-only storefront + directory) — moved out of the guard so a logged-out visitor who finds a business can view it; booking still needs the WhatsApp-link session. `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are also outside the guard.
+**Customer routes**: `/:slug/book` and `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor to a guarded route sees an inline "message us on WhatsApp" notice **plus** a link into `/login?next=<path>` (phone+OTP, see [Customer login via phone+OTP](#customer-login-via-phoneotp)), not a hard redirect, since there's no single canonical sign-in page the way business/platform-admin auth has. As of the Discovery phase, **`/:slug` and `/browse` are public** (read-only storefront + directory) — moved out of the guard so a logged-out visitor who finds a business can view it; booking still needs a customer session (from either login path). `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are also outside the guard. `CustomerAccountNav` (shown on customer pages) links to `/login` when logged out, same as the guard's fallback.
 
 **Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBusinessesPage` (`/browse`) fetches `GET /api/businesses/followed` itself and renders a "Businesses You Follow" list below the directory results (authenticated only). A customer is auto-followed to a business the moment they book an appointment while logged in (`BookingController.BookAppointment`), not just via an explicit Follow click — guest bookings don't create a follow (no account to attach it to). The Follow button on `/:slug` and on browse cards is rendered **disabled** (with a WhatsApp-only tooltip) for anonymous visitors, since there's no sign-in page to send them to.
 
@@ -506,8 +508,8 @@ Migrations run roughly: `InitialCreate` ... `AddPlatformAdminAndActivityLog` ...
 ... `AddBusinessTypeAndModel` → `RenameBarberToBusiness` → `GeneralizeServiceToItem` (the
 multi-vertical rename) → `AddBusinessOwnerRequests` → `AddReviews` (adds `Reviews` +
 `Businesses.RatingCount`/`RatingAverage`) → `AddBusinessDiscoveryFields` (adds
-`Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) — the latest as of the Discovery
-phase. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
+`Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) → `AddCustomerOtp` (adds the
+`CustomerOtps` table for phone+OTP login) — the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
 `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel
 **before** the code push, not after (see [Deployment (Railway)](#deployment-railway)) — skipping
 that ordering has caused multiple prod outages.
@@ -564,8 +566,9 @@ frontend's `loginWithWhatsAppToken` calls `setLang()` with it, so the booking wi
 same language the customer was just chatting in, not whatever was last stored in that browser.
 
 ### Customer login via WhatsApp
-There is no phone+OTP login anymore — a customer session starts by redeeming a link the WhatsApp
-bot sent them. Flow (`WhatsAppController` + `CustomerAuthController`):
+The primary way a customer session starts: redeeming a link the WhatsApp bot sent them (no
+sign-up/sign-in step at all). Phone+OTP (below) is a second, parallel path — both just mint the
+same kind of `CustomerAccount`-backed JWT. Flow (`WhatsAppController` + `CustomerAuthController`):
 1. Any message from a phone with no pending selection (or the `book` keyword) gets a numbered list
    of the business's active items (`whatsapp.selectService`, item order = `Item.Id` order)
    and opens a `WhatsAppConversationState` row (`BusinessId`+`Phone`, 10-minute expiry) remembering
@@ -581,15 +584,42 @@ bot sent them. Flow (`WhatsAppController` + `CustomerAuthController`):
    deactivated since), upserts a `CustomerAccount` by phone — splitting Twilio's `ProfileName` form
    field (the sender's WhatsApp display name) into `Name`/`FamilyName` on the first space, falling
    back to a generic name if WhatsApp didn't supply one — and returns a normal customer JWT via
-   `CustomerJwtService.Generate` (identical to the old OTP-verify flow) plus `{ businessSlug,
-   itemId }`. The frontend then redirects into `/:slug/book?serviceId=`, which skips straight to
-   date selection (`BookingWizard`'s deep-link `useEffect`) — no sign-up/sign-in step, no item
-   list to pick from again.
+   `CustomerJwtService.Generate` (same call the phone+OTP verify action below uses) plus
+   `{ businessSlug, itemId }`. The frontend then redirects into `/:slug/book?serviceId=`, which
+   skips straight to date selection (`BookingWizard`'s deep-link `useEffect`) — no sign-up/sign-in
+   step, no item list to pick from again.
 
 `PhoneNormalizer.Normalize` (used everywhere phones are stored/matched) keeps a bare local number
 as-is if the customer didn't type a `+` — WhatsApp's `From` field always arrives in E.164 already,
 so this mainly matters for matching against phones entered elsewhere (owner-created appointments,
 the booking form's editable phone field).
+
+### Customer login via phone+OTP
+A second, parallel entry point alongside WhatsApp login (`CustomerAuthController`, re-added
+2026-09-14 — it existed before the WhatsApp flow replaced it as the *only* path on 2026-09-04, then
+came back as an *additional* one). It exists mainly because a future native mobile app (see the
+product spec's "Future Expansion: Mobile application") can't rely on "the customer already
+messaged us on WhatsApp" as its only sign-in — a mobile client needs a normal, direct login it can
+drive itself. The API is plain JSON-in/JWT-out already (no cookies, no web-only assumptions), so
+it needs no backend changes to be consumed by a mobile client later.
+
+Flow: `POST /api/customer/auth/otp` `{ phone }` generates a 6-digit code (bcrypt-hashed in
+`CustomerOtp`, 10-minute expiry, 45s cooldown + 5/hour cap — same limits as `AuthController`'s
+business-side email codes), sends it via `IOtpSender` (`TwilioOtpSender` over Twilio's
+**Programmable SMS** API — not WhatsApp, since no business is identified yet at this point — when
+`Twilio:FromNumber` is configured, else `DevOtpSender` no-ops and the code comes back as `devOtp`
+in Development, matching `AuthController`'s `devCode` convention). A fixed test phone/code pair
+(`0501234567` / `123456`) always succeeds without sending a real SMS, for app-store reviewer
+logins once the mobile app exists. `POST /api/customer/auth/verify` `{ phone, otp, name?,
+familyName? }` checks the code (attempts/expiry enforced), upserts `CustomerAccount` (name/
+familyName required only for a brand-new account), backfills any pre-existing guest-booked
+`Customer.CustomerAccountId` row for that phone (same `ExecuteUpdateAsync` pattern the WhatsApp
+login uses), and returns the same JWT shape as WhatsApp login.
+
+Frontend: `pages/public/CustomerLoginPage.tsx` (`/login`, phone → OTP two-step form, `?next=`
+target, dev-code banner) and `lib/customerAuth.tsx`'s `requestOtp`/`verifyOtp` (alongside
+`loginWithWhatsAppToken` — all three end at the same shared `storeSession` helper). Linked from
+`CustomerProtectedRoute`'s unauthenticated fallback and `CustomerAccountNav`'s logged-out state.
 
 ### Configuration (`backend/appsettings.json`)
 ```
@@ -607,9 +637,9 @@ Cardcom:MonthlyAmount       Subscription amount in ILS, as a string (default "12
 Platform:AdminNotificationEmail   Where BusinessOwnerRequestsController emails a best-effort notification on new signup requests (optional -- silently skipped if unset)
 ```
 
-`Jwt:Secret`, `CronSecret`, and `Twilio:AccountSid`/`Twilio:AuthToken` are **not** in `appsettings.json` — there's no default, so the app fails fast (or, for the Twilio pair, simply can't validate/send) if they're missing rather than silently falling back to a guessable value.
+`Jwt:Secret`, `CronSecret`, `Twilio:AccountSid`/`Twilio:AuthToken`, and `Twilio:FromNumber` are **not** in `appsettings.json` — there's no default, so the app fails fast (or, for the Twilio values, simply can't validate/send) if they're missing rather than silently falling back to a guessable value. `Twilio:FromNumber` is a platform-level SMS-capable Twilio number for the phone+OTP customer login code (`TwilioOtpSender`) — separate from any business's own WhatsApp sender (`Business.TwilioNumber`); when unset, `DevOtpSender` is used instead (see [Customer login via phone+OTP](#customer-login-via-phoneotp)).
 - **Local dev**: stored in the `dotnet user-secrets` store for `backend/BarberSaas.Api.csproj` (`UserSecretsId` in the `.csproj`, values live outside the repo at `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `dotnet run` loads them automatically in Development.
-- **Production**: supply via environment variables (`Jwt__Secret`, `CronSecret`, `Twilio__AccountSid`, `Twilio__AuthToken`) or `appsettings.Production.json` (gitignored) — never commit real values.
+- **Production**: supply via environment variables (`Jwt__Secret`, `CronSecret`, `Twilio__AccountSid`, `Twilio__AuthToken`, `Twilio__FromNumber`) or `appsettings.Production.json` (gitignored) — never commit real values.
 - Rotating `Jwt:Secret`/`CronSecret` invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug. Rotating the Twilio pair (e.g. after switching Twilio accounts) requires re-pointing every business's `TwilioNumber` too if the numbers themselves moved to a different account.
 
 **Email delivery** (`Services/IEmailSender.cs` + implementations) — precedence decided once at

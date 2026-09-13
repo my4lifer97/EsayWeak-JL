@@ -149,4 +149,122 @@ public class CustomerAuthControllerTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    // ─── Phone+OTP (second, parallel entry point alongside WhatsApp) ──────────
+
+    private record RequestOtpResponse(bool IsNewCustomer, string? DevOtp);
+    private record VerifyOtpResponse(string Token, string CustomerId, string Name, string FamilyName, string Phone);
+
+    [Fact]
+    public async Task RequestOtp_NewPhone_ReturnsIsNewCustomerTrueWithDevCode()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest("+15558880001"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<RequestOtpResponse>();
+        Assert.True(body!.IsNewCustomer);
+        Assert.False(string.IsNullOrWhiteSpace(body.DevOtp)); // Development env -- see AuthController's devCode convention
+    }
+
+    [Fact]
+    public async Task RequestOtp_CalledTwiceImmediately_SecondCallIsRateLimited()
+    {
+        var phone = "+15558880002";
+        await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+        var second = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+
+        Assert.Equal((HttpStatusCode)429, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task VerifyOtp_NewCustomer_MissingName_ReturnsBadRequest()
+    {
+        var phone = "+15558880003";
+        var request = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+        var code = (await request.Content.ReadFromJsonAsync<RequestOtpResponse>())!.DevOtp!;
+
+        var resp = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, code, null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task VerifyOtp_NewCustomer_ValidCode_CreatesAccountAndReturnsSession()
+    {
+        var phone = "+15558880004";
+        var request = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+        var code = (await request.Content.ReadFromJsonAsync<RequestOtpResponse>())!.DevOtp!;
+
+        var resp = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, code, "First", "Last"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<VerifyOtpResponse>();
+        Assert.False(string.IsNullOrWhiteSpace(body!.Token));
+        Assert.Equal("First", body.Name);
+        Assert.Equal("Last", body.FamilyName);
+    }
+
+    [Fact]
+    public async Task VerifyOtp_WrongCode_ReturnsBadRequest()
+    {
+        var phone = "+15558880005";
+        await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+
+        var resp = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, "000000", "First", "Last"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task VerifyOtp_ExistingAccount_ReusesItAndIgnoresNameArgs()
+    {
+        var phone = "+15558880006";
+        var firstRequest = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+        var firstCode = (await firstRequest.Content.ReadFromJsonAsync<RequestOtpResponse>())!.DevOtp!;
+        var first = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, firstCode, "First", "Last"));
+        var firstBody = await first.Content.ReadFromJsonAsync<VerifyOtpResponse>();
+
+        // A second real /otp request would hit the 45s cooldown immediately after the first --
+        // insert the next code directly, same as CreateBookingToken bypasses the WhatsApp webhook
+        // for the equivalent WhatsApp-login "reuses it" test above.
+        const string secondCode = "654321";
+        using (var db = Db())
+        {
+            db.CustomerOtps.Add(new CustomerOtp
+            {
+                Phone = phone,
+                CodeHash = BCrypt.Net.BCrypt.HashPassword(secondCode),
+                ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var second = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, secondCode, "Someone", "Else"));
+        var secondBody = await second.Content.ReadFromJsonAsync<VerifyOtpResponse>();
+
+        Assert.Equal(firstBody!.CustomerId, secondBody!.CustomerId);
+        Assert.Equal("First", secondBody.Name); // unchanged by the second (unused) name args
+    }
+
+    [Fact]
+    public async Task VerifyOtp_BackfillsCustomerAccountIdOnExistingGuestBookedCustomerRow()
+    {
+        var (businessId, _, _) = await SeedBusinessAndService("otp-backfill@example.com", "otp-backfill");
+        var phone = "+15558880007";
+
+        using (var db = Db())
+        {
+            db.Customers.Add(new Customer { BusinessId = businessId, Phone = phone, Name = "Guest", FamilyName = "Booker" });
+            await db.SaveChangesAsync();
+        }
+
+        var request = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+        var code = (await request.Content.ReadFromJsonAsync<RequestOtpResponse>())!.DevOtp!;
+        var verify = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, code, "First", "Last"));
+        var body = await verify.Content.ReadFromJsonAsync<VerifyOtpResponse>();
+
+        using var db2 = Db();
+        var customer = await db2.Customers.FirstAsync(c => c.BusinessId == businessId && c.Phone == phone);
+        Assert.Equal(body!.CustomerId, customer.CustomerAccountId);
+    }
 }

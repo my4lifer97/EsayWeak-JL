@@ -51,6 +51,13 @@ builder.Services.AddScoped<RecurringAppointmentService>();
 builder.Services.AddScoped<FollowService>();
 builder.Services.AddScoped<ReviewService>();
 builder.Services.AddScoped<IWhatsAppSender, TwilioWhatsAppSender>();
+// Customer login OTP is sent via SMS (not WhatsApp -- this runs before any business is
+// identified), using a dedicated platform SMS number separate from any business's WhatsApp
+// sender. See TwilioOtpSender.
+if (!string.IsNullOrEmpty(builder.Configuration["Twilio:FromNumber"]))
+    builder.Services.AddScoped<IOtpSender, TwilioOtpSender>();
+else
+    builder.Services.AddScoped<IOtpSender, DevOtpSender>();
 builder.Services.AddScoped<WaitlistService>();
 builder.Services.AddScoped<AppointmentCancellationService>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
