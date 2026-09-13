@@ -194,7 +194,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 
 **Auth (no JWT)**
 - `POST /api/auth/register` — self-service business signup (`EmailVerified = false`); auto-creates Mon–Fri 09:00–18:00 working hours for an `Appointment`/`Both`-model business; sends a 6-digit email verification code (`devCode` in the response body in Development, matching `DevEmailSender`'s no-op-in-dev pattern)
-- `POST /api/auth/login` — `{ identifier, password }` where `identifier` is the email **or** the system-generated `Username` (see [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved)); returns JWT token (30 days, carries a `mustChangePassword` claim); **403 `{ emailNotVerified: true }`** if not yet verified (frontend responds by requesting a fresh code and dropping into the verify-code view)
+- `POST /api/auth/login` — `{ email, password }` where the `email` field's value is matched against either the business's real email **or** its system-generated `Username` (field name kept as `email` for compatibility — see [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved)); returns JWT token (30 days, carries a `mustChangePassword` claim); **403 `{ emailNotVerified: true }`** if not yet verified (frontend responds by requesting a fresh code and dropping into the verify-code view)
 - `POST /api/auth/verify-email` — `{ email, code }`; marks the business verified and returns a JWT (`LoginResponse`), logging them in directly
 - `POST /api/auth/resend-verification` — `{ email }`; 45s cooldown + 5/hour cap
 - `POST /api/auth/forgot-password` — `{ email }`; sends a 6-digit reset code (`devCode` in Development), same cooldown/cap as email verification; 404 if the email isn't registered
