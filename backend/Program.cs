@@ -54,12 +54,17 @@ builder.Services.AddScoped<IWhatsAppSender, TwilioWhatsAppSender>();
 builder.Services.AddScoped<WaitlistService>();
 builder.Services.AddScoped<AppointmentCancellationService>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
-// Email delivery, in order of precedence: SMTP (e.g. Gmail with an app password) when
-// Smtp:Username + Smtp:Password are set, then Resend when Resend:ApiKey is set, otherwise the
-// no-op dev sender that just logs. Config comes from dotnet user-secrets locally / env vars in
-// production. Only one sender is ever active; environments with none configured (including the
-// test suite) fall through to DevEmailSender.
-if (!string.IsNullOrEmpty(builder.Configuration["Smtp:Username"]) &&
+// Email delivery, in order of precedence: Brevo (Brevo:ApiKey set -- the only option that can
+// reach arbitrary recipients without a verified domain, see BrevoEmailSender), then SMTP (e.g.
+// Gmail with an app password -- note this needs Railway's Pro plan or a non-Railway host, since
+// Railway blocks outbound SMTP ports 25/465/587/2525 on lower plans), then Resend (limited to the
+// account owner's own address without a verified domain), otherwise the no-op dev sender that
+// just logs. Config comes from dotnet user-secrets locally / env vars in production. Only one
+// sender is ever active; environments with none configured (including the test suite) fall
+// through to DevEmailSender.
+if (!string.IsNullOrEmpty(builder.Configuration["Brevo:ApiKey"]))
+    builder.Services.AddHttpClient<IEmailSender, BrevoEmailSender>();
+else if (!string.IsNullOrEmpty(builder.Configuration["Smtp:Username"]) &&
     !string.IsNullOrEmpty(builder.Configuration["Smtp:Password"]))
     builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 else if (!string.IsNullOrEmpty(builder.Configuration["Resend:ApiKey"]))

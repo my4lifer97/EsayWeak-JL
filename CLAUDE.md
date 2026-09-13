@@ -150,7 +150,7 @@ barber-saas/
 │   │   ├── SlugValidator.cs            # Shared slug format/reserved-word rules for self-service and admin-issued signup
 │   │   ├── PhoneNormalizer.cs          # Normalizes phone numbers to a canonical form for matching
 │   │   ├── WhatsAppBookingTokenService.cs  # Issues/resolves WhatsAppBookingToken rows (shared by WhatsAppController and CustomerAuthController)
-│   │   ├── IEmailSender.cs / DevEmailSender.cs / SmtpEmailSender.cs / ResendEmailSender.cs  # Email delivery abstraction — precedence SMTP > Resend > dev no-op, see Configuration
+│   │   ├── IEmailSender.cs / DevEmailSender.cs / SmtpEmailSender.cs / ResendEmailSender.cs / BrevoEmailSender.cs  # Email delivery abstraction — precedence Brevo > SMTP > Resend > dev no-op, see Configuration
 │   │   └── ICardcomService.cs / CardcomService.cs  # Cardcom billing API client
 │   ├── GlobalExceptionHandler.cs     # Catches unhandled exceptions -> { error } JSON + ILogger, never a bare 500
 │   ├── Program.cs                   # App startup, DI registration, middleware pipeline, CustomerOnly/BusinessOnly/PlatformAdminOnly policies
@@ -613,11 +613,16 @@ Platform:AdminNotificationEmail   Where BusinessOwnerRequestsController emails a
 - Rotating `Jwt:Secret`/`CronSecret` invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug. Rotating the Twilio pair (e.g. after switching Twilio accounts) requires re-pointing every business's `TwilioNumber` too if the numbers themselves moved to a different account.
 
 **Email delivery** (`Services/IEmailSender.cs` + implementations) — precedence decided once at
-startup in `Program.cs`, only one sender is ever active: **SMTP** (`Smtp:Username`+`Smtp:Password`
-both set — e.g. Gmail with an app password) > **Resend** (`Resend:ApiKey` set) > `DevEmailSender`
-(no-op, logs only — used by the test suite and any environment with neither configured). See
-[Railway deployment notes] for why Resend alone currently can't reach real customer inboxes
-(unverified sending domain).
+startup in `Program.cs`, only one sender is ever active: **Brevo** (`Brevo:ApiKey` set;
+`Brevo:FromEmail` must be a sender verified in Brevo's dashboard via a 6-digit code — no domain
+needed, and it's the only option here that can reach *arbitrary* recipients without one) >
+**SMTP** (`Smtp:Username`+`Smtp:Password` both set — e.g. Gmail with an app password; **confirmed
+non-viable on Railway** below the Pro plan, which blocks outbound SMTP ports 25/465/587/2525
+entirely — works fine for local dev, where no such restriction applies) > **Resend**
+(`Resend:ApiKey` set; without a verified domain, delivers only to the Resend account owner's own
+address) > `DevEmailSender` (no-op, logs only — used by the test suite and any environment with
+none of the above configured). See [Deployment (Railway)](#deployment-railway) for the SMTP-port
+finding and current production state.
 
 ### Billing (Cardcom)
 Billed via Cardcom (an Israeli payment gateway) using its "Low Profile" hosted-payment-page API (v11: `https://secure.cardcom.solutions/api/v11/...`), through `Services/ICardcomService`/`CardcomService.cs` (hand-rolled `HttpClient` wrapper -- Cardcom has no official .NET SDK, unlike Stripe.net which this replaced). `Cardcom:TerminalNumber`/`ApiName`/`ApiPassword` ship as empty strings in `appsettings.json` (no Cardcom account exists yet) — `BillingController` checks for `TerminalNumber`/`ApiName` and returns `503 { error: "Payments are not yet configured..." }` instead of attempting a call when they're blank. Once a real Cardcom account exists, set all three the same way as `Jwt:Secret`/`CronSecret`: `dotnet user-secrets` locally, environment variables (`Cardcom__TerminalNumber`, `Cardcom__ApiName`, `Cardcom__ApiPassword`) in production.
@@ -641,6 +646,13 @@ just that one migration on the *old* code by temporarily checking out only the n
 file(s) onto the current branch (no other model changes) before running it — see the Discovery
 recovery in project history for a worked example. Vite bakes `VITE_API_URL` in at build time, so a
 frontend env var change needs a fresh commit pushed (a Railway "Redeploy" alone won't rebuild).
-Resend has no verified sending domain yet, so it can only deliver to the account owner's own
-address — real business signups can't receive verification/approval emails until a domain is
-verified (or SMTP is configured instead, which takes precedence — see Configuration above).
+Resend has no verified sending domain yet, so alone it can only deliver to the account owner's own
+address. **Gmail SMTP was tried as a domain-free workaround and confirmed non-viable on Railway**
+(2026-09-14): both ports 587 and 465 hit a `System.TimeoutException` connecting to
+`smtp.gmail.com` — Railway blocks all outbound SMTP ports (25/465/587/2525) below the Pro plan
+(confirmed via Railway's own support station; SMTP works fine in local dev, where this
+restriction doesn't apply). **Brevo is the current fix** (`BrevoEmailSender`, takes precedence —
+see Configuration above): its free tier sends to *any* recipient once a single sender address is
+verified via a 6-digit code, no domain purchase needed, and being an HTTPS API it isn't affected
+by the SMTP port block at all. Verifying a real Resend domain remains the longer-term option if
+the product ever needs to send from a branded domain rather than a personal Gmail address.
