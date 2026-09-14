@@ -83,7 +83,8 @@ builder.Services.AddHttpClient<ICardcomService, CardcomService>();
 
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p
-        .WithOrigins(builder.Configuration["AllowedOrigin"] ?? "http://localhost:5173")
+        .WithOrigins((builder.Configuration["AllowedOrigin"] ?? "http://localhost:5173")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         .AllowAnyHeader()
         .AllowAnyMethod()));
 
