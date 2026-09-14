@@ -33,7 +33,7 @@ const business = {
 function mockAnonymous() {
   vi.mocked(useCustomerAuth).mockReturnValue({
     user: null, isAuthenticated: false, language: 'EN', setLang: vi.fn(),
-    loginWithWhatsAppToken: vi.fn(), logout: vi.fn(),
+    loginWithWhatsAppToken: vi.fn(), requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
   } as ReturnType<typeof useCustomerAuth>)
 }
 
@@ -155,7 +155,7 @@ describe('BookingWizard', () => {
     vi.mocked(useCustomerAuth).mockReturnValue({
       user: { id: '1', name: 'Jane', familyName: 'Doe', phone: '+15559998888' },
       isAuthenticated: true, language: 'EN', setLang: vi.fn(),
-      loginWithWhatsAppToken: vi.fn(), logout: vi.fn(),
+      loginWithWhatsAppToken: vi.fn(), requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
     } as ReturnType<typeof useCustomerAuth>)
 
     renderWizard()
@@ -278,7 +278,7 @@ describe('BookingWizard', () => {
     vi.mocked(useCustomerAuth).mockReturnValue({
       user: { id: '1', name: 'Jane', familyName: 'Doe', phone: '+15559998888' },
       isAuthenticated: true, language: 'EN', setLang: vi.fn(),
-      loginWithWhatsAppToken: vi.fn(), logout: vi.fn(),
+      loginWithWhatsAppToken: vi.fn(), requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
     } as ReturnType<typeof useCustomerAuth>)
     renderWizard()
 
