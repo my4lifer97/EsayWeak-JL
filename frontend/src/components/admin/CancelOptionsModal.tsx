@@ -44,7 +44,7 @@ export default function CancelOptionsModal({
 
   return (
     <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl p-6 w-full max-w-sm border border-line">
+      <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-line">
         <div className="flex justify-between items-start mb-4">
           <h2 className="text-ink font-semibold text-lg">{t(lang, 'cancelOptionsTitle')}</h2>
           <button onClick={onClose} aria-label="Close"

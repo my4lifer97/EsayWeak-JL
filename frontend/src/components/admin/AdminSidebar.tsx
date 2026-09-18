@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useNavigate } from 'react-router-dom'
 import { t, type TKey } from '../../lib/i18n'
+import ThemeToggle from '../ThemeToggle'
 
 const NAV: { to: string; key: TKey; icon: string }[] = [
   { to: '/admin/dashboard', key: 'dashboard', icon: '📅' },
@@ -48,10 +49,13 @@ function DesktopSidebar({ businessName }: { businessName: string }) {
   }
 
   return (
-    <aside className="w-56 bg-white border-e border-line flex flex-col py-6 px-3 shrink-0">
-      <div className="px-3 mb-8">
-        <div className="text-ink font-bold text-lg">EsayWeek</div>
-        <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
+    <aside className="w-56 bg-surface border-e border-line flex flex-col py-6 px-3 shrink-0">
+      <div className="px-3 mb-8 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-ink font-bold text-lg">EsayWeek</div>
+          <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
+        </div>
+        <ThemeToggle />
       </div>
       <NavContent lang={lang} />
       <button
@@ -80,17 +84,20 @@ function TouchSidebar({
     <>
       {open && <div onClick={onClose} className="fixed inset-0 bg-black/60 z-40" />}
       <aside
-        className={`w-56 bg-white border-e border-line flex flex-col py-6 px-3 shrink-0
+        className={`w-56 bg-surface border-e border-line flex flex-col py-6 px-3 shrink-0
           fixed inset-y-0 start-0 z-50 transition-transform duration-200
           ${open ? 'translate-x-0' : 'rtl:translate-x-full -translate-x-full'}`}
       >
-        <div className="px-3 mb-8 flex items-start justify-between">
-          <div>
+        <div className="px-3 mb-8 flex items-start justify-between gap-2">
+          <div className="min-w-0">
             <div className="text-ink font-bold text-lg">EsayWeek</div>
             <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
           </div>
-          <button onClick={onClose} aria-label="Close menu"
-            className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <button onClick={onClose} aria-label="Close menu"
+              className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
+          </div>
         </div>
         <NavContent lang={lang} onNavigate={onClose} />
         <button

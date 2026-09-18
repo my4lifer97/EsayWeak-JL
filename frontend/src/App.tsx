@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from './lib/theme'
 import { AuthProvider } from './lib/auth'
 import { CustomerAuthProvider } from './lib/customerAuth'
 import { PlatformAdminAuthProvider } from './lib/platformAdminAuth'
@@ -39,6 +40,7 @@ const queryClient = new QueryClient()
 
 export default function App() {
   return (
+    <ThemeProvider>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <CustomerAuthProvider>
@@ -97,5 +99,6 @@ export default function App() {
         </CustomerAuthProvider>
       </AuthProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   )
 }

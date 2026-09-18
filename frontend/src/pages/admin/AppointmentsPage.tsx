@@ -27,9 +27,9 @@ const FILTERS: { value: string; key: TKey }[] = [
   { value: 'all', key: 'all' },
 ]
 const STATUS_BADGE: Record<string, string> = {
-  CONFIRMED: 'bg-blue-100 text-blue-700',
-  COMPLETED: 'bg-green-100 text-green-700',
-  CANCELLED: 'bg-gray-100 text-gray-500',
+  CONFIRMED: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
+  COMPLETED: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400',
+  CANCELLED: 'bg-gray-100 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400',
 }
 const STATUS_OPTIONS: TKey[] = ['statusConfirmed', 'statusCompleted', 'statusCancelled']
 const STATUS_VALUES = ['CONFIRMED', 'COMPLETED', 'CANCELLED']
@@ -89,7 +89,7 @@ export default function AppointmentsPage() {
     queryClient.invalidateQueries({ queryKey: ['appointments'] })
   }
 
-  const selectClass = 'bg-white border border-line rounded-lg px-3 py-1.5 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral'
+  const selectClass = 'bg-surface border border-line rounded-lg px-3 py-1.5 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral'
 
   return (
     <div>
@@ -102,7 +102,7 @@ export default function AppointmentsPage() {
       </div>
 
       <div className="flex flex-wrap gap-3 mb-3 items-center">
-        <div className="flex gap-1 bg-white rounded-xl p-1 border border-line">
+        <div className="flex gap-1 bg-surface rounded-xl p-1 border border-line">
           {FILTERS.map((f) => (
             <button key={f.value} onClick={() => setFilter(f.value)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -112,7 +112,7 @@ export default function AppointmentsPage() {
           ))}
         </div>
         <input type="text" placeholder={t(lang, 'searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)}
-          className="bg-white border border-line rounded-lg px-3 py-1.5 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
+          className="bg-surface border border-line rounded-lg px-3 py-1.5 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4 items-center">
@@ -138,7 +138,7 @@ export default function AppointmentsPage() {
       {filtered.length === 0 ? (
         <div className="text-center text-muted py-16">{t(lang, 'noAppointments')}</div>
       ) : (
-        <div className="bg-white rounded-2xl border border-line overflow-x-auto">
+        <div className="bg-surface rounded-2xl border border-line overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="border-b border-line text-muted text-left">
@@ -166,11 +166,11 @@ export default function AppointmentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {a.pendingCancellationApproval ? (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
                         ⚠️ {t(lang, 'cancellationRequestedBadge')}
                       </span>
                     ) : (
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400'}`}>
                         {STATUS_LABEL[a.status] ? t(lang, STATUS_LABEL[a.status]) : a.status}
                       </span>
                     )}
@@ -178,7 +178,7 @@ export default function AppointmentsPage() {
                   <td className="px-4 py-3">
                     {a.status === 'CONFIRMED' && (
                       <button onClick={() => setCancelTargetId(a.id)}
-                        className={`text-xs ${a.pendingCancellationApproval ? 'text-amber-700 hover:text-amber-600 font-semibold' : 'text-red-600 hover:text-red-500'}`}>
+                        className={`text-xs ${a.pendingCancellationApproval ? 'text-amber-700 dark:text-amber-400 hover:text-amber-600 font-semibold' : 'text-red-600 hover:text-red-500'}`}>
                         {a.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
                       </button>
                     )}

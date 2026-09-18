@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { usePlatformAdminAuth } from '../../lib/platformAdminAuth'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type BusinessSummary = { id: string; name: string; email: string; slug: string; subscriptionStatus: string }
 type CustomerSummary = { id: string; name: string; familyName: string; phone: string }
@@ -30,11 +31,12 @@ export default function PlatformAdminDashboardPage() {
             <Link to="/platform-admin/requests" className="hover:text-ink transition-colors">Business requests</Link>
             <span>{user?.name}</span>
             <button onClick={logout} className="hover:text-ink transition-colors">Sign out</button>
+            <ThemeToggle />
           </div>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
-          <section className="bg-white border border-line rounded-2xl p-5">
+          <section className="bg-surface border border-line rounded-2xl p-5">
             <h2 className="font-semibold mb-3">Business owners</h2>
             <input
               value={businessSearch} onChange={(e) => setBusinessSearch(e.target.value)}
@@ -50,8 +52,8 @@ export default function PlatformAdminDashboardPage() {
                     <div className="text-xs text-muted">{b.email} · /{b.slug}</div>
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    b.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700'
-                      : b.subscriptionStatus === 'TRIAL' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                    b.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                      : b.subscriptionStatus === 'TRIAL' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
                   }`}>{b.subscriptionStatus}</span>
                 </Link>
               ))}
@@ -59,7 +61,7 @@ export default function PlatformAdminDashboardPage() {
             </div>
           </section>
 
-          <section className="bg-white border border-line rounded-2xl p-5">
+          <section className="bg-surface border border-line rounded-2xl p-5">
             <h2 className="font-semibold mb-3">Customers</h2>
             <input
               value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)}

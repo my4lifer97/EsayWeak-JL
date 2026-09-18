@@ -7,6 +7,7 @@ import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
+import ThemeToggle from '../../components/ThemeToggle'
 import AppointmentCard, { type Appointment } from '../../components/customer/AppointmentCard'
 import BusinessReviews from '../../components/customer/BusinessReviews'
 import StarRating from '../../components/customer/StarRating'
@@ -81,7 +82,10 @@ export default function BusinessPage() {
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="flex items-center justify-between mb-6">
           <BackButton lang={lang} />
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
         </div>
         <div className="text-center mb-8">
           {business.logo ? (
@@ -129,7 +133,7 @@ export default function BusinessPage() {
             className={`w-full font-semibold py-3 rounded-2xl transition-colors disabled:opacity-50 ${
               business.isFollowed
                 ? 'bg-teal-tint text-ink border border-line hover:bg-teal-tint/70'
-                : 'bg-white border border-coral/40 text-coral-dark hover:bg-coral-tint'
+                : 'bg-surface border border-coral/40 text-coral-dark hover:bg-coral-tint'
             }`}>
             {business.isFollowed ? t(lang, 'following') : t(lang, 'followBusiness')}
           </button>
@@ -137,7 +141,7 @@ export default function BusinessPage() {
           {activeAppointments.length > 0 && (
             <button
               onClick={() => setShowAppointments(!showAppointments)}
-              className="w-full font-semibold py-3 rounded-2xl border border-line text-ink hover:bg-white transition-colors">
+              className="w-full font-semibold py-3 rounded-2xl border border-line text-ink hover:bg-surface transition-colors">
               {t(lang, 'myBookingsWithBusiness')}
             </button>
           )}
@@ -156,7 +160,7 @@ export default function BusinessPage() {
         {business.items.some((i) => !i.isBookable) && (
           <div className="space-y-2 mt-6">
             {business.items.filter((i) => !i.isBookable).map((i) => (
-              <div key={i.id} className="bg-white border border-line rounded-xl px-4 py-3 flex justify-between items-center">
+              <div key={i.id} className="bg-surface border border-line rounded-xl px-4 py-3 flex justify-between items-center">
                 <span className="text-ink text-sm">{itemName(i, lang)}</span>
                 {i.price !== null && <span className="text-coral-dark text-sm font-semibold">₪{Number(i.price).toFixed(0)}</span>}
               </div>

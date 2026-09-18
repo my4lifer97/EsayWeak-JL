@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
 import LanguageSwitcher from './LanguageSwitcher'
+import ThemeToggle from '../ThemeToggle'
 
 export default function CustomerAccountNav() {
   const { language: lang, isAuthenticated, logout } = useCustomerAuth()
@@ -22,7 +23,7 @@ export default function CustomerAccountNav() {
   }
 
   return (
-    <nav className="border-b border-line px-4 py-3 bg-white">
+    <nav className="border-b border-line px-4 py-3 bg-surface">
       <div className="max-w-2xl mx-auto flex items-center justify-between">
         <Link to="/browse" className="font-bold text-ink">✂️</Link>
         <div className="flex items-center gap-4">
@@ -42,6 +43,7 @@ export default function CustomerAccountNav() {
             </Link>
           )}
           <LanguageSwitcher />
+          <ThemeToggle />
         </div>
       </div>
     </nav>

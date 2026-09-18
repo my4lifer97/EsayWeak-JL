@@ -122,7 +122,7 @@ export default function BusinessReviews({
 
       {/* The customer's own review (edit/delete) */}
       {own && !editing && (
-        <div className="bg-white border border-coral/30 rounded-2xl p-4 mb-4">
+        <div className="bg-surface border border-coral/30 rounded-2xl p-4 mb-4">
           <div className="text-xs text-muted mb-1">{t(lang, 'yourReview')}</div>
           <StarRating value={own.rating} size="sm" />
           {own.comment && <p className="text-ink text-sm mt-2">{own.comment}</p>}
@@ -138,7 +138,7 @@ export default function BusinessReviews({
               {t(lang, 'editReview')}
             </button>
             <button onClick={remove} disabled={busy}
-              className="border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
+              className="border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800/50 dark:text-red-400 dark:hover:bg-red-950/40 text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
               {t(lang, 'deleteReview')}
             </button>
           </div>
@@ -146,7 +146,7 @@ export default function BusinessReviews({
       )}
 
       {formOpen && (
-        <div className="bg-white border border-line rounded-2xl p-4 mb-4 space-y-3">
+        <div className="bg-surface border border-line rounded-2xl p-4 mb-4 space-y-3">
           <div>
             <div className="text-sm text-muted mb-1">{t(lang, 'yourRating')}</div>
             <StarRating value={rating} onChange={setRating} size="lg" />
@@ -156,7 +156,7 @@ export default function BusinessReviews({
             placeholder={t(lang, 'reviewCommentPlaceholder')}
             className="w-full bg-cream border border-line rounded-xl px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
           />
-          {error && <p className="text-red-600 text-xs">{error}</p>}
+          {error && <p className="text-red-600 dark:text-red-400 text-xs">{error}</p>}
           <div className="flex gap-2">
             <button onClick={submit} disabled={busy}
               className="flex-1 bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
@@ -176,7 +176,7 @@ export default function BusinessReviews({
       ) : (
         <div className="space-y-3">
           {items.map((r) => (
-            <div key={r.id} className="bg-white border border-line rounded-2xl p-4">
+            <div key={r.id} className="bg-surface border border-line rounded-2xl p-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-ink text-sm font-medium">{r.reviewerName}</span>
                 <span className="text-muted text-xs">{format(parseISO(r.createdAt), 'MMM d, yyyy', { locale })}</span>
@@ -196,7 +196,7 @@ export default function BusinessReviews({
 
       {list.hasNextPage && (
         <button onClick={() => list.fetchNextPage()} disabled={list.isFetchingNextPage}
-          className="w-full mt-3 border border-line text-ink hover:bg-white text-sm font-medium py-2 rounded-xl transition-colors disabled:opacity-50">
+          className="w-full mt-3 border border-line text-ink hover:bg-surface text-sm font-medium py-2 rounded-xl transition-colors disabled:opacity-50">
           {t(lang, 'loadMore')}
         </button>
       )}

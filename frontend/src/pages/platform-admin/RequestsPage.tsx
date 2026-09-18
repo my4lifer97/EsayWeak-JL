@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type BusinessOwnerRequest = {
   id: string
@@ -31,9 +32,9 @@ function slugify(name: string) {
 
 function StatusBadge({ status }: { status: BusinessOwnerRequest['status'] }) {
   const cls =
-    status === 'Approved' ? 'bg-green-100 text-green-700'
-      : status === 'Rejected' ? 'bg-red-100 text-red-700'
-        : 'bg-yellow-100 text-yellow-800'
+    status === 'Approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+      : status === 'Rejected' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+        : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300'
   return <span className={`text-xs px-2 py-0.5 rounded-full ${cls}`}>{status}</span>
 }
 
@@ -107,12 +108,15 @@ export default function PlatformAdminRequestsPage() {
   return (
     <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-5xl mx-auto">
-        <Link to="/platform-admin" className="text-muted hover:text-ink text-sm mb-6 inline-block">← Back</Link>
+        <div className="flex items-center justify-between mb-6">
+          <Link to="/platform-admin" className="text-muted hover:text-ink text-sm inline-block">← Back</Link>
+          <ThemeToggle />
+        </div>
         <h1 className="text-xl font-bold mb-6">Business account requests</h1>
 
         {credsResult && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5 mb-6">
-            <p className="text-yellow-800 font-semibold mb-1">Account created for /{credsResult.slug}</p>
+          <div className="bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/30 dark:border-yellow-700/50 rounded-2xl p-5 mb-6">
+            <p className="text-yellow-800 dark:text-yellow-300 font-semibold mb-1">Account created for /{credsResult.slug}</p>
             <p className="text-muted text-sm mb-3">
               {credsResult.emailSent
                 ? `Credentials were emailed to ${credsResult.email}. Copy them below only if the email doesn't arrive — the password will not be shown again.`
@@ -121,7 +125,7 @@ export default function PlatformAdminRequestsPage() {
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted w-20 shrink-0">Username</span>
-                <code className="flex-1 bg-white border border-line rounded-lg px-3 py-2 font-mono">{credsResult.username}</code>
+                <code className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 font-mono">{credsResult.username}</code>
                 <button onClick={() => copy(credsResult.username, 'user')}
                   className="bg-coral hover:bg-coral-dark text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                   {copied === 'user' ? 'Copied!' : 'Copy'}
@@ -129,7 +133,7 @@ export default function PlatformAdminRequestsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-muted w-20 shrink-0">Password</span>
-                <code className="flex-1 bg-white border border-line rounded-lg px-3 py-2 font-mono text-lg tracking-wide">{credsResult.tempPassword}</code>
+                <code className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 font-mono text-lg tracking-wide">{credsResult.tempPassword}</code>
                 <button onClick={() => copy(credsResult.tempPassword, 'pass')}
                   className="bg-coral hover:bg-coral-dark text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                   {copied === 'pass' ? 'Copied!' : 'Copy'}
@@ -151,7 +155,7 @@ export default function PlatformAdminRequestsPage() {
           ))}
         </div>
 
-        <div className="bg-white border border-line rounded-2xl overflow-hidden">
+        <div className="bg-surface border border-line rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -191,7 +195,7 @@ export default function PlatformAdminRequestsPage() {
 
       {open && (
         <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 overflow-y-auto z-50" onClick={() => setOpenId(null)}>
-          <div className="bg-white border border-line rounded-2xl p-6 w-full max-w-lg my-8" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-surface border border-line rounded-2xl p-6 w-full max-w-lg my-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-lg font-bold">{open.businessName}</h2>
@@ -200,7 +204,7 @@ export default function PlatformAdminRequestsPage() {
               <StatusBadge status={open.status} />
             </div>
 
-            {rowError && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2 mb-3">{rowError}</div>}
+            {rowError && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-3 py-2 mb-3">{rowError}</div>}
 
             <dl className="space-y-2 text-sm mb-4">
               <Field label="Owner" value={`${open.ownerFirstName} ${open.ownerFamilyName}`} />
@@ -238,7 +242,7 @@ export default function PlatformAdminRequestsPage() {
                       placeholder="Reason for rejecting"
                       className="flex-1 bg-cream border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
                     <button onClick={reject} disabled={busy}
-                      className="bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-700 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                      className="bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60 disabled:opacity-50 text-red-700 dark:text-red-400 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                       {busy ? '…' : 'Reject'}
                     </button>
                   </div>

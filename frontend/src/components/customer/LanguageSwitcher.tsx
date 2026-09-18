@@ -10,7 +10,7 @@ export default function LanguageSwitcher() {
   const { language, setLang } = useCustomerAuth()
 
   return (
-    <div className="flex items-center gap-1 bg-white border border-line rounded-lg p-0.5">
+    <div className="flex items-center gap-1 bg-surface border border-line rounded-lg p-0.5">
       {OPTIONS.map((o) => (
         <button
           key={o.value}

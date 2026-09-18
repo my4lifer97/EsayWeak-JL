@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePlatformAdminAuth } from '../../lib/platformAdminAuth'
 import { platformAdminApi } from '../../lib/platformAdminApi'
+import ThemeToggle from '../../components/ThemeToggle'
 
 export default function PlatformAdminLoginPage() {
   const { login, bootstrap } = usePlatformAdminAuth()
@@ -37,7 +38,8 @@ export default function PlatformAdminLoginPage() {
   if (bootstrapAvailable === null) return null
 
   return (
-    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4 relative">
+      <div className="absolute top-4 end-4"><ThemeToggle /></div>
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-ink mb-2 text-center">Platform Admin</h1>
         <p className="text-muted text-center mb-8">
@@ -46,7 +48,7 @@ export default function PlatformAdminLoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+            <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">
               {error}
             </div>
           )}
@@ -54,18 +56,18 @@ export default function PlatformAdminLoginPage() {
             <input
               type="text" required value={name} onChange={(e) => setName(e.target.value)}
               placeholder="Name"
-              className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+              className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
           )}
           <input
             type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
-            className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+            className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
           />
           <input
             type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
             placeholder="Password" minLength={bootstrapAvailable ? 8 : undefined}
-            className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+            className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
           />
           <button
             type="submit" disabled={loading}

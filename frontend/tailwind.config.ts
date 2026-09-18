@@ -2,15 +2,25 @@ import type { Config } from 'tailwindcss'
 
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        cream: '#FFF9F2',
-        ink: '#2B2620',
-        muted: '#6B6053',
-        line: '#F0E1D0',
-        coral: { DEFAULT: '#E8623F', dark: '#CB4E30', soft: '#FFDCC9', tint: '#FFEFE3' },
-        teal: { DEFAULT: '#2E8F82', tint: '#E2F4F1' },
+        cream: 'rgb(var(--color-cream) / <alpha-value>)',
+        surface: 'rgb(var(--color-surface) / <alpha-value>)',
+        ink: 'rgb(var(--color-ink) / <alpha-value>)',
+        muted: 'rgb(var(--color-muted) / <alpha-value>)',
+        line: 'rgb(var(--color-line) / <alpha-value>)',
+        coral: {
+          DEFAULT: 'rgb(var(--color-coral) / <alpha-value>)',
+          dark: 'rgb(var(--color-coral-dark) / <alpha-value>)',
+          soft: 'rgb(var(--color-coral-soft) / <alpha-value>)',
+          tint: 'rgb(var(--color-coral-tint) / <alpha-value>)',
+        },
+        teal: {
+          DEFAULT: 'rgb(var(--color-teal) / <alpha-value>)',
+          tint: 'rgb(var(--color-teal-tint) / <alpha-value>)',
+        },
       },
       fontFamily: {
         sans: ['Nunito', 'ui-sans-serif', 'system-ui', 'sans-serif'],

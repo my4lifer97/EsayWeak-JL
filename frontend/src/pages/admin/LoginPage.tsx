@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type View = 'login' | 'verify'
 
@@ -76,7 +77,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-cream flex items-center justify-center p-4">
+      <div className="absolute top-4 end-4"><ThemeToggle /></div>
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-ink mb-2 text-center">EsayWeek</h1>
         <p className="text-muted text-center mb-8">
@@ -86,19 +88,19 @@ export default function LoginPage() {
         {view === 'login' && (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+              <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">
                 {error}
               </div>
             )}
             <input
               type="text" required value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="Email or username" autoComplete="username"
-              className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+              className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
             <input
               type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+              className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
             <button
               type="submit" disabled={loading}
@@ -115,7 +117,7 @@ export default function LoginPage() {
         {view === 'verify' && (
           <div>
             {devCode && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-xs text-yellow-800 mb-4 text-center">
+              <div className="bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/30 dark:border-yellow-700/50 rounded-lg px-3 py-2 text-xs text-yellow-800 dark:text-yellow-300 mb-4 text-center">
                 Dev mode — your code is <span className="font-mono font-bold">{devCode}</span>
               </div>
             )}
@@ -124,10 +126,10 @@ export default function LoginPage() {
                 type="text" inputMode="numeric" maxLength={6} required autoFocus
                 value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="123456"
-                className="w-full bg-white border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
+                className="w-full bg-surface border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
               />
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+                <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">
                   {error}
                 </div>
               )}

@@ -4,6 +4,7 @@ import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type View = 'phone' | 'otp'
 
@@ -52,14 +53,17 @@ export default function CustomerLoginPage() {
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-between mb-4">
           <BackButton lang={lang} />
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
         </div>
         <div className="text-center mb-8">
           <Link to="/" className="text-3xl">✂️</Link>
           <h1 className="text-2xl font-bold text-ink mt-3">{t(lang, 'loginTitle')}</h1>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6">
+        <div className="bg-surface border border-line rounded-2xl p-6">
           {view === 'phone' && (
             <form onSubmit={handleRequestOtp} className="space-y-4">
               <p className="text-muted text-sm text-center mb-1">{t(lang, 'enterPhone')}</p>
@@ -80,7 +84,7 @@ export default function CustomerLoginPage() {
           {view === 'otp' && (
             <div>
               {devOtp ? (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-xs text-yellow-800 mb-4 text-center">
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 dark:bg-yellow-900/30 dark:border-yellow-700/50 dark:text-yellow-300 rounded-lg px-3 py-2 text-xs mb-4 text-center">
                   {t(lang, 'devHint')} <span className="font-mono font-bold">{devOtp}</span>
                 </div>
               ) : (

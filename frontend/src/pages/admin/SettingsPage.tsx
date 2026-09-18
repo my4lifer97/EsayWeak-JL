@@ -6,6 +6,7 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type BusinessSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
@@ -165,18 +166,29 @@ export default function SettingsPage() {
     <div>
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'settings')}</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
-        {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>}
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">{error}</div>}
         {showBillingSuccessBanner && (
-          <div className="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-lg px-4 py-3">
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-900/40 dark:border-blue-800/50 dark:text-blue-400 text-sm rounded-lg px-4 py-3">
             {t(lang, 'billingRedirecting')}
           </div>
         )}
 
-        <div className="bg-white border border-line rounded-2xl p-6">
+        <div className="bg-surface border border-line rounded-2xl p-6">
+          <h2 className="text-ink font-semibold mb-1">Appearance</h2>
+          <div className="flex items-center justify-between gap-4 mt-3">
+            <div>
+              <div className="text-sm font-medium text-ink">Dark mode</div>
+              <div className="text-muted text-sm mt-0.5">Switch between the light and dark theme.</div>
+            </div>
+            <ThemeToggle />
+          </div>
+        </div>
+
+        <div className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold mb-3">{t(lang, 'subscription')}</h2>
           <div className={`text-sm px-4 py-2 rounded-lg inline-block ${
-            business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700'
-              : isTrialActive ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+            business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+              : isTrialActive ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
           }`}>
             {business.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionActive')
               : isTrialActive ? `Free trial · ${trialDaysLeft} days left (expires ${format(trialDate, 'MMM d, yyyy')})`
@@ -196,7 +208,7 @@ export default function SettingsPage() {
           </p>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+        <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
           <h2 className="text-ink font-semibold mb-1">{t(lang, 'businessInfo')}</h2>
 
           <div>
@@ -248,7 +260,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+        <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
           <h2 className="text-ink font-semibold mb-1">{t(lang, 'businessLocation')}</h2>
           <div>
             <label htmlFor="settings-city" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'city')}</label>
@@ -273,7 +285,7 @@ export default function SettingsPage() {
           <label className="flex items-start gap-3 cursor-pointer border-t border-line pt-4">
             <input type="checkbox" checked={isListed}
               onChange={(e) => setIsListed(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
+              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
             <span>
               <span className="block text-sm font-medium text-ink">{t(lang, 'listInDirectory')}</span>
               <span className="block text-muted text-sm mt-0.5">{t(lang, 'listInDirectoryHint')}</span>
@@ -281,7 +293,7 @@ export default function SettingsPage() {
           </label>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+        <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
           <h2 className="text-ink font-semibold mb-1">{t(lang, 'bookingLimits')}</h2>
           <p className="text-muted text-sm">{t(lang, 'bookingLimitsHint')}</p>
           <div className="grid grid-cols-2 gap-4">
@@ -297,12 +309,12 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+        <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
           <h2 className="text-ink font-semibold mb-1">{t(lang, 'waitlistSettings')}</h2>
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={waitlistEnabled}
               onChange={(e) => setWaitlistEnabled(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
+              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
             <span>
               <span className="block text-sm font-medium text-ink">{t(lang, 'waitlistEnabledLabel')}</span>
               <span className="block text-muted text-sm mt-0.5">{t(lang, 'waitlistEnabledHint')}</span>
@@ -314,7 +326,7 @@ export default function SettingsPage() {
             <label className="flex items-start gap-3 cursor-pointer mb-2">
               <input type="radio" name="customerCancelPolicy" checked={!requireApprovalOnCustomerCancel}
                 onChange={() => setRequireApprovalOnCustomerCancel(false)}
-                className="mt-1 w-4 h-4 border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
+                className="mt-1 w-4 h-4 border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
               <span>
                 <span className="block text-sm font-medium text-ink">{t(lang, 'customerCancelAutoLabel')}</span>
                 <span className="block text-muted text-sm mt-0.5">{t(lang, 'customerCancelAutoHint')}</span>
@@ -323,7 +335,7 @@ export default function SettingsPage() {
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="radio" name="customerCancelPolicy" checked={requireApprovalOnCustomerCancel}
                 onChange={() => setRequireApprovalOnCustomerCancel(true)}
-                className="mt-1 w-4 h-4 border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
+                className="mt-1 w-4 h-4 border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
               <span>
                 <span className="block text-sm font-medium text-ink">{t(lang, 'customerCancelApprovalLabel')}</span>
                 <span className="block text-muted text-sm mt-0.5">{t(lang, 'customerCancelApprovalHint')}</span>
@@ -332,14 +344,14 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+        <div className="bg-surface border border-line rounded-2xl p-6 space-y-4">
           <h2 className="text-ink font-semibold mb-1">{t(lang, 'chatbotSettings')}</h2>
           <p className="text-muted text-sm">{t(lang, 'chatbotSettingsHint')}</p>
 
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={chatbotEnabled}
               onChange={(e) => setChatbotEnabled(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
+              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
             <span>
               <span className="block text-sm font-medium text-ink">{t(lang, 'chatbotEnabledLabel')}</span>
               <span className="block text-muted text-sm mt-0.5">{t(lang, 'chatbotEnabledHint')}</span>
@@ -365,7 +377,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 space-y-2">
+        <div className="bg-surface border border-line rounded-2xl p-6 space-y-2">
           <h2 className="text-ink font-semibold mb-1">{t(lang, 'whatsappSetup')}</h2>
           <p className="text-muted text-sm">{t(lang, 'whatsappNumberHint')}</p>
           <div className="bg-cream border border-line rounded-lg px-3 py-2.5 text-ink font-mono">

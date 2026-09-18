@@ -31,7 +31,7 @@ export default function AdminLayout() {
   return (
     <div className="min-h-screen bg-cream" dir={isRTL ? 'rtl' : 'ltr'}>
       <AdminSidebar businessName={user?.name ?? ''} isTouch open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-line bg-white">
+      <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-line bg-surface">
         <button onClick={() => setSidebarOpen(true)} className="text-ink hover:text-coral-dark text-xl" aria-label="Open menu">☰</button>
         <div className="text-ink font-bold">EsayWeek</div>
       </div>

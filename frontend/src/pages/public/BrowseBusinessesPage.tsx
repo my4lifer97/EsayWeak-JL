@@ -103,7 +103,7 @@ export default function BrowseBusinessesPage() {
         <input
           type="text" value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder={t(lang, 'searchBusinessesPlaceholder')}
-          className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
+          className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
         />
 
         {/* Category chips */}
@@ -111,7 +111,7 @@ export default function BrowseBusinessesPage() {
           <button
             onClick={() => setCategoryKey('')}
             className={`shrink-0 text-sm font-medium px-3 py-1.5 rounded-full border transition-colors ${
-              categoryKey === '' ? 'bg-coral border-coral text-white' : 'bg-white border-line text-ink hover:bg-cream'
+              categoryKey === '' ? 'bg-coral border-coral text-white' : 'bg-surface border-line text-ink hover:bg-cream'
             }`}>
             {t(lang, 'allCategories')}
           </button>
@@ -120,7 +120,7 @@ export default function BrowseBusinessesPage() {
               key={bt.key}
               onClick={() => setCategoryKey(bt.key)}
               className={`shrink-0 text-sm font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                categoryKey === bt.key ? 'bg-coral border-coral text-white' : 'bg-white border-line text-ink hover:bg-cream'
+                categoryKey === bt.key ? 'bg-coral border-coral text-white' : 'bg-surface border-line text-ink hover:bg-cream'
               }`}>
               {lang === 'AR' ? bt.displayNameAr : lang === 'HE' ? bt.displayNameHe : bt.displayNameEn}
             </button>
@@ -131,13 +131,13 @@ export default function BrowseBusinessesPage() {
         <div className="flex gap-2 mt-3">
           <select
             value={city} onChange={(e) => setCity(e.target.value)}
-            className="flex-1 bg-white border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
+            className="flex-1 bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
             <option value="">{t(lang, 'allCities')}</option>
             {cities.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <select
             value={sort} onChange={(e) => setSort(e.target.value as (typeof SORTS)[number])}
-            className="flex-1 bg-white border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
+            className="flex-1 bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
             {SORTS.map((s) => <option key={s} value={s}>{t(lang, SORT_KEY[s])}</option>)}
           </select>
         </div>
@@ -153,7 +153,7 @@ export default function BrowseBusinessesPage() {
               <div className="text-xs text-muted mb-2">{results.length} / {total}</div>
               <div className="space-y-3">
                 {results.map((b) => (
-                  <div key={b.slug} className="bg-white border border-line rounded-2xl p-4 flex items-start gap-3">
+                  <div key={b.slug} className="bg-surface border border-line rounded-2xl p-4 flex items-start gap-3">
                     <Link to={`/${b.slug}`} className="shrink-0">
                       {b.logo ? (
                         <img src={mediaUrl(b.logo)} alt={b.name} className="w-12 h-12 rounded-full object-cover border border-line" />
@@ -209,7 +209,7 @@ export default function BrowseBusinessesPage() {
             ) : (
               <div className="space-y-2">
                 {followed.map((b) => (
-                  <div key={b.slug} className="bg-white border border-line rounded-xl px-4 py-2.5 flex items-center justify-between gap-3">
+                  <div key={b.slug} className="bg-surface border border-line rounded-xl px-4 py-2.5 flex items-center justify-between gap-3">
                     <Link to={`/${b.slug}`} className="flex-1 min-w-0 text-sm font-medium text-ink truncate">{b.name}</Link>
                     <button
                       disabled={pending === b.slug}

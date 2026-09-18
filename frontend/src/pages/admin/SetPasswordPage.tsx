@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
+import ThemeToggle from '../../components/ThemeToggle'
 
 export default function SetPasswordPage() {
   const { changePassword } = useAuth()
@@ -33,7 +34,8 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
+    <div className="relative min-h-screen bg-cream flex items-center justify-center p-4">
+      <div className="absolute top-4 end-4"><ThemeToggle /></div>
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-ink mb-2 text-center">Set your password</h1>
         <p className="text-muted text-center mb-8">
@@ -42,19 +44,19 @@ export default function SetPasswordPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+            <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">
               {error}
             </div>
           )}
           <input
             type="password" required autoFocus value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
             placeholder="New password"
-            className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+            className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
           />
           <input
             type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm new password"
-            className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+            className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
           />
           <button
             type="submit" disabled={loading}

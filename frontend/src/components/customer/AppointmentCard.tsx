@@ -22,9 +22,9 @@ export type Appointment = {
 type Slot = { start: string; end: string }
 
 const STATUS_COLORS: Record<string, string> = {
-  CONFIRMED: 'bg-blue-100 text-blue-700 border-blue-200',
-  COMPLETED: 'bg-green-100 text-green-700 border-green-200',
-  CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
+  CONFIRMED: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-800/50',
+  COMPLETED: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800/50',
+  CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800/60 dark:text-gray-400 dark:border-gray-700/50',
 }
 
 export default function AppointmentCard({
@@ -108,7 +108,7 @@ export default function AppointmentCard({
   }
 
   return (
-    <div className={`bg-white border rounded-2xl p-4 ${appt.status !== 'CONFIRMED' ? 'border-line opacity-60' : 'border-line'}`}>
+    <div className={`bg-surface border rounded-2xl p-4 ${appt.status !== 'CONFIRMED' ? 'border-line opacity-60' : 'border-line'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {showBusinessName && <div className="font-semibold text-ink truncate">{appt.businessName}</div>}

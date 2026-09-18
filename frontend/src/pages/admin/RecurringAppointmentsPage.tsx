@@ -117,7 +117,7 @@ export default function RecurringAppointmentsPage() {
       </div>
 
       {actionError && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{actionError}</div>
+        <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{actionError}</div>
       )}
 
       {series.length === 0 ? (
@@ -125,7 +125,7 @@ export default function RecurringAppointmentsPage() {
       ) : (
         <div className="grid gap-3">
           {series.map((s) => (
-            <div key={s.id} className="bg-white border border-line rounded-xl px-5 py-4">
+            <div key={s.id} className="bg-surface border border-line rounded-xl px-5 py-4">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-ink font-medium">{s.customer.name} {s.customer.familyName} · {s.customer.phone}</div>
@@ -136,7 +136,7 @@ export default function RecurringAppointmentsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.isActive ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400'}`}>
                     {t(lang, s.isActive ? 'activeSeries' : 'pausedSeries')}
                   </span>
                   <button onClick={() => handleDelete(s.id)} disabled={actionLoadingId === s.id}
@@ -144,7 +144,7 @@ export default function RecurringAppointmentsPage() {
                 </div>
               </div>
               {s.recentSkips.length > 0 && (
-                <div className="mt-2 text-amber-700 text-xs">
+                <div className="mt-2 text-amber-700 dark:text-amber-400 text-xs">
                   {t(lang, 'missedOccurrence')}: {s.recentSkips[0].date} — {t(lang, 'slotUnavailableReason')}
                   {s.recentSkips.length > 1 && ` (+${s.recentSkips.length - 1})`}
                 </div>
@@ -156,13 +156,13 @@ export default function RecurringAppointmentsPage() {
 
       {showForm && (
         <div onClick={() => { setShowForm(false); resetForm() }} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl p-6 w-full max-w-md border border-line max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-md border border-line max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h2 className="text-ink font-semibold text-lg">{t(lang, 'newRecurringSeries')}</h2>
               <button onClick={() => { setShowForm(false); resetForm() }} aria-label="Close"
                 className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
             </div>
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'service')}</label>

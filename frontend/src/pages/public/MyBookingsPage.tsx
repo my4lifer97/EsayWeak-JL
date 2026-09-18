@@ -37,7 +37,7 @@ export default function MyBookingsPage() {
         <BackButton lang={lang} />
         <h1 className="text-2xl font-bold text-ink mb-6 mt-3">{t(lang, 'myBookingsTitle')}</h1>
 
-        <div className="flex gap-1 bg-white rounded-xl p-1 border border-line mb-6 w-fit">
+        <div className="flex gap-1 bg-surface rounded-xl p-1 border border-line mb-6 w-fit">
           {FILTERS.map((f) => (
             <button key={f.value} onClick={() => setFilter(f.value)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${

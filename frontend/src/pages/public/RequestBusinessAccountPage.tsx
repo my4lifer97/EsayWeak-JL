@@ -74,8 +74,8 @@ export default function RequestBusinessAccountPage() {
         </p>
 
         {submitted ? (
-          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-6 text-center">
-            <p className="text-green-700 font-medium mb-2">Thanks — your request has been submitted.</p>
+          <div className="bg-green-50 border border-green-200 dark:bg-green-900/40 dark:border-green-800/50 rounded-xl px-4 py-6 text-center">
+            <p className="text-green-700 dark:text-green-400 font-medium mb-2">Thanks — your request has been submitted.</p>
             <p className="text-muted text-sm">
               Once an admin approves it, you'll get an email with your username and a temporary password.
             </p>
@@ -83,7 +83,7 @@ export default function RequestBusinessAccountPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
+              <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">{error}</div>
             )}
 
             <div>
@@ -99,7 +99,7 @@ export default function RequestBusinessAccountPage() {
                     placeholder="Family name" autoComplete="family-name" className={inputClass}
                   />
                 </div>
-                <p className={`text-xs ${nameError ? 'text-red-600' : 'text-muted'}`}>
+                <p className={`text-xs ${nameError ? 'text-red-600 dark:text-red-400' : 'text-muted'}`}>
                   Enter both names in English — they're used to create your login username.
                 </p>
                 <input

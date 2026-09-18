@@ -77,7 +77,7 @@ export default function WeeklyCalendar({
       {/* Below md, 8 squished columns are unreadable, so the grid gets a fixed min-width and
           scrolls horizontally within its own box instead of shrinking illegibly -- avoids
           forcing the owner to rotate the phone to landscape just to read the board. */}
-      <div className="bg-white rounded-2xl border border-line overflow-x-auto">
+      <div className="bg-surface rounded-2xl border border-line overflow-x-auto">
         <div className="min-w-[640px]">
           <div className="grid grid-cols-8 border-b border-line">
             <div className="p-3" />
@@ -145,15 +145,15 @@ export default function WeeklyCalendar({
 
       {selected && (
         <div onClick={() => setSelected(null)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl p-6 w-full max-w-sm border border-line">
+          <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-line">
             <div className="relative mb-4">
               <div className="text-center px-11">
                 <h2 className="text-ink font-semibold text-lg">{selected.customer.name}</h2>
                 {selected.pendingCancellationApproval && (
-                  <div className="text-xs text-amber-700 mt-0.5">⚠️ {t(lang, 'cancellationRequestedBadge')}</div>
+                  <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">⚠️ {t(lang, 'cancellationRequestedBadge')}</div>
                 )}
                 {selected.recurringSeriesId && (
-                  <div className="text-xs text-purple-700 mt-0.5">🔁 {t(lang, 'partOfSeries')}</div>
+                  <div className="text-xs text-purple-700 dark:text-purple-400 mt-0.5">🔁 {t(lang, 'partOfSeries')}</div>
                 )}
               </div>
               <button onClick={() => setSelected(null)}
@@ -167,7 +167,7 @@ export default function WeeklyCalendar({
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />
               {selected.notes && <Row label={t(lang, 'notes')} value={selected.notes} />}
               <Row label={t(lang, 'status')} value={selected.status}
-                valueClass={selected.status === 'CONFIRMED' ? 'text-blue-700' : selected.status === 'COMPLETED' ? 'text-green-700' : 'text-muted'} />
+                valueClass={selected.status === 'CONFIRMED' ? 'text-blue-700 dark:text-blue-400' : selected.status === 'COMPLETED' ? 'text-green-700 dark:text-green-400' : 'text-muted'} />
             </div>
             {selected.photoUrl && (
               <div className="mb-6">

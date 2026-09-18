@@ -59,7 +59,7 @@ export default function ReviewsPage() {
       ) : (
         <div className="space-y-3">
           {reviews.map((r) => (
-            <div key={r.id} className={`bg-white border rounded-2xl p-4 ${r.isHidden ? 'border-line opacity-60' : 'border-line'}`}>
+            <div key={r.id} className={`bg-surface border rounded-2xl p-4 ${r.isHidden ? 'border-line opacity-60' : 'border-line'}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-ink text-sm font-medium">{r.reviewerName}</span>

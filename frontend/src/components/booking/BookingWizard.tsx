@@ -8,6 +8,7 @@ import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import BackButton from '../BackButton'
 import LanguageSwitcher from '../customer/LanguageSwitcher'
+import ThemeToggle from '../ThemeToggle'
 import SlotBookedModal from './SlotBookedModal'
 import BookingSuccessModal from './BookingSuccessModal'
 
@@ -197,7 +198,10 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
               <div key={s} className={`h-1.5 w-8 rounded-full transition-colors ${s <= step ? 'bg-coral' : 'bg-line'}`} />
             ))}
           </div>
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
         </div>
 
         <h1 className="text-2xl font-bold mb-2">{business.name}</h1>
@@ -210,7 +214,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                 <button key={s.id} onClick={() => {
                   setItem(s); setSelectedGalleryPhotoId(null); setUploadedPhotoUrl(null); setPhotoError(''); setStep(2)
                 }}
-                  className="w-full bg-white hover:bg-cream border border-line hover:border-coral rounded-xl px-5 py-4 flex justify-between items-center transition-colors text-start">
+                  className="w-full bg-surface hover:bg-cream border border-line hover:border-coral rounded-xl px-5 py-4 flex justify-between items-center transition-colors text-start">
                   <div>
                     <div className="font-medium">{itemName(s, lang)}</div>
                     <div className="text-muted text-sm mt-0.5">{s.durationMinutes} {t(lang, 'min')}</div>
@@ -230,7 +234,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                 const str = format(d, 'yyyy-MM-dd')
                 return (
                   <button key={str} onClick={() => pickDate(str)}
-                    className={`bg-white hover:bg-coral hover:text-white border border-line hover:border-coral-dark rounded-xl p-3 text-center transition-colors ${date === str ? 'bg-coral text-white border-coral-dark' : ''}`}>
+                    className={`bg-surface hover:bg-coral hover:text-white border border-line hover:border-coral-dark rounded-xl p-3 text-center transition-colors ${date === str ? 'bg-coral text-white border-coral-dark' : ''}`}>
                     <div className="text-xs text-muted">{format(d, 'EEE', { locale: dateLocale })}</div>
                     <div className="text-ink font-medium mt-0.5">{format(d, 'd')}</div>
                     <div className="text-xs text-muted">{format(d, 'MMM', { locale: dateLocale })}</div>
@@ -261,7 +265,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                   <button key={s.start} onClick={() => pickSlot(s)}
                     className={`rounded-xl py-3 text-center text-sm font-medium transition-colors border ${
                       s.available
-                        ? `bg-white hover:bg-coral hover:text-white border-line hover:border-coral-dark ${slot?.start === s.start ? 'bg-coral text-white border-coral-dark' : ''}`
+                        ? `bg-surface hover:bg-coral hover:text-white border-line hover:border-coral-dark ${slot?.start === s.start ? 'bg-coral text-white border-coral-dark' : ''}`
                         : 'bg-cream border-line text-muted'
                     }`}>
                     {s.start}
@@ -276,29 +280,29 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
         {step === 4 && (
           <div>
             <p className="text-muted mb-6">{t(lang, 'yourDetails')}</p>
-            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
             <div className="space-y-4">
               <div>
                 <label htmlFor="booking-name" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'fullName')}</label>
                 <input id="booking-name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
+                  className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
               </div>
               <div>
                 <label htmlFor="booking-family-name" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'familyName')}</label>
                 <input id="booking-family-name" type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
-                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
+                  className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
               </div>
               <div>
                 <label htmlFor="booking-phone" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'phoneNumber')}</label>
                 <input id="booking-phone" type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
                   disabled={isAuthenticated}
-                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral disabled:opacity-60" />
+                  className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral disabled:opacity-60" />
               </div>
               <div>
                 <label htmlFor="booking-notes" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'notes')}</label>
                 <textarea id="booking-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
                   placeholder={t(lang, 'notesPlaceholder')}
-                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+                  className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
               </div>
               {(item?.photoMode === 'OwnerGallery' || item?.photoMode === 'Both') && (
                 <div>
@@ -330,18 +334,18 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                       </button>
                     </div>
                   ) : (
-                    <label className="inline-block cursor-pointer bg-white border border-line hover:border-coral rounded-xl px-4 py-3 text-sm text-ink">
+                    <label className="inline-block cursor-pointer bg-surface border border-line hover:border-coral rounded-xl px-4 py-3 text-sm text-ink">
                       {photoUploading ? t(lang, 'uploading') : t(lang, 'uploadYourPhoto')}
                       <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={photoUploading}
                         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadPhoto(f) }} />
                     </label>
                   )}
-                  {photoError && <p className="text-red-600 text-xs mt-1">{photoError}</p>}
+                  {photoError && <p className="text-red-600 dark:text-red-400 text-xs mt-1">{photoError}</p>}
                 </div>
               )}
 
               {item && slot && (
-                <div className="bg-white border border-line rounded-xl p-4 text-sm space-y-1">
+                <div className="bg-surface border border-line rounded-xl p-4 text-sm space-y-1">
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'service')}</span><span className="text-ink">{itemName(item, lang)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date}</span></div>
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'time')}</span><span className="text-ink">{slot.start} – {slot.end}</span></div>

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type CustomerDetail = { id: string; name: string; familyName: string; phone: string; createdAt: string }
 
@@ -46,13 +47,16 @@ export default function PlatformAdminCustomerDetailPage() {
   return (
     <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-3xl mx-auto">
-        <Link to="/platform-admin" className="text-muted hover:text-ink text-sm mb-6 inline-block">← Back</Link>
+        <div className="flex items-center justify-between mb-6">
+          <Link to="/platform-admin" className="text-muted hover:text-ink text-sm inline-block">← Back</Link>
+          <ThemeToggle />
+        </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
+        <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
           <h1 className="text-xl font-bold">{customer.name} {customer.familyName}</h1>
           <p className="text-muted text-sm mb-4">{customer.phone}</p>
 
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
 
           <button onClick={handleImpersonate} disabled={impersonating}
             className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
@@ -60,7 +64,7 @@ export default function PlatformAdminCustomerDetailPage() {
           </button>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6">
+        <div className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="font-semibold mb-4">Recent activity</h2>
           <ActivityLogTable entries={activity} />
         </div>

@@ -69,8 +69,8 @@ export default function CustomerPicker({
         <div className="bg-cream border border-line rounded-lg max-h-48 overflow-y-auto">
           {waitlistEntries.map((w) => (
             <button key={w.id} type="button" onClick={() => selectFromWaitlist(w)}
-              className={`w-full text-start px-3 py-2 text-sm hover:bg-white ${
-                value && 'waitlistEntryId' in value && value.waitlistEntryId === w.id ? 'bg-white text-ink' : 'text-ink'
+              className={`w-full text-start px-3 py-2 text-sm hover:bg-surface ${
+                value && 'waitlistEntryId' in value && value.waitlistEntryId === w.id ? 'bg-surface text-ink' : 'text-ink'
               }`}>
               {w.name} {w.familyName} · {w.phone}
             </button>
@@ -83,7 +83,7 @@ export default function CustomerPicker({
             placeholder={t(lang, 'customerSearchPlaceholder')}
             className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
           {query.trim().length >= 2 && !('customerId' in (value ?? {})) && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-line rounded-lg max-h-48 overflow-y-auto">
+            <div className="absolute z-10 mt-1 w-full bg-surface border border-line rounded-lg max-h-48 overflow-y-auto">
               {isFetching ? (
                 <div className="px-3 py-2 text-muted text-sm">{t(lang, 'loading')}</div>
               ) : results.length === 0 ? (

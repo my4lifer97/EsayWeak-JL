@@ -83,7 +83,7 @@ export default function SchedulePage() {
     <div>
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'schedule')}</h1>
       <div className="space-y-8">
-        <section className="bg-white border border-line rounded-2xl p-6">
+        <section className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold text-lg mb-5">{t(lang, 'workingHours')}</h2>
           <div className="space-y-3">
             {hours.map((h, i) => (
@@ -114,7 +114,7 @@ export default function SchedulePage() {
           </button>
         </section>
 
-        <section className="bg-white border border-line rounded-2xl p-6">
+        <section className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold text-lg mb-5">{t(lang, 'recurringBreaks')}</h2>
           {breaks.length > 0 && (
             <div className="space-y-2 mb-4">
@@ -142,7 +142,7 @@ export default function SchedulePage() {
           </div>
         </section>
 
-        <section className="bg-white border border-line rounded-2xl p-6">
+        <section className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold text-lg mb-5">{t(lang, 'blockedDates')}</h2>
           {blocked.length > 0 && (
             <div className="space-y-2 mb-4">

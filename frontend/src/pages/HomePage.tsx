@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useCustomerAuth } from '../lib/customerAuth'
 import { t } from '../lib/i18n'
 import LanguageSwitcher from '../components/customer/LanguageSwitcher'
+import ThemeToggle from '../components/ThemeToggle'
 
 export default function HomePage() {
   const { language: lang } = useCustomerAuth()
@@ -33,6 +34,7 @@ export default function HomePage() {
         <div className="font-bold text-xl">✂️ EsayWeek</div>
         <div className="flex items-center gap-4">
           <LanguageSwitcher />
+          <ThemeToggle />
           <Link to="/admin/login" className="text-muted hover:text-ink text-sm transition-colors">{t(lang, 'homeSignIn')}</Link>
           <Link to="/request-business-account" className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t(lang, 'homeGetStarted')}</Link>
         </div>
@@ -54,7 +56,7 @@ export default function HomePage() {
         <h2 className="text-3xl font-bold text-center mb-12">{t(lang, 'homeFeaturesTitle')}</h2>
         <div className="grid md:grid-cols-3 gap-6">
           {FEATURES.map((f) => (
-            <div key={f.title} className="bg-white border border-line rounded-2xl p-6">
+            <div key={f.title} className="bg-surface border border-line rounded-2xl p-6">
               <div className="text-3xl mb-4">{f.icon}</div>
               <h3 className="font-semibold text-lg mb-2">{f.title}</h3>
               <p className="text-muted text-sm leading-relaxed">{f.desc}</p>
@@ -66,13 +68,13 @@ export default function HomePage() {
       <section className="py-20 px-4 max-w-md mx-auto text-center">
         <h2 className="text-3xl font-bold mb-4">{t(lang, 'homePricingTitle')}</h2>
         <p className="text-muted mb-10">{t(lang, 'homePricingSubtitle')}</p>
-        <div className="bg-white border border-coral/40 rounded-2xl p-8">
+        <div className="bg-surface border border-coral/40 rounded-2xl p-8">
           <div className="text-5xl font-bold mb-2">₪120<span className="text-xl text-muted font-normal">{t(lang, 'homePricingPerMonth')}</span></div>
           <p className="text-muted mb-8">{t(lang, 'homePricingPerBusiness')}</p>
           <ul className="text-start space-y-3 mb-8">
             {pricingItems.map((item) => (
               <li key={item} className="flex items-center gap-3 text-sm">
-                <span className="text-green-600">✓</span>
+                <span className="text-green-600 dark:text-green-400">✓</span>
                 <span className="text-ink">{item}</span>
               </li>
             ))}
@@ -86,7 +88,7 @@ export default function HomePage() {
         </div>
         <div className="flex items-center justify-center gap-2 mt-3 flex-wrap">
           {['VISA', 'Mastercard', 'AMEX'].map((brand) => (
-            <span key={brand} className="bg-white border border-line text-muted text-xs font-semibold px-3 py-1.5 rounded-lg tracking-wide">
+            <span key={brand} className="bg-surface border border-line text-muted text-xs font-semibold px-3 py-1.5 rounded-lg tracking-wide">
               {brand}
             </span>
           ))}

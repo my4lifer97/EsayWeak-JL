@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type BusinessDetail = {
   id: string; name: string; email: string; slug: string; phone: string | null
@@ -109,9 +110,12 @@ export default function PlatformAdminBusinessDetailPage() {
   return (
     <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-3xl mx-auto">
-        <Link to="/platform-admin" className="text-muted hover:text-ink text-sm mb-6 inline-block">← Back</Link>
+        <div className="flex items-center justify-between mb-6">
+          <Link to="/platform-admin" className="text-muted hover:text-ink text-sm inline-block">← Back</Link>
+          <ThemeToggle />
+        </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
+        <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
           <div className="flex items-start justify-between mb-4">
             <div>
               <h1 className="text-xl font-bold">{business.name}</h1>
@@ -119,12 +123,12 @@ export default function PlatformAdminBusinessDetailPage() {
               <p className="text-muted text-sm">/{business.slug} {business.phone && `· ${business.phone}`}</p>
             </div>
             <span className={`text-xs px-2 py-1 rounded-full ${
-              business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700'
-                : business.subscriptionStatus === 'TRIAL' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+              business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                : business.subscriptionStatus === 'TRIAL' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
             }`}>{business.subscriptionStatus}</span>
           </div>
 
-          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
 
           <button onClick={handleImpersonate} disabled={impersonating}
             className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
@@ -132,20 +136,20 @@ export default function PlatformAdminBusinessDetailPage() {
           </button>
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
+        <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
           <h2 className="font-semibold mb-1">WhatsApp</h2>
           <p className="text-muted text-sm mb-3">
             This business's self-hosted WhatsApp chatbot session. Linking asks the owner to scan a
             QR code with their own phone (WhatsApp → Linked Devices → Link a Device) — no Meta
             Business verification needed.
           </p>
-          {linkError && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-3">{linkError}</div>}
+          {linkError && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-3">{linkError}</div>}
 
           {business.whatsAppNumber && !polling ? (
             <div className="flex items-center justify-between">
               <span className="text-ink font-mono">Connected as {business.whatsAppNumber}</span>
               <button onClick={handleUnlink} disabled={unlinking}
-                className="bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+                className="bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60 disabled:opacity-50 text-red-700 dark:text-red-400 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
                 {unlinking ? 'Unlinking...' : 'Unlink'}
               </button>
             </div>
@@ -165,7 +169,7 @@ export default function PlatformAdminBusinessDetailPage() {
           )}
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
+        <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
           <h2 className="font-semibold mb-4">Reviews ({reviews.length})</h2>
           {reviews.length === 0 ? (
             <p className="text-muted text-sm">No reviews.</p>
@@ -192,7 +196,7 @@ export default function PlatformAdminBusinessDetailPage() {
           )}
         </div>
 
-        <div className="bg-white border border-line rounded-2xl p-6">
+        <div className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="font-semibold mb-4">Recent activity</h2>
           <ActivityLogTable entries={activity} />
         </div>
