@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import ThemeToggle from '../../components/ThemeToggle'
+import { useTheme } from '../../lib/theme'
 
 type BusinessSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
@@ -27,6 +28,7 @@ type BusinessSettings = {
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const { language: lang, setLang } = useAuth()
+  const { theme } = useTheme()
   const { data: business } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
     queryFn: () => api.get('/admin/settings').then((r) => r.data),
@@ -177,7 +179,7 @@ export default function SettingsPage() {
           <h2 className="text-ink font-semibold mb-1">Appearance</h2>
           <div className="flex items-center justify-between gap-4 mt-3">
             <div>
-              <div className="text-sm font-medium text-ink">Dark mode</div>
+              <div className="text-sm font-medium text-ink">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</div>
               <div className="text-muted text-sm mt-0.5">Switch between the light and dark theme.</div>
             </div>
             <ThemeToggle />
