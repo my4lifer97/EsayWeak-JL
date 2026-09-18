@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
 using BarberSaas.Api.DTOs;
+using BarberSaas.Api.Models;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
@@ -98,6 +100,42 @@ public class BookingFlowTests : IntegrationTestBase
         var detail = await (await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}")).Content.ReadFromJsonAsync<AppointmentDetailDto>();
         Assert.Equal("Jane", detail!.Customer.Name);
         Assert.Equal("Doe", detail.Customer.FamilyName);
+    }
+
+    [Fact]
+    public async Task WhatsAppOriginatedBooking_SendsConfirmationAndClearsAwaitingCompletion()
+    {
+        var (businessToken, slug) = await RegisterAndLoginBusiness("wa-confirm-flow@example.com", "wa-confirm-flow-shop");
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
+        const string phone = "+15553330099";
+        var customerToken = await GetCustomerToken(phone);
+
+        string businessId;
+        using (var db = Db())
+        {
+            var business = await db.Businesses.FirstAsync(b => b.Slug == slug);
+            business.WhatsAppNumber = "+15550009999"; // needed for BookingController to attempt a send
+            businessId = business.Id;
+            db.WhatsAppConversationStates.Add(new WhatsAppConversationState
+            {
+                BusinessId = businessId, Phone = phone, Language = "EN",
+                AwaitingBookingCompletion = true, ExpiresAt = DateTime.UtcNow.AddHours(24),
+            });
+            await db.SaveChangesAsync();
+        }
+
+        Authorize(Client, customerToken);
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(itemId, TestDate, slot, "Jane", phone, null));
+        Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
+
+        var sent = Assert.Single(Factory.WhatsAppSender.Sent, s => s.Phone == phone);
+        Assert.Contains("Haircut", sent.Message);
+        Assert.Contains(TestDate, sent.Message);
+
+        using var verifyDb = Db();
+        Assert.False(await verifyDb.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone && s.AwaitingBookingCompletion));
     }
 
     [Fact]

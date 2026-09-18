@@ -13,7 +13,8 @@ namespace BarberSaas.Api.Controllers;
 [Route("api/{slug}")]
 public class BookingController(
     AppDbContext db, AvailabilityService availability, FollowService followService, IWebHostEnvironment env,
-    WaitlistService waitlist, AppointmentCancellationService cancellationService) : ControllerBase
+    WaitlistService waitlist, AppointmentCancellationService cancellationService,
+    IWhatsAppSender whatsAppSender, ILogger<BookingController> logger) : ControllerBase
 {
     private static readonly Dictionary<string, string> AllowedPhotoTypes = new()
     {
@@ -210,11 +211,45 @@ public class BookingController(
         };
         db.Appointments.Add(appointment);
 
+        // If this booking is the customer finishing a WhatsApp-issued link, clear the "awaiting
+        // booking completion" flag that's been keeping the bot quiet for this phone (see
+        // WhatsAppController.IssueBookingLink) -- committed in the same save as the appointment
+        // itself below. No-op for a booking that didn't come from WhatsApp.
+        var pendingWhatsAppState = await db.WhatsAppConversationStates
+            .FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == phone && s.AwaitingBookingCompletion);
+        var confirmationLang = pendingWhatsAppState?.Language ?? business.Language.ToString();
+        if (pendingWhatsAppState is not null)
+            db.WhatsAppConversationStates.Remove(pendingWhatsAppState);
+
         await waitlist.ResolveForRebooking(business.Id, requestedDate, req.StartTime);
         if (!await availability.TrySaveOrDetectConflict(business.Id, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
         this.SetActivityDetail($"Booked appointment: {item.NameEn} with {business.Name} on {req.Date} at {req.StartTime}");
+
+        // Best-effort -- a business with a linked WhatsApp session gets every confirmed booking
+        // echoed back to the customer on WhatsApp, not just ones that started there (same
+        // permissive "if a number's configured" pattern as reminders/waitlist notifications).
+        if (business.WhatsAppNumber is not null)
+        {
+            var itemDisplayName = confirmationLang switch { "AR" => item.NameAr, "HE" => item.NameHe, _ => item.NameEn };
+            var message = I18nService.T(confirmationLang, "whatsapp.bookingConfirmed", new()
+            {
+                ["customerName"] = req.CustomerName,
+                ["businessName"] = business.Name,
+                ["service"] = itemDisplayName,
+                ["date"] = req.Date,
+                ["time"] = req.StartTime,
+            });
+            try
+            {
+                await whatsAppSender.SendAsync(business, phone, message);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to send WhatsApp booking confirmation for appointment {AppointmentId}", appointment.Id);
+            }
+        }
 
         return StatusCode(201, new BookAppointmentResponse(appointment.Id, appointment.CancelToken));
     }

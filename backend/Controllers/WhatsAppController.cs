@@ -26,6 +26,9 @@ public class WhatsAppController(
     // the lockout gate at the top of ProcessMessageRuleBasedAsync.
     private const int MaxInvalidAttempts = 3;
     private const string UnlockKeyword = "$";
+    // Matches WhatsAppBookingTokenService's own token lifetime -- the "stay quiet" window should
+    // never outlast the link it's protecting.
+    private static readonly TimeSpan BookingLinkPendingLifetime = TimeSpan.FromHours(24);
 
     // Legacy Twilio WhatsApp Business API webhook. Kept but dormant -- no business currently has a
     // real Twilio WhatsApp number (Meta/Trust Hub verification was rejected, see project history),
@@ -137,18 +140,27 @@ public class WhatsAppController(
     {
         var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
 
-        // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
-        // automated replies entirely -- including cancel/reschedule keywords -- until they send
-        // the literal unlock keyword, which restarts the conversation from the opening prompt.
-        // Prevents the bot replying indefinitely to someone just sending random text.
-        var lockedState = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
-            s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow && s.InvalidAttempts >= MaxInvalidAttempts);
-        if (lockedState is not null)
+        var conversationState = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
+            s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
+        if (conversationState is not null)
         {
-            if (incomingMsg.Trim() != UnlockKeyword) return null;
-            db.WhatsAppConversationStates.Remove(lockedState);
-            await db.SaveChangesAsync();
-            return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+            // A booking link was already issued and not yet completed -- stay quiet instead of
+            // re-sending the opening prompt for every message the customer sends while they finish
+            // booking on the web page the link opened. BookingController clears this once the
+            // appointment is actually created (or it just expires with the row).
+            if (conversationState.AwaitingBookingCompletion) return null;
+
+            // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
+            // automated replies entirely -- including cancel/reschedule keywords -- until they send
+            // the literal unlock keyword, which restarts the conversation from the opening prompt.
+            // Prevents the bot replying indefinitely to someone just sending random text.
+            if (conversationState.InvalidAttempts >= MaxInvalidAttempts)
+            {
+                if (incomingMsg.Trim() != UnlockKeyword) return null;
+                db.WhatsAppConversationStates.Remove(conversationState);
+                await db.SaveChangesAsync();
+                return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+            }
         }
 
         var lowerMsg = incomingMsg.ToLowerInvariant();
@@ -392,6 +404,7 @@ public class WhatsAppController(
         existing.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
         existing.Language = lang;
         existing.InvalidAttempts = 0;
+        existing.AwaitingBookingCompletion = false;
         await db.SaveChangesAsync();
 
         var list = string.Join("\n", services.Select((s, i) => $"{i + 1}. {s.Name}"));
@@ -425,7 +438,11 @@ public class WhatsAppController(
         }
 
         var chosen = services[index - 1];
-        db.WhatsAppConversationStates.Remove(state);
+        // Kept alive (not removed) with AwaitingBookingCompletion set -- see the lockout gate in
+        // ProcessMessageRuleBasedAsync for why: it's what stops the bot re-sending the opening
+        // prompt while the customer finishes booking on the web page this link opens.
+        state.AwaitingBookingCompletion = true;
+        state.ExpiresAt = DateTime.UtcNow.Add(BookingLinkPendingLifetime);
         await db.SaveChangesAsync();
 
         return await IssueBookingLink(businessId, slug, appUrl, phone, profileName, lang, chosen, confirmationMessage);

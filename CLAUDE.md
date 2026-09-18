@@ -574,6 +574,15 @@ to WhatsApp).
   cancel/reschedule keywords -- until the customer sends the literal unlock keyword (`"$"`,
   `WhatsAppController.UnlockKeyword`), which restarts the conversation from the opening prompt.
   Prevents the bot replying forever to someone sending random text.
+- **Quiet while a booking link is pending** (rule-based path only): once a booking link is issued
+  (`WhatsAppController.IssueBookingLink`), the conversation-state row is kept alive (not removed)
+  with `AwaitingBookingCompletion = true` instead, valid for the same 24h the link itself is --
+  any further message from that phone gets no automated reply at all, rather than re-sending the
+  opening prompt, while the customer finishes booking on the web page the link opened.
+  `BookingController.BookAppointment` clears the flag once the appointment is actually created, and
+  -- whenever `Business.WhatsAppNumber` is set, regardless of whether the booking came from
+  WhatsApp at all -- sends the customer a `whatsapp.bookingConfirmed` confirmation message (service,
+  date, time) via `IWhatsAppSender`, best-effort (failures are logged, never block the booking).
 
 ### WhatsApp chatbot: optional OpenAI layer
 As of 2026-09-18, `WhatsAppController.ProcessMessageAsync` tries an LLM-driven path

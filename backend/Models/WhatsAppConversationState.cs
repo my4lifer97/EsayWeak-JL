@@ -27,6 +27,12 @@ public class WhatsAppConversationState
     // reaches WhatsAppController.MaxInvalidAttempts, the bot stops auto-replying entirely until the
     // customer sends the unlock keyword.
     public int InvalidAttempts { get; set; }
+    // Set once a booking link has been issued for this phone (see WhatsAppController.IssueBookingLink)
+    // -- while true, the rule-based bot goes silent for any further message instead of re-sending the
+    // opening prompt, so the customer isn't double-messaged while they finish booking on the web page
+    // the link opened. Cleared by BookingController once the appointment is actually created (or just
+    // expires naturally with the row, same as everything else here).
+    public bool AwaitingBookingCompletion { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

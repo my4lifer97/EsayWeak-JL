@@ -87,10 +87,12 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         var customerCancel = await Client.SendAsync(cancelReq);
         Assert.Equal(HttpStatusCode.OK, customerCancel.StatusCode);
 
-        // The owner was texted instead of the cancellation finalizing.
-        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId).ToList();
+        // The owner was texted instead of the cancellation finalizing. Filtered to the owner's own
+        // phone -- booking the appointment in the first place also sent the customer their own
+        // "you're booked" confirmation (business.WhatsAppNumber is set for this test), which isn't
+        // what this assertion is about.
+        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId && s.Phone == "+15559990000").ToList();
         Assert.Single(sent);
-        Assert.Equal("+15559990000", sent[0].Phone);
 
         using (var db = Db())
         {

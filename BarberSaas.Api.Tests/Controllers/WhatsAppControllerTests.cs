@@ -100,7 +100,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task ValidNumericReply_SendsBookingLinkAndClearsState()
+    public async Task ValidNumericReply_SendsBookingLinkAndMarksAwaitingCompletion()
     {
         var (businessId, slug, serviceIds) = await SeedBusinessWithServices("wa-webhook-2@example.com", "wa-webhook-2");
         var phone = "+15558880002";
@@ -110,10 +110,28 @@ public class WhatsAppControllerTests : IntegrationTestBase
 
         Assert.Contains($"/{slug}/w/", reply);
         using var db = Db();
-        Assert.False(await db.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone));
+        // The state row is kept alive (not removed) with AwaitingBookingCompletion set -- it's what
+        // stops the bot re-sending the opening prompt while the customer finishes booking on the
+        // web page this link opens (see the next test).
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+        Assert.True(state.AwaitingBookingCompletion);
         var token = await db.WhatsAppBookingTokens.SingleAsync(t => t.BusinessId == businessId && t.Phone == phone);
         Assert.Equal(serviceIds[0], token.ItemId);
         Assert.Equal("Jane Doe", token.ProfileName);
+    }
+
+    [Fact]
+    public async Task AfterBookingLinkIssued_FurtherMessagesGetNoAutomatedReply()
+    {
+        await SeedBusinessWithServices("wa-webhook-pending-1@example.com", "wa-webhook-pending-1");
+        var phone = "+15558880022";
+        await SendWhatsAppMessage(phone, "hi");
+        await SendWhatsAppMessage(phone, "1");
+
+        // Anything sent while a booking link is pending gets silence, not the opening prompt again.
+        var reply = await SendWhatsAppMessage(phone, "hello?");
+
+        Assert.DoesNotContain("<Message>", reply);
     }
 
     [Fact]

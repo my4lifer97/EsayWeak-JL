@@ -171,7 +171,10 @@ public class WaitlistTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
         Client.DefaultRequestHeaders.Authorization = null;
 
-        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId).ToList();
+        // Filtered to the two waiters specifically -- booking the original appointment above also
+        // sent its own "you're booked" confirmation to the booker's phone (business.WhatsAppNumber
+        // is set for this test), which isn't part of what this assertion is checking.
+        var sent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId && (s.Phone == waiter1Phone || s.Phone == waiter2Phone)).ToList();
         Assert.Equal(2, sent.Count);
         Assert.Contains(sent, s => s.Phone == waiter1Phone);
         Assert.Contains(sent, s => s.Phone == waiter2Phone);
@@ -207,12 +210,17 @@ public class WaitlistTests : IntegrationTestBase
         var waiterToken = await GetCustomerToken("+15551000013");
         await JoinWaitlistAs(waiterToken, "wl-silent-shop", appt!.AppointmentId);
 
+        // Booking the appointment above already sent its own "you're booked" confirmation
+        // (business.WhatsAppNumber is set for this test) -- snapshot the count here so the
+        // assertion below is only about what the silent cancel itself does (or rather doesn't).
+        var sentBeforeCancel = Factory.WhatsAppSender.Sent.Count;
+
         Authorize(Client, token);
         var cancelResp = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt.AppointmentId}",
             new { status = "CANCELLED", notifyWaitlist = false });
         Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
 
-        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId);
+        Assert.Equal(sentBeforeCancel, Factory.WhatsAppSender.Sent.Count);
         using var db = Db();
         Assert.All(db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId), e => Assert.Equal(WaitlistEntryStatus.WAITING, e.Status));
     }
