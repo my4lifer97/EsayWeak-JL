@@ -22,6 +22,11 @@ public class WhatsAppConversationState
     // conversation. Reuses this row's existing (BusinessId, Phone) + ExpiresAt session boundary
     // rather than a separate table.
     public string? HistoryJson { get; set; }
+    // Consecutive non-numeric/out-of-range replies to a "which service?" prompt (rule-based path
+    // only). Reset to 0 whenever a fresh prompt is (re)issued (see PromptServiceSelection); once it
+    // reaches WhatsAppController.MaxInvalidAttempts, the bot stops auto-replying entirely until the
+    // customer sends the unlock keyword.
+    public int InvalidAttempts { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

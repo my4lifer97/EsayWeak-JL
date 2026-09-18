@@ -21,6 +21,11 @@ public class WhatsAppController(
     private static readonly string[] CancelKeywords = ["cancel", "ביטול", "بطل", "إلغاء", "בטל"];
     private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "تغيير", "שנה"];
     private static readonly TimeSpan ConversationStateLifetime = TimeSpan.FromMinutes(10);
+    // After this many consecutive non-numeric/out-of-range replies to a "which service?" prompt,
+    // the rule-based bot stops replying to anything except the literal "$" unlock keyword -- see
+    // the lockout gate at the top of ProcessMessageRuleBasedAsync.
+    private const int MaxInvalidAttempts = 3;
+    private const string UnlockKeyword = "$";
 
     // Legacy Twilio WhatsApp Business API webhook. Kept but dormant -- no business currently has a
     // real Twilio WhatsApp number (Meta/Trust Hub verification was rejected, see project history),
@@ -126,10 +131,26 @@ public class WhatsAppController(
     }
 
     // Everything from cancel/reschedule keyword matching through numbered service-selection
-    // dispatch -- unchanged behavior, now the fallback path when OpenAI isn't configured or fails.
-    private async Task<string> ProcessMessageRuleBasedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    // dispatch -- now the fallback path when OpenAI isn't configured or fails. Gated by the
+    // too-many-invalid-replies lockout below (new behavior; the rest is otherwise unchanged).
+    private async Task<string?> ProcessMessageRuleBasedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
         var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
+
+        // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
+        // automated replies entirely -- including cancel/reschedule keywords -- until they send
+        // the literal unlock keyword, which restarts the conversation from the opening prompt.
+        // Prevents the bot replying indefinitely to someone just sending random text.
+        var lockedState = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
+            s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow && s.InvalidAttempts >= MaxInvalidAttempts);
+        if (lockedState is not null)
+        {
+            if (incomingMsg.Trim() != UnlockKeyword) return null;
+            db.WhatsAppConversationStates.Remove(lockedState);
+            await db.SaveChangesAsync();
+            return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+        }
+
         var lowerMsg = incomingMsg.ToLowerInvariant();
 
         if (CancelKeywords.Any(k => lowerMsg.Contains(k)))
@@ -370,6 +391,7 @@ public class WhatsAppController(
         }
         existing.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
         existing.Language = lang;
+        existing.InvalidAttempts = 0;
         await db.SaveChangesAsync();
 
         var list = string.Join("\n", services.Select((s, i) => $"{i + 1}. {s.Name}"));
@@ -394,7 +416,13 @@ public class WhatsAppController(
 
         var services = await ActiveServices(businessId, lang);
         if (!int.TryParse(message.Trim(), out var index) || index < 1 || index > services.Count)
-            return I18nService.T(lang, "whatsapp.invalidServiceSelection");
+        {
+            state.InvalidAttempts++;
+            await db.SaveChangesAsync();
+            return state.InvalidAttempts >= MaxInvalidAttempts
+                ? I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword })
+                : I18nService.T(lang, "whatsapp.invalidServiceSelection");
+        }
 
         var chosen = services[index - 1];
         db.WhatsAppConversationStates.Remove(state);

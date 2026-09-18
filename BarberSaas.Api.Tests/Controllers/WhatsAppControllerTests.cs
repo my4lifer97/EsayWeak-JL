@@ -131,6 +131,42 @@ public class WhatsAppControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ThreeInvalidReplies_LocksOutFurtherAutomatedReplies()
+    {
+        var (businessId, _, _) = await SeedBusinessWithServices("wa-webhook-lockout-1@example.com", "wa-webhook-lockout-1");
+        var phone = "+15558880020";
+        await SendWhatsAppMessage(phone, "hi");
+
+        await SendWhatsAppMessage(phone, "99"); // attempt 1 -- normal reprompt
+        await SendWhatsAppMessage(phone, "99"); // attempt 2 -- normal reprompt
+        var thirdReply = await SendWhatsAppMessage(phone, "99"); // attempt 3 -- lockout warning
+        Assert.Contains("$", thirdReply);
+
+        // Locked out now -- even a cancel keyword gets no automated reply at all.
+        var lockedReply = await SendWhatsAppMessage(phone, "cancel");
+        Assert.DoesNotContain("<Message>", lockedReply);
+
+        using var db = Db();
+        Assert.Equal(3, await db.WhatsAppConversationStates.Where(s => s.BusinessId == businessId && s.Phone == phone).Select(s => s.InvalidAttempts).FirstAsync());
+    }
+
+    [Fact]
+    public async Task UnlockKeyword_AfterLockout_RestartsWithTheOpeningPrompt()
+    {
+        await SeedBusinessWithServices("wa-webhook-lockout-2@example.com", "wa-webhook-lockout-2");
+        var phone = "+15558880021";
+        await SendWhatsAppMessage(phone, "hi");
+        await SendWhatsAppMessage(phone, "99");
+        await SendWhatsAppMessage(phone, "99");
+        await SendWhatsAppMessage(phone, "99"); // now locked out
+
+        var unlockReply = await SendWhatsAppMessage(phone, "$");
+
+        Assert.Contains("1.", unlockReply);
+        Assert.Contains("2.", unlockReply);
+    }
+
+    [Fact]
     public async Task CancelKeyword_MidSelection_WithUpcomingAppointment_CancelsAndClearsState()
     {
         // "No upcoming appointment" deliberately re-prompts for a fresh selection instead of

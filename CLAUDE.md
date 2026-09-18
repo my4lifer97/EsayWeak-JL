@@ -568,6 +568,12 @@ to WhatsApp).
 - `WhatsAppController.ProcessMessageAsync` is the shared dispatcher for both the bridge-inbound and
   legacy Twilio paths — see the AI layer subsection below for what it dispatches to.
 - Reminders are sent by hitting `/api/cron/reminders` (e.g. via an external cron job or scheduler).
+- **Lockout after repeated invalid replies** (rule-based path only): 3 consecutive non-numeric/
+  out-of-range replies to a "which service?" prompt (`WhatsAppConversationState.InvalidAttempts`,
+  `WhatsAppController.MaxInvalidAttempts`) stops the bot replying to anything at all -- including
+  cancel/reschedule keywords -- until the customer sends the literal unlock keyword (`"$"`,
+  `WhatsAppController.UnlockKeyword`), which restarts the conversation from the opening prompt.
+  Prevents the bot replying forever to someone sending random text.
 
 ### WhatsApp chatbot: optional OpenAI layer
 As of 2026-09-18, `WhatsAppController.ProcessMessageAsync` tries an LLM-driven path
