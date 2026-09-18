@@ -341,15 +341,24 @@ logged in or booking as a guest, so it can't be dodged by not signing in) can bo
 appointment — "per week" means the fixed Sun–Sat calendar week containing the requested date.
 Reschedules are not currently checked against the limit (only new bookings).
 
-### Returning customer's name is locked after their first booking with a business
-`BookingWizard`'s First/Family Name fields are `disabled` (prefilled from the account, same as the
-phone field) whenever the customer is authenticated — the customer isn't meant to change the name
-they're on file with once they've booked with a business before. Enforced server-side too, not just
-in the UI: `BookingController.BookAppointment` only takes the submitted `customerName`/
-`customerFamilyName` when creating a brand-new `Customer` row for that (business, phone), or for a
-**guest** (no `CustomerAccount`) booking again, who can still correct their own typed name each
-time. A logged-in customer's existing `Customer.Name`/`FamilyName` for that business is left alone
-on every booking after the first, regardless of what the request body says.
+### Returning customer's name stays editable, remembered from last time
+`BookingWizard`'s First/Family Name fields are always editable (only the phone field is `disabled`
+when authenticated) — prefilled from the customer's account (itself only ever auto-filled from a
+WhatsApp profile name once, on that account's first-ever creation, see
+`CustomerAuthController.LoginWithWhatsApp`), but a correction the customer types on any booking is
+saved and becomes what's remembered next time. `BookingController.BookAppointment` always writes
+`customerName`/`customerFamilyName` onto the (business, phone) `Customer` row, whether it's brand
+new or already existed.
+
+### No back-navigation once a customer arrives via a WhatsApp link
+`BookingWizard` reads `?itemId=` (set by both `WhatsAppLandingPage`'s redirect and a waitlist
+notification's deep link) once on mount into `isFromLink` — when true, the item (and sometimes
+date/time) was already chosen in the WhatsApp chat, so this session gets **no way back** to
+reconsider it: the in-page "← Back"/`BackButton` controls are hidden entirely, and a `popstate`
+listener re-pushes the current history entry as a best-effort trap against the browser's own back
+button too (this can't fully override the OS/browser back gesture, only discourage it — there's no
+web API that can). A customer who opened the site directly (no `itemId` param, always starts at
+step 1) is unaffected and keeps normal back navigation at every step.
 
 ### Item reference photos
 Each `Item` has a `PhotoMode` (`None` / `OwnerGallery` / `CustomerUpload` / `Both`), set per-item on

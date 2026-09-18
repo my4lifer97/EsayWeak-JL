@@ -27,6 +27,24 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const { user, isAuthenticated, language: lang } = useCustomerAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  // A WhatsApp-issued link (booking link or waitlist notification) always carries ?itemId= --
+  // the service (and sometimes date/time) was already chosen there, so this session gets no way
+  // back to reconsider it, on this page or via the browser. A customer who opened the site
+  // directly always starts at step 1 with no itemId param, so they keep normal back navigation.
+  const [isFromLink] = useState(() => !!searchParams.get('itemId'))
+
+  // Can't truly disable the browser/OS's own back gesture, but this is the standard best-effort
+  // trap: re-push the current entry whenever the user navigates back to it, so leaving via browser
+  // back isn't a real escape hatch either -- only the "Booking Confirmed" modal's close button
+  // (or manually retyping a URL) gets them off this page once they've arrived via a WhatsApp link.
+  useEffect(() => {
+    if (!isFromLink) return
+    window.history.pushState(null, '', window.location.href)
+    const onPopState = () => window.history.pushState(null, '', window.location.href)
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [isFromLink])
+
   const [step, setStep] = useState<Step>(1)
   const [item, setItem] = useState<Item | null>(null)
   const bookableItems = business.items.filter((s) => s.isBookable)
@@ -165,7 +183,9 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     <div className="min-h-screen bg-gray-950 text-white" dir={dir}>
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="flex items-center gap-2 mb-8">
-          {step > 1 ? (
+          {isFromLink ? (
+            <div />
+          ) : step > 1 ? (
             <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-gray-400 hover:text-white text-sm">
               ← {t(lang, 'back')}
             </button>
@@ -261,14 +281,12 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
               <div>
                 <label htmlFor="booking-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
                 <input id="booking-name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
-                  disabled={isAuthenticated}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label htmlFor="booking-family-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'familyName')}</label>
                 <input id="booking-family-name" type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
-                  disabled={isAuthenticated}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label htmlFor="booking-phone" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'phoneNumber')}</label>

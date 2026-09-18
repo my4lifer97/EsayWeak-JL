@@ -190,19 +190,16 @@ public class BookingController(
             };
             db.Customers.Add(customer);
         }
-        else if (customerAccountId is null)
-        {
-            // Guest booking (no account) -- still let them correct their own typed name each time.
-            customer.Name = req.CustomerName;
-            customer.FamilyName = req.CustomerFamilyName ?? "";
-        }
         else
         {
-            // A returning logged-in customer (WhatsApp or phone+OTP) keeps whatever name they're
-            // already on file with this business -- only their first-ever booking (or a guest one)
-            // takes the name typed into the form, matching the frontend's disabled name fields for
-            // an authenticated session.
-            customer.CustomerAccountId = customerAccountId;
+            // Always editable, for everyone -- the form is prefilled from whatever's already on
+            // file (the customer's own account name, itself only ever auto-filled from a WhatsApp
+            // profile name on that account's first-ever creation, see
+            // CustomerAuthController.LoginWithWhatsApp), but the customer can still correct it, and
+            // that correction is what's remembered from here on.
+            customer.Name = req.CustomerName;
+            customer.FamilyName = req.CustomerFamilyName ?? "";
+            if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
         }
 
         var appointment = new Appointment

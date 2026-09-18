@@ -103,7 +103,7 @@ public class BookingFlowTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task ReturningAuthenticatedCustomer_KeepsNameOnFileDespiteADifferentSubmittedName()
+    public async Task ReturningAuthenticatedCustomer_CanStillCorrectTheirNameOnARepeatBooking()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("repeat-name-flow@example.com", "repeat-name-flow-shop");
         var itemId = await CreateService(businessToken);
@@ -116,17 +116,16 @@ public class BookingFlowTests : IntegrationTestBase
             new BookAppointmentRequest(itemId, TestDate, slots[0].Start, "Jane", phone, null, CustomerFamilyName: "Doe"));
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
 
-        // A second booking submits a different name -- the backend must ignore it and keep what's
-        // already on file for this returning, logged-in customer (the frontend also disables these
-        // fields once authenticated, but this is the actual guarantee).
+        // The name/family name fields are always editable (prefilled from the account, but never
+        // locked) -- a correction on a later booking should actually take effect and be remembered.
         var second = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
-            new BookAppointmentRequest(itemId, TestDate, slots[1].Start, "Spoofed", phone, null, CustomerFamilyName: "Name"));
+            new BookAppointmentRequest(itemId, TestDate, slots[1].Start, "Janet", phone, null, CustomerFamilyName: "Doe-Smith"));
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
 
         using var db = Db();
         var customer = await db.Customers.SingleAsync(c => c.Phone == phone);
-        Assert.Equal("Jane", customer.Name);
-        Assert.Equal("Doe", customer.FamilyName);
+        Assert.Equal("Janet", customer.Name);
+        Assert.Equal("Doe-Smith", customer.FamilyName);
     }
 
     [Fact]

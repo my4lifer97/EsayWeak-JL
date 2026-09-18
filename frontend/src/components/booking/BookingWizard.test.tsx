@@ -99,6 +99,27 @@ describe('BookingWizard', () => {
     expect(screen.getByText('Select a Service')).toBeInTheDocument()
   })
 
+  it('WhatsApp deep-link lands on date selection with no way back to service selection', async () => {
+    // Mirrors WhatsAppLandingPage's redirect: /:slug/book?itemId=<id>, skipping step 1. The
+    // service was already chosen in the WhatsApp chat, so this session gets no back navigation
+    // at all -- neither the in-page control nor (best-effort) the browser's own back button.
+    renderWizard(`/${business.slug}/book?itemId=svc-gallery`)
+
+    await waitFor(() => expect(screen.getByText('Select a Date')).toBeInTheDocument())
+    expect(screen.queryByText('Select a Service')).not.toBeInTheDocument()
+    expect(screen.queryByText('← Back')).not.toBeInTheDocument()
+  })
+
+  it('a customer who opened the site directly keeps normal back navigation', async () => {
+    renderWizard() // no ?itemId= -- a direct visit, not from a WhatsApp link
+    await userEvent.click(screen.getByText('Haircut'))
+    expect(screen.getByText('Select a Date')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('← Back'))
+
+    expect(screen.getByText('Select a Service')).toBeInTheDocument()
+  })
+
   it('picking a date fetches availability and advances to time selection', async () => {
     renderWizard()
     await userEvent.click(screen.getByText('Haircut'))
@@ -178,16 +199,15 @@ describe('BookingWizard', () => {
     expect(phoneInput.value).toBe('+15559998888')
     expect(phoneInput).toBeDisabled()
 
-    // Name/family name are prefilled from the account and locked too -- a returning customer's
-    // chosen name shouldn't silently change on a repeat booking (see BookingController).
+    // Name/family name are prefilled from the account too, but stay editable -- a returning
+    // customer can still correct their own name (see BookingController, which always saves
+    // whatever's submitted).
     const nameInput = screen.getByLabelText('First Name') as HTMLInputElement
     const familyNameInput = screen.getByLabelText('Family Name') as HTMLInputElement
     expect(nameInput.value).toBe('Jane')
-    expect(nameInput).toBeDisabled()
+    expect(nameInput).toBeEnabled()
     expect(familyNameInput.value).toBe('Doe')
-    expect(familyNameInput).toBeDisabled()
-    expect((screen.getByLabelText('First Name') as HTMLInputElement).value).toBe('Jane')
-    expect((screen.getByLabelText('Family Name') as HTMLInputElement).value).toBe('Doe')
+    expect(familyNameInput).toBeEnabled()
   })
 
   it('requires picking a gallery photo before confirming, for a service in gallery mode', async () => {
