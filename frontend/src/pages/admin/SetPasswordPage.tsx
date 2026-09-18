@@ -33,32 +33,32 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">Set your password</h1>
-        <p className="text-gray-400 text-center mb-8">
+        <h1 className="text-2xl font-bold text-ink mb-2 text-center">Set your password</h1>
+        <p className="text-muted text-center mb-8">
           You're signing in with a temporary password. Choose a new one to continue.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
               {error}
             </div>
           )}
           <input
             type="password" required autoFocus value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
             placeholder="New password"
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
           />
           <input
             type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
             placeholder="Confirm new password"
-            className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
           />
           <button
             type="submit" disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
+            className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
           >
             {loading ? '...' : 'Set password & continue'}
           </button>

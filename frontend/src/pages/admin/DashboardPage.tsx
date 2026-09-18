@@ -22,9 +22,9 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-white">{t(lang, 'dashboard')}</h1>
+        <h1 className="text-2xl font-bold text-ink">{t(lang, 'dashboard')}</h1>
         <button onClick={() => setShowNewAppointment(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+          className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           {t(lang, 'newAppointment')}
         </button>
       </div>

@@ -41,26 +41,26 @@ export default function PlatformAdminCustomerDetailPage() {
     }
   }
 
-  if (!customer) return <div className="min-h-screen bg-gray-950 text-white p-6">Loading...</div>
+  if (!customer) return <div className="min-h-screen bg-cream text-ink p-6">Loading...</div>
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
+    <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-3xl mx-auto">
-        <Link to="/platform-admin" className="text-gray-500 hover:text-gray-300 text-sm mb-6 inline-block">← Back</Link>
+        <Link to="/platform-admin" className="text-muted hover:text-ink text-sm mb-6 inline-block">← Back</Link>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
+        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
           <h1 className="text-xl font-bold">{customer.name} {customer.familyName}</h1>
-          <p className="text-gray-400 text-sm mb-4">{customer.phone}</p>
+          <p className="text-muted text-sm mb-4">{customer.phone}</p>
 
-          {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
 
           <button onClick={handleImpersonate} disabled={impersonating}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+            className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
             {impersonating ? 'Logging in...' : 'Log in as this account'}
           </button>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div className="bg-white border border-line rounded-2xl p-6">
           <h2 className="font-semibold mb-4">Recent activity</h2>
           <ActivityLogTable entries={activity} />
         </div>

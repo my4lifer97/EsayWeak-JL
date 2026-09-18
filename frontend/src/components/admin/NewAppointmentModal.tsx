@@ -62,50 +62,50 @@ export default function NewAppointmentModal({
 
   return (
     <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-gray-800 max-h-[90vh] overflow-y-auto">
+      <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl p-6 w-full max-w-md border border-line max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-5">
-          <h2 className="text-white font-semibold text-lg">{t(lang, 'newAppointment')}</h2>
+          <h2 className="text-ink font-semibold text-lg">{t(lang, 'newAppointment')}</h2>
           <button onClick={onClose} aria-label="Close"
-            className="text-gray-500 hover:text-white w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-gray-800 text-2xl leading-none transition-colors">✕</button>
+            className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
         </div>
-        {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'service')}</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'service')}</label>
             <select value={serviceId} onChange={(e) => { setServiceId(e.target.value); setSlot(null) }}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
               <option value="">—</option>
               {services.map((s) => <option key={s.id} value={s.id}>{itemName(s, lang)}</option>)}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'customerName')}</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'customerName')}</label>
             <CustomerPicker lang={lang} value={customer} onChange={setCustomer} />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'date')}</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'date')}</label>
             <input type="date" value={date} onChange={(e) => { setDate(e.target.value); setSlot(null) }}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
           </div>
 
           {date && serviceId && !showCustomTime && (
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'time')}</label>
+              <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'time')}</label>
               {slotsLoading ? (
-                <div className="text-gray-500 text-sm py-2">{t(lang, 'loadingTimes')}</div>
+                <div className="text-muted text-sm py-2">{t(lang, 'loadingTimes')}</div>
               ) : slots.length === 0 ? (
-                <div className="text-gray-500 text-sm py-2">{t(lang, 'noTimes')}</div>
+                <div className="text-muted text-sm py-2">{t(lang, 'noTimes')}</div>
               ) : (
                 <div className="grid grid-cols-4 gap-2">
                   {slots.map((s) => (
                     <button key={s.start} type="button" onClick={() => setSlot(s)}
                       className={`rounded-lg py-2 text-center text-sm font-medium border transition-colors ${
                         slot?.start === s.start
-                          ? 'bg-blue-600 border-blue-500 text-white'
-                          : 'bg-gray-800 border-gray-700 hover:bg-blue-600 hover:border-blue-500'
+                          ? 'bg-coral border-coral-dark text-white'
+                          : 'bg-cream border-line hover:bg-coral hover:border-coral-dark hover:text-white'
                       }`}>
                       {s.start}
                     </button>
@@ -116,30 +116,30 @@ export default function NewAppointmentModal({
           )}
 
           <button type="button" onClick={() => { setShowCustomTime((v) => !v); setForceBook(false); setSlot(null) }}
-            className="text-sm text-blue-400 hover:text-blue-300">
+            className="text-sm text-coral-dark hover:text-coral">
             {showCustomTime ? `← ${t(lang, 'back')}` : t(lang, 'enterCustomTime')}
           </button>
 
           {showCustomTime && (
             <div className="space-y-2">
               <input type="time" value={customTime} onChange={(e) => setCustomTime(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <label className="flex items-start gap-2 text-sm text-gray-300">
+                className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
+              <label className="flex items-start gap-2 text-sm text-ink">
                 <input type="checkbox" checked={forceBook} onChange={(e) => setForceBook(e.target.checked)} className="mt-0.5" />
                 <span>{t(lang, 'forceBookLabel')}</span>
               </label>
-              <p className="text-gray-500 text-xs">{t(lang, 'forceBookHint')}</p>
+              <p className="text-muted text-xs">{t(lang, 'forceBookHint')}</p>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'notes')}</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'notes')}</label>
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
           </div>
 
           <button type="button" onClick={submit} disabled={!canSubmit || submitting}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
+            className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
             {submitting ? t(lang, 'saving') : t(lang, 'createAppointment')}
           </button>
         </div>

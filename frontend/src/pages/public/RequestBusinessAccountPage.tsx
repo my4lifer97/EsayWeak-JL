@@ -63,31 +63,31 @@ export default function RequestBusinessAccountPage() {
   }
 
   const inputClass =
-    'w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+    'w-full bg-cream border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral'
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
       <div className="w-full max-w-md py-10">
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">Request a business account</h1>
-        <p className="text-gray-400 text-center mb-8">
+        <h1 className="text-2xl font-bold text-ink mb-2 text-center">Request a business account</h1>
+        <p className="text-muted text-center mb-8">
           Tell us about your business. We review every request and email your login once approved.
         </p>
 
         {submitted ? (
-          <div className="bg-green-900/30 border border-green-700/50 rounded-xl px-4 py-6 text-center">
-            <p className="text-green-300 font-medium mb-2">Thanks — your request has been submitted.</p>
-            <p className="text-gray-400 text-sm">
+          <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-6 text-center">
+            <p className="text-green-700 font-medium mb-2">Thanks — your request has been submitted.</p>
+            <p className="text-muted text-sm">
               Once an admin approves it, you'll get an email with your username and a temporary password.
             </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">{error}</div>
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
             )}
 
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Owner</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Owner</h2>
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -99,7 +99,7 @@ export default function RequestBusinessAccountPage() {
                     placeholder="Family name" autoComplete="family-name" className={inputClass}
                   />
                 </div>
-                <p className={`text-xs ${nameError ? 'text-red-400' : 'text-gray-500'}`}>
+                <p className={`text-xs ${nameError ? 'text-red-600' : 'text-muted'}`}>
                   Enter both names in English — they're used to create your login username.
                 </p>
                 <input
@@ -114,7 +114,7 @@ export default function RequestBusinessAccountPage() {
             </div>
 
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Business</h2>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Business</h2>
               <div className="space-y-3">
                 <input
                   required value={businessName} onChange={(e) => setBusinessName(e.target.value)}
@@ -142,15 +142,15 @@ export default function RequestBusinessAccountPage() {
 
             <button
               type="submit" disabled={loading || !!nameError}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
+              className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
             >
               {loading ? '…' : 'Submit request'}
             </button>
           </form>
         )}
 
-        <p className="text-gray-500 text-center mt-6 text-sm">
-          <Link to="/admin/login" className="text-blue-400 hover:underline">← Back to sign in</Link>
+        <p className="text-muted text-center mt-6 text-sm">
+          <Link to="/admin/login" className="text-coral-dark hover:underline">← Back to sign in</Link>
         </p>
       </div>
     </div>

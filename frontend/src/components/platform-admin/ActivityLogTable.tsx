@@ -12,15 +12,15 @@ function prettifyActionLabel(action: string): string {
   return methodName.replace(/(?<!^)([A-Z])/g, ' $1')
 }
 
-const selectClass = 'bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+const selectClass = 'bg-cream border border-line rounded-lg px-3 py-1.5 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral'
 
 export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | undefined }) {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('')
   const [impersonatedFilter, setImpersonatedFilter] = useState<'all' | 'impersonated' | 'direct'>('all')
 
-  if (!entries) return <p className="text-gray-500 text-sm">Loading...</p>
-  if (entries.length === 0) return <p className="text-gray-500 text-sm">No activity recorded yet.</p>
+  if (!entries) return <p className="text-muted text-sm">Loading...</p>
+  if (entries.length === 0) return <p className="text-muted text-sm">No activity recorded yet.</p>
 
   const actionOptions = [...new Set(entries.map((e) => e.action))].sort()
 
@@ -41,7 +41,7 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
     <div>
       <div className="flex flex-wrap gap-3 mb-4 items-center">
         <input type="text" placeholder="Search activity..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          className="bg-cream border border-line rounded-lg px-3 py-1.5 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
         <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)} className={selectClass}>
           <option value="">All actions</option>
           {actionOptions.map((a) => <option key={a} value={a}>{prettifyActionLabel(a)}</option>)}
@@ -52,18 +52,18 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
           <option value="direct">Direct only</option>
         </select>
         {hasActiveFilters && (
-          <button onClick={clearFilters} className="text-sm text-blue-400 hover:text-blue-300">Clear Filters</button>
+          <button onClick={clearFilters} className="text-sm text-coral-dark hover:text-coral">Clear Filters</button>
         )}
-        <span className="text-gray-500 text-xs ms-auto">{filtered.length} / {entries.length} events</span>
+        <span className="text-muted text-xs ms-auto">{filtered.length} / {entries.length} events</span>
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-gray-500 text-sm">No activity matches these filters.</p>
+        <p className="text-muted text-sm">No activity matches these filters.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 border-b border-gray-800">
+              <tr className="text-left text-muted border-b border-line">
                 <th className="py-2 pr-4 font-medium">Action</th>
                 <th className="py-2 pr-4 font-medium">Status</th>
                 <th className="py-2 pr-4 font-medium">When</th>
@@ -71,15 +71,15 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
             </thead>
             <tbody>
               {filtered.map((e) => (
-                <tr key={e.id} className="border-b border-gray-800/60">
+                <tr key={e.id} className="border-b border-line">
                   <td className="py-2 pr-4">
                     {e.description}
                     {e.impersonated && (
-                      <span className="ml-2 text-xs text-yellow-400/80">(via impersonation)</span>
+                      <span className="ml-2 text-xs text-yellow-700">(via impersonation)</span>
                     )}
                   </td>
-                  <td className="py-2 pr-4 text-gray-400">{e.method} {e.statusCode}</td>
-                  <td className="py-2 pr-4 text-gray-500">{new Date(e.createdAt).toLocaleString()}</td>
+                  <td className="py-2 pr-4 text-muted">{e.method} {e.statusCode}</td>
+                  <td className="py-2 pr-4 text-muted">{new Date(e.createdAt).toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>

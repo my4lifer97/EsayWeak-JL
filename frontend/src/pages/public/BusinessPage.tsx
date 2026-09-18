@@ -63,21 +63,21 @@ export default function BusinessPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-500">{t(lang, 'loading')}</div>
+      <div className="min-h-screen bg-cream flex items-center justify-center">
+        <div className="text-muted">{t(lang, 'loading')}</div>
       </div>
     )
   }
   if (!business) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-400">{t(lang, 'businessNotFound')}</div>
+      <div className="min-h-screen bg-cream flex items-center justify-center">
+        <div className="text-muted">{t(lang, 'businessNotFound')}</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white" dir={dir}>
+    <div className="min-h-screen bg-cream text-ink" dir={dir}>
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="flex items-center justify-between mb-6">
           <BackButton lang={lang} />
@@ -86,27 +86,27 @@ export default function BusinessPage() {
         <div className="text-center mb-8">
           {business.logo ? (
             <img src={mediaUrl(business.logo)} alt={business.name}
-              className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border border-gray-800" />
+              className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border border-line" />
           ) : (
             <div className="text-5xl mb-4">✂️</div>
           )}
-          <h1 className="text-3xl font-bold text-white">{business.name}</h1>
+          <h1 className="text-3xl font-bold text-ink">{business.name}</h1>
           {business.ratingCount > 0 && (
             <div className="flex justify-center mt-2">
               <StarRating value={business.ratingAverage} count={business.ratingCount} size="sm" />
             </div>
           )}
           {business.description && (
-            <p className="text-gray-400 mt-2 text-sm">{business.description}</p>
+            <p className="text-muted mt-2 text-sm">{business.description}</p>
           )}
           {(business.city || business.addressLine || business.mapUrl) && (
-            <div className="text-gray-500 text-sm mt-3 space-y-0.5">
+            <div className="text-muted text-sm mt-3 space-y-0.5">
               {(business.city || business.addressLine) && (
                 <div>📍 {[business.addressLine, business.city].filter(Boolean).join(', ')}</div>
               )}
               {business.mapUrl && (
                 <a href={business.mapUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-blue-400 hover:text-blue-300">
+                  className="text-coral-dark hover:text-coral">
                   {t(lang, 'viewOnMap')}
                 </a>
               )}
@@ -117,7 +117,7 @@ export default function BusinessPage() {
         <div className="space-y-3">
           {business.items.some((i) => i.isBookable) && (
             <button onClick={() => navigate(`/${slug}/book`)}
-              className="flex items-center justify-center gap-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl transition-colors">
+              className="flex items-center justify-center gap-2 w-full bg-coral hover:bg-coral-dark text-white font-bold py-4 rounded-2xl transition-colors">
               ✂️ {t(lang, 'bookAppointment')}
             </button>
           )}
@@ -128,8 +128,8 @@ export default function BusinessPage() {
             title={isAuthenticated ? undefined : t(lang, 'whatsappOnlyAccess')}
             className={`w-full font-semibold py-3 rounded-2xl transition-colors disabled:opacity-50 ${
               business.isFollowed
-                ? 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700'
-                : 'bg-gray-900 border border-blue-600/40 text-blue-400 hover:bg-blue-900/20'
+                ? 'bg-teal-tint text-ink border border-line hover:bg-teal-tint/70'
+                : 'bg-white border border-coral/40 text-coral-dark hover:bg-coral-tint'
             }`}>
             {business.isFollowed ? t(lang, 'following') : t(lang, 'followBusiness')}
           </button>
@@ -137,7 +137,7 @@ export default function BusinessPage() {
           {activeAppointments.length > 0 && (
             <button
               onClick={() => setShowAppointments(!showAppointments)}
-              className="w-full font-semibold py-3 rounded-2xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors">
+              className="w-full font-semibold py-3 rounded-2xl border border-line text-ink hover:bg-white transition-colors">
               {t(lang, 'myBookingsWithBusiness')}
             </button>
           )}
@@ -156,9 +156,9 @@ export default function BusinessPage() {
         {business.items.some((i) => !i.isBookable) && (
           <div className="space-y-2 mt-6">
             {business.items.filter((i) => !i.isBookable).map((i) => (
-              <div key={i.id} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex justify-between items-center">
-                <span className="text-white text-sm">{itemName(i, lang)}</span>
-                {i.price !== null && <span className="text-blue-400 text-sm font-semibold">₪{Number(i.price).toFixed(0)}</span>}
+              <div key={i.id} className="bg-white border border-line rounded-xl px-4 py-3 flex justify-between items-center">
+                <span className="text-ink text-sm">{itemName(i, lang)}</span>
+                {i.price !== null && <span className="text-coral-dark text-sm font-semibold">₪{Number(i.price).toFixed(0)}</span>}
               </div>
             ))}
           </div>

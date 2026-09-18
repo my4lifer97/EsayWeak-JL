@@ -94,16 +94,16 @@ export default function BrowseBusinessesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-cream text-ink">
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
         <BackButton lang={lang} />
-        <h1 className="text-2xl font-bold text-white mb-6 mt-3">{t(lang, 'discoverBusinesses')}</h1>
+        <h1 className="text-2xl font-bold text-ink mb-6 mt-3">{t(lang, 'discoverBusinesses')}</h1>
 
         <input
           type="text" value={query} onChange={(e) => setQuery(e.target.value)}
           placeholder={t(lang, 'searchBusinessesPlaceholder')}
-          className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
         />
 
         {/* Category chips */}
@@ -111,7 +111,7 @@ export default function BrowseBusinessesPage() {
           <button
             onClick={() => setCategoryKey('')}
             className={`shrink-0 text-sm font-medium px-3 py-1.5 rounded-full border transition-colors ${
-              categoryKey === '' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:bg-gray-800'
+              categoryKey === '' ? 'bg-coral border-coral text-white' : 'bg-white border-line text-ink hover:bg-cream'
             }`}>
             {t(lang, 'allCategories')}
           </button>
@@ -120,7 +120,7 @@ export default function BrowseBusinessesPage() {
               key={bt.key}
               onClick={() => setCategoryKey(bt.key)}
               className={`shrink-0 text-sm font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                categoryKey === bt.key ? 'bg-blue-600 border-blue-600 text-white' : 'bg-gray-900 border-gray-700 text-gray-300 hover:bg-gray-800'
+                categoryKey === bt.key ? 'bg-coral border-coral text-white' : 'bg-white border-line text-ink hover:bg-cream'
               }`}>
               {lang === 'AR' ? bt.displayNameAr : lang === 'HE' ? bt.displayNameHe : bt.displayNameEn}
             </button>
@@ -131,13 +131,13 @@ export default function BrowseBusinessesPage() {
         <div className="flex gap-2 mt-3">
           <select
             value={city} onChange={(e) => setCity(e.target.value)}
-            className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="flex-1 bg-white border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
             <option value="">{t(lang, 'allCities')}</option>
             {cities.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <select
             value={sort} onChange={(e) => setSort(e.target.value as (typeof SORTS)[number])}
-            className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="flex-1 bg-white border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
             {SORTS.map((s) => <option key={s} value={s}>{t(lang, SORT_KEY[s])}</option>)}
           </select>
         </div>
@@ -145,26 +145,26 @@ export default function BrowseBusinessesPage() {
         {/* Results */}
         <div className="mt-5 mb-8">
           {isLoading ? (
-            <div className="text-center text-gray-500 py-8">{t(lang, 'loading')}</div>
+            <div className="text-center text-muted py-8">{t(lang, 'loading')}</div>
           ) : results.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">{t(lang, 'noBusinessesMatch')}</div>
+            <div className="text-center text-muted py-8">{t(lang, 'noBusinessesMatch')}</div>
           ) : (
             <>
-              <div className="text-xs text-gray-500 mb-2">{results.length} / {total}</div>
+              <div className="text-xs text-muted mb-2">{results.length} / {total}</div>
               <div className="space-y-3">
                 {results.map((b) => (
-                  <div key={b.slug} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex items-start gap-3">
+                  <div key={b.slug} className="bg-white border border-line rounded-2xl p-4 flex items-start gap-3">
                     <Link to={`/${b.slug}`} className="shrink-0">
                       {b.logo ? (
-                        <img src={mediaUrl(b.logo)} alt={b.name} className="w-12 h-12 rounded-full object-cover border border-gray-800" />
+                        <img src={mediaUrl(b.logo)} alt={b.name} className="w-12 h-12 rounded-full object-cover border border-line" />
                       ) : (
-                        <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center text-xl">✂️</div>
+                        <div className="w-12 h-12 rounded-full bg-cream flex items-center justify-center text-xl">✂️</div>
                       )}
                     </Link>
                     <div className="flex-1 min-w-0">
                       <Link to={`/${b.slug}`} className="block">
-                        <div className="font-semibold text-white truncate">{b.name}</div>
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500 mt-0.5">
+                        <div className="font-semibold text-ink truncate">{b.name}</div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted mt-0.5">
                           {typeLabelOf(b.businessTypeKey) && <span>{typeLabelOf(b.businessTypeKey)}</span>}
                           {b.city && <span>· {b.city}</span>}
                           {b.followerCount > 0 && <span>· {b.followerCount} {t(lang, 'followerCountSuffix')}</span>}
@@ -172,7 +172,7 @@ export default function BrowseBusinessesPage() {
                         {b.ratingCount > 0 && (
                           <div className="mt-1"><StarRating value={b.ratingAverage} count={b.ratingCount} size="sm" /></div>
                         )}
-                        {b.description && <div className="text-gray-500 text-sm truncate mt-1">{b.description}</div>}
+                        {b.description && <div className="text-muted text-sm truncate mt-1">{b.description}</div>}
                       </Link>
                     </div>
                     <button
@@ -181,8 +181,8 @@ export default function BrowseBusinessesPage() {
                       onClick={() => toggleFollow(b.slug, b.isFollowed)}
                       className={`shrink-0 text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 ${
                         b.isFollowed
-                          ? 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-gray-700'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                          ? 'bg-teal-tint text-ink border border-line hover:bg-teal-tint/70'
+                          : 'bg-coral hover:bg-coral-dark text-white'
                       }`}>
                       {b.isFollowed ? t(lang, 'following') : t(lang, 'followBusiness')}
                     </button>
@@ -193,7 +193,7 @@ export default function BrowseBusinessesPage() {
                 <button
                   onClick={() => fetchNextPage()}
                   disabled={isFetchingNextPage}
-                  className="w-full mt-4 text-sm font-medium py-2.5 rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors disabled:opacity-50">
+                  className="w-full mt-4 text-sm font-medium py-2.5 rounded-xl border border-line text-ink hover:bg-cream transition-colors disabled:opacity-50">
                   {isFetchingNextPage ? t(lang, 'loading') : t(lang, 'loadMore')}
                 </button>
               )}
@@ -203,18 +203,18 @@ export default function BrowseBusinessesPage() {
 
         {isAuthenticated && (
           <div className="mt-6">
-            <h2 className="text-sm font-semibold text-gray-400 mb-2">{t(lang, 'followedBusinesses')}</h2>
+            <h2 className="text-sm font-semibold text-muted mb-2">{t(lang, 'followedBusinesses')}</h2>
             {followed.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">{t(lang, 'noFollowedYet')}</div>
+              <div className="text-center text-muted py-8">{t(lang, 'noFollowedYet')}</div>
             ) : (
               <div className="space-y-2">
                 {followed.map((b) => (
-                  <div key={b.slug} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3">
-                    <Link to={`/${b.slug}`} className="flex-1 min-w-0 text-sm font-medium text-white truncate">{b.name}</Link>
+                  <div key={b.slug} className="bg-white border border-line rounded-xl px-4 py-2.5 flex items-center justify-between gap-3">
+                    <Link to={`/${b.slug}`} className="flex-1 min-w-0 text-sm font-medium text-ink truncate">{b.name}</Link>
                     <button
                       disabled={pending === b.slug}
                       onClick={() => unfollow(b.slug)}
-                      className="shrink-0 text-xs text-gray-400 hover:text-red-400 font-medium px-2 py-1 disabled:opacity-50">
+                      className="shrink-0 text-xs text-muted hover:text-red-600 font-medium px-2 py-1 disabled:opacity-50">
                       {t(lang, 'remove')}
                     </button>
                   </div>

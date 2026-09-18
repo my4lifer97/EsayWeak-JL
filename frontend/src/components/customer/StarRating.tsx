@@ -24,7 +24,7 @@ export default function StarRating({ value, count, onChange, size = 'md' }: Prop
         {[1, 2, 3, 4, 5].map((n) => {
           const filled = n <= (editable ? value : rounded)
           const star = (
-            <span className={filled ? 'text-yellow-400' : 'text-gray-600'}>{filled ? '★' : '☆'}</span>
+            <span className={filled ? 'text-yellow-400' : 'text-line'}>{filled ? '★' : '☆'}</span>
           )
           return editable ? (
             <button
@@ -42,7 +42,7 @@ export default function StarRating({ value, count, onChange, size = 'md' }: Prop
         })}
       </span>
       {typeof count === 'number' && !editable && (
-        <span className="text-gray-500 text-xs">({count})</span>
+        <span className="text-muted text-xs">({count})</span>
       )}
     </span>
   )

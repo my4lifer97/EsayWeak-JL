@@ -24,8 +24,8 @@ export default function AppointmentPage() {
     queryFn: () => api.get(`/${slug}/appointments/${id}`).then((r) => r.data),
   })
 
-  if (isLoading) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><div className="text-gray-500">{t('EN', 'loading')}</div></div>
-  if (!appt) return <div className="min-h-screen bg-gray-950 flex items-center justify-center"><div className="text-gray-400">{t('EN', 'appointmentNotFound')}</div></div>
+  if (isLoading) return <div className="min-h-screen bg-cream flex items-center justify-center"><div className="text-muted">{t('EN', 'loading')}</div></div>
+  if (!appt) return <div className="min-h-screen bg-cream flex items-center justify-center"><div className="text-muted">{t('EN', 'appointmentNotFound')}</div></div>
 
   const lang = appt.business.language
   const isRTL = lang === 'AR' || lang === 'HE'
@@ -54,28 +54,28 @@ export default function AppointmentPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-sm">
         <BackButton lang={lang} />
-        <h1 className="text-2xl font-bold text-white text-center mb-2 mt-3">{appt.business.name}</h1>
-        <p className="text-gray-400 text-center text-sm mb-8">{t(lang, 'yourAppointment')}</p>
+        <h1 className="text-2xl font-bold text-ink text-center mb-2 mt-3">{appt.business.name}</h1>
+        <p className="text-muted text-center text-sm mb-8">{t(lang, 'yourAppointment')}</p>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4 mb-6">
+        <div className="bg-white border border-line rounded-2xl p-6 space-y-4 mb-6">
           {rows.map(({ label, value }) => (
             <div key={label} className="flex justify-between text-sm">
-              <span className="text-gray-400">{label}</span>
-              <span className="text-white">{value}</span>
+              <span className="text-muted">{label}</span>
+              <span className="text-ink">{value}</span>
             </div>
           ))}
           {appt.notes && (
-            <div className="text-sm pt-2 border-t border-gray-800">
-              <span className="text-gray-400 block mb-1">{t(lang, 'notes')}</span>
-              <span className="text-white">{appt.notes}</span>
+            <div className="text-sm pt-2 border-t border-line">
+              <span className="text-muted block mb-1">{t(lang, 'notes')}</span>
+              <span className="text-ink">{appt.notes}</span>
             </div>
           )}
-          <div className="flex justify-between text-sm pt-2 border-t border-gray-800">
-            <span className="text-gray-400">{t(lang, 'status')}</span>
-            <span className={isCancelled ? 'text-red-400' : appt.status === 'COMPLETED' ? 'text-green-400' : 'text-blue-400'}>
+          <div className="flex justify-between text-sm pt-2 border-t border-line">
+            <span className="text-muted">{t(lang, 'status')}</span>
+            <span className={isCancelled ? 'text-red-600' : appt.status === 'COMPLETED' ? 'text-green-600' : 'text-blue-600'}>
               {statusLabel}
             </span>
           </div>
@@ -83,12 +83,12 @@ export default function AppointmentPage() {
 
         {!isCancelled && appt.status === 'CONFIRMED' && (
           <button onClick={cancelAppointment} disabled={loading}
-            className="w-full bg-red-900/40 hover:bg-red-900/60 border border-red-800 text-red-300 font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
+            className="w-full bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
             {loading ? '...' : t(lang, 'cancelAppointment')}
           </button>
         )}
         {isCancelled && (
-          <div className="text-center text-green-400 text-sm">{t(lang, 'appointmentCancelledMsg')}</div>
+          <div className="text-center text-green-600 text-sm">{t(lang, 'appointmentCancelledMsg')}</div>
         )}
       </div>
     </div>

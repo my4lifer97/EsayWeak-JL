@@ -22,22 +22,22 @@ export default function CustomerAccountNav() {
   }
 
   return (
-    <nav className="border-b border-gray-900 px-4 py-3">
+    <nav className="border-b border-line px-4 py-3 bg-white">
       <div className="max-w-2xl mx-auto flex items-center justify-between">
-        <Link to="/browse" className="font-bold text-white">✂️</Link>
+        <Link to="/browse" className="font-bold text-ink">✂️</Link>
         <div className="flex items-center gap-4">
           {links.map((l) => (
             <Link key={l.to} to={l.to}
-              className={`text-sm transition-colors ${location.pathname === l.to ? 'text-white font-medium' : 'text-gray-500 hover:text-gray-300'}`}>
+              className={`text-sm transition-colors ${location.pathname === l.to ? 'text-ink font-medium' : 'text-muted hover:text-ink'}`}>
               {t(lang, l.key)}
             </Link>
           ))}
           {isAuthenticated ? (
-            <button onClick={handleSignOut} className="text-gray-500 hover:text-gray-300 text-sm transition-colors">
+            <button onClick={handleSignOut} className="text-muted hover:text-ink text-sm transition-colors">
               {t(lang, 'signOutPortal')}
             </button>
           ) : (
-            <Link to="/login" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">
+            <Link to="/login" className="text-muted hover:text-ink text-sm transition-colors">
               {t(lang, 'navLogin')}
             </Link>
           )}

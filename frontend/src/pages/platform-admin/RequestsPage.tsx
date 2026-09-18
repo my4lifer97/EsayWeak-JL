@@ -31,9 +31,9 @@ function slugify(name: string) {
 
 function StatusBadge({ status }: { status: BusinessOwnerRequest['status'] }) {
   const cls =
-    status === 'Approved' ? 'bg-green-900/40 text-green-300'
-      : status === 'Rejected' ? 'bg-red-900/40 text-red-300'
-        : 'bg-yellow-900/40 text-yellow-300'
+    status === 'Approved' ? 'bg-green-100 text-green-700'
+      : status === 'Rejected' ? 'bg-red-100 text-red-700'
+        : 'bg-yellow-100 text-yellow-800'
   return <span className={`text-xs px-2 py-0.5 rounded-full ${cls}`}>{status}</span>
 }
 
@@ -105,38 +105,38 @@ export default function PlatformAdminRequestsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
+    <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-5xl mx-auto">
-        <Link to="/platform-admin" className="text-gray-500 hover:text-gray-300 text-sm mb-6 inline-block">← Back</Link>
+        <Link to="/platform-admin" className="text-muted hover:text-ink text-sm mb-6 inline-block">← Back</Link>
         <h1 className="text-xl font-bold mb-6">Business account requests</h1>
 
         {credsResult && (
-          <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-2xl p-5 mb-6">
-            <p className="text-yellow-300 font-semibold mb-1">Account created for /{credsResult.slug}</p>
-            <p className="text-gray-400 text-sm mb-3">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-5 mb-6">
+            <p className="text-yellow-800 font-semibold mb-1">Account created for /{credsResult.slug}</p>
+            <p className="text-muted text-sm mb-3">
               {credsResult.emailSent
                 ? `Credentials were emailed to ${credsResult.email}. Copy them below only if the email doesn't arrive — the password will not be shown again.`
                 : `Couldn't email the owner — send these to them yourself. The password will not be shown again.`}
             </p>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-20 shrink-0">Username</span>
-                <code className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 font-mono">{credsResult.username}</code>
+                <span className="text-xs text-muted w-20 shrink-0">Username</span>
+                <code className="flex-1 bg-white border border-line rounded-lg px-3 py-2 font-mono">{credsResult.username}</code>
                 <button onClick={() => copy(credsResult.username, 'user')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                  className="bg-coral hover:bg-coral-dark text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                   {copied === 'user' ? 'Copied!' : 'Copy'}
                 </button>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 w-20 shrink-0">Password</span>
-                <code className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 font-mono text-lg tracking-wide">{credsResult.tempPassword}</code>
+                <span className="text-xs text-muted w-20 shrink-0">Password</span>
+                <code className="flex-1 bg-white border border-line rounded-lg px-3 py-2 font-mono text-lg tracking-wide">{credsResult.tempPassword}</code>
                 <button onClick={() => copy(credsResult.tempPassword, 'pass')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                  className="bg-coral hover:bg-coral-dark text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                   {copied === 'pass' ? 'Copied!' : 'Copy'}
                 </button>
               </div>
             </div>
-            <button onClick={() => setCredsResult(null)} className="text-gray-500 hover:text-gray-300 text-sm mt-3">Dismiss</button>
+            <button onClick={() => setCredsResult(null)} className="text-muted hover:text-ink text-sm mt-3">Dismiss</button>
           </div>
         )}
 
@@ -144,18 +144,18 @@ export default function PlatformAdminRequestsPage() {
           {STATUS_TABS.map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
-                tab === t ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                tab === t ? 'bg-teal-tint text-ink' : 'text-muted hover:text-ink hover:bg-cream'
               }`}>
               {t}
             </button>
           ))}
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+        <div className="bg-white border border-line rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-gray-800">
+                <tr className="text-left text-xs uppercase tracking-wide text-muted border-b border-line">
                   <th className="px-4 py-3 font-medium">Owner</th>
                   <th className="px-4 py-3 font-medium">Family name</th>
                   <th className="px-4 py-3 font-medium">Business</th>
@@ -169,19 +169,19 @@ export default function PlatformAdminRequestsPage() {
               <tbody>
                 {requests?.map((req) => (
                   <tr key={req.id} onClick={() => openDetail(req)}
-                    className="border-b border-gray-800 last:border-0 hover:bg-gray-800/60 cursor-pointer transition-colors">
+                    className="border-b border-line last:border-0 hover:bg-cream cursor-pointer transition-colors">
                     <td className="px-4 py-3">{req.ownerFirstName}</td>
                     <td className="px-4 py-3">{req.ownerFamilyName}</td>
                     <td className="px-4 py-3">{req.businessName}</td>
-                    <td className="px-4 py-3 text-gray-400">{req.businessTypeName ?? '—'}</td>
-                    <td className="px-4 py-3 text-gray-400">{req.phone}</td>
-                    <td className="px-4 py-3 text-gray-400">{req.email}</td>
-                    <td className="px-4 py-3 text-gray-400">{new Date(req.createdAt).toLocaleDateString()}</td>
+                    <td className="px-4 py-3 text-muted">{req.businessTypeName ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted">{req.phone}</td>
+                    <td className="px-4 py-3 text-muted">{req.email}</td>
+                    <td className="px-4 py-3 text-muted">{new Date(req.createdAt).toLocaleDateString()}</td>
                     <td className="px-4 py-3"><StatusBadge status={req.status} /></td>
                   </tr>
                 ))}
                 {requests?.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-500">No {tab === 'All' ? '' : tab.toLowerCase()} requests.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-6 text-center text-muted">No {tab === 'All' ? '' : tab.toLowerCase()} requests.</td></tr>
                 )}
               </tbody>
             </table>
@@ -191,16 +191,16 @@ export default function PlatformAdminRequestsPage() {
 
       {open && (
         <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 overflow-y-auto z-50" onClick={() => setOpenId(null)}>
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-lg my-8" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white border border-line rounded-2xl p-6 w-full max-w-lg my-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h2 className="text-lg font-bold">{open.businessName}</h2>
-                <p className="text-sm text-gray-400">{open.businessTypeName ?? 'No type'}</p>
+                <p className="text-sm text-muted">{open.businessTypeName ?? 'No type'}</p>
               </div>
               <StatusBadge status={open.status} />
             </div>
 
-            {rowError && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-3 py-2 mb-3">{rowError}</div>}
+            {rowError && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2 mb-3">{rowError}</div>}
 
             <dl className="space-y-2 text-sm mb-4">
               <Field label="Owner" value={`${open.ownerFirstName} ${open.ownerFamilyName}`} />
@@ -219,33 +219,33 @@ export default function PlatformAdminRequestsPage() {
             </dl>
 
             {open.status === 'Pending' ? (
-              <div className="border-t border-gray-800 pt-4 space-y-4">
+              <div className="border-t border-line pt-4 space-y-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">URL slug</label>
+                  <label className="block text-xs text-muted mb-1">URL slug</label>
                   <div className="flex gap-2">
                     <input value={slugDraft} onChange={(e) => setSlugDraft(e.target.value)}
-                      className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="flex-1 bg-cream border border-line rounded-lg px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
                     <button onClick={approve} disabled={busy}
-                      className="bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                      className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                       {busy ? '…' : 'Approve'}
                     </button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Reject with a note (optional)</label>
+                  <label className="block text-xs text-muted mb-1">Reject with a note (optional)</label>
                   <div className="flex gap-2">
                     <input value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
                       placeholder="Reason for rejecting"
-                      className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      className="flex-1 bg-cream border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
                     <button onClick={reject} disabled={busy}
-                      className="bg-red-900/60 hover:bg-red-800 disabled:opacity-50 text-red-200 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                      className="bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-700 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                       {busy ? '…' : 'Reject'}
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              <button onClick={() => setOpenId(null)} className="border-t border-gray-800 pt-4 text-gray-500 hover:text-gray-300 text-sm w-full text-left">Close</button>
+              <button onClick={() => setOpenId(null)} className="border-t border-line pt-4 text-muted hover:text-ink text-sm w-full text-left">Close</button>
             )}
           </div>
         </div>
@@ -257,8 +257,8 @@ export default function PlatformAdminRequestsPage() {
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex gap-3">
-      <dt className="text-gray-500 w-36 shrink-0">{label}</dt>
-      <dd className={`text-gray-200 ${mono ? 'font-mono' : ''} whitespace-pre-wrap`}>{value}</dd>
+      <dt className="text-muted w-36 shrink-0">{label}</dt>
+      <dd className={`text-ink ${mono ? 'font-mono' : ''} whitespace-pre-wrap`}>{value}</dd>
     </div>
   )
 }

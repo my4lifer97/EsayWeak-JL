@@ -155,7 +155,7 @@ export default function SettingsPage() {
     }
   }
 
-  if (!business) return <div className="text-gray-500">{t(lang, 'loading')}</div>
+  if (!business) return <div className="text-muted">{t(lang, 'loading')}</div>
 
   const trialDate = parseISO(business.trialEndsAt)
   const isTrialActive = business.subscriptionStatus === 'TRIAL' && trialDate > new Date()
@@ -163,20 +163,20 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white mb-6">{t(lang, 'settings')}</h1>
+      <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'settings')}</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
-        {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">{error}</div>}
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>}
         {showBillingSuccessBanner && (
-          <div className="bg-blue-900/40 border border-blue-700 text-blue-300 text-sm rounded-lg px-4 py-3">
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-lg px-4 py-3">
             {t(lang, 'billingRedirecting')}
           </div>
         )}
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          <h2 className="text-white font-semibold mb-3">{t(lang, 'subscription')}</h2>
+        <div className="bg-white border border-line rounded-2xl p-6">
+          <h2 className="text-ink font-semibold mb-3">{t(lang, 'subscription')}</h2>
           <div className={`text-sm px-4 py-2 rounded-lg inline-block ${
-            business.subscriptionStatus === 'ACTIVE' ? 'bg-green-900/40 text-green-300'
-              : isTrialActive ? 'bg-blue-900/40 text-blue-300' : 'bg-red-900/40 text-red-300'
+            business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700'
+              : isTrialActive ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
           }`}>
             {business.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionActive')
               : isTrialActive ? `Free trial · ${trialDaysLeft} days left (expires ${format(trialDate, 'MMM d, yyyy')})`
@@ -185,62 +185,62 @@ export default function SettingsPage() {
           {business.subscriptionStatus !== 'ACTIVE' && (
             <div className="mt-4">
               <button type="button" onClick={handleSubscribe} disabled={billingLoading}
-                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                 {billingLoading ? t(lang, 'billingRedirecting') : t(lang, 'billingSubscribeNow')}
               </button>
-              {billingError && <p className="text-red-400 text-xs mt-2">{billingError}</p>}
+              {billingError && <p className="text-red-600 text-xs mt-2">{billingError}</p>}
             </div>
           )}
-          <p className="text-gray-500 text-xs mt-2">
-            {t(lang, 'bookingUrl')} <span className="text-blue-400">{window.location.origin}/{business.slug}</span>
+          <p className="text-muted text-xs mt-2">
+            {t(lang, 'bookingUrl')} <span className="text-coral-dark">{window.location.origin}/{business.slug}</span>
           </p>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-white font-semibold mb-1">{t(lang, 'businessInfo')}</h2>
+        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+          <h2 className="text-ink font-semibold mb-1">{t(lang, 'businessInfo')}</h2>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'profilePhoto')}</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'profilePhoto')}</label>
             <div className="flex items-center gap-4">
               {logoPreview || business.logo ? (
                 <img src={logoPreview ?? mediaUrl(business.logo)} alt={business.name}
-                  className="w-16 h-16 rounded-full object-cover border border-gray-700" />
+                  className="w-16 h-16 rounded-full object-cover border border-line" />
               ) : (
-                <div className="w-16 h-16 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-2xl">✂️</div>
+                <div className="w-16 h-16 rounded-full bg-cream border border-line flex items-center justify-center text-2xl">✂️</div>
               )}
               <div className="flex-1">
                 <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleLogoChange}
-                  className="block w-full text-sm text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-gray-800 file:text-gray-300 hover:file:bg-gray-700 file:cursor-pointer cursor-pointer" />
+                  className="block w-full text-sm text-muted file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-cream file:text-ink hover:file:bg-line file:cursor-pointer cursor-pointer" />
                 {logoFile && (
                   <button type="button" disabled={uploadingLogo} onClick={uploadLogo}
-                    className="mt-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors">
+                    className="mt-2 bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors">
                     {uploadingLogo ? t(lang, 'saving') : t(lang, 'uploadPhoto')}
                   </button>
                 )}
-                {logoError && <p className="text-red-400 text-xs mt-1">{logoError}</p>}
+                {logoError && <p className="text-red-600 text-xs mt-1">{logoError}</p>}
               </div>
             </div>
           </div>
 
           {[[t(lang, 'businessName'), 'name', 'text'], [t(lang, 'phone'), 'phone', 'tel'], [t(lang, 'description'), 'description', 'textarea']].map(([label, key, type]) => (
             <div key={key}>
-              <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
+              <label className="block text-sm font-medium text-ink mb-1.5">{label}</label>
               {type === 'textarea' ? (
                 <textarea value={form[key as keyof typeof form]} rows={3}
                   onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral resize-none"
                   placeholder="Tell customers about your business..." />
               ) : (
                 <input type={type} value={form[key as keyof typeof form]}
                   onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
               )}
             </div>
           ))}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'language')}</label>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'language')}</label>
             <select value={form.language} onChange={(e) => setForm((f) => ({ ...f, language: e.target.value as 'EN' | 'AR' | 'HE' }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
               <option value="EN">English</option>
               <option value="AR">العربية (Arabic)</option>
               <option value="HE">עברית (Hebrew)</option>
@@ -248,133 +248,133 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-white font-semibold mb-1">{t(lang, 'businessLocation')}</h2>
+        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+          <h2 className="text-ink font-semibold mb-1">{t(lang, 'businessLocation')}</h2>
           <div>
-            <label htmlFor="settings-city" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'city')}</label>
+            <label htmlFor="settings-city" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'city')}</label>
             <input id="settings-city" type="text" value={form.city}
               placeholder={t(lang, 'cityPlaceholder')}
               onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
           </div>
           <div>
-            <label htmlFor="settings-address" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'addressLine')}</label>
+            <label htmlFor="settings-address" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'addressLine')}</label>
             <input id="settings-address" type="text" value={form.addressLine}
               onChange={(e) => setForm((f) => ({ ...f, addressLine: e.target.value }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
           </div>
           <div>
-            <label htmlFor="settings-mapurl" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'mapUrl')}</label>
+            <label htmlFor="settings-mapurl" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'mapUrl')}</label>
             <input id="settings-mapurl" type="url" value={form.mapUrl}
               placeholder={t(lang, 'mapUrlPlaceholder')}
               onChange={(e) => setForm((f) => ({ ...f, mapUrl: e.target.value }))}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
           </div>
-          <label className="flex items-start gap-3 cursor-pointer border-t border-gray-800 pt-4">
+          <label className="flex items-start gap-3 cursor-pointer border-t border-line pt-4">
             <input type="checkbox" checked={isListed}
               onChange={(e) => setIsListed(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
             <span>
-              <span className="block text-sm font-medium text-gray-200">{t(lang, 'listInDirectory')}</span>
-              <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'listInDirectoryHint')}</span>
+              <span className="block text-sm font-medium text-ink">{t(lang, 'listInDirectory')}</span>
+              <span className="block text-muted text-sm mt-0.5">{t(lang, 'listInDirectoryHint')}</span>
             </span>
           </label>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-white font-semibold mb-1">{t(lang, 'bookingLimits')}</h2>
-          <p className="text-gray-500 text-sm">{t(lang, 'bookingLimitsHint')}</p>
+        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+          <h2 className="text-ink font-semibold mb-1">{t(lang, 'bookingLimits')}</h2>
+          <p className="text-muted text-sm">{t(lang, 'bookingLimitsHint')}</p>
           <div className="grid grid-cols-2 gap-4">
             {[[t(lang, 'maxBookingsPerDay'), 'maxBookingsPerDay'], [t(lang, 'maxBookingsPerWeek'), 'maxBookingsPerWeek']].map(([label, key]) => (
               <div key={key}>
-                <label htmlFor={`settings-${key}`} className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
+                <label htmlFor={`settings-${key}`} className="block text-sm font-medium text-ink mb-1.5">{label}</label>
                 <input id={`settings-${key}`} type="number" min="1" step="1" value={form[key as 'maxBookingsPerDay' | 'maxBookingsPerWeek']}
                   placeholder={t(lang, 'unlimited')}
                   onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-white font-semibold mb-1">{t(lang, 'waitlistSettings')}</h2>
+        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+          <h2 className="text-ink font-semibold mb-1">{t(lang, 'waitlistSettings')}</h2>
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={waitlistEnabled}
               onChange={(e) => setWaitlistEnabled(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
             <span>
-              <span className="block text-sm font-medium text-gray-200">{t(lang, 'waitlistEnabledLabel')}</span>
-              <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'waitlistEnabledHint')}</span>
+              <span className="block text-sm font-medium text-ink">{t(lang, 'waitlistEnabledLabel')}</span>
+              <span className="block text-muted text-sm mt-0.5">{t(lang, 'waitlistEnabledHint')}</span>
             </span>
           </label>
 
-          <div className="border-t border-gray-800 pt-4">
-            <p className="text-sm font-medium text-gray-200 mb-2">{t(lang, 'customerCancelPolicyTitle')}</p>
+          <div className="border-t border-line pt-4">
+            <p className="text-sm font-medium text-ink mb-2">{t(lang, 'customerCancelPolicyTitle')}</p>
             <label className="flex items-start gap-3 cursor-pointer mb-2">
               <input type="radio" name="customerCancelPolicy" checked={!requireApprovalOnCustomerCancel}
                 onChange={() => setRequireApprovalOnCustomerCancel(false)}
-                className="mt-1 w-4 h-4 border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+                className="mt-1 w-4 h-4 border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
               <span>
-                <span className="block text-sm font-medium text-gray-200">{t(lang, 'customerCancelAutoLabel')}</span>
-                <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'customerCancelAutoHint')}</span>
+                <span className="block text-sm font-medium text-ink">{t(lang, 'customerCancelAutoLabel')}</span>
+                <span className="block text-muted text-sm mt-0.5">{t(lang, 'customerCancelAutoHint')}</span>
               </span>
             </label>
             <label className="flex items-start gap-3 cursor-pointer">
               <input type="radio" name="customerCancelPolicy" checked={requireApprovalOnCustomerCancel}
                 onChange={() => setRequireApprovalOnCustomerCancel(true)}
-                className="mt-1 w-4 h-4 border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+                className="mt-1 w-4 h-4 border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
               <span>
-                <span className="block text-sm font-medium text-gray-200">{t(lang, 'customerCancelApprovalLabel')}</span>
-                <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'customerCancelApprovalHint')}</span>
+                <span className="block text-sm font-medium text-ink">{t(lang, 'customerCancelApprovalLabel')}</span>
+                <span className="block text-muted text-sm mt-0.5">{t(lang, 'customerCancelApprovalHint')}</span>
               </span>
             </label>
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-4">
-          <h2 className="text-white font-semibold mb-1">{t(lang, 'chatbotSettings')}</h2>
-          <p className="text-gray-500 text-sm">{t(lang, 'chatbotSettingsHint')}</p>
+        <div className="bg-white border border-line rounded-2xl p-6 space-y-4">
+          <h2 className="text-ink font-semibold mb-1">{t(lang, 'chatbotSettings')}</h2>
+          <p className="text-muted text-sm">{t(lang, 'chatbotSettingsHint')}</p>
 
           <label className="flex items-start gap-3 cursor-pointer">
             <input type="checkbox" checked={chatbotEnabled}
               onChange={(e) => setChatbotEnabled(e.target.checked)}
-              className="mt-1 w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900" />
+              className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-white" />
             <span>
-              <span className="block text-sm font-medium text-gray-200">{t(lang, 'chatbotEnabledLabel')}</span>
-              <span className="block text-gray-500 text-sm mt-0.5">{t(lang, 'chatbotEnabledHint')}</span>
+              <span className="block text-sm font-medium text-ink">{t(lang, 'chatbotEnabledLabel')}</span>
+              <span className="block text-muted text-sm mt-0.5">{t(lang, 'chatbotEnabledHint')}</span>
             </span>
           </label>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'chatbotWelcomeMessage')}</label>
-            <p className="text-gray-500 text-xs mb-1.5">{t(lang, 'chatbotWelcomeMessageHint')}</p>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'chatbotWelcomeMessage')}</label>
+            <p className="text-muted text-xs mb-1.5">{t(lang, 'chatbotWelcomeMessageHint')}</p>
             <textarea value={form.chatbotWelcomeMessage} rows={2}
               onChange={(e) => setForm((f) => ({ ...f, chatbotWelcomeMessage: e.target.value }))}
               placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'chatbotConfirmationMessage')}</label>
-            <p className="text-gray-500 text-xs mb-1.5">{t(lang, 'chatbotConfirmationMessageHint')}</p>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'chatbotConfirmationMessage')}</label>
+            <p className="text-muted text-xs mb-1.5">{t(lang, 'chatbotConfirmationMessageHint')}</p>
             <textarea value={form.chatbotConfirmationMessage} rows={2}
               onChange={(e) => setForm((f) => ({ ...f, chatbotConfirmationMessage: e.target.value }))}
               placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-2">
-          <h2 className="text-white font-semibold mb-1">{t(lang, 'whatsappSetup')}</h2>
-          <p className="text-gray-500 text-sm">{t(lang, 'whatsappNumberHint')}</p>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono">
-            {business?.whatsAppNumber || <span className="text-gray-500 font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
+        <div className="bg-white border border-line rounded-2xl p-6 space-y-2">
+          <h2 className="text-ink font-semibold mb-1">{t(lang, 'whatsappSetup')}</h2>
+          <p className="text-muted text-sm">{t(lang, 'whatsappNumberHint')}</p>
+          <div className="bg-cream border border-line rounded-lg px-3 py-2.5 text-ink font-mono">
+            {business?.whatsAppNumber || <span className="text-muted font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
           </div>
         </div>
 
         <button type="submit" disabled={saving}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-8 py-2.5 rounded-lg transition-colors">
+          className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold px-8 py-2.5 rounded-lg transition-colors">
           {saved ? t(lang, 'saved') : saving ? t(lang, 'saving') : t(lang, 'saveChanges')}
         </button>
       </form>

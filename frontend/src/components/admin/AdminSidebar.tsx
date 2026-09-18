@@ -23,7 +23,7 @@ function NavContent({ lang, onNavigate }: { lang: string; onNavigate?: () => voi
           onClick={onNavigate}
           className={({ isActive }) =>
             `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+              isActive ? 'bg-coral text-white' : 'text-muted hover:text-ink hover:bg-cream'
             }`
           }
         >
@@ -48,15 +48,15 @@ function DesktopSidebar({ businessName }: { businessName: string }) {
   }
 
   return (
-    <aside className="w-56 bg-gray-900 border-e border-gray-800 flex flex-col py-6 px-3 shrink-0">
+    <aside className="w-56 bg-white border-e border-line flex flex-col py-6 px-3 shrink-0">
       <div className="px-3 mb-8">
-        <div className="text-white font-bold text-lg">EsayWeek</div>
-        <div className="text-gray-400 text-sm mt-0.5 truncate">{businessName}</div>
+        <div className="text-ink font-bold text-lg">EsayWeek</div>
+        <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
       </div>
       <NavContent lang={lang} />
       <button
         onClick={handleLogout}
-        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors mt-4"
+        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted hover:text-ink hover:bg-cream transition-colors mt-4"
       >
         <span>🚪</span>
         {t(lang, 'signOut')}
@@ -80,22 +80,22 @@ function TouchSidebar({
     <>
       {open && <div onClick={onClose} className="fixed inset-0 bg-black/60 z-40" />}
       <aside
-        className={`w-56 bg-gray-900 border-e border-gray-800 flex flex-col py-6 px-3 shrink-0
+        className={`w-56 bg-white border-e border-line flex flex-col py-6 px-3 shrink-0
           fixed inset-y-0 start-0 z-50 transition-transform duration-200
           ${open ? 'translate-x-0' : 'rtl:translate-x-full -translate-x-full'}`}
       >
         <div className="px-3 mb-8 flex items-start justify-between">
           <div>
-            <div className="text-white font-bold text-lg">EsayWeek</div>
-            <div className="text-gray-400 text-sm mt-0.5 truncate">{businessName}</div>
+            <div className="text-ink font-bold text-lg">EsayWeek</div>
+            <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
           </div>
           <button onClick={onClose} aria-label="Close menu"
-            className="text-gray-500 hover:text-white w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-gray-800 text-2xl leading-none transition-colors">✕</button>
+            className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
         </div>
         <NavContent lang={lang} onNavigate={onClose} />
         <button
           onClick={handleLogout}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors mt-4"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted hover:text-ink hover:bg-cream transition-colors mt-4"
         >
           <span>🚪</span>
           {t(lang, 'signOut')}

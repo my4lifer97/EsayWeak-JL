@@ -67,27 +67,27 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">Reset your password</h1>
-        <p className="text-gray-400 text-center mb-8">
+        <h1 className="text-2xl font-bold text-ink mb-2 text-center">Reset your password</h1>
+        <p className="text-muted text-center mb-8">
           {view === 'email' ? 'Enter your account email' : `Enter the code sent to ${email}`}
         </p>
 
         {view === 'email' && (
           <form onSubmit={handleRequestCode} className="space-y-4">
             {error && (
-              <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
                 {error}
               </div>
             )}
             <input
               type="email" required autoFocus value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="Email"
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
             <button type="submit" disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
+              className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
               {loading ? '...' : 'Send reset code'}
             </button>
           </form>
@@ -96,7 +96,7 @@ export default function ForgotPasswordPage() {
         {view === 'reset' && (
           <div>
             {devCode && (
-              <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg px-3 py-2 text-xs text-yellow-300 mb-4 text-center">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-xs text-yellow-800 mb-4 text-center">
                 Dev mode — your code is <span className="font-mono font-bold">{devCode}</span>
               </div>
             )}
@@ -105,37 +105,37 @@ export default function ForgotPasswordPage() {
                 type="text" inputMode="numeric" maxLength={6} required autoFocus
                 value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="123456"
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-4 text-white text-center text-2xl tracking-widest font-mono placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
               />
               <input
                 type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="New password"
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
               />
               <input
                 type="password" required value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)}
                 placeholder="Confirm new password"
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
               />
               {error && (
-                <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
                   {error}
                 </div>
               )}
               <button type="submit" disabled={loading || code.length < 6}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
+                className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
                 {loading ? '...' : 'Reset password'}
               </button>
               <button type="button" onClick={handleResend} disabled={loading}
-                className="w-full text-gray-500 hover:text-gray-300 text-sm py-1 transition-colors">
+                className="w-full text-muted hover:text-ink text-sm py-1 transition-colors">
                 Resend code
               </button>
             </form>
           </div>
         )}
 
-        <p className="text-gray-500 text-center mt-6 text-sm">
-          <Link to="/admin/login" className="text-blue-400 hover:underline">← Back to sign in</Link>
+        <p className="text-muted text-center mt-6 text-sm">
+          <Link to="/admin/login" className="text-coral-dark hover:underline">← Back to sign in</Link>
         </p>
       </div>
     </div>

@@ -31,26 +31,26 @@ export default function MyBookingsPage() {
   const emptyKey: TKey = filter === 'past' ? 'noPastBookings' : 'noUpcomingBookings'
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-cream text-ink">
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
         <BackButton lang={lang} />
-        <h1 className="text-2xl font-bold text-white mb-6 mt-3">{t(lang, 'myBookingsTitle')}</h1>
+        <h1 className="text-2xl font-bold text-ink mb-6 mt-3">{t(lang, 'myBookingsTitle')}</h1>
 
-        <div className="flex gap-1 bg-gray-900 rounded-xl p-1 border border-gray-800 mb-6 w-fit">
+        <div className="flex gap-1 bg-white rounded-xl p-1 border border-line mb-6 w-fit">
           {FILTERS.map((f) => (
             <button key={f.value} onClick={() => setFilter(f.value)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                filter === f.value ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
+                filter === f.value ? 'bg-coral text-white' : 'text-muted hover:text-ink'
               }`}>{t(lang, f.key)}
             </button>
           ))}
         </div>
 
         {isLoading ? (
-          <div className="text-center text-gray-500 py-12">{t(lang, 'loading')}</div>
+          <div className="text-center text-muted py-12">{t(lang, 'loading')}</div>
         ) : appointments.length === 0 ? (
-          <div className="text-center text-gray-500 py-12">{t(lang, emptyKey)}</div>
+          <div className="text-center text-muted py-12">{t(lang, emptyKey)}</div>
         ) : (
           <div className="space-y-3">
             {appointments.map((appt) => (

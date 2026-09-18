@@ -13,12 +13,12 @@ export default function CustomerProtectedRoute() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4">
         <div className="text-center max-w-sm space-y-4">
-          <p className="text-gray-400">{t(lang, 'whatsappLinkExpired')}</p>
+          <p className="text-muted">{t(lang, 'whatsappLinkExpired')}</p>
           <Link
             to={`/login?next=${encodeURIComponent(location.pathname)}`}
-            className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-xl transition-colors"
+            className="inline-block bg-coral hover:bg-coral-dark text-white font-semibold px-5 py-2.5 rounded-xl transition-colors"
           >
             {t(lang, 'navLogin')}
           </Link>

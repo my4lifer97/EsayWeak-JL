@@ -180,13 +180,13 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const availableDays = calDays.filter((d) => business.activeDays.includes(d.getDay()))
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white" dir={dir}>
+    <div className="min-h-screen bg-cream text-ink" dir={dir}>
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="flex items-center gap-2 mb-8">
           {isFromLink ? (
             <div />
           ) : step > 1 ? (
-            <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-gray-400 hover:text-white text-sm">
+            <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-muted hover:text-ink text-sm">
               ← {t(lang, 'back')}
             </button>
           ) : (
@@ -194,7 +194,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           )}
           <div className="flex gap-1 mx-auto">
             {[1, 2, 3, 4].map((s) => (
-              <div key={s} className={`h-1.5 w-8 rounded-full transition-colors ${s <= step ? 'bg-blue-500' : 'bg-gray-700'}`} />
+              <div key={s} className={`h-1.5 w-8 rounded-full transition-colors ${s <= step ? 'bg-coral' : 'bg-line'}`} />
             ))}
           </div>
           <LanguageSwitcher />
@@ -204,18 +204,18 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
         {step === 1 && (
           <div>
-            <p className="text-gray-400 mb-6">{t(lang, 'selectService')}</p>
+            <p className="text-muted mb-6">{t(lang, 'selectService')}</p>
             <div className="space-y-3">
               {bookableItems.map((s) => (
                 <button key={s.id} onClick={() => {
                   setItem(s); setSelectedGalleryPhotoId(null); setUploadedPhotoUrl(null); setPhotoError(''); setStep(2)
                 }}
-                  className="w-full bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-blue-500 rounded-xl px-5 py-4 flex justify-between items-center transition-colors text-start">
+                  className="w-full bg-white hover:bg-cream border border-line hover:border-coral rounded-xl px-5 py-4 flex justify-between items-center transition-colors text-start">
                   <div>
                     <div className="font-medium">{itemName(s, lang)}</div>
-                    <div className="text-gray-400 text-sm mt-0.5">{s.durationMinutes} {t(lang, 'min')}</div>
+                    <div className="text-muted text-sm mt-0.5">{s.durationMinutes} {t(lang, 'min')}</div>
                   </div>
-                  <div className="text-blue-400 font-semibold">{s.price !== null ? `₪${Number(s.price).toFixed(0)}` : ''}</div>
+                  <div className="text-coral-dark font-semibold">{s.price !== null ? `₪${Number(s.price).toFixed(0)}` : ''}</div>
                 </button>
               ))}
             </div>
@@ -224,23 +224,23 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
         {step === 2 && (
           <div>
-            <p className="text-gray-400 mb-6">{t(lang, 'selectDate')}</p>
+            <p className="text-muted mb-6">{t(lang, 'selectDate')}</p>
             <div className="grid grid-cols-4 gap-2">
               {availableDays.slice(0, 28).map((d) => {
                 const str = format(d, 'yyyy-MM-dd')
                 return (
                   <button key={str} onClick={() => pickDate(str)}
-                    className={`bg-gray-900 hover:bg-blue-600 border border-gray-800 hover:border-blue-500 rounded-xl p-3 text-center transition-colors ${date === str ? 'bg-blue-600 border-blue-500' : ''}`}>
-                    <div className="text-xs text-gray-400">{format(d, 'EEE', { locale: dateLocale })}</div>
-                    <div className="text-white font-medium mt-0.5">{format(d, 'd')}</div>
-                    <div className="text-xs text-gray-500">{format(d, 'MMM', { locale: dateLocale })}</div>
+                    className={`bg-white hover:bg-coral hover:text-white border border-line hover:border-coral-dark rounded-xl p-3 text-center transition-colors ${date === str ? 'bg-coral text-white border-coral-dark' : ''}`}>
+                    <div className="text-xs text-muted">{format(d, 'EEE', { locale: dateLocale })}</div>
+                    <div className="text-ink font-medium mt-0.5">{format(d, 'd')}</div>
+                    <div className="text-xs text-muted">{format(d, 'MMM', { locale: dateLocale })}</div>
                   </button>
                 )
               })}
             </div>
             {isAuthenticated && (
               <Link to="/account/bookings"
-                className="block text-center text-gray-500 hover:text-gray-300 text-sm mt-6 transition-colors">
+                className="block text-center text-muted hover:text-ink text-sm mt-6 transition-colors">
                 {t(lang, 'viewMyAppointments')}
               </Link>
             )}
@@ -249,23 +249,23 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
         {step === 3 && (
           <div>
-            <p className="text-gray-400 mb-1">{t(lang, 'selectTime')}</p>
-            <p className="text-sm text-gray-500 mb-5">{date}</p>
+            <p className="text-muted mb-1">{t(lang, 'selectTime')}</p>
+            <p className="text-sm text-muted mb-5">{date}</p>
             {slotsLoading ? (
-              <div className="text-gray-500 text-center py-8">{t(lang, 'loadingTimes')}</div>
+              <div className="text-muted text-center py-8">{t(lang, 'loadingTimes')}</div>
             ) : slots.length === 0 ? (
-              <div className="text-gray-500 text-center py-8">{t(lang, 'noTimes')}</div>
+              <div className="text-muted text-center py-8">{t(lang, 'noTimes')}</div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 {slots.map((s) => (
                   <button key={s.start} onClick={() => pickSlot(s)}
                     className={`rounded-xl py-3 text-center text-sm font-medium transition-colors border ${
                       s.available
-                        ? `bg-gray-900 hover:bg-blue-600 border-gray-800 hover:border-blue-500 ${slot?.start === s.start ? 'bg-blue-600 border-blue-500' : ''}`
-                        : 'bg-gray-900/50 border-gray-800 text-gray-500'
+                        ? `bg-white hover:bg-coral hover:text-white border-line hover:border-coral-dark ${slot?.start === s.start ? 'bg-coral text-white border-coral-dark' : ''}`
+                        : 'bg-cream border-line text-muted'
                     }`}>
                     {s.start}
-                    {!s.available && <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-0.5">{t(lang, 'booked')}</div>}
+                    {!s.available && <div className="text-[10px] uppercase tracking-wide text-muted mt-0.5">{t(lang, 'booked')}</div>}
                   </button>
                 ))}
               </div>
@@ -275,40 +275,40 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
         {step === 4 && (
           <div>
-            <p className="text-gray-400 mb-6">{t(lang, 'yourDetails')}</p>
-            {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+            <p className="text-muted mb-6">{t(lang, 'yourDetails')}</p>
+            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
             <div className="space-y-4">
               <div>
-                <label htmlFor="booking-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
+                <label htmlFor="booking-name" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'fullName')}</label>
                 <input id="booking-name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
               </div>
               <div>
-                <label htmlFor="booking-family-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'familyName')}</label>
+                <label htmlFor="booking-family-name" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'familyName')}</label>
                 <input id="booking-family-name" type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
               </div>
               <div>
-                <label htmlFor="booking-phone" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'phoneNumber')}</label>
+                <label htmlFor="booking-phone" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'phoneNumber')}</label>
                 <input id="booking-phone" type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
                   disabled={isAuthenticated}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
+                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral disabled:opacity-60" />
               </div>
               <div>
-                <label htmlFor="booking-notes" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'notes')}</label>
+                <label htmlFor="booking-notes" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'notes')}</label>
                 <textarea id="booking-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
                   placeholder={t(lang, 'notesPlaceholder')}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                  className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
               </div>
               {(item?.photoMode === 'OwnerGallery' || item?.photoMode === 'Both') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'choosePhoto')}</label>
-                  <p className="text-gray-500 text-xs mb-2">{t(lang, 'choosePhotoHint')}</p>
+                  <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'choosePhoto')}</label>
+                  <p className="text-muted text-xs mb-2">{t(lang, 'choosePhotoHint')}</p>
                   <div className="grid grid-cols-3 gap-2">
                     {item.galleryPhotos.map((p) => (
                       <button key={p.id} type="button" onClick={() => { setSelectedGalleryPhotoId(p.id); setUploadedPhotoUrl(null) }}
                         className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
-                          selectedGalleryPhotoId === p.id ? 'border-blue-500' : 'border-gray-700 hover:border-gray-500'
+                          selectedGalleryPhotoId === p.id ? 'border-coral' : 'border-line hover:border-muted'
                         }`}>
                         <img src={mediaUrl(p.url)} alt="" className="w-full h-full object-cover" />
                       </button>
@@ -319,36 +319,36 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
               {(item?.photoMode === 'CustomerUpload' || item?.photoMode === 'Both') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'uploadYourPhoto')}</label>
-                  <p className="text-gray-500 text-xs mb-2">{t(lang, 'uploadYourPhotoHint')}</p>
+                  <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'uploadYourPhoto')}</label>
+                  <p className="text-muted text-xs mb-2">{t(lang, 'uploadYourPhotoHint')}</p>
                   {uploadedPhotoUrl ? (
                     <div className="relative w-24 h-24">
-                      <img src={mediaUrl(uploadedPhotoUrl)} alt="" className="w-24 h-24 object-cover rounded-lg border border-gray-700" />
+                      <img src={mediaUrl(uploadedPhotoUrl)} alt="" className="w-24 h-24 object-cover rounded-lg border border-line" />
                       <button type="button" onClick={() => setUploadedPhotoUrl(null)}
                         className="absolute -top-2 -right-2 bg-red-600 hover:bg-red-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
                         ✕
                       </button>
                     </div>
                   ) : (
-                    <label className="inline-block cursor-pointer bg-gray-900 border border-gray-700 hover:border-blue-500 rounded-xl px-4 py-3 text-sm text-gray-300">
+                    <label className="inline-block cursor-pointer bg-white border border-line hover:border-coral rounded-xl px-4 py-3 text-sm text-ink">
                       {photoUploading ? t(lang, 'uploading') : t(lang, 'uploadYourPhoto')}
                       <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={photoUploading}
                         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadPhoto(f) }} />
                     </label>
                   )}
-                  {photoError && <p className="text-red-400 text-xs mt-1">{photoError}</p>}
+                  {photoError && <p className="text-red-600 text-xs mt-1">{photoError}</p>}
                 </div>
               )}
 
               {item && slot && (
-                <div className="bg-gray-900 border border-gray-700 rounded-xl p-4 text-sm space-y-1">
-                  <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'service')}</span><span className="text-white">{itemName(item, lang)}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'date')}</span><span className="text-white">{date}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-400">{t(lang, 'time')}</span><span className="text-white">{slot.start} – {slot.end}</span></div>
+                <div className="bg-white border border-line rounded-xl p-4 text-sm space-y-1">
+                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'service')}</span><span className="text-ink">{itemName(item, lang)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'time')}</span><span className="text-ink">{slot.start} – {slot.end}</span></div>
                 </div>
               )}
               <button onClick={confirm} disabled={!name || !familyName || !phone || !photoSatisfied || confirmLoading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-4 rounded-2xl transition-colors">
+                className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-4 rounded-2xl transition-colors">
                 {confirmLoading ? '...' : t(lang, 'confirm')}
               </button>
             </div>

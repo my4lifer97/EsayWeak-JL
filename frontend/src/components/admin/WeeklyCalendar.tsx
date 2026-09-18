@@ -62,14 +62,14 @@ export default function WeeklyCalendar({
     <div>
       <div className="flex items-center justify-between mb-4">
         <button onClick={() => onWeekChange(weekOffset - 1)}
-          className="text-gray-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
+          className="text-muted hover:text-ink px-3 py-1.5 rounded-lg hover:bg-cream transition-colors">
           {t(lang, 'previous')}
         </button>
-        <span className="text-white font-medium">
+        <span className="text-ink font-medium">
           {format(weekStartDate, 'MMM d', { locale: dateLocale })} – {format(addDays(weekStartDate, 6), 'MMM d, yyyy', { locale: dateLocale })}
         </span>
         <button onClick={() => onWeekChange(weekOffset + 1)}
-          className="text-gray-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-gray-800 transition-colors">
+          className="text-muted hover:text-ink px-3 py-1.5 rounded-lg hover:bg-cream transition-colors">
           {t(lang, 'next')}
         </button>
       </div>
@@ -77,24 +77,24 @@ export default function WeeklyCalendar({
       {/* Below md, 8 squished columns are unreadable, so the grid gets a fixed min-width and
           scrolls horizontally within its own box instead of shrinking illegibly -- avoids
           forcing the owner to rotate the phone to landscape just to read the board. */}
-      <div className="bg-gray-900 rounded-2xl border border-gray-800 overflow-x-auto">
+      <div className="bg-white rounded-2xl border border-line overflow-x-auto">
         <div className="min-w-[640px]">
-          <div className="grid grid-cols-8 border-b border-gray-800">
+          <div className="grid grid-cols-8 border-b border-line">
             <div className="p-3" />
             {days.map((d) => (
-              <div key={d.toISOString()} className="p-3 text-center border-s border-gray-800">
-                <div className="text-xs text-gray-500 uppercase">{format(d, 'EEE', { locale: dateLocale })}</div>
+              <div key={d.toISOString()} className="p-3 text-center border-s border-line">
+                <div className="text-xs text-muted uppercase">{format(d, 'EEE', { locale: dateLocale })}</div>
                 <div className={`text-lg font-semibold mt-0.5 ${
-                  format(d, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-blue-400' : 'text-white'
+                  format(d, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-coral-dark' : 'text-ink'
                 }`}>{format(d, 'd')}</div>
               </div>
             ))}
           </div>
 
           <div className="grid grid-cols-8 relative" style={{ height: `${totalMinutes * 1.2}px` }}>
-            <div className="border-e border-gray-800">
+            <div className="border-e border-line">
               {HOURS.map((h) => (
-                <div key={h} className="text-xs text-gray-600 text-end pe-2 absolute w-full"
+                <div key={h} className="text-xs text-muted text-end pe-2 absolute w-full"
                   style={{ top: `${(h * 60 - startMinute) * 1.2}px` }}>
                   {String(h).padStart(2, '0')}:00
                 </div>
@@ -104,9 +104,9 @@ export default function WeeklyCalendar({
               const dayStr = format(day, 'yyyy-MM-dd')
               const dayAppts = appointments.filter((a) => a.date.slice(0, 10) === dayStr)
               return (
-                <div key={dayStr} className="relative border-s border-gray-800">
+                <div key={dayStr} className="relative border-s border-line">
                   {HOURS.map((h) => (
-                    <div key={h} className="absolute w-full border-t border-gray-800/50"
+                    <div key={h} className="absolute w-full border-t border-line/60"
                       style={{ top: `${(h * 60 - startMinute) * 1.2}px`, height: `${60 * 1.2}px` }} />
                   ))}
                   {dayAppts.map((appt) => {
@@ -145,19 +145,19 @@ export default function WeeklyCalendar({
 
       {selected && (
         <div onClick={() => setSelected(null)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-2xl p-6 w-full max-w-sm border border-gray-800">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl p-6 w-full max-w-sm border border-line">
             <div className="relative mb-4">
               <div className="text-center px-11">
-                <h2 className="text-white font-semibold text-lg">{selected.customer.name}</h2>
+                <h2 className="text-ink font-semibold text-lg">{selected.customer.name}</h2>
                 {selected.pendingCancellationApproval && (
-                  <div className="text-xs text-amber-400 mt-0.5">⚠️ {t(lang, 'cancellationRequestedBadge')}</div>
+                  <div className="text-xs text-amber-700 mt-0.5">⚠️ {t(lang, 'cancellationRequestedBadge')}</div>
                 )}
                 {selected.recurringSeriesId && (
-                  <div className="text-xs text-purple-400 mt-0.5">🔁 {t(lang, 'partOfSeries')}</div>
+                  <div className="text-xs text-purple-700 mt-0.5">🔁 {t(lang, 'partOfSeries')}</div>
                 )}
               </div>
               <button onClick={() => setSelected(null)}
-                className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-gray-800 text-2xl leading-none transition-colors"
+                className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream text-2xl leading-none transition-colors"
                 aria-label="Close">✕</button>
             </div>
             <div className="space-y-2 text-sm mb-6">
@@ -167,21 +167,21 @@ export default function WeeklyCalendar({
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />
               {selected.notes && <Row label={t(lang, 'notes')} value={selected.notes} />}
               <Row label={t(lang, 'status')} value={selected.status}
-                valueClass={selected.status === 'CONFIRMED' ? 'text-blue-400' : selected.status === 'COMPLETED' ? 'text-green-400' : 'text-gray-400'} />
+                valueClass={selected.status === 'CONFIRMED' ? 'text-blue-700' : selected.status === 'COMPLETED' ? 'text-green-700' : 'text-muted'} />
             </div>
             {selected.photoUrl && (
               <div className="mb-6">
-                <div className="text-gray-400 text-sm mb-2">{t(lang, 'referencePhoto')}</div>
+                <div className="text-muted text-sm mb-2">{t(lang, 'referencePhoto')}</div>
                 <a href={mediaUrl(selected.photoUrl)} target="_blank" rel="noreferrer">
                   <img src={mediaUrl(selected.photoUrl)} alt={t(lang, 'referencePhoto')}
-                    className="w-full max-h-64 object-cover rounded-xl border border-gray-700 hover:border-blue-500 transition-colors" />
+                    className="w-full max-h-64 object-cover rounded-xl border border-line hover:border-coral transition-colors" />
                 </a>
               </div>
             )}
             {selected.status === 'CONFIRMED' && (
               <button onClick={() => setShowCancelOptions(true)}
                 className={`w-full text-white text-sm font-medium py-2 rounded-lg transition-colors ${
-                  selected.pendingCancellationApproval ? 'bg-amber-600 hover:bg-amber-500' : 'bg-gray-700 hover:bg-gray-600'
+                  selected.pendingCancellationApproval ? 'bg-amber-600 hover:bg-amber-500' : 'bg-teal hover:bg-teal/80'
                 }`}>
                 {selected.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
               </button>
@@ -203,10 +203,10 @@ export default function WeeklyCalendar({
   )
 }
 
-function Row({ label, value, valueClass = 'text-white' }: { label: string; value: string; valueClass?: string }) {
+function Row({ label, value, valueClass = 'text-ink' }: { label: string; value: string; valueClass?: string }) {
   return (
     <div className="flex justify-between">
-      <span className="text-gray-400">{label}</span>
+      <span className="text-muted">{label}</span>
       <span className={valueClass}>{value}</span>
     </div>
   )

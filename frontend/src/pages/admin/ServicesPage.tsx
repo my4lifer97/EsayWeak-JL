@@ -100,31 +100,31 @@ export default function ServicesPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-white">{t(lang, 'services')}</h1>
-        <button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <h1 className="text-2xl font-bold text-ink">{t(lang, 'services')}</h1>
+        <button onClick={openCreate} className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           {t(lang, 'addService')}
         </button>
       </div>
 
       {services.length === 0 ? (
-        <div className="text-center text-gray-500 py-16">
-          {t(lang, 'noServicesYet')} <button onClick={openCreate} className="text-blue-400 hover:text-blue-300">{t(lang, 'addFirstService')}</button>
+        <div className="text-center text-muted py-16">
+          {t(lang, 'noServicesYet')} <button onClick={openCreate} className="text-coral-dark hover:text-coral">{t(lang, 'addFirstService')}</button>
         </div>
       ) : (
         <div className="grid gap-3">
           {services.map((s) => (
-            <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-4 flex items-center justify-between">
+            <div key={s.id} className="bg-white border border-line rounded-xl px-5 py-4 flex items-center justify-between">
               <div>
-                <div className="text-white font-medium">{s.nameEn}</div>
-                <div className="text-gray-400 text-sm mt-0.5">{s.nameAr} · {s.nameHe}</div>
-                <div className="text-gray-500 text-xs mt-1">
+                <div className="text-ink font-medium">{s.nameEn}</div>
+                <div className="text-muted text-sm mt-0.5">{s.nameAr} · {s.nameHe}</div>
+                <div className="text-muted text-xs mt-1">
                   <span dir="ltr">
                     {s.isBookable ? `${s.durationMinutes} min · ` : ''}
                     {s.price !== null ? `₪${s.price}` : ''}
                   </span>
                 </div>
                 {s.photoMode !== 'None' && (
-                  <div className="text-xs text-blue-400 mt-1">
+                  <div className="text-xs text-teal mt-1">
                     {s.photoMode === 'OwnerGallery' ? t(lang, 'photoModeGallery')
                       : s.photoMode === 'CustomerUpload' ? t(lang, 'photoModeUpload')
                       : t(lang, 'photoModeBoth')}
@@ -132,8 +132,8 @@ export default function ServicesPage() {
                 )}
               </div>
               <div className="flex gap-3">
-                <button onClick={() => openEdit(s)} className="text-sm text-blue-400 hover:text-blue-300">{t(lang, 'edit')}</button>
-                <button onClick={() => handleDelete(s.id)} className="text-sm text-red-400 hover:text-red-300">{t(lang, 'delete')}</button>
+                <button onClick={() => openEdit(s)} className="text-sm text-coral-dark hover:text-coral">{t(lang, 'edit')}</button>
+                <button onClick={() => handleDelete(s.id)} className="text-sm text-red-600 hover:text-red-500">{t(lang, 'delete')}</button>
               </div>
             </div>
           ))}
@@ -142,50 +142,50 @@ export default function ServicesPage() {
 
       {showForm && (
         <div onClick={() => setShowForm(false)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-gray-800 max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl p-6 w-full max-w-md border border-line max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
-              <h2 className="text-white font-semibold text-lg">{editing ? t(lang, 'editServiceTitle') : t(lang, 'addServiceTitle')}</h2>
+              <h2 className="text-ink font-semibold text-lg">{editing ? t(lang, 'editServiceTitle') : t(lang, 'addServiceTitle')}</h2>
               <button onClick={() => setShowForm(false)} aria-label="Close"
-                className="text-gray-500 hover:text-white w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-gray-800 text-2xl leading-none transition-colors">✕</button>
+                className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
             </div>
-            {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
             <form onSubmit={handleSubmit} className="space-y-4">
               {[['Name (English)', 'nameEn'], ['Name (Arabic)', 'nameAr'], ['Name (Hebrew)', 'nameHe']].map(([label, key]) => (
                 <div key={key}>
-                  <label htmlFor={`service-${key}`} className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>
+                  <label htmlFor={`service-${key}`} className="block text-sm font-medium text-ink mb-1.5">{label}</label>
                   <input id={`service-${key}`} type="text" required value={form[key as keyof typeof form] as string}
                     onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
                 </div>
               ))}
-              <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
+              <label className="flex items-center gap-2 text-sm font-medium text-ink">
                 <input type="checkbox" checked={form.isBookable}
                   onChange={(e) => setForm((f) => ({ ...f, isBookable: e.target.checked }))}
-                  className="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500" />
+                  className="rounded border-line bg-cream text-coral focus:ring-coral" />
                 {t(lang, 'isBookable')}
               </label>
               <div className="grid grid-cols-2 gap-4">
                 {form.isBookable && (
                   <div>
-                    <label htmlFor="service-duration" className="block text-sm font-medium text-gray-300 mb-1.5">Duration (min)</label>
+                    <label htmlFor="service-duration" className="block text-sm font-medium text-ink mb-1.5">Duration (min)</label>
                     <select id="service-duration" value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}
-                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
                       {[15, 30, 45, 60, 75, 90, 120].map((v) => <option key={v} value={v}>{v} min</option>)}
                     </select>
                   </div>
                 )}
                 <div>
-                  <label htmlFor="service-price" className="block text-sm font-medium text-gray-300 mb-1.5">Price</label>
+                  <label htmlFor="service-price" className="block text-sm font-medium text-ink mb-1.5">Price</label>
                   <input id="service-price" type="number" min="0" step="0.01" value={form.price}
                     onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="25.00"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
                 </div>
               </div>
               <div>
-                <label htmlFor="service-photo-mode" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'photoMode')}</label>
+                <label htmlFor="service-photo-mode" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'photoMode')}</label>
                 <select id="service-photo-mode" value={form.photoMode}
                   onChange={(e) => setForm((f) => ({ ...f, photoMode: e.target.value as PhotoMode }))}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
                   <option value="None">{t(lang, 'photoModeNone')}</option>
                   <option value="OwnerGallery">{t(lang, 'photoModeGallery')}</option>
                   <option value="CustomerUpload">{t(lang, 'photoModeUpload')}</option>
@@ -195,15 +195,15 @@ export default function ServicesPage() {
 
               {(form.photoMode === 'OwnerGallery' || form.photoMode === 'Both') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'galleryPhotos')}</label>
+                  <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'galleryPhotos')}</label>
                   {!editingService ? (
-                    <p className="text-gray-500 text-xs">{t(lang, 'gallerySaveFirstHint')}</p>
+                    <p className="text-muted text-xs">{t(lang, 'gallerySaveFirstHint')}</p>
                   ) : (
                     <div>
                       <div className="grid grid-cols-3 gap-2 mb-2">
                         {editingService.galleryPhotos.map((p) => (
                           <div key={p.id} className="relative group">
-                            <img src={mediaUrl(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-gray-700" />
+                            <img src={mediaUrl(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
                             <button type="button" onClick={() => handleGalleryDelete(p.id)}
                               className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                               ✕
@@ -211,19 +211,19 @@ export default function ServicesPage() {
                           </div>
                         ))}
                       </div>
-                      <label className="inline-block cursor-pointer text-sm text-blue-400 hover:text-blue-300">
+                      <label className="inline-block cursor-pointer text-sm text-coral-dark hover:text-coral">
                         {uploadingGallery ? t(lang, 'saving') : t(lang, 'addGalleryPhoto')}
                         <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
                           disabled={uploadingGallery} onChange={handleGalleryUpload} />
                       </label>
-                      {galleryError && <p className="text-red-400 text-xs mt-1">{galleryError}</p>}
+                      {galleryError && <p className="text-red-600 text-xs mt-1">{galleryError}</p>}
                     </div>
                   )}
                 </div>
               )}
 
               <button type="submit" disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
+                className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
                 {loading ? t(lang, 'saving') : t(lang, 'saveService')}
               </button>
             </form>

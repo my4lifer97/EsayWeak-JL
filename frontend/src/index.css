@@ -3,4 +3,10 @@
 @tailwind utilities;
 
 * { box-sizing: border-box; }
-body { margin: 0; background: #030712; }
+body { margin: 0; background: #FFF9F2; }
+
+@layer base {
+  h1, h2, h3, h4 {
+    font-family: theme('fontFamily.display');
+  }
+}

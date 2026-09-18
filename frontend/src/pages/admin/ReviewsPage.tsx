@@ -50,37 +50,37 @@ export default function ReviewsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white mb-6">{t(lang, 'reviews')}</h1>
+      <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'reviews')}</h1>
 
       {isLoading ? (
-        <div className="text-gray-500 py-12 text-center">{t(lang, 'loading')}</div>
+        <div className="text-muted py-12 text-center">{t(lang, 'loading')}</div>
       ) : reviews.length === 0 ? (
-        <div className="text-gray-500 py-12 text-center">{t(lang, 'noReviews')}</div>
+        <div className="text-muted py-12 text-center">{t(lang, 'noReviews')}</div>
       ) : (
         <div className="space-y-3">
           {reviews.map((r) => (
-            <div key={r.id} className={`bg-gray-900 border rounded-2xl p-4 ${r.isHidden ? 'border-gray-800 opacity-60' : 'border-gray-800'}`}>
+            <div key={r.id} className={`bg-white border rounded-2xl p-4 ${r.isHidden ? 'border-line opacity-60' : 'border-line'}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-white text-sm font-medium">{r.reviewerName}</span>
+                  <span className="text-ink text-sm font-medium">{r.reviewerName}</span>
                   {r.isHidden && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-cream text-muted border border-line">
                       {t(lang, 'reviewHidden')}
                     </span>
                   )}
                 </div>
-                <span className="text-gray-500 text-xs">{format(parseISO(r.createdAt), 'MMM d, yyyy')}</span>
+                <span className="text-muted text-xs">{format(parseISO(r.createdAt), 'MMM d, yyyy')}</span>
               </div>
               <div className="mt-1 flex items-center gap-2">
                 <StarRating value={r.rating} size="sm" />
-                {r.itemName && <span className="text-gray-500 text-xs">· {r.itemName}</span>}
+                {r.itemName && <span className="text-muted text-xs">· {r.itemName}</span>}
               </div>
-              {r.comment && <p className="text-gray-300 text-sm mt-2">{r.comment}</p>}
+              {r.comment && <p className="text-ink text-sm mt-2">{r.comment}</p>}
 
               {r.ownerReply && replyingId !== r.id && (
-                <div className="mt-3 border-s-2 border-gray-700 ps-3">
-                  <div className="text-xs text-gray-500">{t(lang, 'ownerReply')}</div>
-                  <p className="text-gray-400 text-sm mt-0.5">{r.ownerReply}</p>
+                <div className="mt-3 border-s-2 border-line ps-3">
+                  <div className="text-xs text-muted">{t(lang, 'ownerReply')}</div>
+                  <p className="text-muted text-sm mt-0.5">{r.ownerReply}</p>
                 </div>
               )}
 
@@ -89,28 +89,28 @@ export default function ReviewsPage() {
                   <textarea
                     value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} maxLength={1000}
                     placeholder={t(lang, 'replyPlaceholder')}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-cream border border-line rounded-xl px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
                   />
                   <div className="flex gap-2">
                     <button onClick={() => saveReply(r.id)} disabled={busy}
-                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold py-1.5 px-4 rounded-xl transition-colors">
+                      className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-semibold py-1.5 px-4 rounded-xl transition-colors">
                       {t(lang, 'saveReply')}
                     </button>
                     {r.ownerReply && (
                       <button onClick={() => deleteReply(r.id)} disabled={busy}
-                        className="border border-red-800/60 text-red-400 hover:bg-red-900/30 text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
+                        className="border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
                         {t(lang, 'deleteReply')}
                       </button>
                     )}
                     <button onClick={() => setReplyingId(null)} disabled={busy}
-                      className="border border-gray-700 text-gray-400 hover:bg-gray-800 text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
+                      className="border border-line text-ink hover:bg-cream text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
                       {t(lang, 'back')}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button onClick={() => startReply(r)}
-                  className="mt-3 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-1.5 px-3 rounded-xl transition-colors">
+                  className="mt-3 border border-line text-ink hover:bg-cream text-sm font-medium py-1.5 px-3 rounded-xl transition-colors">
                   {r.ownerReply ? t(lang, 'editReply') : t(lang, 'replyToReview')}
                 </button>
               )}

@@ -22,9 +22,9 @@ export type Appointment = {
 type Slot = { start: string; end: string }
 
 const STATUS_COLORS: Record<string, string> = {
-  CONFIRMED: 'bg-blue-900/50 text-blue-300 border-blue-800/50',
-  COMPLETED: 'bg-green-900/50 text-green-300 border-green-800/50',
-  CANCELLED: 'bg-gray-800/50 text-gray-500 border-gray-700/50',
+  CONFIRMED: 'bg-blue-100 text-blue-700 border-blue-200',
+  COMPLETED: 'bg-green-100 text-green-700 border-green-200',
+  CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
 }
 
 export default function AppointmentCard({
@@ -108,22 +108,22 @@ export default function AppointmentCard({
   }
 
   return (
-    <div className={`bg-gray-900 border rounded-2xl p-4 ${appt.status !== 'CONFIRMED' ? 'border-gray-800 opacity-60' : 'border-gray-700'}`}>
+    <div className={`bg-white border rounded-2xl p-4 ${appt.status !== 'CONFIRMED' ? 'border-line opacity-60' : 'border-line'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          {showBusinessName && <div className="font-semibold text-white truncate">{appt.businessName}</div>}
-          <div className="text-gray-400 text-sm mt-1">{itemName(appt.item, lang)}</div>
-          <div className="text-gray-500 text-sm mt-1">
+          {showBusinessName && <div className="font-semibold text-ink truncate">{appt.businessName}</div>}
+          <div className="text-muted text-sm mt-1">{itemName(appt.item, lang)}</div>
+          <div className="text-muted text-sm mt-1">
             {format(parseISO(appt.date), 'EEE, MMM d yyyy', { locale: lang === 'AR' ? ar : lang === 'HE' ? he : enUS })}
             {' · '}{appt.startTime}–{appt.endTime}
           </div>
           {appt.notes && !expandedNotes && (
-            <div className="text-gray-500 text-sm mt-1 italic">"{appt.notes}"</div>
+            <div className="text-muted text-sm mt-1 italic">"{appt.notes}"</div>
           )}
           {appt.photoUrl && (
             <a href={mediaUrl(appt.photoUrl)} target="_blank" rel="noreferrer" className="inline-block mt-2">
               <img src={mediaUrl(appt.photoUrl)} alt={t(lang, 'referencePhoto')}
-                className="w-14 h-14 object-cover rounded-lg border border-gray-700 hover:border-blue-500 transition-colors" />
+                className="w-14 h-14 object-cover rounded-lg border border-line hover:border-coral transition-colors" />
             </a>
           )}
         </div>
@@ -136,25 +136,25 @@ export default function AppointmentCard({
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={() => { setExpandedReschedule(!expandedReschedule); setRescheduleDate('') }}
-            className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
+            className="flex-1 border border-line text-ink hover:bg-cream text-sm font-medium py-2 rounded-xl transition-colors">
             {t(lang, 'rescheduleAppointment')}
           </button>
           <button
             onClick={() => { setExpandedNotes(!expandedNotes); setNoteDraft(appt.notes ?? '') }}
-            className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
+            className="flex-1 border border-line text-ink hover:bg-cream text-sm font-medium py-2 rounded-xl transition-colors">
             {appt.notes ? t(lang, 'editNote') : t(lang, 'addNote')}
           </button>
           {appt.item.photoMode && appt.item.photoMode !== 'None' && (
             <button
               onClick={() => { setExpandedPhoto(!expandedPhoto); setPhotoError('') }}
-              className="flex-1 border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
+              className="flex-1 border border-line text-ink hover:bg-cream text-sm font-medium py-2 rounded-xl transition-colors">
               {t(lang, 'changePhoto')}
             </button>
           )}
           <button
             disabled={busy}
             onClick={cancelAppointment}
-            className="flex-1 border border-red-800/60 text-red-400 hover:bg-red-900/30 text-sm font-medium py-2 rounded-xl transition-colors disabled:opacity-50">
+            className="flex-1 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium py-2 rounded-xl transition-colors disabled:opacity-50">
             {t(lang, 'cancelAppointment')}
           </button>
         </div>
@@ -164,7 +164,7 @@ export default function AppointmentCard({
         <div className="mt-3">
           <button
             onClick={() => navigate(`/${appt.businessSlug}#reviews`)}
-            className="w-full border border-gray-700 text-gray-300 hover:bg-gray-800 text-sm font-medium py-2 rounded-xl transition-colors">
+            className="w-full border border-line text-ink hover:bg-cream text-sm font-medium py-2 rounded-xl transition-colors">
             ★ {t(lang, 'leaveReview')}
           </button>
         </div>
@@ -176,20 +176,20 @@ export default function AppointmentCard({
             <div className="grid grid-cols-4 gap-2">
               {(appt.item.galleryPhotos ?? []).map((p) => (
                 <button key={p.id} type="button" disabled={busy} onClick={() => pickGalleryPhoto(p.id)}
-                  className="aspect-square rounded-lg overflow-hidden border-2 border-gray-700 hover:border-blue-500 transition-colors disabled:opacity-50">
+                  className="aspect-square rounded-lg overflow-hidden border-2 border-line hover:border-coral transition-colors disabled:opacity-50">
                   <img src={mediaUrl(p.url)} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
           )}
           {(appt.item.photoMode === 'CustomerUpload' || appt.item.photoMode === 'Both') && (
-            <label className="inline-block cursor-pointer bg-gray-800 border border-gray-700 hover:border-blue-500 rounded-xl px-4 py-2 text-sm text-gray-300">
+            <label className="inline-block cursor-pointer bg-cream border border-line hover:border-coral rounded-xl px-4 py-2 text-sm text-ink">
               {photoUploading ? t(lang, 'uploading') : t(lang, 'uploadYourPhoto')}
               <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={photoUploading}
                 onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) uploadAndSetPhoto(f) }} />
             </label>
           )}
-          {photoError && <p className="text-red-400 text-xs">{photoError}</p>}
+          {photoError && <p className="text-red-600 text-xs">{photoError}</p>}
         </div>
       )}
 
@@ -198,12 +198,12 @@ export default function AppointmentCard({
           <textarea
             value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
             rows={2}
-            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-cream border border-line rounded-xl px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
           />
           <button
             disabled={busy}
             onClick={saveNote}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
+            className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
             {t(lang, 'saveNote')}
           </button>
         </div>
@@ -211,18 +211,18 @@ export default function AppointmentCard({
 
       {expandedReschedule && (
         <div className="mt-3 space-y-2">
-          <p className="text-gray-400 text-sm">{t(lang, 'selectNewTime')}</p>
+          <p className="text-muted text-sm">{t(lang, 'selectNewTime')}</p>
           <input
             type="date" value={rescheduleDate}
             min={new Date().toISOString().slice(0, 10)}
             onChange={(e) => setRescheduleDate(e.target.value)}
-            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-cream border border-line rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral"
           />
           {rescheduleDate && (
             loadingSlots ? (
-              <div className="text-center text-gray-500 text-sm py-3">{t(lang, 'loadingTimes')}</div>
+              <div className="text-center text-muted text-sm py-3">{t(lang, 'loadingTimes')}</div>
             ) : slots.length === 0 ? (
-              <div className="text-center text-gray-500 text-sm py-3">{t(lang, 'noTimes')}</div>
+              <div className="text-center text-muted text-sm py-3">{t(lang, 'noTimes')}</div>
             ) : (
               <div className="grid grid-cols-4 gap-2">
                 {slots.map((s) => (
@@ -230,7 +230,7 @@ export default function AppointmentCard({
                     key={s.start}
                     disabled={busy}
                     onClick={() => confirmReschedule(s.start)}
-                    className="bg-gray-800 hover:bg-blue-600 border border-gray-700 text-white text-sm py-2 rounded-lg transition-colors disabled:opacity-50">
+                    className="bg-cream hover:bg-coral hover:text-white border border-line text-ink text-sm py-2 rounded-lg transition-colors disabled:opacity-50">
                     {s.start}
                   </button>
                 ))}

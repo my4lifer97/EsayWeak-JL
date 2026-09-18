@@ -109,42 +109,42 @@ export default function RecurringAppointmentsPage() {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-white">{t(lang, 'recurringAppointments')}</h1>
+        <h1 className="text-2xl font-bold text-ink">{t(lang, 'recurringAppointments')}</h1>
         <button onClick={() => setShowForm(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+          className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           {t(lang, 'newRecurringSeries')}
         </button>
       </div>
 
       {actionError && (
-        <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{actionError}</div>
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{actionError}</div>
       )}
 
       {series.length === 0 ? (
-        <div className="text-center text-gray-500 py-16">{t(lang, 'noSeriesYet')}</div>
+        <div className="text-center text-muted py-16">{t(lang, 'noSeriesYet')}</div>
       ) : (
         <div className="grid gap-3">
           {series.map((s) => (
-            <div key={s.id} className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-4">
+            <div key={s.id} className="bg-white border border-line rounded-xl px-5 py-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-white font-medium">{s.customer.name} {s.customer.familyName} · {s.customer.phone}</div>
-                  <div className="text-gray-400 text-sm mt-0.5">{itemName(s.item, lang)}</div>
-                  <div className="text-gray-500 text-xs mt-1">
+                  <div className="text-ink font-medium">{s.customer.name} {s.customer.familyName} · {s.customer.phone}</div>
+                  <div className="text-muted text-sm mt-0.5">{itemName(s.item, lang)}</div>
+                  <div className="text-muted text-xs mt-1">
                     {t(lang, 'everyWeekAt')} {t(lang, DAY_KEYS[s.dayOfWeek])} {t(lang, 'atTime')} {s.startTime}
                     {s.nextOccurrenceDate && ` · ${t(lang, 'nextOccurrence')}: ${s.nextOccurrenceDate}`}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.isActive ? 'bg-blue-900/50 text-blue-300' : 'bg-gray-700/50 text-gray-400'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                     {t(lang, s.isActive ? 'activeSeries' : 'pausedSeries')}
                   </span>
                   <button onClick={() => handleDelete(s.id)} disabled={actionLoadingId === s.id}
-                    className="text-sm text-red-400 hover:text-red-300 disabled:opacity-50">{t(lang, 'delete')}</button>
+                    className="text-sm text-red-600 hover:text-red-500 disabled:opacity-50">{t(lang, 'delete')}</button>
                 </div>
               </div>
               {s.recentSkips.length > 0 && (
-                <div className="mt-2 text-amber-400 text-xs">
+                <div className="mt-2 text-amber-700 text-xs">
                   {t(lang, 'missedOccurrence')}: {s.recentSkips[0].date} — {t(lang, 'slotUnavailableReason')}
                   {s.recentSkips.length > 1 && ` (+${s.recentSkips.length - 1})`}
                 </div>
@@ -156,36 +156,36 @@ export default function RecurringAppointmentsPage() {
 
       {showForm && (
         <div onClick={() => { setShowForm(false); resetForm() }} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-2xl p-6 w-full max-w-md border border-gray-800 max-h-[90vh] overflow-y-auto">
+          <div onClick={(e) => e.stopPropagation()} className="bg-white rounded-2xl p-6 w-full max-w-md border border-line max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
-              <h2 className="text-white font-semibold text-lg">{t(lang, 'newRecurringSeries')}</h2>
+              <h2 className="text-ink font-semibold text-lg">{t(lang, 'newRecurringSeries')}</h2>
               <button onClick={() => { setShowForm(false); resetForm() }} aria-label="Close"
-                className="text-gray-500 hover:text-white w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-gray-800 text-2xl leading-none transition-colors">✕</button>
+                className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
             </div>
-            {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+            {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'service')}</label>
+                <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'service')}</label>
                 <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
                   <option value="">—</option>
                   {services.map((s) => <option key={s.id} value={s.id}>{itemName(s, lang)}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'customerName')}</label>
+                <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'customerName')}</label>
                 <CustomerPicker lang={lang} value={customer} onChange={setCustomer} />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'dayOfWeekLabel')}</label>
+                <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'dayOfWeekLabel')}</label>
                 <div className="flex flex-wrap gap-2">
                   {DAY_KEYS.map((key, i) => (
                     <button key={key} type="button" onClick={() => { setDayOfWeek(i); setSlot(null) }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                         dayOfWeek === i
-                          ? 'bg-blue-600 border-blue-500 text-white'
-                          : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-blue-600 hover:border-blue-500'
+                          ? 'bg-coral border-coral-dark text-white'
+                          : 'bg-cream border-line text-ink hover:bg-coral hover:border-coral-dark hover:text-white'
                       }`}>
                       {t(lang, key)}
                     </button>
@@ -195,19 +195,19 @@ export default function RecurringAppointmentsPage() {
 
               {dayOfWeek !== null && serviceId && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'time')}</label>
+                  <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'time')}</label>
                   {slotsLoading ? (
-                    <div className="text-gray-500 text-sm py-2">{t(lang, 'loadingTimes')}</div>
+                    <div className="text-muted text-sm py-2">{t(lang, 'loadingTimes')}</div>
                   ) : slots.length === 0 ? (
-                    <div className="text-gray-500 text-sm py-2">{t(lang, 'noTimes')}</div>
+                    <div className="text-muted text-sm py-2">{t(lang, 'noTimes')}</div>
                   ) : (
                     <div className="grid grid-cols-4 gap-2">
                       {slots.map((s) => (
                         <button key={s.start} type="button" onClick={() => setSlot(s)}
                           className={`rounded-lg py-2 text-center text-sm font-medium border transition-colors ${
                             slot?.start === s.start
-                              ? 'bg-blue-600 border-blue-500 text-white'
-                              : 'bg-gray-800 border-gray-700 hover:bg-blue-600 hover:border-blue-500'
+                              ? 'bg-coral border-coral-dark text-white'
+                              : 'bg-cream border-line hover:bg-coral hover:border-coral-dark hover:text-white'
                           }`}>
                           {s.start}
                         </button>
@@ -218,18 +218,18 @@ export default function RecurringAppointmentsPage() {
               )}
 
               {dayOfWeek !== null && slot && (
-                <p className="text-gray-500 text-xs">
+                <p className="text-muted text-xs">
                   {t(lang, 'everyWeekAt')} {t(lang, DAY_KEYS[dayOfWeek])} {t(lang, 'atTime')} {slot.start}
                 </p>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'notes')}</label>
+                <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'notes')}</label>
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
               </div>
               <button type="button" onClick={submit} disabled={!serviceId || !customer || dayOfWeek === null || !slot || submitting}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
+                className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
                 {submitting ? t(lang, 'saving') : t(lang, 'createAppointment')}
               </button>
             </div>

@@ -76,37 +76,37 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-white mb-2 text-center">EsayWeek</h1>
-        <p className="text-gray-400 text-center mb-8">
+        <h1 className="text-2xl font-bold text-ink mb-2 text-center">EsayWeek</h1>
+        <p className="text-muted text-center mb-8">
           {view === 'login' ? 'Sign in to your dashboard' : `Enter the code sent to ${email}`}
         </p>
 
         {view === 'login' && (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
                 {error}
               </div>
             )}
             <input
               type="text" required value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="Email or username" autoComplete="username"
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
             <input
               type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-white border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
             <button
               type="submit" disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
+              className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
             >
               {loading ? '...' : 'Log In'}
             </button>
-            <Link to="/admin/forgot-password" className="block text-center text-gray-500 hover:text-gray-300 text-sm">
+            <Link to="/admin/forgot-password" className="block text-center text-muted hover:text-ink text-sm">
               Forgot password?
             </Link>
           </form>
@@ -115,7 +115,7 @@ export default function LoginPage() {
         {view === 'verify' && (
           <div>
             {devCode && (
-              <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg px-3 py-2 text-xs text-yellow-300 mb-4 text-center">
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-xs text-yellow-800 mb-4 text-center">
                 Dev mode — your code is <span className="font-mono font-bold">{devCode}</span>
               </div>
             )}
@@ -124,32 +124,32 @@ export default function LoginPage() {
                 type="text" inputMode="numeric" maxLength={6} required autoFocus
                 value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="123456"
-                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-4 text-white text-center text-2xl tracking-widest font-mono placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
               />
               {error && (
-                <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3">
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
                   {error}
                 </div>
               )}
               <button type="submit" disabled={loading || code.length < 6}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
+                className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
                 {loading ? '...' : 'Verify & Continue'}
               </button>
               <button type="button" onClick={handleResend} disabled={loading}
-                className="w-full text-gray-500 hover:text-gray-300 text-sm py-1 transition-colors">
+                className="w-full text-muted hover:text-ink text-sm py-1 transition-colors">
                 Resend code
               </button>
               <button type="button" onClick={backToLogin}
-                className="w-full text-gray-500 hover:text-gray-300 text-sm py-1 transition-colors">
+                className="w-full text-muted hover:text-ink text-sm py-1 transition-colors">
                 ← Back to sign in
               </button>
             </form>
           </div>
         )}
 
-        <p className="text-gray-500 text-center mt-6 text-sm">
+        <p className="text-muted text-center mt-6 text-sm">
           No account?{' '}
-          <Link to="/request-business-account" className="text-blue-400 hover:underline">Request one</Link>
+          <Link to="/request-business-account" className="text-coral-dark hover:underline">Request one</Link>
           {' '}— we review every business before it gets access.
         </p>
       </div>

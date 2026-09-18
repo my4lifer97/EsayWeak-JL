@@ -22,12 +22,12 @@ export default function WhatsAppLandingPage() {
   }, [token])
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4">
       <div className="text-center max-w-sm">
         {error ? (
-          <p className="text-gray-400">{t(lang, 'whatsappLinkExpired')}</p>
+          <p className="text-muted">{t(lang, 'whatsappLinkExpired')}</p>
         ) : (
-          <p className="text-gray-500">{t(lang, 'loading')}</p>
+          <p className="text-muted">{t(lang, 'loading')}</p>
         )}
       </div>
     </div>

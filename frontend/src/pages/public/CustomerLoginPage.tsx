@@ -48,7 +48,7 @@ export default function CustomerLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center px-4">
+    <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-between mb-4">
           <BackButton lang={lang} />
@@ -56,22 +56,22 @@ export default function CustomerLoginPage() {
         </div>
         <div className="text-center mb-8">
           <Link to="/" className="text-3xl">✂️</Link>
-          <h1 className="text-2xl font-bold text-white mt-3">{t(lang, 'loginTitle')}</h1>
+          <h1 className="text-2xl font-bold text-ink mt-3">{t(lang, 'loginTitle')}</h1>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div className="bg-white border border-line rounded-2xl p-6">
           {view === 'phone' && (
             <form onSubmit={handleRequestOtp} className="space-y-4">
-              <p className="text-gray-400 text-sm text-center mb-1">{t(lang, 'enterPhone')}</p>
+              <p className="text-muted text-sm text-center mb-1">{t(lang, 'enterPhone')}</p>
               <input
                 type="tel" required autoFocus
                 value={phone} onChange={(e) => setPhone(e.target.value)}
                 placeholder="+1234567890"
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-cream border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
               />
-              {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+              {error && <p className="text-red-600 text-sm text-center">{error}</p>}
               <button type="submit" disabled={loading || !phone}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+                className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
                 {loading ? '...' : t(lang, 'sendCode')}
               </button>
             </form>
@@ -80,25 +80,25 @@ export default function CustomerLoginPage() {
           {view === 'otp' && (
             <div>
               {devOtp ? (
-                <div className="bg-yellow-900/30 border border-yellow-700/50 rounded-lg px-3 py-2 text-xs text-yellow-300 mb-4 text-center">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 text-xs text-yellow-800 mb-4 text-center">
                   {t(lang, 'devHint')} <span className="font-mono font-bold">{devOtp}</span>
                 </div>
               ) : (
-                <p className="text-gray-400 text-sm text-center mb-4">{t(lang, 'otpSent')}</p>
+                <p className="text-muted text-sm text-center mb-4">{t(lang, 'otpSent')}</p>
               )}
 
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 {isNewCustomer && (
                   <div className="space-y-3">
                     <div>
-                      <label htmlFor="login-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
+                      <label htmlFor="login-name" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'fullName')}</label>
                       <input id="login-name" type="text" required autoFocus value={name} onChange={(e) => setName(e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full bg-cream border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
                     </div>
                     <div>
-                      <label htmlFor="login-family-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'familyName')}</label>
+                      <label htmlFor="login-family-name" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'familyName')}</label>
                       <input id="login-family-name" type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        className="w-full bg-cream border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
                     </div>
                   </div>
                 )}
@@ -107,20 +107,20 @@ export default function CustomerLoginPage() {
                   type="text" inputMode="numeric" maxLength={6} required autoFocus={!isNewCustomer}
                   value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                   placeholder="123456"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-4 text-white text-center text-2xl tracking-widest font-mono placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-cream border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
                 />
 
-                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                {error && <p className="text-red-600 text-sm text-center">{error}</p>}
 
                 <button type="submit"
                   disabled={loading || otp.length < 6 || (isNewCustomer && (!name.trim() || !familyName.trim()))}
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
+                  className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
                   {loading ? '...' : t(lang, 'verifyCode')}
                 </button>
 
                 <button type="button"
                   onClick={() => { setView('phone'); setOtp(''); setName(''); setFamilyName(''); setDevOtp(null); setError('') }}
-                  className="w-full text-gray-500 hover:text-gray-300 text-sm py-1 transition-colors">
+                  className="w-full text-muted hover:text-ink text-sm py-1 transition-colors">
                   ← {t(lang, 'changePhone')}
                 </button>
               </form>

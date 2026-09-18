@@ -104,48 +104,48 @@ export default function PlatformAdminBusinessDetailPage() {
     }
   }
 
-  if (!business) return <div className="min-h-screen bg-gray-950 text-white p-6">Loading...</div>
+  if (!business) return <div className="min-h-screen bg-cream text-ink p-6">Loading...</div>
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
+    <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-3xl mx-auto">
-        <Link to="/platform-admin" className="text-gray-500 hover:text-gray-300 text-sm mb-6 inline-block">← Back</Link>
+        <Link to="/platform-admin" className="text-muted hover:text-ink text-sm mb-6 inline-block">← Back</Link>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
+        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
           <div className="flex items-start justify-between mb-4">
             <div>
               <h1 className="text-xl font-bold">{business.name}</h1>
-              <p className="text-gray-400 text-sm">{business.email}</p>
-              <p className="text-gray-500 text-sm">/{business.slug} {business.phone && `· ${business.phone}`}</p>
+              <p className="text-muted text-sm">{business.email}</p>
+              <p className="text-muted text-sm">/{business.slug} {business.phone && `· ${business.phone}`}</p>
             </div>
             <span className={`text-xs px-2 py-1 rounded-full ${
-              business.subscriptionStatus === 'ACTIVE' ? 'bg-green-900/40 text-green-300'
-                : business.subscriptionStatus === 'TRIAL' ? 'bg-blue-900/40 text-blue-300' : 'bg-red-900/40 text-red-300'
+              business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700'
+                : business.subscriptionStatus === 'TRIAL' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
             }`}>{business.subscriptionStatus}</span>
           </div>
 
-          {error && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
 
           <button onClick={handleImpersonate} disabled={impersonating}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+            className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
             {impersonating ? 'Logging in...' : 'Log in as this account'}
           </button>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
+        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
           <h2 className="font-semibold mb-1">WhatsApp</h2>
-          <p className="text-gray-500 text-sm mb-3">
+          <p className="text-muted text-sm mb-3">
             This business's self-hosted WhatsApp chatbot session. Linking asks the owner to scan a
             QR code with their own phone (WhatsApp → Linked Devices → Link a Device) — no Meta
             Business verification needed.
           </p>
-          {linkError && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-3">{linkError}</div>}
+          {linkError && <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-3">{linkError}</div>}
 
           {business.whatsAppNumber && !polling ? (
             <div className="flex items-center justify-between">
-              <span className="text-white font-mono">Connected as {business.whatsAppNumber}</span>
+              <span className="text-ink font-mono">Connected as {business.whatsAppNumber}</span>
               <button onClick={handleUnlink} disabled={unlinking}
-                className="bg-red-900/40 hover:bg-red-900/60 disabled:opacity-50 text-red-300 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+                className="bg-red-100 hover:bg-red-200 disabled:opacity-50 text-red-700 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
                 {unlinking ? 'Unlinking...' : 'Unlink'}
               </button>
             </div>
@@ -153,46 +153,46 @@ export default function PlatformAdminBusinessDetailPage() {
             <div className="text-center">
               <img src={linkStatus.qr} alt="WhatsApp link QR code" width={220} height={220}
                 className="mx-auto mb-3 rounded-lg bg-white p-2" />
-              <p className="text-gray-500 text-sm">Waiting for the phone to scan this code...</p>
+              <p className="text-muted text-sm">Waiting for the phone to scan this code...</p>
             </div>
           ) : polling ? (
-            <p className="text-gray-400 text-sm">Connecting...</p>
+            <p className="text-muted text-sm">Connecting...</p>
           ) : (
             <button onClick={handleStartLink} disabled={starting}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+              className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
               {starting ? 'Starting...' : 'Link WhatsApp'}
             </button>
           )}
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
+        <div className="bg-white border border-line rounded-2xl p-6 mb-6">
           <h2 className="font-semibold mb-4">Reviews ({reviews.length})</h2>
           {reviews.length === 0 ? (
-            <p className="text-gray-500 text-sm">No reviews.</p>
+            <p className="text-muted text-sm">No reviews.</p>
           ) : (
             <div className="space-y-3">
               {reviews.map((r) => (
-                <div key={r.id} className={`border rounded-xl p-3 ${r.isHidden ? 'border-gray-800 opacity-60' : 'border-gray-800'}`}>
+                <div key={r.id} className={`border rounded-xl p-3 ${r.isHidden ? 'border-line opacity-60' : 'border-line'}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm">
-                      {'★'.repeat(r.rating)}<span className="text-gray-600">{'★'.repeat(5 - r.rating)}</span>
-                      <span className="text-gray-400 ms-2">{r.reviewerName}</span>
-                      {r.itemName && <span className="text-gray-600 text-xs ms-1">· {r.itemName}</span>}
+                      {'★'.repeat(r.rating)}<span className="text-line">{'★'.repeat(5 - r.rating)}</span>
+                      <span className="text-muted ms-2">{r.reviewerName}</span>
+                      {r.itemName && <span className="text-muted text-xs ms-1">· {r.itemName}</span>}
                     </span>
                     <button onClick={() => toggleHidden(r.id, r.isHidden)}
-                      className="text-xs border border-gray-700 text-gray-300 hover:bg-gray-800 px-2 py-1 rounded-lg transition-colors">
+                      className="text-xs border border-line text-ink hover:bg-cream px-2 py-1 rounded-lg transition-colors">
                       {r.isHidden ? 'Unhide' : 'Hide'}
                     </button>
                   </div>
-                  {r.comment && <p className="text-gray-300 text-sm mt-1">{r.comment}</p>}
-                  {r.ownerReply && <p className="text-gray-500 text-xs mt-1 border-s-2 border-gray-700 ps-2">Reply: {r.ownerReply}</p>}
+                  {r.comment && <p className="text-ink text-sm mt-1">{r.comment}</p>}
+                  {r.ownerReply && <p className="text-muted text-xs mt-1 border-s-2 border-line ps-2">Reply: {r.ownerReply}</p>}
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div className="bg-white border border-line rounded-2xl p-6">
           <h2 className="font-semibold mb-4">Recent activity</h2>
           <ActivityLogTable entries={activity} />
         </div>
