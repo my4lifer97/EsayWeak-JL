@@ -341,6 +341,16 @@ logged in or booking as a guest, so it can't be dodged by not signing in) can bo
 appointment — "per week" means the fixed Sun–Sat calendar week containing the requested date.
 Reschedules are not currently checked against the limit (only new bookings).
 
+### Returning customer's name is locked after their first booking with a business
+`BookingWizard`'s First/Family Name fields are `disabled` (prefilled from the account, same as the
+phone field) whenever the customer is authenticated — the customer isn't meant to change the name
+they're on file with once they've booked with a business before. Enforced server-side too, not just
+in the UI: `BookingController.BookAppointment` only takes the submitted `customerName`/
+`customerFamilyName` when creating a brand-new `Customer` row for that (business, phone), or for a
+**guest** (no `CustomerAccount`) booking again, who can still correct their own typed name each
+time. A logged-in customer's existing `Customer.Name`/`FamilyName` for that business is left alone
+on every booking after the first, regardless of what the request body says.
+
 ### Item reference photos
 Each `Item` has a `PhotoMode` (`None` / `OwnerGallery` / `CustomerUpload` / `Both`), set per-item on
 `Settings > Services`. `OwnerGallery` lets the business upload a set of style photos

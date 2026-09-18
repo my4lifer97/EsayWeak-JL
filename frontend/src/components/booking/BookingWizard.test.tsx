@@ -177,6 +177,15 @@ describe('BookingWizard', () => {
     const phoneInput = await screen.findByLabelText('Phone Number') as HTMLInputElement
     expect(phoneInput.value).toBe('+15559998888')
     expect(phoneInput).toBeDisabled()
+
+    // Name/family name are prefilled from the account and locked too -- a returning customer's
+    // chosen name shouldn't silently change on a repeat booking (see BookingController).
+    const nameInput = screen.getByLabelText('First Name') as HTMLInputElement
+    const familyNameInput = screen.getByLabelText('Family Name') as HTMLInputElement
+    expect(nameInput.value).toBe('Jane')
+    expect(nameInput).toBeDisabled()
+    expect(familyNameInput.value).toBe('Doe')
+    expect(familyNameInput).toBeDisabled()
     expect((screen.getByLabelText('First Name') as HTMLInputElement).value).toBe('Jane')
     expect((screen.getByLabelText('Family Name') as HTMLInputElement).value).toBe('Doe')
   })

@@ -261,12 +261,14 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
               <div>
                 <label htmlFor="booking-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'fullName')}</label>
                 <input id="booking-name" type="text" required value={name} onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  disabled={isAuthenticated}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
               </div>
               <div>
                 <label htmlFor="booking-family-name" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'familyName')}</label>
                 <input id="booking-family-name" type="text" required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  disabled={isAuthenticated}
+                  className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
               </div>
               <div>
                 <label htmlFor="booking-phone" className="block text-sm font-medium text-gray-300 mb-1.5">{t(lang, 'phoneNumber')}</label>

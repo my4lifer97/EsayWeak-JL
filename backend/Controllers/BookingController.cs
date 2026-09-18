@@ -190,11 +190,19 @@ public class BookingController(
             };
             db.Customers.Add(customer);
         }
-        else
+        else if (customerAccountId is null)
         {
+            // Guest booking (no account) -- still let them correct their own typed name each time.
             customer.Name = req.CustomerName;
             customer.FamilyName = req.CustomerFamilyName ?? "";
-            if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
+        }
+        else
+        {
+            // A returning logged-in customer (WhatsApp or phone+OTP) keeps whatever name they're
+            // already on file with this business -- only their first-ever booking (or a guest one)
+            // takes the name typed into the form, matching the frontend's disabled name fields for
+            // an authenticated session.
+            customer.CustomerAccountId = customerAccountId;
         }
 
         var appointment = new Appointment

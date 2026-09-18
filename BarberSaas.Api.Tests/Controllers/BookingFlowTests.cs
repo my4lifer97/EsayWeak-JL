@@ -103,6 +103,33 @@ public class BookingFlowTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ReturningAuthenticatedCustomer_KeepsNameOnFileDespiteADifferentSubmittedName()
+    {
+        var (businessToken, slug) = await RegisterAndLoginBusiness("repeat-name-flow@example.com", "repeat-name-flow-shop");
+        var itemId = await CreateService(businessToken);
+        const string phone = "+15553330098";
+        var customerToken = await GetCustomerToken(phone, "Jane", "Doe");
+
+        Authorize(Client, customerToken);
+        var slots = await AvailableSlots(slug, itemId);
+        var first = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(itemId, TestDate, slots[0].Start, "Jane", phone, null, CustomerFamilyName: "Doe"));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+
+        // A second booking submits a different name -- the backend must ignore it and keep what's
+        // already on file for this returning, logged-in customer (the frontend also disables these
+        // fields once authenticated, but this is the actual guarantee).
+        var second = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(itemId, TestDate, slots[1].Start, "Spoofed", phone, null, CustomerFamilyName: "Name"));
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+
+        using var db = Db();
+        var customer = await db.Customers.SingleAsync(c => c.Phone == phone);
+        Assert.Equal("Jane", customer.Name);
+        Assert.Equal("Doe", customer.FamilyName);
+    }
+
+    [Fact]
     public async Task WhatsAppOriginatedBooking_SendsConfirmationAndClearsAwaitingCompletion()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("wa-confirm-flow@example.com", "wa-confirm-flow-shop");
