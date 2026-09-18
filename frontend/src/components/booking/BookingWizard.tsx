@@ -124,6 +124,11 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
       formData.append('file', file)
       const { data } = await customerApi.post(`/${business.slug}/appointments/photo`, formData)
       setUploadedPhotoUrl(data.url)
+      // Both-mode items send whichever of these is set -- the backend prefers a gallery pick over
+      // an upload, so an upload has to clear any earlier gallery selection or it'd be silently
+      // ignored (the actual bug: a customer picks a gallery photo, then uploads their own instead,
+      // but the gallery pick still wins).
+      setSelectedGalleryPhotoId(null)
     } catch {
       setPhotoError(t(lang, 'photoUploadError'))
     } finally { setPhotoUploading(false) }
@@ -281,7 +286,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                   <p className="text-gray-500 text-xs mb-2">{t(lang, 'choosePhotoHint')}</p>
                   <div className="grid grid-cols-3 gap-2">
                     {item.galleryPhotos.map((p) => (
-                      <button key={p.id} type="button" onClick={() => setSelectedGalleryPhotoId(p.id)}
+                      <button key={p.id} type="button" onClick={() => { setSelectedGalleryPhotoId(p.id); setUploadedPhotoUrl(null) }}
                         className={`aspect-square rounded-lg overflow-hidden border-2 transition-colors ${
                           selectedGalleryPhotoId === p.id ? 'border-blue-500' : 'border-gray-700 hover:border-gray-500'
                         }`}>

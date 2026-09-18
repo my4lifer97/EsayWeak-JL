@@ -27,6 +27,10 @@ const business = {
       photoMode: 'OwnerGallery' as const, isBookable: true, galleryPhotos: [{ id: 'photo-1', url: '/api/uploads/gallery/svc-gallery/photo1.jpg' }],
     },
     { id: 'svc-upload', nameEn: 'Upload Cut', nameAr: 'قصة رفع', nameHe: 'תספורת העלאה', durationMinutes: 30, price: 55, photoMode: 'CustomerUpload' as const, isBookable: true, galleryPhotos: [] },
+    {
+      id: 'svc-both', nameEn: 'Both Cut', nameAr: 'قصة مزدوجة', nameHe: 'תספורת משולבת', durationMinutes: 30, price: 65,
+      photoMode: 'Both' as const, isBookable: true, galleryPhotos: [{ id: 'photo-both-1', url: '/api/uploads/gallery/svc-both/photo1.jpg' }],
+    },
   ],
 }
 
@@ -221,6 +225,33 @@ describe('BookingWizard', () => {
 
     await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
       itemId: 'svc-upload', customerPhotoUrl: '/api/uploads/appointment-photos/uploaded.jpg',
+    })))
+  })
+
+  it('uploading a photo after picking a gallery one uses the upload, not the stale gallery pick', async () => {
+    // Regression: for a Both-mode item, picking a gallery photo then uploading a customer photo
+    // must clear the gallery selection -- otherwise both fields get submitted and the backend
+    // silently prefers the gallery photo, ignoring the customer's own upload entirely.
+    await advanceToStep4('Both Cut')
+    await userEvent.type(screen.getByLabelText('First Name'), 'Jane')
+    await userEvent.type(screen.getByLabelText('Family Name'), 'Doe')
+    await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
+
+    const galleryPhoto = document.querySelector('img[src="/api/uploads/gallery/svc-both/photo1.jpg"]') as HTMLImageElement
+    await userEvent.click(galleryPhoto)
+    expect(screen.getByText('Confirm Appointment')).toBeEnabled()
+
+    vi.mocked(customerApi.post).mockResolvedValueOnce({ data: { url: '/api/uploads/appointment-photos/uploaded-both.jpg' } })
+    const file = new File(['x'], 'photo.jpg', { type: 'image/jpeg' })
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(fileInput, file)
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments/photo', expect.any(FormData)))
+
+    vi.mocked(customerApi.post).mockResolvedValueOnce({ data: { appointmentId: 'appt-4', cancelToken: 'tok-4' } })
+    await userEvent.click(screen.getByText('Confirm Appointment'))
+
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
+      itemId: 'svc-both', customerPhotoUrl: '/api/uploads/appointment-photos/uploaded-both.jpg', galleryPhotoId: undefined,
     })))
   })
 
