@@ -128,7 +128,8 @@ describe('BookingWizard', () => {
     await userEvent.type(screen.getByLabelText('Phone Number'), '+15551234567')
     await userEvent.click(screen.getByText('Confirm Appointment'))
 
-    await waitFor(() => expect(screen.getByText('Business main page')).toBeInTheDocument())
+    // A success modal shows first -- redirect only happens once the customer dismisses it.
+    await waitFor(() => expect(screen.getByText('Booking Confirmed!')).toBeInTheDocument())
     expect(customerApi.post).toHaveBeenCalledWith('/test-business/appointments', expect.objectContaining({
       itemId: 'svc-1',
       startTime: '09:00',
@@ -136,6 +137,9 @@ describe('BookingWizard', () => {
       customerFamilyName: 'Doe',
       customerPhone: '+15551234567',
     }))
+
+    await userEvent.click(screen.getByText('Close'))
+    await waitFor(() => expect(screen.getByText('Business main page')).toBeInTheDocument())
   })
 
   it('shows the server error message and stays on the details step when booking fails', async () => {

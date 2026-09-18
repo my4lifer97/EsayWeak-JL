@@ -9,6 +9,7 @@ import { mediaUrl } from '../../lib/media'
 import BackButton from '../BackButton'
 import LanguageSwitcher from '../customer/LanguageSwitcher'
 import SlotBookedModal from './SlotBookedModal'
+import BookingSuccessModal from './BookingSuccessModal'
 
 type GalleryPhoto = { id: string; url: string }
 type Item = {
@@ -42,6 +43,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [error, setError] = useState('')
+  const [bookingSuccess, setBookingSuccess] = useState(false)
   const [selectedGalleryPhotoId, setSelectedGalleryPhotoId] = useState<string | null>(null)
   const [uploadedPhotoUrl, setUploadedPhotoUrl] = useState<string | null>(null)
   const [photoUploading, setPhotoUploading] = useState(false)
@@ -143,7 +145,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
         galleryPhotoId: selectedGalleryPhotoId ?? undefined,
         customerPhotoUrl: uploadedPhotoUrl ?? undefined,
       })
-      navigate(`/${business.slug}`)
+      setBookingSuccess(true)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(msg ?? 'Booking failed. Please try again.')
@@ -339,6 +341,10 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           onJoinWaitlist={joinWaitlist}
           onClose={() => setBookedSlot(null)}
         />
+      )}
+
+      {bookingSuccess && (
+        <BookingSuccessModal lang={lang} dir={dir} onClose={() => navigate(`/${business.slug}`)} />
       )}
     </div>
   )
