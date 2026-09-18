@@ -343,12 +343,19 @@ Reschedules are not currently checked against the limit (only new bookings).
 
 ### Returning customer's name stays editable, remembered from last time
 `BookingWizard`'s First/Family Name fields are always editable (only the phone field is `disabled`
-when authenticated) — prefilled from the customer's account (itself only ever auto-filled from a
-WhatsApp profile name once, on that account's first-ever creation, see
-`CustomerAuthController.LoginWithWhatsApp`), but a correction the customer types on any booking is
-saved and becomes what's remembered next time. `BookingController.BookAppointment` always writes
-`customerName`/`customerFamilyName` onto the (business, phone) `Customer` row, whether it's brand
-new or already existed.
+when authenticated) — a correction the customer types on any booking is saved
+(`BookingController.BookAppointment` always writes `customerName`/`customerFamilyName` onto the
+(business, phone) `Customer` row, whether it's brand new or already existed) and becomes what's
+remembered next time.
+
+**"Remembered next time" is business-specific, not the account's own name.** `CustomerAccount.Name`/
+`FamilyName` is only ever auto-filled from a WhatsApp profile name once, on the account's
+first-ever creation (`CustomerAuthController.LoginWithWhatsApp`), and never updated after that —
+relying on it alone would mean a correction typed while booking with one business never carries
+over to that business's next WhatsApp link (and a WhatsApp display name with no second word, e.g.
+just "Luna", would leave `FamilyName` permanently empty). So `LoginWithWhatsApp`'s response prefers
+the existing per-business `Customer.Name`/`FamilyName` for that (business, phone) when one exists,
+falling back to the account's own name only for a true first-time-with-this-business customer.
 
 ### No back-navigation once a customer arrives via a WhatsApp link
 `BookingWizard` reads `?itemId=` (set by both `WhatsAppLandingPage`'s redirect and a waitlist

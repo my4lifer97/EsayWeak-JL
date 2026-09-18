@@ -153,13 +153,26 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             .Where(c => c.Phone == phone && c.CustomerAccountId == null)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.CustomerAccountId, account.Id));
 
-        var token = jwt.Generate(account.Id, account.Phone, $"{account.Name} {account.FamilyName}".Trim());
+        // A correction the customer typed into a previous booking with THIS business
+        // (BookingController.BookAppointment always saves whatever's submitted) is what should
+        // come back here -- not the account's own Name/FamilyName, which is only ever auto-filled
+        // from a WhatsApp profile name once, on the account's first-ever creation, and never
+        // updated after that. Falls back to the account's name when there's no booking history
+        // with this business yet (a true first-time-with-this-business customer).
+        var existingCustomer = await db.Customers
+            .Where(c => c.BusinessId == tokenRow.BusinessId && c.Phone == phone)
+            .Select(c => new { c.Name, c.FamilyName })
+            .FirstOrDefaultAsync();
+        var displayName = existingCustomer?.Name ?? account.Name;
+        var displayFamilyName = existingCustomer?.FamilyName ?? account.FamilyName;
+
+        var token = jwt.Generate(account.Id, account.Phone, $"{displayName} {displayFamilyName}".Trim());
         return Ok(new
         {
             token,
             customerId = account.Id,
-            name = account.Name,
-            familyName = account.FamilyName,
+            name = displayName,
+            familyName = displayFamilyName,
             phone = account.Phone,
             businessSlug = business.Slug,
             itemId = item.Id,

@@ -92,6 +92,37 @@ public class CustomerAuthControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task LoginWithWhatsApp_RemembersACorrectionMadeWhenBookingWithThisBusiness()
+    {
+        // Regression: the account's own Name/FamilyName is only ever auto-filled from a WhatsApp
+        // profile name once, on the account's first-ever creation, and is never updated after
+        // that -- a customer whose WhatsApp display name has no second word (like "Luna" here)
+        // gets an empty FamilyName on the account forever. A correction they type when actually
+        // booking with a business (BookingController always saves it onto the per-business
+        // Customer row) must be what a later WhatsApp login for that same business returns, not
+        // the account's still-empty one.
+        var (businessId, _, itemId) = await SeedBusinessAndService("wa-login-5@example.com", "wa-login-5");
+        var phone = "+15557770005";
+        var firstToken = await CreateBookingToken(businessId, itemId, phone, "Luna");
+        var first = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new WhatsAppLoginRequest(firstToken));
+        var firstBody = await first.Content.ReadFromJsonAsync<WhatsAppLoginResult>();
+        Assert.Equal("Luna", firstBody!.Name);
+        Assert.Equal("", firstBody.FamilyName);
+
+        using (var db = Db())
+        {
+            db.Customers.Add(new Customer { BusinessId = businessId, Phone = phone, Name = "Luna", FamilyName = "Khwaja" });
+            await db.SaveChangesAsync();
+        }
+
+        var secondToken = await CreateBookingToken(businessId, itemId, phone, "Luna");
+        var second = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new WhatsAppLoginRequest(secondToken));
+        var secondBody = await second.Content.ReadFromJsonAsync<WhatsAppLoginResult>();
+
+        Assert.Equal("Khwaja", secondBody!.FamilyName);
+    }
+
+    [Fact]
     public async Task LoginWithWhatsApp_ReusableWithinWindow_BothRequestsSucceed()
     {
         var (businessId, _, itemId) = await SeedBusinessAndService("wa-login-4@example.com", "wa-login-4");
