@@ -95,16 +95,39 @@ export async function startSession(businessId) {
   return session
 }
 
+// WhatsApp increasingly addresses 1:1 chats by an opaque "LID" (Linked ID) instead of the
+// phone-based JID, for privacy -- remoteJid can then be e.g. "103873935073359@lid", which is NOT
+// a phone number (confirmed in production: a real customer's booking got created with phone
+// "+103873935073359"). remoteJidAlt carries the real phone-based JID when Baileys already knows
+// it; signalRepository.lidMapping is the fallback for a LID Baileys has seen before but didn't
+// attach directly to this message. If neither resolves, there is no way to recover a real phone
+// number for this contact -- see https://baileys.wiki/concepts/jids.
+async function resolvePhoneJid(sock, msg) {
+  const jid = msg.key.remoteJid
+  if (!jid.endsWith('@lid')) return jid
+  if (msg.key.remoteJidAlt) return msg.key.remoteJidAlt
+  try {
+    const pn = await sock.signalRepository.lidMapping.getPNForLID(jid)
+    if (pn) return pn
+  } catch { /* no mapping known yet */ }
+  return null
+}
+
 async function handleInboundMessage(businessId, sock, msg) {
   if (!msg.message || msg.key.fromMe) return
-  const jid = msg.key.remoteJid
-  if (!jid || jid.endsWith('@g.us')) return // ignore group messages -- chatbot is 1:1 only
+  if (!msg.key.remoteJid || msg.key.remoteJid.endsWith('@g.us')) return // ignore group messages -- chatbot is 1:1 only
 
   const text = msg.message.conversation
     || msg.message.extendedTextMessage?.text
     || msg.message.imageMessage?.caption
     || ''
   if (!text.trim()) return
+
+  const jid = await resolvePhoneJid(sock, msg)
+  if (!jid) {
+    console.error(`[${businessId}] could not resolve a real phone number for LID ${msg.key.remoteJid} -- dropping message rather than saving a bogus phone`)
+    return
+  }
 
   const fromPhone = `+${jid.split('@')[0]}`
   const profileName = msg.pushName || null
