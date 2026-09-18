@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
@@ -6,8 +6,10 @@ import { ActivityLogTable, type ActivityLogEntry } from '../../components/platfo
 
 type BusinessDetail = {
   id: string; name: string; email: string; slug: string; phone: string | null
-  trialEndsAt: string; subscriptionStatus: string; createdAt: string; twilioNumber: string | null
+  trialEndsAt: string; subscriptionStatus: string; createdAt: string; whatsAppNumber: string | null
 }
+
+type WhatsAppLinkStatus = { state: 'qr' | 'connecting' | 'connected' | 'disconnected'; qr: string | null; phoneNumber: string | null }
 
 type PlatformReview = {
   id: string; rating: number; comment: string | null; reviewerName: string; itemName: string | null
@@ -19,33 +21,54 @@ export default function PlatformAdminBusinessDetailPage() {
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
   const [impersonating, setImpersonating] = useState(false)
-  const [twilioNumber, setTwilioNumber] = useState('')
-  const [twilioInitialized, setTwilioInitialized] = useState(false)
-  const [savingTwilio, setSavingTwilio] = useState(false)
-  const [twilioError, setTwilioError] = useState('')
+  const [polling, setPolling] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
+  const [linkError, setLinkError] = useState('')
 
   const { data: business } = useQuery<BusinessDetail>({
     queryKey: ['platform-admin-business', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/businesses/${id}`).then((r) => r.data),
   })
 
-  if (business && !twilioInitialized) {
-    setTwilioNumber(business.twilioNumber ?? '')
-    setTwilioInitialized(true)
+  const { data: linkStatus } = useQuery<WhatsAppLinkStatus>({
+    queryKey: ['platform-admin-business-whatsapp-status', id],
+    queryFn: () => platformAdminApi.get(`/platform-admin/businesses/${id}/whatsapp/status`).then((r) => r.data),
+    enabled: polling,
+    refetchInterval: polling ? 2000 : false,
+  })
+
+  useEffect(() => {
+    if (polling && linkStatus?.state === 'connected') {
+      setPolling(false)
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
+    }
+  }, [polling, linkStatus?.state, queryClient, id])
+
+  async function handleStartLink() {
+    if (!business) return
+    setLinkError(''); setStarting(true)
+    try {
+      await platformAdminApi.post(`/platform-admin/businesses/${business.id}/whatsapp/link`)
+      setPolling(true)
+    } catch {
+      setLinkError('Could not start linking')
+    } finally {
+      setStarting(false)
+    }
   }
 
-  async function handleSaveTwilioNumber() {
+  async function handleUnlink() {
     if (!business) return
-    setSavingTwilio(true); setTwilioError('')
+    setLinkError(''); setUnlinking(true)
     try {
-      await platformAdminApi.patch(`/platform-admin/businesses/${business.id}/twilio-number`, {
-        twilioNumber: twilioNumber || null,
-      })
+      await platformAdminApi.delete(`/platform-admin/businesses/${business.id}/whatsapp/link`)
+      setPolling(false)
       queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
     } catch {
-      setTwilioError('Could not save')
+      setLinkError('Could not unlink')
     } finally {
-      setSavingTwilio(false)
+      setUnlinking(false)
     }
   }
   const { data: activity } = useQuery<ActivityLogEntry[]>({
@@ -110,20 +133,36 @@ export default function PlatformAdminBusinessDetailPage() {
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
-          <h2 className="font-semibold mb-1">WhatsApp Number</h2>
+          <h2 className="font-semibold mb-1">WhatsApp</h2>
           <p className="text-gray-500 text-sm mb-3">
-            Which of the platform's Twilio WhatsApp senders this business's chatbot uses.
+            This business's self-hosted WhatsApp chatbot session. Linking asks the owner to scan a
+            QR code with their own phone (WhatsApp → Linked Devices → Link a Device) — no Meta
+            Business verification needed.
           </p>
-          {twilioError && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-3">{twilioError}</div>}
-          <div className="flex gap-2">
-            <input type="text" value={twilioNumber} onChange={(e) => setTwilioNumber(e.target.value)}
-              placeholder="+14155238886"
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button onClick={handleSaveTwilioNumber} disabled={savingTwilio}
+          {linkError && <div className="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded-lg px-4 py-3 mb-3">{linkError}</div>}
+
+          {business.whatsAppNumber && !polling ? (
+            <div className="flex items-center justify-between">
+              <span className="text-white font-mono">Connected as {business.whatsAppNumber}</span>
+              <button onClick={handleUnlink} disabled={unlinking}
+                className="bg-red-900/40 hover:bg-red-900/60 disabled:opacity-50 text-red-300 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+                {unlinking ? 'Unlinking...' : 'Unlink'}
+              </button>
+            </div>
+          ) : polling && linkStatus?.state === 'qr' && linkStatus.qr ? (
+            <div className="text-center">
+              <img src={linkStatus.qr} alt="WhatsApp link QR code" width={220} height={220}
+                className="mx-auto mb-3 rounded-lg bg-white p-2" />
+              <p className="text-gray-500 text-sm">Waiting for the phone to scan this code...</p>
+            </div>
+          ) : polling ? (
+            <p className="text-gray-400 text-sm">Connecting...</p>
+          ) : (
+            <button onClick={handleStartLink} disabled={starting}
               className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
-              {savingTwilio ? 'Saving...' : 'Save'}
+              {starting ? 'Starting...' : 'Link WhatsApp'}
             </button>
-          </div>
+          )}
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">

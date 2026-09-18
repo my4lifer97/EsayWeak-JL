@@ -26,24 +26,27 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
     private readonly bool _configureCardcom;
+    private readonly bool _configureOpenAi;
 
     public const string JwtSecret = "test-jwt-signing-secret-at-least-32-chars-long";
     public const string JwtIssuer = "businessesaas-api-test";
     public const string JwtAudience = "businessesaas-frontend-test";
     public const string CronSecret = "test-cron-secret";
+    public const string BridgeSecret = "test-bridge-secret";
     public const string CardcomTerminalNumber = "1000";
     public const string CardcomApiName = "test-api-name";
     public const string CardcomApiPassword = "test-api-password";
+    public const string OpenAiApiKey = "test-openai-api-key";
 
-    // configureCardcom: opt-in per test class (default false) so the existing "Cardcom not
-    // configured -> 503" tests keep exercising that path by default, while tests that need a
-    // working checkout/webhook/cron flow can request Cardcom:* config via
-    // ConfigureAppConfiguration below -- read lazily per-request by BillingController/
-    // CronController (unlike Jwt:Secret), so this timing is safe (see the ConfigureAppConfiguration
-    // note further down).
-    public TestWebApplicationFactory(bool configureCardcom = false)
+    // configureCardcom/configureOpenAi: opt-in per test class (default false) so the existing
+    // "not configured" tests (Cardcom 503, WhatsApp's rule-based fallback) keep exercising those
+    // paths by default, while tests that need the real flow can request the relevant config via
+    // ConfigureAppConfiguration below -- read lazily per-request (unlike Jwt:Secret), so this
+    // timing is safe (see the ConfigureAppConfiguration note further down).
+    public TestWebApplicationFactory(bool configureCardcom = false, bool configureOpenAi = false)
     {
         _configureCardcom = configureCardcom;
+        _configureOpenAi = configureOpenAi;
         _connection.Open();
 
         // Program.cs reads Jwt:Secret into a plain variable at the top of its top-level
@@ -62,6 +65,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         // is what WhatsAppController.Webhook checks inbound signatures against in tests.
         Environment.SetEnvironmentVariable("Twilio__AccountSid", "AC_test_sid");
         Environment.SetEnvironmentVariable("Twilio__AuthToken", "test_auth_token");
+        // Shared secret WhatsAppController.BridgeInbound checks against -- matches
+        // WhatsAppBridgeInboundTests' constant.
+        Environment.SetEnvironmentVariable("WhatsAppBridge__Secret", BridgeSecret);
         Environment.SetEnvironmentVariable("AllowedOrigin", "http://localhost:5173");
         Environment.SetEnvironmentVariable("AppUrl", "http://localhost:5173");
 
@@ -87,6 +93,17 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             }));
         }
 
+        if (_configureOpenAi)
+        {
+            // Only set for tests that explicitly opt in (WhatsAppAiChatbotTests) -- every other
+            // test leaves OpenAI:ApiKey unset, so WhatsAppController.ProcessMessageAsync's
+            // dispatcher goes straight to the rule-based path, same as today.
+            builder.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["OpenAI:ApiKey"] = OpenAiApiKey,
+            }));
+        }
+
         builder.ConfigureServices(services =>
         {
             // AddDbContext registers its options-configuration delegate additively
@@ -102,6 +119,19 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // just records what would have been sent, so tests can assert on it directly.
             services.RemoveAll<IWhatsAppSender>();
             services.AddSingleton<IWhatsAppSender, FakeWhatsAppSender>();
+
+            // Real whatsapp-bridge calls (outbound sends via BridgeWhatsAppSender, and the
+            // platform-admin link/status/unlink endpoints) would dial out to a service that
+            // doesn't exist in tests -- swap in a fake.
+            services.RemoveAll<IWhatsAppBridgeClient>();
+            services.AddSingleton<IWhatsAppBridgeClient, FakeWhatsAppBridgeClient>();
+
+            // Real OpenAI calls would dial out to a real API -- swap in a fake, configurable per
+            // test (canned tool call / canned text / throw). Registered regardless of
+            // _configureOpenAi since WhatsAppController never invokes it unless OpenAI:ApiKey is
+            // also set.
+            services.RemoveAll<IOpenAiChatClient>();
+            services.AddSingleton<IOpenAiChatClient, FakeOpenAiChatClient>();
 
             // Same idea for email -- replace whichever sender Program.cs picked (DevEmailSender
             // here, since no Smtp/Resend config) with one that records, so tests can assert that
@@ -127,6 +157,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     }
 
     public FakeWhatsAppSender WhatsAppSender => (FakeWhatsAppSender)Services.GetRequiredService<IWhatsAppSender>();
+    public FakeWhatsAppBridgeClient WhatsAppBridge => (FakeWhatsAppBridgeClient)Services.GetRequiredService<IWhatsAppBridgeClient>();
+    public FakeOpenAiChatClient OpenAi => (FakeOpenAiChatClient)Services.GetRequiredService<IOpenAiChatClient>();
     public FakeCardcomService Cardcom => (FakeCardcomService)Services.GetRequiredService<ICardcomService>();
     public FakeEmailSender Email => (FakeEmailSender)Services.GetRequiredService<IEmailSender>();
 

@@ -38,10 +38,10 @@ public class WhatsAppControllerTests : IntegrationTestBase
 
         using var db = Db();
         var businessId = await db.Businesses.Where(b => b.Slug == slug).Select(b => b.Id).FirstAsync();
-        // TwilioNumber is now platform-admin-assigned, not settable via /api/admin/settings --
-        // set it directly, same as SetChatbotConfig below does for chatbot fields.
+        // WhatsAppNumber is now assigned by the platform-admin link flow, not settable via
+        // /api/admin/settings -- set it directly, same as SetChatbotConfig below does for chatbot fields.
         var businessForTwilio = await db.Businesses.FirstAsync(b => b.Id == businessId);
-        businessForTwilio.TwilioNumber = TwilioNumber;
+        businessForTwilio.WhatsAppNumber = TwilioNumber;
         await db.SaveChangesAsync();
         // Same ordering WhatsAppController uses (OrderBy Id) -- so tests can pick "the Nth item
         // the bot listed" without depending on service-creation order.

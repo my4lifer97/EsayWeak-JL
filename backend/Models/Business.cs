@@ -28,11 +28,11 @@ public class Business
     public string? Logo { get; set; }
     public string? Description { get; set; }
     public Language Language { get; set; } = Language.EN;
-    // Which of the platform's own Twilio WhatsApp senders this business's chatbot uses -- assigned
-    // by the platform admin (see PlatformAdminController.SetTwilioNumber), not self-configured by
-    // the business. Credentials for sending/validating live in one platform-owned Twilio account
-    // (config: Twilio:AccountSid/AuthToken), not per-business -- see TwilioWhatsAppSender.
-    public string? TwilioNumber { get; set; }
+    // The phone number linked to this business's self-hosted WhatsApp chatbot session (Baileys,
+    // via whatsapp-bridge) -- set automatically once the platform admin links a number by QR code
+    // (see PlatformAdminController's whatsapp/link endpoints), not self-configured by the business.
+    // Session credentials themselves live only in the bridge service, never here.
+    public string? WhatsAppNumber { get; set; }
     public DateTime TrialEndsAt { get; set; }
     public SubStatus SubscriptionStatus { get; set; } = SubStatus.TRIAL;
     // Cardcom's reusable charge token (from LowProfile/Create with Operation=ChargeAndCreateToken).

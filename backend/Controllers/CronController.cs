@@ -96,7 +96,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
 
         foreach (var appt in appointments)
         {
-            if (appt.Business.TwilioNumber is null)
+            if (appt.Business.WhatsAppNumber is null)
                 continue;
 
             try

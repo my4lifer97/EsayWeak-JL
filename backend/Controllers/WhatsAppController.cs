@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
@@ -13,12 +14,19 @@ public class WhatsAppController(
     AppDbContext db,
     IConfiguration config,
     AppointmentCancellationService cancellationService,
-    WhatsAppBookingTokenService bookingTokens) : ControllerBase
+    WhatsAppBookingTokenService bookingTokens,
+    IOpenAiChatClient openAi,
+    ILogger<WhatsAppController> logger) : ControllerBase
 {
     private static readonly string[] CancelKeywords = ["cancel", "ביטול", "بطل", "إلغاء", "בטל"];
     private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "تغيير", "שנה"];
     private static readonly TimeSpan ConversationStateLifetime = TimeSpan.FromMinutes(10);
 
+    // Legacy Twilio WhatsApp Business API webhook. Kept but dormant -- no business currently has a
+    // real Twilio WhatsApp number (Meta/Trust Hub verification was rejected, see project history),
+    // so nothing calls this in production. Left in place as the fallback path if a real registered
+    // business + Trust Hub approval ever happens later. The active inbound path is
+    // BridgeInbound below, via the self-hosted whatsapp-bridge (Baileys) service.
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook()
     {
@@ -29,8 +37,7 @@ public class WhatsAppController(
 
         var toNumber = parms.GetValueOrDefault("To", "").Replace("whatsapp:", "");
         var business = await db.Businesses
-            .Where(b => b.TwilioNumber == toNumber)
-            .Select(b => new { b.Id, b.Name, b.Slug, b.Language, b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage })
+            .Where(b => b.WhatsAppNumber == toNumber)
             .FirstOrDefaultAsync();
 
         if (business is null)
@@ -51,41 +58,198 @@ public class WhatsAppController(
         if (!validator.Validate(webhookUrl, parms, signature))
             return StatusCode(403, "Invalid signature");
 
-        // The business wants to reply themselves instead of the automated flow -- send no message
-        // at all (an empty TwiML response), rather than a fixed "not available" reply.
-        if (!business.ChatbotEnabled)
-            return Content("""<?xml version="1.0" encoding="UTF-8"?><Response></Response>""", "text/xml");
-
         var incomingMsg = parms.GetValueOrDefault("Body", "").Trim();
         var fromPhone = parms.GetValueOrDefault("From", "").Replace("whatsapp:", "");
         // Twilio's inbound WhatsApp webhook includes the sender's WhatsApp display name here --
         // that's the "name automatically taken from the WhatsApp API" the booking link identifies
         // the customer with, no separate profile lookup needed.
         var profileName = parms.GetValueOrDefault("ProfileName", "");
-        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
-        var lowerMsg = incomingMsg.ToLowerInvariant();
 
-        string reply;
-        if (CancelKeywords.Any(k => lowerMsg.Contains(k)))
-        {
-            reply = await HandleCancel(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
-        }
-        else if (RescheduleKeywords.Any(k => lowerMsg.Contains(k)))
-        {
-            await ClearConversationState(business.Id, fromPhone);
-            var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
-            reply = $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage)}";
-        }
-        else
-        {
-            // Either a fresh conversation (no state row yet -- falls through to the prompt below)
-            // or a reply to an already-open "which service?" prompt (a numeric selection or junk).
-            var selectionReply = await TryHandleServiceSelectionReply(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, incomingMsg, business.ChatbotConfirmationMessage);
-            reply = selectionReply ?? await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
-        }
+        var reply = await ProcessMessageAsync(business, appUrl, fromPhone, profileName, incomingMsg);
+        if (reply is null)
+            return Content("""<?xml version="1.0" encoding="UTF-8"?><Response></Response>""", "text/xml");
 
         var twiml = $"""<?xml version="1.0" encoding="UTF-8"?><Response><Message>{System.Net.WebUtility.HtmlEncode(reply)}</Message></Response>""";
         return Content(twiml, "text/xml");
+    }
+
+    // Active inbound path: the self-hosted whatsapp-bridge (Baileys) service posts here for every
+    // message on a business's linked WhatsApp session. Unlike the Twilio webhook, the bridge
+    // already knows which business a session belongs to (one linked number per business), so
+    // there's no "To number" lookup -- it just tells us the BusinessId directly. Auth is a shared
+    // secret (same pattern as CronSecret) instead of Twilio's per-request HMAC signature, since
+    // this is a private server-to-server call, not a public webhook Twilio signs.
+    public record BridgeInboundRequest(string BusinessId, string FromPhone, string? ProfileName, string Message);
+    public record BridgeInboundResponse(string? Reply);
+
+    [HttpPost("bridge/inbound")]
+    public async Task<IActionResult> BridgeInbound([FromBody] BridgeInboundRequest req)
+    {
+        var secret = config["WhatsAppBridge:Secret"];
+        var header = Request.Headers["X-Bridge-Secret"].FirstOrDefault();
+        if (string.IsNullOrEmpty(secret) || header != secret)
+            return Unauthorized();
+
+        var business = await db.Businesses.FindAsync(req.BusinessId);
+        if (business is null) return NotFound();
+
+        var appUrl = config["AppUrl"] ?? "";
+        var reply = await ProcessMessageAsync(business, appUrl, req.FromPhone, req.ProfileName ?? "", req.Message.Trim());
+        return Ok(new BridgeInboundResponse(reply));
+    }
+
+    // Shared by both inbound transports (Twilio webhook + bridge inbound). Dispatches to the
+    // OpenAI-driven path when configured, falling back to the rule-based flow on any failure (or
+    // whenever OpenAI isn't configured at all) -- see ProcessMessageWithAiAsync's doc comment for
+    // why this fallback matters. Returns null to mean "send nothing" (chatbot disabled), mirroring
+    // the old empty-TwiML-response behavior.
+    private async Task<string?> ProcessMessageAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    {
+        // The business wants to reply themselves instead of the automated flow -- send no message
+        // at all, rather than a fixed "not available" reply.
+        if (!business.ChatbotEnabled)
+            return null;
+
+        if (!string.IsNullOrEmpty(config["OpenAI:ApiKey"]))
+        {
+            try
+            {
+                return await ProcessMessageWithAiAsync(business, appUrl, fromPhone, profileName, incomingMsg);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "OpenAI chatbot path failed for business {BusinessId}, falling back to rule-based", business.Id);
+            }
+        }
+
+        return await ProcessMessageRuleBasedAsync(business, appUrl, fromPhone, profileName, incomingMsg);
+    }
+
+    // Everything from cancel/reschedule keyword matching through numbered service-selection
+    // dispatch -- unchanged behavior, now the fallback path when OpenAI isn't configured or fails.
+    private async Task<string> ProcessMessageRuleBasedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    {
+        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
+        var lowerMsg = incomingMsg.ToLowerInvariant();
+
+        if (CancelKeywords.Any(k => lowerMsg.Contains(k)))
+            return await HandleCancel(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+
+        if (RescheduleKeywords.Any(k => lowerMsg.Contains(k)))
+        {
+            await ClearConversationState(business.Id, fromPhone);
+            var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
+            return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage)}";
+        }
+
+        // Either a fresh conversation (no state row yet -- falls through to the prompt below)
+        // or a reply to an already-open "which service?" prompt (a numeric selection or junk).
+        var selectionReply = await TryHandleServiceSelectionReply(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, incomingMsg, business.ChatbotConfirmationMessage);
+        return selectionReply ?? await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+    }
+
+    // The customer's message is understood by an LLM instead of fixed keywords/numeric replies --
+    // e.g. "actually can we move it to Thursday" works, not just the literal word "reschedule".
+    // Design guardrail: the model decides WHEN to call a tool, but never composes the text for a
+    // completed action itself -- IssueBookingLink/FindAndCancelUpcomingAppointment build the exact
+    // same I18nService-templated text the rule-based path uses, and the system prompt instructs the
+    // model to relay a tool's "message" field verbatim. This is what prevents a hallucinated URL,
+    // price, or date from ever reaching a customer; the model only freely composes text for
+    // open-ended Q&A grounded in the business data injected into the system prompt.
+    private async Task<string> ProcessMessageWithAiAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    {
+        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
+
+        var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
+        var history = state?.HistoryJson is not null
+            ? JsonSerializer.Deserialize<List<OpenAiTurn>>(state.HistoryJson) ?? []
+            : [];
+
+        var systemPrompt = await BuildAiSystemPrompt(business, lang);
+        List<OpenAiToolDefinition> tools =
+        [
+            new("create_booking_link",
+                "Create a booking link once the customer has chosen a specific service.",
+                """{"type":"object","properties":{"itemId":{"type":"string"}},"required":["itemId"]}"""),
+            new("cancel_upcoming_appointment",
+                "Cancel the customer's next upcoming appointment with this business.",
+                """{"type":"object","properties":{}}"""),
+        ];
+
+        async Task<string> ExecuteTool(string name, string argsJson) => name switch
+        {
+            "create_booking_link" => await ExecuteCreateBookingLink(business, appUrl, fromPhone, profileName, lang, argsJson),
+            "cancel_upcoming_appointment" => await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang),
+            _ => JsonSerializer.Serialize(new { error = "unknown tool" }),
+        };
+
+        var reply = await openAi.GetReplyAsync(systemPrompt, history, incomingMsg, tools, ExecuteTool);
+
+        history.Add(new OpenAiTurn("user", incomingMsg));
+        history.Add(new OpenAiTurn("assistant", reply));
+        if (history.Count > 12) history = history[^12..];
+
+        if (state is null)
+        {
+            state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
+            db.WhatsAppConversationStates.Add(state);
+        }
+        state.Language = lang;
+        state.HistoryJson = JsonSerializer.Serialize(history);
+        state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        await db.SaveChangesAsync();
+
+        return reply;
+    }
+
+    private async Task<string> BuildAiSystemPrompt(Business business, string lang)
+    {
+        var services = await ActiveServices(business.Id, lang);
+        var itemsList = services.Count == 0
+            ? "(no bookable services configured yet)"
+            : string.Join("\n", services.Select(s => $"- id={s.Id}: {s.Name}"));
+        var languageName = lang switch { "AR" => "Arabic", "HE" => "Hebrew", _ => "English" };
+
+        return $"""
+            You are {business.Name}'s WhatsApp booking assistant. Always reply in {languageName}, in plain WhatsApp-friendly text (no markdown).
+
+            Bookable services (use the id when calling create_booking_link):
+            {itemsList}
+
+            Tools:
+            - create_booking_link(itemId): call this once the customer has picked a specific service. Its result includes a "message" field -- output that text to the customer VERBATIM, do not reword it or invent your own link, price, or service name.
+            - cancel_upcoming_appointment(): call this when the customer wants to cancel their appointment. If the result's "found" field is true, it also has a "message" field -- output that text VERBATIM. If "found" is false, tell the customer yourself that you couldn't find an upcoming appointment and offer to help them book one.
+            To reschedule: call cancel_upcoming_appointment first, then help the customer book a new time via create_booking_link.
+
+            Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.
+            """;
+    }
+
+    private async Task<string> ExecuteCreateBookingLink(Business business, string appUrl, string fromPhone, string profileName, string lang, string argsJson)
+    {
+        var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson) ?? [];
+        var itemId = args.GetValueOrDefault("itemId", "");
+        var services = await ActiveServices(business.Id, lang);
+        var chosen = services.FirstOrDefault(s => s.Id == itemId);
+        if (chosen.Id is null)
+            return JsonSerializer.Serialize(new { error = "unknown itemId" });
+
+        var message = await IssueBookingLink(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, chosen, business.ChatbotConfirmationMessage);
+        return JsonSerializer.Serialize(new { message });
+    }
+
+    private async Task<string> ExecuteCancelUpcomingAppointment(string businessId, string fromPhone, string lang)
+    {
+        var cancelled = await FindAndCancelUpcomingAppointment(businessId, fromPhone);
+        if (cancelled is null)
+            return JsonSerializer.Serialize(new { found = false });
+
+        var message = I18nService.T(lang, "whatsapp.cancelled", new()
+        {
+            ["date"] = cancelled.Date.ToString("yyyy-MM-dd"),
+            ["time"] = cancelled.StartTime,
+        });
+        return JsonSerializer.Serialize(new { found = true, message });
     }
 
     // Detects the language from the incoming message's script (Hebrew/Arabic Unicode blocks, or
@@ -121,6 +285,28 @@ public class WhatsAppController(
 
     private async Task<string> HandleCancel(string businessId, string businessName, string fromPhone, string lang, string? welcomeMessage)
     {
+        await ClearConversationState(businessId, fromPhone);
+        var cancelled = await FindAndCancelUpcomingAppointment(businessId, fromPhone);
+
+        if (cancelled is null)
+        {
+            var intro = I18nService.T(lang, "whatsapp.noAppointment");
+            return $"{intro}\n\n{await PromptServiceSelection(businessId, businessName, fromPhone, lang, welcomeMessage)}";
+        }
+
+        return I18nService.T(lang, "whatsapp.cancelled", new()
+        {
+            ["date"] = cancelled.Date.ToString("yyyy-MM-dd"),
+            ["time"] = cancelled.StartTime,
+        });
+    }
+
+    // Shared by the rule-based "cancel" keyword and the AI path's cancel_upcoming_appointment tool.
+    // Deliberately does NOT touch WhatsAppConversationState -- the rule-based caller clears it
+    // itself (its "awaiting numbered reply" semantics), while the AI path's conversation history
+    // in that same row must survive a cancellation instead of being wiped.
+    private async Task<Appointment?> FindAndCancelUpcomingAppointment(string businessId, string fromPhone)
+    {
         var customer = await db.Customers
             // a.Date is a calendar date (local wall-clock, never UTC-converted), so compare
             // against local "today" as a date — not DateTime.UtcNow, which is both the wrong
@@ -133,22 +319,11 @@ public class WhatsAppController(
             .Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED")
             .OrderBy(a => a.Date)
             .FirstOrDefault();
+        if (upcoming is null) return null;
 
-        if (upcoming is null)
-        {
-            await ClearConversationState(businessId, fromPhone);
-            var intro = I18nService.T(lang, "whatsapp.noAppointment");
-            return $"{intro}\n\n{await PromptServiceSelection(businessId, businessName, fromPhone, lang, welcomeMessage)}";
-        }
-
-        await ClearConversationState(businessId, fromPhone);
         await cancellationService.CancelFromCustomerAsync(upcoming);
         await db.SaveChangesAsync();
-        return I18nService.T(lang, "whatsapp.cancelled", new()
-        {
-            ["date"] = upcoming.Date.ToString("yyyy-MM-dd"),
-            ["time"] = upcoming.StartTime,
-        });
+        return upcoming;
     }
 
     private async Task ClearConversationState(string businessId, string phone)
@@ -225,7 +400,15 @@ public class WhatsAppController(
         db.WhatsAppConversationStates.Remove(state);
         await db.SaveChangesAsync();
 
-        var token = await bookingTokens.CreateAsync(businessId, chosen.Id, phone, string.IsNullOrWhiteSpace(profileName) ? null : profileName, lang);
+        return await IssueBookingLink(businessId, slug, appUrl, phone, profileName, lang, chosen, confirmationMessage);
+    }
+
+    // Shared by the rule-based numbered-selection reply and the AI path's create_booking_link
+    // tool. A business's custom confirmation message is used as-is (with {url} substituted if
+    // present, else the link is appended on its own line) in place of the default confirmation text.
+    private async Task<string> IssueBookingLink(string businessId, string slug, string appUrl, string phone, string profileName, string lang, (string Id, string Name) item, string? confirmationMessage)
+    {
+        var token = await bookingTokens.CreateAsync(businessId, item.Id, phone, string.IsNullOrWhiteSpace(profileName) ? null : profileName, lang);
         var url = $"{appUrl}/{slug}/w/{token.Id}";
 
         if (!string.IsNullOrWhiteSpace(confirmationMessage))
@@ -234,6 +417,6 @@ public class WhatsAppController(
                 ? confirmationMessage.Replace("{url}", url)
                 : $"{confirmationMessage}\n\n{url}";
         }
-        return I18nService.T(lang, "whatsapp.serviceLinkSent", new() { ["service"] = chosen.Name, ["url"] = url });
+        return I18nService.T(lang, "whatsapp.serviceLinkSent", new() { ["service"] = item.Name, ["url"] = url });
     }
 }

@@ -7,15 +7,15 @@ namespace BarberSaas.Api.Services;
 public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IConfiguration config, ILogger<WaitlistService> logger)
 {
     // Notifies every WAITING entry for the appointment that just got cancelled. Silent no-op if
-    // the business hasn't turned the feature on, nobody's waiting, or Twilio isn't configured for
-    // this business (same permissive skip CronController.SendReminders already uses). Does not
+    // the business hasn't turned the feature on, nobody's waiting, or no WhatsApp number is linked
+    // for this business (same permissive skip CronController.SendReminders already uses). Does not
     // call SaveChangesAsync -- the caller's own save persists the appointment status change and
     // these entries' NOTIFIED flips together.
     public async Task NotifyForCancellation(Appointment cancelledAppointment)
     {
         var business = await db.Businesses.FindAsync(cancelledAppointment.BusinessId);
         if (business is null || !business.WaitlistEnabled) return;
-        if (business.TwilioNumber is null) return;
+        if (business.WhatsAppNumber is null) return;
 
         var entries = await db.WaitlistEntries
             .Include(w => w.CustomerAccount)

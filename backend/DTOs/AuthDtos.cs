@@ -21,9 +21,9 @@ public record CreateBlockedSlotRequest(string Date, string? StartTime, string? E
 
 public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,
-    // TwilioNumber is read-only here -- assigned by the platform admin, not settable by the
-    // business (see UpdateSettingsRequest, which omits it).
-    string? Description, string? Logo, string Language, string? TwilioNumber,
+    // WhatsAppNumber is read-only here -- assigned automatically once the platform admin links a
+    // number by QR code (see UpdateSettingsRequest, which omits it).
+    string? Description, string? Logo, string Language, string? WhatsAppNumber,
     DateTime TrialEndsAt, string SubscriptionStatus,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel,
     bool ChatbotEnabled, string? ChatbotWelcomeMessage, string? ChatbotConfirmationMessage,
@@ -123,9 +123,9 @@ public record PlatformAdminLoginResponse(string Token, string Id, string Name, s
 public record PlatformAdminBusinessSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
 public record PlatformAdminBusinessDetailDto(
     string Id, string Name, string Email, string Slug, string? Phone,
-    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? TwilioNumber);
+    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? WhatsAppNumber);
 
-public record SetTwilioNumberRequest(string? TwilioNumber);
+public record WhatsAppLinkStatusDto(string State, string? Qr, string? PhoneNumber);
 
 public record PlatformAdminCustomerSummaryDto(string Id, string Name, string FamilyName, string Phone);
 public record PlatformAdminCustomerDetailDto(string Id, string Name, string FamilyName, string Phone, DateTime CreatedAt);

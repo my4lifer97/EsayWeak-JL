@@ -15,7 +15,7 @@ namespace BarberSaas.Api.Controllers;
 public class PlatformAdminController(
     AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt,
     IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger,
-    ReviewService reviews) : ControllerBase
+    ReviewService reviews, IWhatsAppBridgeClient whatsAppBridge) : ControllerBase
 {
     private string AdminId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -90,36 +90,77 @@ public class PlatformAdminController(
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
         return Ok(new PlatformAdminBusinessDetailDto(
-            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.TwilioNumber));
+            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber));
     }
 
-    // Assigns (or clears, with a null body value) which of the platform's own Twilio WhatsApp
-    // numbers this business's chatbot uses -- see Business.TwilioNumber and TwilioWhatsAppSender.
-    [HttpPatch("businesses/{id}/twilio-number")]
+    // Links a business's WhatsApp chatbot to a real, self-hosted (Baileys) session via
+    // whatsapp-bridge -- see Business.WhatsAppNumber and BridgeWhatsAppSender. Business.WhatsAppNumber
+    // itself is only ever written by GetWhatsAppLinkStatus below, once the bridge reports a
+    // successful link -- these three endpoints just proxy the bridge's linking flow.
+    [HttpPost("businesses/{id}/whatsapp/link")]
     [Authorize(Policy = "PlatformAdminOnly")]
-    public async Task<IActionResult> SetTwilioNumber(string id, [FromBody] SetTwilioNumberRequest req)
+    public async Task<IActionResult> StartWhatsAppLink(string id)
+    {
+        var exists = await db.Businesses.AnyAsync(b => b.Id == id);
+        if (!exists) return NotFound();
+
+        var status = await whatsAppBridge.StartLinkAsync(id);
+        return Ok(status);
+    }
+
+    [HttpGet("businesses/{id}/whatsapp/status")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> GetWhatsAppLinkStatus(string id)
     {
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
 
-        var old = b.TwilioNumber;
-        b.TwilioNumber = req.TwilioNumber;
-        await db.SaveChangesAsync();
+        var status = await whatsAppBridge.GetStatusAsync(id);
+        if (status.State == "connected" && status.PhoneNumber is not null && b.WhatsAppNumber != status.PhoneNumber)
+        {
+            var old = b.WhatsAppNumber;
+            b.WhatsAppNumber = status.PhoneNumber;
+            db.ActivityLogs.Add(new ActivityLog
+            {
+                BusinessId = b.Id,
+                ImpersonatedByPlatformAdminId = AdminId,
+                Action = $"{nameof(PlatformAdminController)}.{nameof(GetWhatsAppLinkStatus)}",
+                Description = $"WhatsApp number: \"{old}\" → \"{b.WhatsAppNumber}\"",
+                Method = "GET",
+                Path = Request.Path.ToString(),
+                StatusCode = 200,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            });
+            await db.SaveChangesAsync();
+        }
+        return Ok(status);
+    }
 
+    [HttpDelete("businesses/{id}/whatsapp/link")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> UnlinkWhatsApp(string id)
+    {
+        var b = await db.Businesses.FindAsync(id);
+        if (b is null) return NotFound();
+
+        await whatsAppBridge.UnlinkAsync(id);
+
+        var old = b.WhatsAppNumber;
+        b.WhatsAppNumber = null;
         db.ActivityLogs.Add(new ActivityLog
         {
             BusinessId = b.Id,
             ImpersonatedByPlatformAdminId = AdminId,
-            Action = $"{nameof(PlatformAdminController)}.{nameof(SetTwilioNumber)}",
-            Description = $"WhatsApp number: \"{old}\" → \"{b.TwilioNumber}\"",
-            Method = "PATCH",
+            Action = $"{nameof(PlatformAdminController)}.{nameof(UnlinkWhatsApp)}",
+            Description = $"WhatsApp number: \"{old}\" → (unlinked)",
+            Method = "DELETE",
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
         await db.SaveChangesAsync();
 
-        return Ok(new { b.Id, b.TwilioNumber });
+        return Ok(new { b.Id, b.WhatsAppNumber });
     }
 
     [HttpGet("businesses/{id}/activity")]

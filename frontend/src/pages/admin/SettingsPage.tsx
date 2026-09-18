@@ -9,7 +9,7 @@ import { mediaUrl } from '../../lib/media'
 
 type BusinessSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
-  language: 'EN' | 'AR' | 'HE'; twilioNumber: string | null
+  language: 'EN' | 'AR' | 'HE'; whatsAppNumber: string | null
   trialEndsAt: string; subscriptionStatus: string
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
   waitlistEnabled: boolean
@@ -369,7 +369,7 @@ export default function SettingsPage() {
           <h2 className="text-white font-semibold mb-1">{t(lang, 'whatsappSetup')}</h2>
           <p className="text-gray-500 text-sm">{t(lang, 'whatsappNumberHint')}</p>
           <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white font-mono">
-            {business?.twilioNumber || <span className="text-gray-500 font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
+            {business?.whatsAppNumber || <span className="text-gray-500 font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
           </div>
         </div>
 

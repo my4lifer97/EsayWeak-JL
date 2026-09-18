@@ -112,7 +112,7 @@ barber-saas/
 │   │   ├── CustomerAppointmentsController.cs  # GET/PATCH /api/customer/appointments/* (CustomerOnly)
 │   │   ├── RecurringAppointmentsController.cs # GET/POST/DELETE /api/admin/recurring — owner-managed recurring series
 │   │   ├── WaitlistController.cs          # POST /api/{slug}/waitlist/{appointmentId} — CustomerOnly, joins the waitlist for a booked slot
-│   │   ├── WhatsAppController.cs          # Twilio webhook — item-selection chatbot flow + book/cancel/reschedule keywords
+│   │   ├── WhatsAppController.cs          # bridge-inbound (active) + Twilio webhook (dormant fallback) — item-selection chatbot flow + book/cancel/reschedule keywords
 │   │   ├── PlatformAdminController.cs     # api/platform-admin/* — bootstrap/login, business & customer search/detail/impersonate/activity, business-owner-request review, review moderation
 │   │   ├── BillingController.cs           # POST /api/billing/checkout-session|webhook (Cardcom)
 │   │   └── CronController.cs              # GET /api/cron/reminders, /api/cron/generate-recurring, /api/cron/charge-subscriptions
@@ -129,7 +129,7 @@ barber-saas/
 │   │   ├── PlatformAdmin.cs         # Platform staff account (separate login/JWT from Business and CustomerAccount)
 │   │   ├── ActivityLog.cs           # Audit trail row written by ActivityLogFilter / impersonation actions
 │   │   ├── WhatsAppBookingToken.cs  # Opaque, DB-backed booking-link token (business+item+phone), 24h-reusable, issued once an item is picked in WhatsApp
-│   │   ├── WhatsAppConversationState.cs # Short-lived (business, phone) "awaiting item selection" row -- Twilio webhooks are stateless per-message
+│   │   ├── WhatsAppConversationState.cs # Short-lived (business, phone) row -- rule-based path's "awaiting item selection" flag, or the AI path's rolling chat history (HistoryJson)
 │   │   ├── BusinessEmailOtp.cs      # One-time codes for business email verification
 │   │   ├── BusinessPasswordResetOtp.cs # One-time codes for business password reset (mirrors BusinessEmailOtp)
 │   │   ├── Review.cs                # Customer review of a business (see Reviews below)
@@ -150,6 +150,7 @@ barber-saas/
 │   │   ├── SlugValidator.cs            # Shared slug format/reserved-word rules for self-service and admin-issued signup
 │   │   ├── PhoneNormalizer.cs          # Normalizes phone numbers to a canonical form for matching
 │   │   ├── WhatsAppBookingTokenService.cs  # Issues/resolves WhatsAppBookingToken rows (shared by WhatsAppController and CustomerAuthController)
+│   │   ├── IOpenAiChatClient.cs / OpenAiChatClient.cs  # Wraps the OpenAI Chat Completions API (tool calling) for the optional AI-driven WhatsApp chatbot layer -- pure transport, no DB access
 │   │   ├── IEmailSender.cs / DevEmailSender.cs / SmtpEmailSender.cs / ResendEmailSender.cs / BrevoEmailSender.cs  # Email delivery abstraction — precedence Brevo > SMTP > Resend > dev no-op, see Configuration
 │   │   └── ICardcomService.cs / CardcomService.cs  # Cardcom billing API client
 │   ├── GlobalExceptionHandler.cs     # Catches unhandled exceptions -> { error } JSON + ILogger, never a bare 500
@@ -157,6 +158,9 @@ barber-saas/
 │   ├── appsettings.json             # Base config (prod DB, JWT keys, AppUrl, CronSecret)
 │   ├── appsettings.Development.json # Dev overrides (DB = barbersaas_dev, verbose logging)
 │   └── Properties/launchSettings.json  # Port 5280, ASPNETCORE_ENVIRONMENT=Development
+├── whatsapp-bridge/                 # Node.js -- self-hosted WhatsApp transport (Baileys), see its own README.md
+│   ├── index.js                     # Express app: /sessions/:businessId/start|status, DELETE /sessions/:businessId, POST /send
+│   └── sessionManager.js            # One Baileys socket per linked business; forwards inbound messages to the backend
 └── frontend/
     └── src/
         ├── components/
@@ -202,7 +206,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `POST /api/auth/change-password` (`BusinessOnly`, `[AllowWithPendingPasswordChange]`) — `{ currentPassword, newPassword }`; the only `BusinessOnly` action reachable while `MustChangePassword` is set (an admin-issued temp password) — clears the flag and returns a fresh token without the `mustChangePassword` claim
 
 **Admin (JWT required — business ID read from token claims, never from body, `BusinessOnly` policy)**
-- `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). WhatsApp number is read-only here — see [Twilio / WhatsApp](#twilio--whatsapp)
+- `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). WhatsApp number is read-only here — see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
 - `GET/POST /api/admin/services` — items CRUD (includes `photoMode` + `galleryPhotos`; route name kept as `services` for URL/frontend stability even though the model is `Item`)
@@ -264,7 +268,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `POST /api/platform-admin/bootstrap` — creates the (single, for now) platform admin account; 403 once one already exists, so it's safe to leave the endpoint public
 - `POST /api/platform-admin/login` — email+password, returns a platform-admin JWT (`"type": "platform_admin"` claim, separate from Business/CustomerAccount tokens)
 - `GET /api/platform-admin/businesses?search=`, `GET .../businesses/{id}` — search/detail across every tenant
-- `PATCH /api/platform-admin/businesses/{id}/twilio-number` — assign/clear which platform Twilio WhatsApp number a business's chatbot uses (see [Twilio / WhatsApp](#twilio--whatsapp))
+- `POST /api/platform-admin/businesses/{id}/whatsapp/link`, `GET .../whatsapp/status`, `DELETE .../whatsapp/link` — link/poll/unlink a business's self-hosted WhatsApp chatbot session (see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge))
 - `GET /api/platform-admin/businesses/{id}/activity`, `GET .../customers/{id}/activity` — that entity's `ActivityLog` rows, newest first, flagged when the acting token was an impersonation
 - `POST /api/platform-admin/businesses/{id}/impersonate`, `POST .../customers/{id}/impersonate` — mint a real Business/Customer JWT on their behalf for support purposes; every action taken with it is logged with `ImpersonatedByPlatformAdminId` set
 - `GET /api/platform-admin/business-owner-requests?status=`, `GET .../{id}` — review queue for [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved) requests
@@ -273,7 +277,8 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/platform-admin/reviews?businessId=`, `POST .../reviews/{id}/hide|unhide` — moderation (toggles `Review.IsHidden`, recomputes the business's rating aggregate)
 
 **Integrations**
-- `POST /api/whatsapp/webhook` — Twilio webhook; validates X-Twilio-Signature; drives the item-selection chatbot flow (see below) plus cancel/reschedule keywords, in the business's language
+- `POST /api/whatsapp/bridge/inbound` — active inbound path; called by the self-hosted whatsapp-bridge service (auth: `X-Bridge-Secret`), resolves the business directly by `BusinessId`, drives the item-selection chatbot flow (see below) plus cancel/reschedule keywords, in the business's language
+- `POST /api/whatsapp/webhook` — dormant legacy Twilio webhook (validates X-Twilio-Signature); kept as a fallback path, see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/cron/reminders` — send 24h WhatsApp reminders; requires `Authorization: Bearer <CronSecret>`
 - `GET /api/cron/generate-recurring` — extends every active `RecurringSeries`' generated `Appointment` rows to the rolling horizon (default 8 weeks, `RecurringGeneration:HorizonWeeks` config); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, created, skipped }`; meant to run daily via an external scheduler — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
 - `GET /api/cron/charge-subscriptions` — charges every `ACTIVE` business with a stored `CardcomToken` whose `CardcomNextChargeAt` has passed, via Cardcom's token-charge API; same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, charged, failed }`; a successful charge bumps `CardcomNextChargeAt` by 1 month, a failed one sets `SubscriptionStatus = EXPIRED` — see [Billing (Cardcom)](#billing-cardcom)
@@ -520,24 +525,83 @@ that ordering has caused multiple prod outages.
 ### Appointment status: no manual "Complete"
 The business can only cancel an appointment now (`AdminController.UpdateAppointmentStatus` rejects any `status` other than `CANCELLED`) — there's no "Mark Complete" button anywhere in the admin UI. Instead, `Services/AppointmentStatusHelper.EffectiveStatus(status, date, endTime)` computes "COMPLETED" automatically for any still-`CONFIRMED` appointment whose end time has passed (compared against `DateTime.Now`, local server time — same reasoning as the Availability Engine above), applied wherever a status is returned to a client: `AdminController` (dashboard + appointments list), `CustomerAppointmentsController.GetMyAppointments`, and `BookingController.GetAppointment` (the magic-link view). `CANCELLED` is never overridden. The stored `AppointmentStatus` column itself stays `CONFIRMED` — only the API response's status string is computed; nothing rewrites the DB row.
 
-### Twilio / WhatsApp
-As of 2026-09-05, **one platform-owned Twilio account** handles every business's WhatsApp chatbot —
-not a per-business account. `Twilio:AccountSid`/`Twilio:AuthToken` (config-only, same
-no-default-in-`appsettings.json` pattern as `Jwt:Secret`/`CronSecret` — `dotnet user-secrets`
-locally, `Twilio__AccountSid`/`Twilio__AuthToken` env vars in production) are read directly by
-`WhatsAppController.Webhook` (inbound signature validation) and `TwilioWhatsAppSender` (outbound
-sends, e.g. reminders). The only thing that's still per-business is `Business.TwilioNumber` — which of
-the platform's Twilio WhatsApp senders that business's chatbot uses — and it's now **assigned by the
-platform admin** (`PATCH /api/platform-admin/businesses/{id}/twilio-number`, a control on
-`PlatformAdminBusinessDetailPage`), not self-entered by the business owner; the business's own Settings page
-just shows it read-only. Twilio is one of Meta's official WhatsApp Business Solution Providers —
-messages still run on Meta's actual WhatsApp Business Platform underneath, Twilio just handles the
-Meta onboarding/webhook plumbing. **Each WhatsApp number still needs its own Meta WhatsApp Business
-Profile approval** regardless of this — that's a Meta requirement tied to the number's business
-identity, done manually in the Twilio console per business, not something this centralization removes
-or automates.
-- Webhook drives the item-selection chatbot flow (see below) and replies to EN/AR/HE cancel/reschedule keywords by cancelling the next upcoming appointment directly or sending a fresh booking prompt.  
+### WhatsApp chatbot: self-hosted via Baileys (whatsapp-bridge)
+As of 2026-09-18, the WhatsApp chatbot's transport is a **self-hosted Baileys session per business**
+(`whatsapp-bridge/`, a separate Node.js service), not Twilio's official WhatsApp Business API. Each
+business owner links their own regular WhatsApp number by scanning a QR code (like WhatsApp
+Web/multi-device linking) — no Meta Business Manager, no Trust Hub, no registration needed. This
+replaced Twilio because Twilio's WhatsApp Business API requires Meta Business verification (Trust
+Hub), which was **rejected 2026-09-15** for this unregistered personal project (no business
+registry entry, matching domain, or verifiable public presence) — a wall that applies once per
+Twilio account, so it blocks *any* real number, and switching BSPs doesn't help since it's a Meta
+requirement, not a Twilio one. **Known, accepted tradeoff**: this uses WhatsApp outside its official
+Business API and violates WhatsApp's Terms of Service — a linked number can be banned by Meta's
+automated detection with no appeal.
+
+All booking/chatbot logic stays in this backend (`WhatsAppController`) — `whatsapp-bridge` is a thin
+transport adapter: it holds one Baileys socket per linked business, forwards inbound messages to
+`POST /api/whatsapp/bridge/inbound` (auth: shared secret header `X-Bridge-Secret`, config
+`WhatsAppBridge:Secret` — same pattern as `CronSecret`, checked on both ends), and sends back
+whatever `reply` comes back (`null` means send nothing, e.g. `ChatbotEnabled = false`). Outbound
+sends (reminders, waitlist notifications, cancellation-approval requests) go through
+`BridgeWhatsAppSender` (`IWhatsAppSender`, registered in `Program.cs`), which calls the bridge's
+`POST /send` via `IWhatsAppBridgeClient`/`WhatsAppBridgeClient`. See `whatsapp-bridge/README.md` for
+the service's own env vars and Railway deployment notes.
+
+`Business.WhatsAppNumber` (renamed from `TwilioNumber`) is the linked number's display string —
+written automatically once linking succeeds (`GetWhatsAppLinkStatus` below), never self-entered by
+the business owner; their own Settings page shows it read-only. The platform admin drives linking
+from `PlatformAdminBusinessDetailPage` ("Link WhatsApp" button → QR code → "Connected as +...")
+via three endpoints that proxy the bridge:
+- `POST /api/platform-admin/businesses/{id}/whatsapp/link` — starts a session, bridge generates a QR.
+- `GET /api/platform-admin/businesses/{id}/whatsapp/status` — polled by the frontend every ~2s while
+  linking; on `state: "connected"`, also writes the resolved phone number into `Business.WhatsAppNumber`.
+- `DELETE /api/platform-admin/businesses/{id}/whatsapp/link` — unlinks and clears `Business.WhatsAppNumber`.
+
+**Twilio's WhatsApp Business API integration is kept in the codebase, unregistered, as a dormant
+fallback** (`TwilioWhatsAppSender`, and `WhatsAppController`'s original `POST /api/whatsapp/webhook`
+with its Twilio-signature validation) — in case a real registered business + Trust Hub approval ever
+happens later. Nothing in production currently points at it (no business has a real Twilio WhatsApp
+number). `Twilio:AccountSid`/`Twilio:AuthToken` config still exists for this dormant path and for
+`TwilioOtpSender` (phone+OTP customer login, a separate Twilio product — Programmable SMS, unrelated
+to WhatsApp).
+- `WhatsAppController.ProcessMessageAsync` is the shared dispatcher for both the bridge-inbound and
+  legacy Twilio paths — see the AI layer subsection below for what it dispatches to.
 - Reminders are sent by hitting `/api/cron/reminders` (e.g. via an external cron job or scheduler).
+
+### WhatsApp chatbot: optional OpenAI layer
+As of 2026-09-18, `WhatsAppController.ProcessMessageAsync` tries an LLM-driven path
+(`ProcessMessageWithAiAsync`) before falling back to the original rule-based one
+(`ProcessMessageRuleBasedAsync`, unchanged keyword/numeric-reply logic) — active only when
+`OpenAI:ApiKey` is configured (secret, no default — same pattern as `Twilio:AuthToken`/`CronSecret`;
+`OpenAI:Model` optionally overrides the default model), and falls back to the rule-based path for
+that message on *any* exception from the AI call, so an OpenAI outage/rate-limit never breaks the
+bot. This lets the bot understand free-form messages ("actually can we move it to Thursday")
+instead of only exact keywords/numbers.
+
+**Guardrail — the model never composes text for a completed action itself.** It only decides *when*
+to call one of two tools (`create_booking_link`, `cancel_upcoming_appointment`); the tool
+implementations build the exact same `I18nService`-templated text the rule-based path already uses
+(shared via `IssueBookingLink`/`FindAndCancelUpcomingAppointment`), and the system prompt instructs
+the model to relay a tool's `message` field verbatim rather than reword it. This is what prevents a
+hallucinated URL, price, or date reaching a customer — the model only freely composes text for
+open-ended Q&A (hours, prices, greetings) grounded in the business data (name, active items,
+language) injected into its system prompt each turn. Rescheduling isn't a separate tool — the
+system prompt tells the model to call `cancel_upcoming_appointment` then `create_booking_link`.
+
+`WhatsAppConversationState.HistoryJson` (nullable, added alongside this) holds the rolling chat
+history (last ~12 turns, `List<OpenAiTurn>` JSON) for this path — the same (BusinessId, Phone) +
+`ExpiresAt` row the rule-based path already used for its "awaiting numbered reply" flag, repurposed
+rather than adding a new table. The two paths' state semantics are kept deliberately separate even
+though they share the row: the rule-based path clears the whole row on cancel (`ClearConversationState`);
+the AI path's tool executors (`ExecuteCreateBookingLink`/`ExecuteCancelUpcomingAppointment`) call the
+lower-level DB helpers directly and never touch/clear that row, so AI conversation history survives
+a cancellation instead of being wiped.
+
+`Services/IOpenAiChatClient.cs`/`OpenAiChatClient.cs` wraps the official `OpenAI` NuGet package
+(Chat Completions with tool calling) — pure transport, no DB access, mirroring
+`IWhatsAppBridgeClient`. Not business-toggleable per business — a single platform-wide switch via
+config presence, matching the `IEmailSender` precedence-chain pattern.
 
 ### Chatbot customization & language auto-detection
 Per business, in `Settings > WhatsApp Chatbot`:
@@ -635,12 +699,16 @@ Cardcom:ApiName             Cardcom API name (sent on LowProfile/Create and GetL
 Cardcom:ApiPassword         Cardcom API password (sent on the recurring token-charge call only, not on LowProfile/Create)
 Cardcom:MonthlyAmount       Subscription amount in ILS, as a string (default "120")
 Platform:AdminNotificationEmail   Where BusinessOwnerRequestsController emails a best-effort notification on new signup requests (optional -- silently skipped if unset)
+WhatsAppBridge:Url          Base URL of the whatsapp-bridge service (its Railway private URL in production, e.g. http://localhost:3001 locally)
+WhatsAppBridge:Secret       Shared secret between this backend and whatsapp-bridge (checked on both ends, same pattern as CronSecret)
+OpenAI:ApiKey               Enables the optional LLM-driven WhatsApp chatbot layer when set (see the OpenAI layer section above) -- rule-based flow used otherwise
+OpenAI:Model                Chat model to use (optional, defaults to "gpt-4o-mini" -- check current OpenAI model availability/pricing before relying on this default)
 ```
 
-`Jwt:Secret`, `CronSecret`, `Twilio:AccountSid`/`Twilio:AuthToken`, and `Twilio:FromNumber` are **not** in `appsettings.json` — there's no default, so the app fails fast (or, for the Twilio values, simply can't validate/send) if they're missing rather than silently falling back to a guessable value. `Twilio:FromNumber` is a platform-level SMS-capable Twilio number for the phone+OTP customer login code (`TwilioOtpSender`) — separate from any business's own WhatsApp sender (`Business.TwilioNumber`); when unset, `DevOtpSender` is used instead (see [Customer login via phone+OTP](#customer-login-via-phoneotp)).
+`Jwt:Secret`, `CronSecret`, `Twilio:AccountSid`/`Twilio:AuthToken`, `Twilio:FromNumber`, `WhatsAppBridge:Secret`, and `OpenAI:ApiKey` are **not** in `appsettings.json` — there's no default, so the app fails fast (or, for the Twilio/bridge values, simply can't validate/send) if they're missing rather than silently falling back to a guessable value. `Twilio:FromNumber` is a platform-level SMS-capable Twilio number for the phone+OTP customer login code (`TwilioOtpSender`) — separate from WhatsApp entirely. `Twilio:AccountSid`/`Twilio:AuthToken` back the dormant legacy WhatsApp path only (see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)) — nothing in production currently uses them for WhatsApp.
 - **Local dev**: stored in the `dotnet user-secrets` store for `backend/BarberSaas.Api.csproj` (`UserSecretsId` in the `.csproj`, values live outside the repo at `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `dotnet run` loads them automatically in Development.
-- **Production**: supply via environment variables (`Jwt__Secret`, `CronSecret`, `Twilio__AccountSid`, `Twilio__AuthToken`, `Twilio__FromNumber`) or `appsettings.Production.json` (gitignored) — never commit real values.
-- Rotating `Jwt:Secret`/`CronSecret` invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug. Rotating the Twilio pair (e.g. after switching Twilio accounts) requires re-pointing every business's `TwilioNumber` too if the numbers themselves moved to a different account.
+- **Production**: supply via environment variables (`Jwt__Secret`, `CronSecret`, `Twilio__AccountSid`, `Twilio__AuthToken`, `Twilio__FromNumber`, `WhatsAppBridge__Url`, `WhatsAppBridge__Secret`, `OpenAI__ApiKey`, `OpenAI__Model`) or `appsettings.Production.json` (gitignored) — never commit real values.
+- Rotating `Jwt:Secret`/`CronSecret` invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug.
 
 **Email delivery** (`Services/IEmailSender.cs` + implementations) — precedence decided once at
 startup in `Program.cs`, only one sender is ever active: **Brevo** (`Brevo:ApiKey` set;
@@ -668,6 +736,10 @@ Unlike Stripe, Cardcom has no server-side "Subscription" object that auto-recurs
 Live at Railway project **accomplished-vitality**: backend `https://esayweak-jl-production.up.railway.app`,
 frontend `https://frontend-production-5885.up.railway.app`, both deploying from `master` on push;
 Postgres is internal-only (`railway connect Postgres --tunnel-only` for migrations/manual fixes).
+**`whatsapp-bridge` is not yet deployed to Railway** (built 2026-09-18, still only run locally) — when
+it is, it needs its own service (root dir `whatsapp-bridge`), a **Volume** mounted where
+`SESSIONS_DIR` points (or every redeploy forces every business to re-scan their WhatsApp QR code),
+and `BACKEND_URL` pointed at the backend's Railway **private** URL — see `whatsapp-bridge/README.md`.
 **Production does not auto-migrate** — a migration-bearing commit must have its migration applied
 via the tunnel *before* the push that deploys the new code, not after; this ordering has been
 learned the hard way across five separate incidents (several full outages where EF selected a

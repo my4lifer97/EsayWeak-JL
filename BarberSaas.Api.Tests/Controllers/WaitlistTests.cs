@@ -43,10 +43,10 @@ public class WaitlistTests : IntegrationTestBase
 
         Client.DefaultRequestHeaders.Authorization = null;
 
-        // TwilioNumber is now platform-admin-assigned, not settable via /api/admin/settings.
+        // WhatsAppNumber is now assigned by the platform-admin link flow, not settable via /api/admin/settings.
         using var db = Db();
         var business = db.Businesses.First(b => b.Slug == slug);
-        business.TwilioNumber = "+15550009999";
+        business.WhatsAppNumber = "+15550009999";
         db.SaveChanges();
         return (business.Id, service!.Id, date);
     }

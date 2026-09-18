@@ -38,7 +38,7 @@ public class AdminController(
         if (b is null) return NotFound();
         return Ok(new SettingsDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
-            b.Description, b.Logo, b.Language.ToString(), b.TwilioNumber,
+            b.Description, b.Logo, b.Language.ToString(), b.WhatsAppNumber,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
             b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage,

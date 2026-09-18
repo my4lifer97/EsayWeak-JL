@@ -50,7 +50,19 @@ builder.Services.AddScoped<AvailabilityService>();
 builder.Services.AddScoped<RecurringAppointmentService>();
 builder.Services.AddScoped<FollowService>();
 builder.Services.AddScoped<ReviewService>();
-builder.Services.AddScoped<IWhatsAppSender, TwilioWhatsAppSender>();
+// WhatsApp chatbot transport: self-hosted Baileys via whatsapp-bridge (see BridgeWhatsAppSender) --
+// TwilioWhatsAppSender is kept in the codebase, unregistered, as the fallback path if a real
+// registered business + Trust Hub approval ever happens later.
+builder.Services.AddHttpClient<IWhatsAppBridgeClient, WhatsAppBridgeClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["WhatsAppBridge:Url"] ?? "http://localhost:3001");
+    client.DefaultRequestHeaders.Add("X-Bridge-Secret", builder.Configuration["WhatsAppBridge:Secret"] ?? "");
+});
+builder.Services.AddScoped<IWhatsAppSender, BridgeWhatsAppSender>();
+// Optional LLM layer on top of the WhatsApp chatbot (see WhatsAppController.ProcessMessageAsync) --
+// only ever invoked when OpenAI:ApiKey is configured; falls back to the rule-based flow otherwise
+// or if a call throws, so this registration is unconditional (cheap, no I/O at construction time).
+builder.Services.AddScoped<IOpenAiChatClient, OpenAiChatClient>();
 // Customer login OTP is sent via SMS (not WhatsApp -- this runs before any business is
 // identified), using a dedicated platform SMS number separate from any business's WhatsApp
 // sender. See TwilioOtpSender.

@@ -27,7 +27,7 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
     {
         var business = await db.Businesses.FindAsync(appointment.BusinessId);
         var canNotifyOwner = business is not null && business.RequireApprovalOnCustomerCancel
-            && business.TwilioNumber is not null
+            && business.WhatsAppNumber is not null
             && !string.IsNullOrWhiteSpace(business.Phone);
 
         if (!canNotifyOwner)

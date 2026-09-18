@@ -16,6 +16,12 @@ public class WhatsAppConversationState
     // WhatsAppController.DetectLanguage) -- lets a numeric-only reply like "1" (no language
     // signal of its own) keep replying in the language the customer was already using.
     public string Language { get; set; } = "EN";
+    // JSON-serialized List<OpenAiTurn> -- rolling chat history for the OpenAI-driven chatbot path
+    // (see WhatsAppController.ProcessMessageWithAiAsync), capped to the last ~12 turns. Null when
+    // the AI path isn't configured/used, or before the first AI-driven exchange for this
+    // conversation. Reuses this row's existing (BusinessId, Phone) + ExpiresAt session boundary
+    // rather than a separate table.
+    public string? HistoryJson { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
