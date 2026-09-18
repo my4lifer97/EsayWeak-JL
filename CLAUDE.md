@@ -652,7 +652,12 @@ default when there's no open conversation either (a signal-less first message, e
 `WhatsAppConversationState.Language` and `WhatsAppBookingToken.Language` both persist the resolved
 language — the latter is returned by `POST /api/customer/auth/whatsapp` (`language` field) and the
 frontend's `loginWithWhatsAppToken` calls `setLang()` with it, so the booking wizard opens in the
-same language the customer was just chatting in, not whatever was last stored in that browser.
+same language the customer was just chatting in, not whatever was last stored in this browser.
+
+**Arabic-Indic numeral replies** (`WhatsAppController.NormalizeDigits`): a numbered-selection reply
+in Arabic-Indic (`٠`-`٩`) or Extended Arabic-Indic/Persian (`۰`-`۹`) digits is translated to ASCII
+before `int.TryParse` in `TryHandleServiceSelectionReply` — a customer replying in Arabic script
+naturally types the number in one of these, not by switching to a Western keyboard.
 
 ### Customer login via WhatsApp
 The primary way a customer session starts: redeeming a link the WhatsApp bot sent them (no

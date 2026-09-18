@@ -121,6 +121,28 @@ public class WhatsAppControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ArabicIndicAndExtendedArabicIndicNumerals_AreAcceptedAsValidSelections()
+    {
+        var (businessId, slug, serviceIds) = await SeedBusinessWithServices("wa-webhook-arabic-digit@example.com", "wa-webhook-arabic-digit");
+
+        var phone1 = "+15558880023";
+        await SendWhatsAppMessage(phone1, "hi");
+        var reply1 = await SendWhatsAppMessage(phone1, "١"); // Arabic-Indic "1" (U+0661)
+        Assert.Contains($"/{slug}/w/", reply1);
+
+        var phone2 = "+15558880024";
+        await SendWhatsAppMessage(phone2, "hi");
+        var reply2 = await SendWhatsAppMessage(phone2, "۲"); // Extended Arabic-Indic/Persian "2" (U+06F2)
+        Assert.Contains($"/{slug}/w/", reply2);
+
+        using var db = Db();
+        var token1 = await db.WhatsAppBookingTokens.SingleAsync(t => t.BusinessId == businessId && t.Phone == phone1);
+        Assert.Equal(serviceIds[0], token1.ItemId);
+        var token2 = await db.WhatsAppBookingTokens.SingleAsync(t => t.BusinessId == businessId && t.Phone == phone2);
+        Assert.Equal(serviceIds[1], token2.ItemId);
+    }
+
+    [Fact]
     public async Task AfterBookingLinkIssued_FurtherMessagesGetNoAutomatedReply()
     {
         await SeedBusinessWithServices("wa-webhook-pending-1@example.com", "wa-webhook-pending-1");

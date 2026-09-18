@@ -304,6 +304,26 @@ public class WhatsAppController(
         return null;
     }
 
+    // A customer replying in Arabic script naturally types the service number in Arabic-Indic
+    // digits (٠-٩) rather than switching their keyboard to Western ones -- int.TryParse only
+    // understands ASCII digits, so TryHandleServiceSelectionReply would otherwise treat "١" as an
+    // invalid reply. Also covers the Extended Arabic-Indic/Persian variant (۰-۹) some keyboards use.
+    private const char ArabicIndicDigitStart = (char)0x0660;
+    private const char ArabicIndicDigitEnd = (char)0x0669;
+    private const char ExtendedArabicIndicDigitStart = (char)0x06F0;
+    private const char ExtendedArabicIndicDigitEnd = (char)0x06F9;
+
+    private static string NormalizeDigits(string text)
+    {
+        var chars = text.Select(c => c switch
+        {
+            >= ArabicIndicDigitStart and <= ArabicIndicDigitEnd => (char)('0' + (c - ArabicIndicDigitStart)),
+            >= ExtendedArabicIndicDigitStart and <= ExtendedArabicIndicDigitEnd => (char)('0' + (c - ExtendedArabicIndicDigitStart)),
+            _ => c,
+        }).ToArray();
+        return new string(chars);
+    }
+
     private async Task<string> ResolveLanguage(string businessId, string phone, string incomingMsg, string businessDefault)
     {
         var detected = DetectLanguage(incomingMsg);
@@ -428,7 +448,7 @@ public class WhatsAppController(
         if (state is null) return null;
 
         var services = await ActiveServices(businessId, lang);
-        if (!int.TryParse(message.Trim(), out var index) || index < 1 || index > services.Count)
+        if (!int.TryParse(NormalizeDigits(message.Trim()), out var index) || index < 1 || index > services.Count)
         {
             state.InvalidAttempts++;
             await db.SaveChangesAsync();
