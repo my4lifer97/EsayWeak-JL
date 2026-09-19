@@ -79,19 +79,52 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
             return Unauthorized(new { error = "Unauthorized" });
 
-        // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
-        // (see AvailabilityService) — compute "tomorrow" from local now or this fires reminders
-        // a day early/late near midnight for any business off UTC.
-        var tomorrow = DateTime.Now.AddDays(1).Date;
+        var appUrl = config["AppUrl"] ?? "";
 
-        var appointments = await db.Appointments
+        // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
+        // (see AvailabilityService) — compute "tomorrow"/"now" from local time or this fires
+        // reminders a day early/late (or at the wrong hour) for any business off UTC.
+        var tomorrow = DateTime.Now.AddDays(1).Date;
+        var dayBeforeAppointments = await db.Appointments
             .Include(a => a.Business)
             .Include(a => a.Customer)
             .Include(a => a.Item)
             .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.ReminderSent)
             .ToListAsync();
 
-        var appUrl = config["AppUrl"] ?? "";
+        var (dayBeforeSent, dayBeforeFailed) = await SendBatchAsync(dayBeforeAppointments, "reminder.message", appUrl,
+            (appt) => appt.ReminderSent = true);
+
+        // "Soon" window: local start time (Date + StartTime) has just come within 3 hours of now,
+        // and hasn't fired yet -- checked every run (this endpoint is called every 15 min by the
+        // GitHub Actions schedule), so an appointment is caught the first run after it enters the
+        // window and never sent twice thanks to ReminderSentSoon.
+        var now = DateTime.Now;
+        var in3Hours = now.AddHours(3);
+        var soonCandidates = await db.Appointments
+            .Include(a => a.Business)
+            .Include(a => a.Customer)
+            .Include(a => a.Item)
+            .Where(a => a.Status == AppointmentStatus.CONFIRMED && !a.ReminderSentSoon
+                && a.Date >= now.Date && a.Date <= in3Hours.Date)
+            .ToListAsync();
+        var soonAppointments = soonCandidates
+            .Where(a => a.Date.Date.Add(TimeSpan.Parse(a.StartTime)) is var start && start >= now && start <= in3Hours)
+            .ToList();
+
+        var (soonSent, soonFailed) = await SendBatchAsync(soonAppointments, "reminder.message.soon", appUrl,
+            (appt) => appt.ReminderSentSoon = true);
+
+        await db.SaveChangesAsync();
+        return Ok(new
+        {
+            dayBefore = new { total = dayBeforeAppointments.Count, sent = dayBeforeSent, failed = dayBeforeFailed },
+            soon = new { total = soonAppointments.Count, sent = soonSent, failed = soonFailed },
+        });
+    }
+
+    private async Task<(int sent, int failed)> SendBatchAsync(List<Appointment> appointments, string messageKey, string appUrl, Action<Appointment> markSent)
+    {
         int sent = 0, failed = 0;
 
         foreach (var appt in appointments)
@@ -110,7 +143,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
                 };
 
                 var cancelUrl = $"{appUrl}/{appt.Business.Slug}/appointments/{appt.Id}?token={appt.CancelToken}";
-                var message = I18nService.T(lang, "reminder.message", new()
+                var message = I18nService.T(lang, messageKey, new()
                 {
                     ["customerName"] = appt.Customer.Name,
                     ["businessName"] = appt.Business.Name,
@@ -121,18 +154,17 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
 
                 await whatsAppSender.SendAsync(appt.Business, appt.Customer.Phone, message);
 
-                appt.ReminderSent = true;
+                markSent(appt);
                 sent++;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to send WhatsApp reminder for appointment {AppointmentId} (business {BusinessId})",
-                    appt.Id, appt.BusinessId);
+                logger.LogError(ex, "Failed to send WhatsApp reminder ({MessageKey}) for appointment {AppointmentId} (business {BusinessId})",
+                    messageKey, appt.Id, appt.BusinessId);
                 failed++;
             }
         }
 
-        await db.SaveChangesAsync();
-        return Ok(new { total = appointments.Count, sent, failed });
+        return (sent, failed);
     }
 }

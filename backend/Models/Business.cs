@@ -216,6 +216,7 @@ public class Appointment
     public string? PhotoUrl { get; set; }
     public AppointmentStatus Status { get; set; } = AppointmentStatus.CONFIRMED;
     public bool ReminderSent { get; set; } = false;
+    public bool ReminderSentSoon { get; set; } = false;
     public string CancelToken { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? RecurringSeriesId { get; set; }

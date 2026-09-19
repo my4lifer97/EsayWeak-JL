@@ -1,0 +1,22 @@
+name: Send appointment reminders
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/cron/reminders
+        run: |
+          status=$(curl -s -o response.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://esayweak-jl-production.up.railway.app/api/cron/reminders)
+          echo "Response body:"
+          cat response.json
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "Request failed with status $status"
+            exit 1
+          fi

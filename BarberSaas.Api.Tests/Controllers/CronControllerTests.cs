@@ -51,6 +51,84 @@ public class CronControllerTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
     }
 
+    private async Task<(string businessId, string phone, string appointmentId)> SeedConfirmedAppointment(
+        string email, string slug, DateTime date, string startTime)
+    {
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
+        await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
+
+        var phone = "+15550001111";
+        using var db = Factory.CreateDbContext();
+        var business = await db.Businesses.SingleAsync(b => b.Email == email);
+        business.WhatsAppNumber = "+15559990000";
+
+        var item = new Item { BusinessId = business.Id, NameEn = "Haircut", NameAr = "قص شعر", NameHe = "תספורת", DurationMinutes = 30 };
+        var customer = new Customer { BusinessId = business.Id, Name = "Dana", FamilyName = "Cohen", Phone = phone };
+        var appointment = new Appointment
+        {
+            BusinessId = business.Id, CustomerId = customer.Id, ItemId = item.Id,
+            Date = date, StartTime = startTime, EndTime = startTime, Status = AppointmentStatus.CONFIRMED,
+        };
+        db.Items.Add(item);
+        db.Customers.Add(customer);
+        db.Appointments.Add(appointment);
+        await db.SaveChangesAsync();
+
+        return (business.Id, phone, appointment.Id);
+    }
+
+    [Fact]
+    public async Task Reminders_AppointmentTomorrow_SendsDayBeforeReminderAndSetsFlag()
+    {
+        var tomorrow = DateTime.Now.AddDays(1).Date;
+        var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
+            "cron-reminder-tomorrow@example.com", "cron-reminder-tomorrow-shop", tomorrow, "10:00");
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+
+        var resp = await Client.GetAsync("/api/cron/reminders");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == phone && s.Message.Contains("tomorrow"));
+
+        using var db = Db();
+        var appt = await db.Appointments.SingleAsync(a => a.Id == appointmentId);
+        Assert.True(appt.ReminderSent);
+        Assert.False(appt.ReminderSentSoon);
+    }
+
+    [Fact]
+    public async Task Reminders_AppointmentStartingWithinThreeHours_SendsSoonReminderAndSetsFlag()
+    {
+        var soon = DateTime.Now.AddHours(2);
+        var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
+            "cron-reminder-soon@example.com", "cron-reminder-soon-shop", soon.Date, soon.ToString("HH:mm"));
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+
+        var resp = await Client.GetAsync("/api/cron/reminders");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == phone && s.Message.Contains("few hours"));
+
+        using var db = Db();
+        var appt = await db.Appointments.SingleAsync(a => a.Id == appointmentId);
+        Assert.True(appt.ReminderSentSoon);
+    }
+
+    [Fact]
+    public async Task Reminders_AppointmentMoreThanThreeHoursAway_DoesNotSendSoonReminder()
+    {
+        var later = DateTime.Now.AddHours(5);
+        var (businessId, phone, _) = await SeedConfirmedAppointment(
+            "cron-reminder-later@example.com", "cron-reminder-later-shop", later.Date, later.ToString("HH:mm"));
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+
+        var resp = await Client.GetAsync("/api/cron/reminders");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == phone);
+    }
+
     // ─── generate-recurring: same auth contract as reminders above ─────────
 
     [Fact]

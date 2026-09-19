@@ -7,6 +7,7 @@ public static class I18nService
         ["EN"] = new()
         {
             ["reminder.message"] = "Hi {customerName}! Reminder: your appointment with {businessName} is tomorrow at {time} for {service}.\n\nTo cancel: {cancelUrl}",
+            ["reminder.message.soon"] = "Hi {customerName}! Reminder: your appointment with {businessName} is today at {time} for {service}, starting in a few hours.\n\nTo cancel: {cancelUrl}",
             ["whatsapp.selectService"] = "Hi! I'm {businessName}'s booking assistant. Which service would you like?\n\n{list}\n\nReply with the number.",
             // Same tail as whatsapp.selectService minus the greeting -- used after a business's own
             // custom welcome message, which replaces the greeting instead of stacking on top of it.
@@ -25,6 +26,7 @@ public static class I18nService
         ["AR"] = new()
         {
             ["reminder.message"] = "مرحبًا {customerName}! تذكير: موعدك مع {businessName} غدًا الساعة {time} لخدمة {service}.\n\nللإلغاء: {cancelUrl}",
+            ["reminder.message.soon"] = "مرحبًا {customerName}! تذكير: موعدك مع {businessName} اليوم الساعة {time} لخدمة {service}، يبدأ خلال بضع ساعات.\n\nللإلغاء: {cancelUrl}",
             ["whatsapp.selectService"] = "مرحبًا! أنا مساعد حجز {businessName}. ما هي الخدمة التي تريدها؟\n\n{list}\n\nأرسل الرقم للاختيار.",
             ["whatsapp.selectServicePrompt"] = "ما هي الخدمة التي تريدها؟\n\n{list}\n\nأرسل الرقم للاختيار.",
             ["whatsapp.invalidServiceSelection"] = "عذرًا، لم أفهم ذلك. الرجاء إرسال رقم الخدمة فقط.",
@@ -41,6 +43,7 @@ public static class I18nService
         ["HE"] = new()
         {
             ["reminder.message"] = "שלום {customerName}! תזכורת: התור שלך אצל {businessName} מחר בשעה {time} לשירות {service}.\n\nלביטול: {cancelUrl}",
+            ["reminder.message.soon"] = "שלום {customerName}! תזכורת: התור שלך אצל {businessName} היום בשעה {time} לשירות {service}, מתחיל בעוד כמה שעות.\n\nלביטול: {cancelUrl}",
             ["whatsapp.selectService"] = "שלום! אני עוזר התורים של {businessName}. איזה שירות תרצה?\n\n{list}\n\nהשב עם המספר.",
             ["whatsapp.selectServicePrompt"] = "איזה שירות תרצה?\n\n{list}\n\nהשב עם המספר.",
             ["whatsapp.invalidServiceSelection"] = "סליחה, לא הבנתי. אנא שלח רק את מספר השירות שתרצה.",
