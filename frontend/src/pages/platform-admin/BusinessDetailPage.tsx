@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
@@ -8,6 +8,7 @@ import ThemeToggle from '../../components/ThemeToggle'
 type BusinessDetail = {
   id: string; name: string; email: string; slug: string; phone: string | null
   trialEndsAt: string; subscriptionStatus: string; createdAt: string; whatsAppNumber: string | null
+  isDisabled: boolean
 }
 
 type WhatsAppLinkStatus = { state: 'qr' | 'connecting' | 'connected' | 'disconnected'; qr: string | null; phoneNumber: string | null }
@@ -26,6 +27,13 @@ export default function PlatformAdminBusinessDetailPage() {
   const [starting, setStarting] = useState(false)
   const [unlinking, setUnlinking] = useState(false)
   const [linkError, setLinkError] = useState('')
+  const [togglingDisabled, setTogglingDisabled] = useState(false)
+  const [accountError, setAccountError] = useState('')
+  const [resettingPassword, setResettingPassword] = useState(false)
+  const [tempPassword, setTempPassword] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [showCustomPasswordForm, setShowCustomPasswordForm] = useState(false)
+  const [customPassword, setCustomPassword] = useState('')
 
   const { data: business } = useQuery<BusinessDetail>({
     queryKey: ['platform-admin-business', id],
@@ -72,6 +80,54 @@ export default function PlatformAdminBusinessDetailPage() {
       setUnlinking(false)
     }
   }
+  async function handleToggleDisabled() {
+    if (!business) return
+    setAccountError(''); setTogglingDisabled(true)
+    try {
+      await platformAdminApi.post(`/platform-admin/businesses/${business.id}/${business.isDisabled ? 'enable' : 'disable'}`)
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
+    } catch {
+      setAccountError('Could not update the account status')
+    } finally {
+      setTogglingDisabled(false)
+    }
+  }
+
+  async function handleResetTempPassword() {
+    if (!business) return
+    setAccountError(''); setTempPassword(null); setCopied(false); setResettingPassword(true)
+    try {
+      const { data } = await platformAdminApi.post(`/platform-admin/businesses/${business.id}/reset-password`, { temporary: true })
+      setTempPassword(data.tempPassword)
+    } catch {
+      setAccountError('Could not reset the password')
+    } finally {
+      setResettingPassword(false)
+    }
+  }
+
+  async function handleSetCustomPassword(e: FormEvent) {
+    e.preventDefault()
+    if (!business) return
+    setAccountError(''); setResettingPassword(true)
+    try {
+      await platformAdminApi.post(`/platform-admin/businesses/${business.id}/reset-password`, { temporary: false, newPassword: customPassword })
+      setShowCustomPasswordForm(false)
+      setCustomPassword('')
+    } catch (err: unknown) {
+      const resp = (err as { response?: { data?: { error?: string } } })?.response
+      setAccountError(resp?.data?.error ?? 'Could not set the password')
+    } finally {
+      setResettingPassword(false)
+    }
+  }
+
+  function copyTempPassword() {
+    if (!tempPassword) return
+    navigator.clipboard.writeText(tempPassword)
+    setCopied(true)
+  }
+
   const { data: activity } = useQuery<ActivityLogEntry[]>({
     queryKey: ['platform-admin-business-activity', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/businesses/${id}/activity`).then((r) => r.data),
@@ -134,6 +190,67 @@ export default function PlatformAdminBusinessDetailPage() {
             className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
             {impersonating ? 'Logging in...' : 'Log in as this account'}
           </button>
+        </div>
+
+        <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
+          <h2 className="font-semibold mb-1">Account</h2>
+          <p className="text-muted text-sm mb-3">
+            {business.isDisabled
+              ? 'This account is disabled — the owner cannot sign in to their dashboard. The storefront and WhatsApp bot are unaffected.'
+              : 'The owner can sign in normally.'}
+          </p>
+          {accountError && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-3">{accountError}</div>}
+
+          <div className="flex items-center gap-2 mb-4">
+            <button onClick={handleToggleDisabled} disabled={togglingDisabled}
+              className={`font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 ${
+                business.isDisabled
+                  ? 'bg-teal-tint hover:bg-teal-tint/70 text-ink'
+                  : 'bg-red-100 hover:bg-red-200 dark:bg-red-900/40 dark:hover:bg-red-900/60 text-red-700 dark:text-red-400'
+              }`}>
+              {togglingDisabled ? 'Updating...' : business.isDisabled ? 'Enable account' : 'Disable account'}
+            </button>
+          </div>
+
+          <div className="border-t border-line pt-4">
+            <h3 className="text-sm font-semibold mb-2">Reset password</h3>
+            {tempPassword ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-cream border border-line rounded-lg px-3 py-2 font-mono text-lg tracking-wide">{tempPassword}</code>
+                  <button onClick={copyTempPassword}
+                    className="bg-coral hover:bg-coral-dark text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                    {copied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <p className="text-muted text-xs">The owner must change this password the next time they sign in.</p>
+                <button onClick={() => setTempPassword(null)} className="text-muted hover:text-ink text-sm">Dismiss</button>
+              </div>
+            ) : showCustomPasswordForm ? (
+              <form onSubmit={handleSetCustomPassword} className="flex items-center gap-2">
+                <input type="text" required minLength={6} value={customPassword} onChange={(e) => setCustomPassword(e.target.value)}
+                  placeholder="New password" autoComplete="new-password"
+                  className="flex-1 bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
+                <button type="submit" disabled={resettingPassword}
+                  className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                  {resettingPassword ? 'Saving...' : 'Set password'}
+                </button>
+                <button type="button" onClick={() => { setShowCustomPasswordForm(false); setCustomPassword('') }}
+                  className="text-muted hover:text-ink text-sm px-2">Cancel</button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button onClick={handleResetTempPassword} disabled={resettingPassword}
+                  className="bg-teal-tint hover:bg-teal-tint/70 disabled:opacity-50 text-ink font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+                  {resettingPassword ? 'Sending...' : 'Send temporary password'}
+                </button>
+                <button onClick={() => setShowCustomPasswordForm(true)}
+                  className="border border-line text-ink hover:bg-cream font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+                  Set specific password
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="bg-surface border border-line rounded-2xl p-6 mb-6">

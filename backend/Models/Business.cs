@@ -77,6 +77,11 @@ public class Business
     // action except AuthController.ChangePassword until this is cleared.
     public bool MustChangePassword { get; set; } = false;
 
+    // Platform-admin "Active Directory"-style account lock -- blocks only /api/auth/login (see
+    // AuthController.Login); the storefront, WhatsApp bot, and existing appointments/reminders are
+    // unaffected while this is set.
+    public bool IsDisabled { get; set; } = false;
+
     // Denormalized review aggregate, recomputed from non-hidden Reviews on every review mutation
     // (see ReviewService.RecomputeAggregate) so discovery can sort/filter by rating without a
     // per-request GROUP BY. RatingAverage is 0 when RatingCount is 0.

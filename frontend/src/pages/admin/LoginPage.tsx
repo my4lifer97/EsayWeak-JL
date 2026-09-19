@@ -24,7 +24,7 @@ export default function LoginPage() {
       const u = await login(email, password)
       navigate(u.mustChangePassword ? '/admin/set-password' : '/admin/dashboard')
     } catch (err: unknown) {
-      const resp = (err as { response?: { status?: number; data?: { emailNotVerified?: boolean } } })?.response
+      const resp = (err as { response?: { status?: number; data?: { emailNotVerified?: boolean; accountDisabled?: boolean; error?: string } } })?.response
       if (resp?.status === 403 && resp.data?.emailNotVerified) {
         try {
           const data = await resendVerification(email)
@@ -33,6 +33,8 @@ export default function LoginPage() {
           setError('A code was already sent — check your email')
         }
         setView('verify')
+      } else if (resp?.status === 403 && resp.data?.accountDisabled) {
+        setError(resp.data.error ?? 'This account has been disabled. Contact support.')
       } else {
         setError('Invalid email/username or password')
       }

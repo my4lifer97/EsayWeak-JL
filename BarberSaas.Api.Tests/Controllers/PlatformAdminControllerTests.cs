@@ -220,4 +220,108 @@ public class PlatformAdminControllerTests : IntegrationTestBase
 
         Assert.Contains(activity!, a => a.Action == "Admin.UpdateSettings" && a.Impersonated);
     }
+
+    // ─── Account disable/enable + password reset ────────────────────────────
+
+    private async Task<(string Id, string Email)> RegisterAndVerifyBusiness(string email, string slug)
+    {
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
+        var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
+        var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
+        return (body!.Id, email);
+    }
+
+    [Fact]
+    public async Task DisableBusiness_BlocksLoginWithAccountDisabled()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("disable-me@example.com", "disable-me-shop");
+
+        Authorize(Client, adminToken);
+        var disableResp = await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+        Assert.Equal(HttpStatusCode.OK, disableResp.StatusCode);
+
+        Client.DefaultRequestHeaders.Authorization = null;
+        var loginResp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "password123"));
+
+        Assert.Equal(HttpStatusCode.Forbidden, loginResp.StatusCode);
+        var body = await loginResp.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.True(body!["accountDisabled"] is System.Text.Json.JsonElement je && je.GetBoolean());
+    }
+
+    [Fact]
+    public async Task EnableBusiness_RestoresLogin()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("re-enable-me@example.com", "re-enable-me-shop");
+
+        Authorize(Client, adminToken);
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+        var enableResp = await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/enable", null);
+        Assert.Equal(HttpStatusCode.OK, enableResp.StatusCode);
+
+        Client.DefaultRequestHeaders.Authorization = null;
+        var loginResp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "password123"));
+
+        Assert.Equal(HttpStatusCode.OK, loginResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_Temporary_ChangesPasswordAndForcesChange()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("temp-reset@example.com", "temp-reset-shop");
+
+        Authorize(Client, adminToken);
+        var resetResp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/reset-password",
+            new PlatformAdminResetPasswordRequest(true, null));
+        Assert.Equal(HttpStatusCode.OK, resetResp.StatusCode);
+        var resetBody = await resetResp.Content.ReadFromJsonAsync<PlatformAdminResetPasswordResponse>();
+        Assert.False(string.IsNullOrEmpty(resetBody!.TempPassword));
+
+        Client.DefaultRequestHeaders.Authorization = null;
+        var oldLoginResp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "password123"));
+        Assert.Equal(HttpStatusCode.Unauthorized, oldLoginResp.StatusCode);
+
+        var newLoginResp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, resetBody.TempPassword!));
+        Assert.Equal(HttpStatusCode.OK, newLoginResp.StatusCode);
+        var newLoginBody = await newLoginResp.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.True(newLoginBody!.MustChangePassword);
+    }
+
+    [Fact]
+    public async Task ResetPassword_Custom_SetsExactPasswordWithoutForcingChange()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("custom-reset@example.com", "custom-reset-shop");
+
+        Authorize(Client, adminToken);
+        var resetResp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/reset-password",
+            new PlatformAdminResetPasswordRequest(false, "brandNewPass1"));
+        Assert.Equal(HttpStatusCode.OK, resetResp.StatusCode);
+
+        Client.DefaultRequestHeaders.Authorization = null;
+        var loginResp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "brandNewPass1"));
+
+        Assert.Equal(HttpStatusCode.OK, loginResp.StatusCode);
+        var loginBody = await loginResp.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.False(loginBody!.MustChangePassword);
+    }
+
+    [Fact]
+    public async Task ResetPassword_ActivityLog_NeverContainsTheRawPassword()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, _) = await RegisterAndVerifyBusiness("logged-reset@example.com", "logged-reset-shop");
+
+        Authorize(Client, adminToken);
+        await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/reset-password",
+            new PlatformAdminResetPasswordRequest(false, "shouldNeverAppearInLogs1"));
+
+        var activity = await Client.GetFromJsonAsync<List<PlatformAdminActivityLogDto>>($"/api/platform-admin/businesses/{businessId}/activity");
+
+        Assert.Contains(activity!, a => a.Action.Contains("ResetBusinessPassword"));
+        Assert.DoesNotContain(activity!, a => a.Description.Contains("shouldNeverAppearInLogs1"));
+    }
 }

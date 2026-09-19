@@ -90,7 +90,126 @@ public class PlatformAdminController(
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
         return Ok(new PlatformAdminBusinessDetailDto(
-            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber));
+            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber, b.IsDisabled));
+    }
+
+    // "Active Directory"-style account lock -- blocks only AuthController.Login (see
+    // Business.IsDisabled); storefront/WhatsApp bot/appointments are unaffected.
+    [HttpPost("businesses/{id}/disable")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> DisableBusiness(string id)
+    {
+        var b = await db.Businesses.FindAsync(id);
+        if (b is null) return NotFound();
+
+        b.IsDisabled = true;
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = b.Id,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{nameof(DisableBusiness)}",
+            Description = "Account: enabled → disabled",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { b.Id, b.IsDisabled });
+    }
+
+    [HttpPost("businesses/{id}/enable")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> EnableBusiness(string id)
+    {
+        var b = await db.Businesses.FindAsync(id);
+        if (b is null) return NotFound();
+
+        b.IsDisabled = false;
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = b.Id,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{nameof(EnableBusiness)}",
+            Description = "Account: disabled → enabled",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { b.Id, b.IsDisabled });
+    }
+
+    // Temporary mode mirrors ApproveBusinessOwnerRequest's temp-password mechanics exactly
+    // (generate + hash + MustChangePassword=true); custom mode sets an exact password with no
+    // forced change, since the admin picked it deliberately. Never logs the actual password --
+    // ActivityLog rows here are metadata only, matching every other action in this controller.
+    [HttpPost("businesses/{id}/reset-password")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> ResetBusinessPassword(string id, [FromBody] PlatformAdminResetPasswordRequest req)
+    {
+        var b = await db.Businesses.FindAsync(id);
+        if (b is null) return NotFound();
+
+        string? tempPassword = null;
+        bool emailSent = false;
+
+        if (req.Temporary)
+        {
+            tempPassword = GenerateTempPassword();
+            b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword);
+            b.MustChangePassword = true;
+            emailSent = await SendPasswordResetEmailAsync(b, tempPassword);
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
+                return BadRequest(new { error = "Password must be at least 6 characters" });
+
+            b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
+            b.MustChangePassword = false;
+        }
+
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = b.Id,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{nameof(ResetBusinessPassword)}",
+            Description = req.Temporary ? "Password reset (temporary)" : "Password reset (admin-set)",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new PlatformAdminResetPasswordResponse(tempPassword, emailSent));
+    }
+
+    // Best-effort, same reasoning as SendApprovalEmailAsync -- a failed send must never fail the
+    // reset itself; the admin always still has the temp password in the response to relay by hand.
+    private async Task<bool> SendPasswordResetEmailAsync(Business business, string tempPassword)
+    {
+        var appUrl = (config["AppUrl"] ?? "").TrimEnd('/');
+        var loginUrl = string.IsNullOrEmpty(appUrl) ? "the EsayWeek sign-in page" : $"{appUrl}/admin/login";
+        try
+        {
+            await emailSender.SendAsync(business.Email, "Your EsayWeek password was reset",
+                $"Hi {business.Name},\n\n" +
+                "Your password was reset by an administrator.\n\n" +
+                $"Sign in: {loginUrl}\n" +
+                $"Temporary password: {tempPassword}\n\n" +
+                "You'll be asked to choose your own password the next time you sign in.\n");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send password-reset email for business {BusinessId}", business.Id);
+            return false;
+        }
     }
 
     // Links a business's WhatsApp chatbot to a real, self-hosted (Baileys) session via

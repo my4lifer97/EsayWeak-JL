@@ -119,14 +119,21 @@ public class CronControllerTests : IntegrationTestBase
     public async Task Reminders_AppointmentMoreThanThreeHoursAway_DoesNotSendSoonReminder()
     {
         var later = DateTime.Now.AddHours(5);
-        var (businessId, phone, _) = await SeedConfirmedAppointment(
+        var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
             "cron-reminder-later@example.com", "cron-reminder-later-shop", later.Date, later.ToString("HH:mm"));
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
 
         var resp = await Client.GetAsync("/api/cron/reminders");
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == phone);
+        // Not asserting zero messages overall: if "5 hours from now" happens to roll past midnight,
+        // the appointment's date can incidentally equal "tomorrow" too, legitimately firing the
+        // separate day-before reminder -- this test is only about the 3-hour window specifically.
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == phone && s.Message.Contains("few hours"));
+
+        using var db = Db();
+        var appt = await db.Appointments.SingleAsync(a => a.Id == appointmentId);
+        Assert.False(appt.ReminderSentSoon);
     }
 
     // ─── generate-recurring: same auth contract as reminders above ─────────

@@ -123,7 +123,7 @@ public record PlatformAdminLoginResponse(string Token, string Id, string Name, s
 public record PlatformAdminBusinessSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
 public record PlatformAdminBusinessDetailDto(
     string Id, string Name, string Email, string Slug, string? Phone,
-    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? WhatsAppNumber);
+    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? WhatsAppNumber, bool IsDisabled);
 
 public record WhatsAppLinkStatusDto(string State, string? Qr, string? PhoneNumber);
 
@@ -152,6 +152,9 @@ public record ApproveBusinessOwnerRequestRequest(string Slug);
 public record ApproveBusinessOwnerRequestResponse(
     string BusinessId, string Slug, string Username, string TempPassword, bool EmailSent);
 public record RejectBusinessOwnerRequestRequest(string? Note);
+
+public record PlatformAdminResetPasswordRequest(bool Temporary, string? NewPassword);
+public record PlatformAdminResetPasswordResponse(string? TempPassword, bool EmailSent);
 
 // ---- Reviews & discovery ----
 

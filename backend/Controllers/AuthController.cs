@@ -97,6 +97,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 
+        if (business.IsDisabled)
+            return StatusCode(403, new { error = "This account has been disabled. Contact support.", accountDisabled = true });
+
         if (!business.EmailVerified)
             return StatusCode(403, new { error = "Please verify your email before signing in.", emailNotVerified = true });
 
