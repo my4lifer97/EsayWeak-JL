@@ -119,6 +119,37 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task CustomerCancel_WithApprovalRequired_OwnerNotifyFails_StillFreezesSlotInsteadOf500()
+    {
+        var token = await RegisterAndLoginBusiness("approval-notify-fails@example.com", "approval-notify-fails-shop");
+        var (businessId, itemId, date) = await SeedApprovalBusiness(token, "approval-notify-fails-shop");
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        var customerToken = await GetCustomerToken("+15551110020");
+        var booked = await BookAs(customerToken, "approval-notify-fails-shop", itemId, dateStr, "09:00");
+        var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        // Simulates a WhatsApp bridge outage / expired session at the moment the owner would be
+        // notified -- the booking confirmation above still went through fine (that send happened
+        // before this was flipped on).
+        Factory.WhatsAppSender.ShouldFail = true;
+
+        var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt!.AppointmentId}/cancel");
+        cancelReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        var customerCancel = await Client.SendAsync(cancelReq);
+
+        // The send failing must not turn the customer's cancel request into an unhandled 500 with
+        // nothing persisted -- the appointment still needs to freeze exactly as it would if the
+        // notification had succeeded.
+        Assert.Equal(HttpStatusCode.OK, customerCancel.StatusCode);
+
+        using var db = Db();
+        var stored = db.Appointments.First(a => a.Id == appt.AppointmentId);
+        Assert.Equal(AppointmentStatus.CONFIRMED, stored.Status);
+        Assert.True(stored.PendingCancellationApproval);
+    }
+
+    [Fact]
     public async Task OwnerFinalizesCancelSilently_AfterApprovalFreeze_FreesTheSlot()
     {
         var token = await RegisterAndLoginBusiness("approval-finalize@example.com", "approval-finalize-shop");

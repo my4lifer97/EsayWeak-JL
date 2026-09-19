@@ -8,7 +8,7 @@ namespace BarberSaas.Api.Services;
 // hook is written once instead of duplicated at every call site. Caller still owns
 // SaveChangesAsync -- keeps this composable with bulk-cancel loops (e.g. deleting a recurring
 // series cancels every future occurrence in one save after the loop).
-public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, IWhatsAppSender whatsAppSender, IConfiguration config)
+public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, IWhatsAppSender whatsAppSender, IConfiguration config, ILogger<AppointmentCancellationService> logger)
 {
     public async Task CancelAsync(Appointment appointment, bool notifyWaitlist)
     {
@@ -58,6 +58,18 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             ["url"] = $"{appUrl}/admin/appointments",
         });
 
-        await whatsAppSender.SendAsync(business, business.Phone!, message);
+        // Best-effort, like every other WhatsApp send in this app -- the appointment must stay
+        // frozen (PendingCancellationApproval already set above) regardless of whether the owner
+        // could actually be reached, or a bridge outage/expired session would silently drop the
+        // customer's cancellation request entirely (500, nothing persisted).
+        try
+        {
+            await whatsAppSender.SendAsync(business, business.Phone!, message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to notify owner of business {BusinessId} about a pending cancellation approval for appointment {AppointmentId}",
+                business.Id, appointment.Id);
+        }
     }
 }
