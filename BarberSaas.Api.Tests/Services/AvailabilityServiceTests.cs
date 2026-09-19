@@ -11,9 +11,19 @@ namespace BarberSaas.Api.Tests.Services;
 // tests' TestWebApplicationFactory, and because it's relational like the real Postgres DB.
 public class AvailabilityServiceTests : IDisposable
 {
-    // 2026-07-06 is a Monday (DayOfWeek.Monday == 1).
-    private const string TestDate = "2026-07-06";
+    // The next upcoming Monday, computed at runtime rather than a fixed date -- a hardcoded date
+    // eventually lands in the past relative to whenever the suite actually runs, which (after this
+    // file's own fix landed in AvailabilityService) would make every test here fail against a
+    // date that's no longer "today or later".
+    private static readonly string TestDate = NextMonday();
     private const int MondayDayOfWeek = 1;
+
+    private static string NextMonday()
+    {
+        var d = DateTime.Now.Date.AddDays(1);
+        while (d.DayOfWeek != DayOfWeek.Monday) d = d.AddDays(1);
+        return d.ToString("yyyy-MM-dd");
+    }
 
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
 
@@ -203,5 +213,25 @@ public class AvailabilityServiceTests : IDisposable
         var nowTime = DateTime.Now.ToString("HH:mm");
         Assert.All(slots, s => Assert.True(string.Compare(s.Start, nowTime, StringComparison.Ordinal) > 0,
             $"slot {s.Start} should be after current time {nowTime}"));
+    }
+
+    [Fact]
+    public async Task DateEntirelyInThePast_ReturnsEmpty()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "12:00");
+        var yesterday = DateTime.Now.AddDays(-1);
+        // Give "yesterday"'s day-of-week real working hours too, so an empty result here is
+        // actually the past-date guard and not just "no hours configured for that weekday".
+        db.WorkingHours.Add(new WorkingHours
+        {
+            BusinessId = business.Id, DayOfWeek = (int)yesterday.DayOfWeek,
+            StartTime = "09:00", EndTime = "12:00", IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, yesterday.ToString("yyyy-MM-dd"), 30);
+
+        Assert.Empty(slots);
     }
 }

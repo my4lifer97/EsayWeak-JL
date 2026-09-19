@@ -45,6 +45,30 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         Assert.Equal("13:00", dto.StartTime);
     }
 
+    [Fact]
+    public async Task Create_ForAlreadyRegisteredCustomer_OccurrencesShowUpInTheirOwnBookings()
+    {
+        var slug = "recurring-linked";
+        var token = await RegisterAndLoginBusiness("recurring-linked@example.com", slug);
+        var itemId = await SeedService(token);
+
+        // The customer already has a CustomerAccount before the owner ever types their phone
+        // number into the recurring-series form.
+        var customer = await LoginCustomerViaWhatsAppAsync("+15551113333", "Riley", "Owner");
+
+        Authorize(Client, token);
+        const int monday = 1;
+        var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
+            null, "Riley", "+15551113333", itemId, monday, "09:00", null));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        Client.DefaultRequestHeaders.Authorization = null;
+        Authorize(Client, customer.Token);
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=upcoming");
+
+        Assert.NotEmpty(mine!);
+    }
+
     private record AvailabilityWrapper(List<TimeSlot> Slots);
 
     [Fact]

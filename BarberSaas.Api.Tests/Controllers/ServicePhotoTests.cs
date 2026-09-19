@@ -8,7 +8,11 @@ namespace BarberSaas.Api.Tests.Controllers;
 
 public class ServicePhotoTests : IntegrationTestBase
 {
-    private const string TestDate = "2026-07-06"; // Monday; AuthController.Register seeds Mon-Fri 09:00-18:00 hours.
+    // A weekday in the future, computed at runtime -- AuthController.Register seeds Mon-Fri
+    // 09:00-18:00 hours, and a hardcoded date eventually lands in the past relative to whenever
+    // the suite actually runs (which, after AvailabilityService's past-date guard landed, makes it
+    // unbookable rather than just conflicting with other appointments).
+    private static readonly string TestDate = NextWeekdayDate();
 
     private record RegisterResponse(string? DevCode);
     private record AvailabilityResponse(List<TimeSlot> Slots);
@@ -43,9 +47,9 @@ public class ServicePhotoTests : IntegrationTestBase
         return content;
     }
 
-    private async Task<string> FirstAvailableSlot(string slug, string itemId, string date = TestDate)
+    private async Task<string> FirstAvailableSlot(string slug, string itemId, string? date = null)
     {
-        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date}&itemId={itemId}");
+        var resp = await Client.GetAsync($"/api/{slug}/availability?date={date ?? TestDate}&itemId={itemId}");
         var body = await resp.Content.ReadFromJsonAsync<AvailabilityResponse>();
         Assert.NotEmpty(body!.Slots);
         return body.Slots[0].Start;

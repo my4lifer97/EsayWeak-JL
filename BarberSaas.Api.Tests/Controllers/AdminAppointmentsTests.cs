@@ -188,6 +188,29 @@ public class AdminAppointmentsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task CreateAppointment_ForAlreadyRegisteredCustomer_ShowsUpInTheirOwnBookings()
+    {
+        var slug = "admin-book-linked";
+        var token = await RegisterAndLoginBusiness("admin-book-linked@example.com", slug);
+        var (_, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+
+        // The customer already has a CustomerAccount (e.g. from a previous WhatsApp login with a
+        // different business) before the owner ever types their phone number in here.
+        var customer = await LoginCustomerViaWhatsAppAsync("+15559991234", "Riley", "Owner");
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Riley", "+15559991234", itemId, date.ToString("yyyy-MM-dd"), "09:00", null, CustomerFamilyName: "Owner"));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        Client.DefaultRequestHeaders.Authorization = null;
+        Authorize(Client, customer.Token);
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=upcoming");
+
+        Assert.Single(mine!);
+    }
+
+    [Fact]
     public async Task CreateAppointment_ConflictingSlotWithoutForce_ReturnsConflict()
     {
         var slug = "admin-book-conflict";

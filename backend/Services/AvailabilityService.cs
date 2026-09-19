@@ -19,6 +19,12 @@ public class AvailabilityService(AppDbContext db)
     // hiding them entirely. Breaks/blocked-slots are still fully excluded (not real bookings).
     public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string businessId, string dateStr, int serviceDuration)
     {
+        // A date entirely before today (not just "already passed today's slots", see the isToday
+        // check further down) must never offer any slots at all -- otherwise it's booking-able,
+        // and the resulting appointment reads back as already COMPLETED, letting anyone fabricate
+        // an instant "verified visit" and leave a review for a business they never went to.
+        if (DateTime.Parse(dateStr).Date < DateTime.Now.Date) return [];
+
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
         var dayOfWeek = (int)DateTime.Parse(dateStr).DayOfWeek;
 

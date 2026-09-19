@@ -708,15 +708,21 @@ public class AdminController(
             return (null, BadRequest(new { error = "Customer name and phone are required" }));
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == customerPhone);
+        // Link to an existing CustomerAccount by phone, same as the public booking flow does from
+        // its JWT -- otherwise an appointment the owner types in by hand for an already-registered
+        // customer never shows up in that customer's own "My Bookings" until they book/reschedule
+        // with this business themselves.
+        var customerAccountId = (await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == customerPhone))?.Id;
         if (customer is null)
         {
-            customer = new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId };
+            customer = new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId, CustomerAccountId = customerAccountId };
             db.Customers.Add(customer);
         }
         else
         {
             customer.Name = customerName;
             customer.FamilyName = customerFamilyName ?? "";
+            if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
         }
         return (customer, null);
     }
