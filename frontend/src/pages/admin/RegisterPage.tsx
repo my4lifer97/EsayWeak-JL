@@ -1,23 +1,30 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import ThemeToggle from '../../components/ThemeToggle'
 
 type View = 'form' | 'verify'
+type BusinessType = { id: string; key: string; displayNameEn: string }
 
 export default function RegisterPage() {
   const { verifyEmail, resendVerification } = useAuth()
   const navigate = useNavigate()
   const [view, setView] = useState<View>('form')
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', slug: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '', slug: '', businessTypeId: '' })
+
+  const { data: businessTypes } = useQuery<BusinessType[]>({
+    queryKey: ['business-types'],
+    queryFn: () => api.get('/business-types').then((r) => r.data),
+  })
   const [code, setCode] = useState('')
   const [devCode, setDevCode] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   function set(field: string) {
-    return (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [field]: e.target.value }))
+    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [field]: e.target.value }))
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -27,10 +34,14 @@ export default function RegisterPage() {
       setError('Passwords do not match')
       return
     }
+    if (!form.businessTypeId) {
+      setError('Please choose a business type')
+      return
+    }
     setLoading(true)
     try {
-      const { name, email, password, slug } = form
-      const { data } = await api.post('/auth/register', { name, email, password, slug })
+      const { name, email, password, slug, businessTypeId } = form
+      const { data } = await api.post('/auth/register', { name, email, password, slug, businessTypeId })
       if (data.devCode) { setDevCode(data.devCode); setCode(data.devCode) }
       setView('verify')
     } catch (err: unknown) {
@@ -102,6 +113,13 @@ export default function RegisterPage() {
                 yoursite.com/{form.slug || 'your-slug'} — lowercase letters, numbers, hyphens only
               </p>
             </div>
+            <select required value={form.businessTypeId} onChange={set('businessTypeId')}
+              className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
+              <option value="">Business type…</option>
+              {businessTypes?.map((t) => (
+                <option key={t.id} value={t.id}>{t.displayNameEn}</option>
+              ))}
+            </select>
             <button type="submit" disabled={loading}
               className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
               {loading ? '...' : 'Create Account'}

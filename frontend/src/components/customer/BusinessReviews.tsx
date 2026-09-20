@@ -105,7 +105,7 @@ export default function BusinessReviews({
         {agg.count > 0 && (
           <span className="flex items-center gap-1.5 text-sm text-muted">
             <StarRating value={agg.average} size="sm" />
-            {agg.average.toFixed(1)} · {agg.count} {t(lang, 'reviewsCountSuffix')}
+            {agg.average.toFixed(1)} · {agg.count} {t(lang, agg.count === 1 ? 'reviewsCountSuffixSingular' : 'reviewsCountSuffix')}
           </span>
         )}
       </div>

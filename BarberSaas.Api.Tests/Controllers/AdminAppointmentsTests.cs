@@ -188,6 +188,28 @@ public class AdminAppointmentsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task CreateAppointment_BusinessHasWhatsAppLinked_SendsBookingConfirmation()
+    {
+        var slug = "admin-book-confirms";
+        var token = await RegisterAndLoginBusiness("admin-book-confirms@example.com", slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+
+        using (var db = Db())
+        {
+            var business = db.Businesses.First(b => b.Id == businessId);
+            business.WhatsAppNumber = "+15559990000";
+            db.SaveChanges();
+        }
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Confirm Me", "+15551119999", itemId, date.ToString("yyyy-MM-dd"), "09:00", null));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+
+        Assert.Contains(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == "+15551119999");
+    }
+
+    [Fact]
     public async Task CreateAppointment_ForAlreadyRegisteredCustomer_ShowsUpInTheirOwnBookings()
     {
         var slug = "admin-book-linked";

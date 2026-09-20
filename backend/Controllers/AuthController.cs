@@ -46,6 +46,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             Slug = req.Slug,
             TrialEndsAt = DateTime.UtcNow.AddDays(30),
             EmailVerified = false,
+            // Optional -- the self-service register form asks for this so a self-registered
+            // business shows up under category filters in /browse the same as an admin-approved
+            // one, but existing callers that don't send it (older clients, tests) still work.
+            BusinessTypeId = req.BusinessTypeId,
         };
 
         db.Businesses.Add(business);

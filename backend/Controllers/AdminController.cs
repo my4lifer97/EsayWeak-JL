@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace BarberSaas.Api.Controllers;
 
@@ -15,7 +16,8 @@ namespace BarberSaas.Api.Controllers;
 [Authorize(Policy = "BusinessOnly")]
 public class AdminController(
     AppDbContext db, IWebHostEnvironment env, AvailabilityService availability,
-    WaitlistService waitlist, AppointmentCancellationService cancellationService) : ControllerBase
+    WaitlistService waitlist, AppointmentCancellationService cancellationService,
+    IWhatsAppSender whatsAppSender, ILogger<AdminController> logger) : ControllerBase
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -78,10 +80,21 @@ public class AdminController(
     }
 
     [HttpPatch("settings")]
-    public async Task<IActionResult> UpdateSettings([FromBody] UpdateSettingsRequest req)
+    public async Task<IActionResult> UpdateSettings([FromBody] JsonElement body)
     {
         var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
+
+        var req = JsonSerializer.Deserialize<UpdateSettingsRequest>(body.GetRawText(),
+            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!;
+        // A key genuinely absent from the request body must leave that field untouched, not reset
+        // it to the DTO's default -- the settings form always sends every key today, but a caller
+        // sending a true partial update (e.g. just { "waitlistEnabled": true }) previously wiped
+        // every other field to its default (city/address/chatbot messages to null, IsListed to
+        // false, etc). Checking presence on the raw JSON, not just "is req.X null", is what
+        // actually distinguishes "omitted" from "explicitly cleared" for the nullable string
+        // fields below, which this form does send as explicit null when the owner clears them.
+        bool Has(string prop) => body.TryGetProperty(prop, out _);
 
         var mapUrl = string.IsNullOrWhiteSpace(req.MapUrl) ? null : req.MapUrl.Trim();
         if (mapUrl is not null
@@ -112,21 +125,21 @@ public class AdminController(
         if (req.Phone is not null) b.Phone = req.Phone;
         if (req.Description is not null) b.Description = req.Description;
         if (req.Language is not null && Enum.TryParse<Language>(req.Language, out var lang)) b.Language = lang;
-        // Unlike the fields above, null here is a real value (unlimited), not "omitted" —
-        // the settings form always submits both, so assign unconditionally.
-        b.MaxBookingsPerDay = req.MaxBookingsPerDay;
-        b.MaxBookingsPerWeek = req.MaxBookingsPerWeek;
-        b.WaitlistEnabled = req.WaitlistEnabled;
-        b.RequireApprovalOnCustomerCancel = req.RequireApprovalOnCustomerCancel;
-        b.ChatbotEnabled = req.ChatbotEnabled;
-        b.ChatbotWelcomeMessage = req.ChatbotWelcomeMessage;
-        b.ChatbotConfirmationMessage = req.ChatbotConfirmationMessage;
-        // Discovery fields -- like the booking limits above, the form always submits all of these,
-        // so null/false is a real value, not "omitted". Empty strings are normalized to null.
-        b.City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim();
-        b.AddressLine = string.IsNullOrWhiteSpace(req.AddressLine) ? null : req.AddressLine.Trim();
-        b.MapUrl = mapUrl;
-        b.IsListed = req.IsListed;
+        // null is a real value for these two (unlimited), not "omitted" -- gated on key presence,
+        // not "is req.X null", so a caller can still explicitly send null to clear a limit.
+        if (Has("maxBookingsPerDay")) b.MaxBookingsPerDay = req.MaxBookingsPerDay;
+        if (Has("maxBookingsPerWeek")) b.MaxBookingsPerWeek = req.MaxBookingsPerWeek;
+        if (Has("waitlistEnabled")) b.WaitlistEnabled = req.WaitlistEnabled;
+        if (Has("requireApprovalOnCustomerCancel")) b.RequireApprovalOnCustomerCancel = req.RequireApprovalOnCustomerCancel;
+        if (Has("chatbotEnabled")) b.ChatbotEnabled = req.ChatbotEnabled;
+        if (Has("chatbotWelcomeMessage")) b.ChatbotWelcomeMessage = req.ChatbotWelcomeMessage;
+        if (Has("chatbotConfirmationMessage")) b.ChatbotConfirmationMessage = req.ChatbotConfirmationMessage;
+        // Discovery fields -- empty strings are still normalized to null (clearing the field),
+        // only an actually-absent key leaves the current value alone.
+        if (Has("city")) b.City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim();
+        if (Has("addressLine")) b.AddressLine = string.IsNullOrWhiteSpace(req.AddressLine) ? null : req.AddressLine.Trim();
+        if (Has("mapUrl")) b.MapUrl = mapUrl;
+        if (Has("isListed")) b.IsListed = req.IsListed;
 
         await db.SaveChangesAsync();
 
@@ -534,6 +547,9 @@ public class AdminController(
     [HttpPost("appointments")]
     public async Task<IActionResult> CreateAppointment([FromBody] CreateAdminAppointmentRequest req)
     {
+        var business = await db.Businesses.FindAsync(BusinessId);
+        if (business is null) return NotFound();
+
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == BusinessId && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
@@ -588,6 +604,32 @@ public class AdminController(
             return Conflict(new { error = "Slot no longer available" });
 
         this.SetActivityDetail($"Booked appointment: {item.NameEn} for {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} on {req.Date} at {req.StartTime}");
+
+        // Best-effort, same as the public booking flow -- an appointment the owner books directly
+        // should still confirm on WhatsApp for a business with a linked number, not just ones the
+        // customer books themselves.
+        if (business.WhatsAppNumber is not null)
+        {
+            var lang = business.Language.ToString();
+            var itemDisplayName = lang switch { "AR" => item.NameAr, "HE" => item.NameHe, _ => item.NameEn };
+            var message = I18nService.T(lang, "whatsapp.bookingConfirmed", new()
+            {
+                ["customerName"] = customer.Name,
+                ["businessName"] = business.Name,
+                ["service"] = itemDisplayName,
+                ["date"] = req.Date,
+                ["time"] = req.StartTime,
+            });
+            try
+            {
+                await whatsAppSender.SendAsync(business, customer.Phone, message);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to send WhatsApp booking confirmation for appointment {AppointmentId} (business {BusinessId})",
+                    appointment.Id, BusinessId);
+            }
+        }
 
         return StatusCode(201, new DashboardAppointmentDto(
             appointment.Id, req.Date, appointment.StartTime, appointment.EndTime,

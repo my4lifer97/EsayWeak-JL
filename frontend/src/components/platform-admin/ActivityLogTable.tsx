@@ -75,7 +75,7 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
                   <td className="py-2 pr-4">
                     {e.description}
                     {e.impersonated && (
-                      <span className="ml-2 text-xs text-yellow-700">(via impersonation)</span>
+                      <span className="ml-2 text-xs text-yellow-700 dark:text-yellow-400">(via impersonation)</span>
                     )}
                   </td>
                   <td className="py-2 pr-4 text-muted">{e.method} {e.statusCode}</td>

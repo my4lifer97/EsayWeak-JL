@@ -65,6 +65,20 @@ public class BusinessDiscoveryTests : IntegrationTestBase
         (await Client.GetFromJsonAsync<PagedResult<BusinessSearchResultDto>>($"/api/businesses/search{queryString}"))!;
 
     [Fact]
+    public async Task SelfRegister_WithBusinessType_IsFoundUnderThatCategoryFilter()
+    {
+        var barber = SeedBusinessType("disc-selfreg-barber", "Barber");
+
+        var resp = await Client.PostAsJsonAsync("/api/auth/register",
+            new RegisterRequest("Self Reg Shop", "self-reg-discovery@example.com", "password123", "disc-selfreg-shop", barber));
+        Assert.Equal(System.Net.HttpStatusCode.Created, resp.StatusCode);
+
+        var result = await Search("?businessTypeKey=disc-selfreg-barber");
+
+        Assert.Contains(result.Items, i => i.Slug == "disc-selfreg-shop");
+    }
+
+    [Fact]
     public async Task Search_FiltersByBusinessType()
     {
         var barber = SeedBusinessType("disc-barber", "Barber");

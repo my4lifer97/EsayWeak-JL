@@ -27,7 +27,7 @@ type BusinessSettings = {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
-  const { language: lang, setLang } = useAuth()
+  const { language: lang, setLang, updateUserName } = useAuth()
   const { theme } = useTheme()
   const { data: business } = useQuery<BusinessSettings>({
     queryKey: ['settings'],
@@ -116,6 +116,7 @@ export default function SettingsPage() {
     try {
       await api.patch('/admin/settings', payload)
       setLang(form.language)
+      updateUserName(form.name)
       setSaved(true); setTimeout(() => setSaved(false), 2000)
       queryClient.invalidateQueries({ queryKey: ['settings'] })
     } catch (err) {

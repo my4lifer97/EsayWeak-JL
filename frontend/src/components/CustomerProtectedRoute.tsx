@@ -15,7 +15,7 @@ export default function CustomerProtectedRoute() {
     return (
       <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4">
         <div className="text-center max-w-sm space-y-4">
-          <p className="text-muted">{t(lang, 'whatsappLinkExpired')}</p>
+          <p className="text-muted">{t(lang, 'signInToContinue')}</p>
           <Link
             to={`/login?next=${encodeURIComponent(location.pathname)}`}
             className="inline-block bg-coral hover:bg-coral-dark text-white font-semibold px-5 py-2.5 rounded-xl transition-colors"

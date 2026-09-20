@@ -69,4 +69,28 @@ describe('BusinessPage (public storefront)', () => {
 
     expect(await screen.findByRole('button', { name: 'Follow' })).toBeEnabled()
   })
+
+  it('lists bookable services with their duration and price', async () => {
+    vi.mocked(useCustomerAuth).mockReturnValue({ isAuthenticated: false, language: 'EN' } as ReturnType<typeof useCustomerAuth>)
+    vi.mocked(customerApi.get).mockImplementation((url: string) => {
+      if (url === '/joe/info') return Promise.resolve({
+        data: {
+          ...info,
+          items: [
+            { id: '1', nameEn: 'Haircut', nameAr: 'Haircut', nameHe: 'Haircut', durationMinutes: 30, price: 50, isBookable: true },
+            { id: '2', nameEn: 'Consultation', nameAr: 'Consultation', nameHe: 'Consultation', durationMinutes: null, price: null, isBookable: false },
+          ],
+        },
+      })
+      if (url.startsWith('/customer/appointments')) return Promise.resolve({ data: [] })
+      return Promise.reject(new Error(`unexpected url ${url}`))
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Haircut')).toBeInTheDocument()
+    expect(screen.getByText('30 min')).toBeInTheDocument()
+    expect(screen.getByText('₪50')).toBeInTheDocument()
+    expect(screen.getByText('Consultation')).toBeInTheDocument()
+  })
 })

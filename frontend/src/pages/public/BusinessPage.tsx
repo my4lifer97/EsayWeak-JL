@@ -156,6 +156,27 @@ export default function BusinessPage() {
           </div>
         )}
 
+        {/* What a customer can actually book -- shown before the booking button leads anywhere,
+            so a visitor knows what's offered, how long it takes, and what it costs first. */}
+        {business.items.some((i) => i.isBookable) && (
+          <div className="mt-6">
+            <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-2">{t(lang, 'ourServices')}</h2>
+            <div className="space-y-2">
+              {business.items.filter((i) => i.isBookable).map((i) => (
+                <div key={i.id} className="bg-surface border border-line rounded-xl px-4 py-3 flex justify-between items-center">
+                  <div>
+                    <div className="text-ink text-sm font-medium">{itemName(i, lang)}</div>
+                    {i.durationMinutes !== null && (
+                      <div className="text-muted text-xs mt-0.5">{i.durationMinutes} {t(lang, 'min')}</div>
+                    )}
+                  </div>
+                  {i.price !== null && <span className="text-coral-dark text-sm font-semibold">₪{Number(i.price).toFixed(0)}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Showcase items -- no booking flow, just what the business offers. */}
         {business.items.some((i) => !i.isBookable) && (
           <div className="space-y-2 mt-6">

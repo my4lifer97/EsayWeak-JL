@@ -14,6 +14,7 @@ interface AuthCtx {
   isAuthenticated: boolean
   language: string
   setLang: (l: string) => void
+  updateUserName: (name: string) => void
 }
 
 const AuthContext = createContext<AuthCtx>(null!)
@@ -93,8 +94,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  // The sidebar (AdminSidebar via AdminLayout) reads the business name from this context, which
+  // is only ever set at login/verify/reset -- without this, renaming the business in Settings
+  // saves correctly server-side but the sidebar keeps showing the old name until the next login.
+  function updateUserName(name: string) {
+    setUser((u) => {
+      if (!u) return u
+      const updated = { ...u, name }
+      localStorage.setItem('user', JSON.stringify(updated))
+      return updated
+    })
+  }
+
   return (
-    <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, forgotPassword, resetPassword, changePassword, logout, isAuthenticated: !!user, language, setLang }}>
+    <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, forgotPassword, resetPassword, changePassword, logout, isAuthenticated: !!user, language, setLang, updateUserName }}>
       {children}
     </AuthContext.Provider>
   )

@@ -209,10 +209,10 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). WhatsApp number is read-only here — see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
-- `GET/POST /api/admin/services` — items CRUD (includes `photoMode` + `galleryPhotos`; route name kept as `services` for URL/frontend stability even though the model is `Item`)
-- `PATCH/DELETE /api/admin/services/{id}` — update / soft-delete (IsActive = false)
-- `POST /api/admin/services/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)
-- `DELETE /api/admin/services/{id}/gallery/{photoId}` — remove a gallery photo
+- `GET/POST /api/admin/items` — items CRUD (includes `photoMode` + `galleryPhotos`)
+- `PATCH/DELETE /api/admin/items/{id}` — update / soft-delete (IsActive = false)
+- `POST /api/admin/items/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)
+- `DELETE /api/admin/items/{id}/gallery/{photoId}` — remove a gallery photo
 - `GET/POST /api/admin/schedule` — working hours (upsert by DayOfWeek)
 - `POST/DELETE /api/admin/schedule/breaks/{id}` — recurring breaks
 - `POST/DELETE /api/admin/schedule/blocked/{id}` — one-off blocked dates/slots

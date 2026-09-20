@@ -59,6 +59,7 @@ const translations = {
     notFound: 'Not found',
     appointmentNotFound: 'Appointment not found',
     businessNotFound: 'Business not found',
+    ourServices: 'Services',
     min: 'min',
     // admin panel
     dashboard: 'Dashboard',
@@ -211,6 +212,7 @@ const translations = {
     viewMyAppointments: 'View My Appointments',
     signOutPortal: 'Sign Out',
     whatsappLinkExpired: 'This link has expired or is invalid. Please message us on WhatsApp for a new booking link.',
+    signInToContinue: 'Please sign in to continue.',
     whatsappOnlyAccess: 'Message us on WhatsApp to unlock this',
     // customer account
     otpCooldownError: 'Please wait a moment before requesting another code',
@@ -313,6 +315,7 @@ const translations = {
     reviewHidden: 'Hidden',
     verifiedVisit: 'Verified visit',
     reviewsCountSuffix: 'reviews',
+    reviewsCountSuffixSingular: 'review',
     // discovery
     category: 'Category',
     allCategories: 'All categories',
@@ -396,6 +399,7 @@ const translations = {
     notFound: 'غير موجود',
     appointmentNotFound: 'الموعد غير موجود',
     businessNotFound: 'العمل غير موجود',
+    ourServices: 'الخدمات',
     min: 'دقيقة',
     // admin panel
     dashboard: 'لوحة التحكم',
@@ -548,6 +552,7 @@ const translations = {
     viewMyAppointments: 'عرض مواعيدي',
     signOutPortal: 'خروج',
     whatsappLinkExpired: 'انتهت صلاحية هذا الرابط أو أنه غير صالح. يرجى مراسلتنا عبر واتساب للحصول على رابط حجز جديد.',
+    signInToContinue: 'يرجى تسجيل الدخول للمتابعة.',
     whatsappOnlyAccess: 'راسلنا عبر واتساب لفتح هذا',
     // customer account
     otpCooldownError: 'يرجى الانتظار قليلاً قبل طلب رمز آخر',
@@ -649,7 +654,8 @@ const translations = {
     unhideReview: 'إظهار',
     reviewHidden: 'مخفي',
     verifiedVisit: 'زيارة موثّقة',
-    reviewsCountSuffix: 'تقييم',
+    reviewsCountSuffix: 'تقييمات',
+    reviewsCountSuffixSingular: 'تقييم',
     // discovery
     category: 'الفئة',
     allCategories: 'كل الفئات',
@@ -733,6 +739,7 @@ const translations = {
     notFound: 'לא נמצא',
     appointmentNotFound: 'התור לא נמצא',
     businessNotFound: 'העסק לא נמצא',
+    ourServices: 'שירותים',
     min: 'דקות',
     // admin panel
     dashboard: 'לוח מחוונים',
@@ -885,6 +892,7 @@ const translations = {
     viewMyAppointments: 'הצג את התורים שלי',
     signOutPortal: 'יציאה',
     whatsappLinkExpired: 'הקישור הזה פג תוקף או אינו תקין. אנא שלח לנו הודעה בוואטסאפ לקבלת קישור הזמנה חדש.',
+    signInToContinue: 'יש להתחבר כדי להמשיך.',
     whatsappOnlyAccess: 'שלח לנו הודעה בוואטסאפ כדי לפתוח את זה',
     // customer account
     otpCooldownError: 'אנא המתן רגע לפני בקשת קוד נוסף',
@@ -987,6 +995,7 @@ const translations = {
     reviewHidden: 'מוסתר',
     verifiedVisit: 'ביקור מאומת',
     reviewsCountSuffix: 'ביקורות',
+    reviewsCountSuffixSingular: 'ביקורת',
     // discovery
     category: 'קטגוריה',
     allCategories: 'כל הקטגוריות',

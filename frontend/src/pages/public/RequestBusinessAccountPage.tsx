@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
+import ThemeToggle from '../../components/ThemeToggle'
 
 type BusinessType = { id: string; key: string; displayNameEn: string }
 
@@ -66,7 +67,8 @@ export default function RequestBusinessAccountPage() {
     'w-full bg-cream border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral'
 
   return (
-    <div className="min-h-screen bg-cream flex items-center justify-center p-4">
+    <div className="min-h-screen bg-cream flex items-center justify-center p-4 relative">
+      <div className="absolute top-4 end-4"><ThemeToggle /></div>
       <div className="w-full max-w-md py-10">
         <h1 className="text-2xl font-bold text-ink mb-2 text-center">Request a business account</h1>
         <p className="text-muted text-center mb-8">
