@@ -10,6 +10,7 @@ type ChatbotSettings = {
   chatbotWelcomeMessage: string | null
   chatbotConfirmationMessage: string | null
   chatbotFinalMessage: string | null
+  chatbotDefaultLanguage: string | null
   chatbotInquiryEnabled: boolean
   inquiryNotifyViaWhatsApp: boolean
   inquiryWhatsAppNumber: string | null
@@ -30,6 +31,7 @@ export default function ChatbotSettingsPage() {
     inquiryWhatsAppNumber: '', inquiryEmail: '',
   })
   const [chatbotEnabled, setChatbotEnabled] = useState(true)
+  const [chatbotDefaultLanguage, setChatbotDefaultLanguage] = useState<'' | 'EN' | 'AR' | 'HE'>('')
   const [chatbotInquiryEnabled, setChatbotInquiryEnabled] = useState(false)
   const [inquiryNotifyViaWhatsApp, setInquiryNotifyViaWhatsApp] = useState(false)
   const [inquiryNotifyViaEmail, setInquiryNotifyViaEmail] = useState(false)
@@ -47,6 +49,7 @@ export default function ChatbotSettingsPage() {
       inquiryEmail: business.inquiryEmail ?? '',
     })
     setChatbotEnabled(business.chatbotEnabled)
+    setChatbotDefaultLanguage((business.chatbotDefaultLanguage as 'EN' | 'AR' | 'HE' | null) ?? '')
     setChatbotInquiryEnabled(business.chatbotInquiryEnabled)
     setInquiryNotifyViaWhatsApp(business.inquiryNotifyViaWhatsApp)
     setInquiryNotifyViaEmail(business.inquiryNotifyViaEmail)
@@ -60,6 +63,7 @@ export default function ChatbotSettingsPage() {
       chatbotWelcomeMessage: form.chatbotWelcomeMessage || null,
       chatbotConfirmationMessage: form.chatbotConfirmationMessage || null,
       chatbotFinalMessage: form.chatbotFinalMessage || null,
+      chatbotDefaultLanguage: chatbotDefaultLanguage || null,
       chatbotInquiryEnabled,
       inquiryNotifyViaWhatsApp,
       inquiryWhatsAppNumber: form.inquiryWhatsAppNumber || null,
@@ -122,6 +126,19 @@ export default function ChatbotSettingsPage() {
               onChange={(e) => setForm((f) => ({ ...f, chatbotFinalMessage: e.target.value }))}
               placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
               className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'chatbotDefaultLanguage')}</label>
+            <p className="text-muted text-xs mb-1.5">{t(lang, 'chatbotDefaultLanguageHint')}</p>
+            <select value={chatbotDefaultLanguage}
+              onChange={(e) => setChatbotDefaultLanguage(e.target.value as '' | 'EN' | 'AR' | 'HE')}
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
+              <option value="">{t(lang, 'chatbotDefaultLanguageSameAsBusiness')}</option>
+              <option value="EN">English</option>
+              <option value="AR">العربية (Arabic)</option>
+              <option value="HE">עברית (Hebrew)</option>
+            </select>
           </div>
 
           <div className="border-t border-line pt-4">

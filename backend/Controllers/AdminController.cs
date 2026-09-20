@@ -44,6 +44,7 @@ public class AdminController(
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
             b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage, b.ChatbotFinalMessage,
+            b.ChatbotDefaultLanguage?.ToString(),
             b.ChatbotInquiryEnabled, b.InquiryNotifyViaWhatsApp, b.InquiryWhatsAppNumber,
             b.InquiryNotifyViaEmail, b.InquiryEmail,
             b.City, b.AddressLine, b.MapUrl, b.IsListed));
@@ -119,6 +120,7 @@ public class AdminController(
         var oldChatbotWelcomeMessage = b.ChatbotWelcomeMessage;
         var oldChatbotConfirmationMessage = b.ChatbotConfirmationMessage;
         var oldChatbotFinalMessage = b.ChatbotFinalMessage;
+        var oldChatbotDefaultLanguage = b.ChatbotDefaultLanguage;
         var oldChatbotInquiryEnabled = b.ChatbotInquiryEnabled;
         var oldInquiryNotifyViaWhatsApp = b.InquiryNotifyViaWhatsApp;
         var oldInquiryWhatsAppNumber = b.InquiryWhatsAppNumber;
@@ -143,6 +145,11 @@ public class AdminController(
         if (Has("chatbotWelcomeMessage")) b.ChatbotWelcomeMessage = req.ChatbotWelcomeMessage;
         if (Has("chatbotConfirmationMessage")) b.ChatbotConfirmationMessage = req.ChatbotConfirmationMessage;
         if (Has("chatbotFinalMessage")) b.ChatbotFinalMessage = req.ChatbotFinalMessage;
+        if (Has("chatbotDefaultLanguage"))
+        {
+            b.ChatbotDefaultLanguage = !string.IsNullOrWhiteSpace(req.ChatbotDefaultLanguage)
+                && Enum.TryParse<Language>(req.ChatbotDefaultLanguage, out var cbLang) ? cbLang : null;
+        }
         if (Has("chatbotInquiryEnabled")) b.ChatbotInquiryEnabled = req.ChatbotInquiryEnabled;
         if (Has("inquiryNotifyViaWhatsApp")) b.InquiryNotifyViaWhatsApp = req.InquiryNotifyViaWhatsApp;
         if (Has("inquiryWhatsAppNumber")) b.InquiryWhatsAppNumber = string.IsNullOrWhiteSpace(req.InquiryWhatsAppNumber) ? null : req.InquiryWhatsAppNumber.Trim();
@@ -173,6 +180,8 @@ public class AdminController(
         if (b.ChatbotWelcomeMessage != oldChatbotWelcomeMessage) changes.Add("chatbot welcome message");
         if (b.ChatbotConfirmationMessage != oldChatbotConfirmationMessage) changes.Add("chatbot confirmation message");
         if (b.ChatbotFinalMessage != oldChatbotFinalMessage) changes.Add("chatbot final message");
+        if (b.ChatbotDefaultLanguage != oldChatbotDefaultLanguage)
+            changes.Add($"chatbot default language: {(object?)oldChatbotDefaultLanguage ?? "business default"} → {(object?)b.ChatbotDefaultLanguage ?? "business default"}");
         if (b.ChatbotInquiryEnabled != oldChatbotInquiryEnabled) changes.Add($"chatbot inquiry {(b.ChatbotInquiryEnabled ? "enabled" : "disabled")}");
         if (b.InquiryNotifyViaWhatsApp != oldInquiryNotifyViaWhatsApp) changes.Add($"inquiry WhatsApp notify {(b.InquiryNotifyViaWhatsApp ? "on" : "off")}");
         if (b.InquiryWhatsAppNumber != oldInquiryWhatsAppNumber) changes.Add("inquiry WhatsApp number");

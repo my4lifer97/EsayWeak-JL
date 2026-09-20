@@ -265,6 +265,25 @@ public class WhatsAppControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task SignalLessFirstMessage_UsesChatbotDefaultLanguageOverBusinessLanguage()
+    {
+        var (businessId, _, _) = await SeedBusinessWithServices("wa-webhook-lang-default@example.com", "wa-webhook-lang-default");
+        using (var db = Db())
+        {
+            var business = await db.Businesses.FirstAsync(b => b.Id == businessId);
+            business.ChatbotDefaultLanguage = Language.AR;
+            await db.SaveChangesAsync();
+        }
+
+        // No letters and no digits -- carries no language signal of its own, so this exercises the
+        // business-default fallback specifically. Business.Language is still English (RegisterRequest's
+        // default) -- ChatbotDefaultLanguage must take priority over it, not the other way around.
+        var reply = await SendWhatsAppMessage("+15558880099", "👋");
+
+        Assert.Contains("الخدمة", reply);
+    }
+
+    [Fact]
     public async Task NumericReply_KeepsThePreviouslyDetectedLanguage()
     {
         await SeedBusinessWithServices("wa-webhook-lang-sticky@example.com", "wa-webhook-lang-sticky");

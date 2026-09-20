@@ -725,10 +725,22 @@ language — the latter is returned by `POST /api/customer/auth/whatsapp` (`lang
 frontend's `loginWithWhatsAppToken` calls `setLang()` with it, so the booking wizard opens in the
 same language the customer was just chatting in, not whatever was last stored in this browser.
 
+That "business's own default" is `Business.ChatbotDefaultLanguage` (nullable, `Settings >
+Chatbot Settings`, falling back to the general `Language` field when unset) — kept as a separate
+field rather than reusing `Language` outright, since `Language` also drives the admin
+dashboard/storefront locale and an owner may want the chatbot to default to a different language
+than their own dashboard.
+
 **Arabic-Indic numeral replies** (`WhatsAppController.NormalizeDigits`): a numbered-selection reply
 in Arabic-Indic (`٠`-`٩`) or Extended Arabic-Indic/Persian (`۰`-`۹`) digits is translated to ASCII
 before `int.TryParse` in `TryHandleServiceSelectionReply` — a customer replying in Arabic script
-naturally types the number in one of these, not by switching to a Western keyboard.
+naturally types the number in one of these, not by switching to a Western keyboard. Note this same
+Unicode range also holds the Arabic-Indic digits themselves, so `DetectLanguage` already classifies
+a bare Arabic-Indic-digit message as `AR`. `HandleInquiryModeAsync`'s own gate ("1"/"2") and
+`$1`/`$2` commands run `NormalizeDigits` on the trimmed message too, for the same reason —
+comparing the raw text directly against the literal ASCII commands would silently reject an
+Arabic-Indic reply at the gate even though the identical reply works fine once past it, on the
+real service list.
 
 ### Chatbot Inquiry mode (optional, alongside booking)
 `Business.ChatbotInquiryEnabled` (default `false`, `Settings > Chatbot Settings`) lets a customer

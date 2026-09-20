@@ -69,6 +69,13 @@ public class Business
     // ChatbotConfirmationMessage (sent earlier, alongside the booking *link*).
     public string? ChatbotFinalMessage { get; set; }
 
+    // Overrides the fallback language WhatsAppController.ResolveLanguage uses for a signal-less
+    // message (pure digits/emoji, no letters) with no open conversation to inherit from. Null
+    // means "fall back to the general Language field" -- kept separate because Language also
+    // drives the admin dashboard/storefront locale, which an owner may want in a different
+    // language than what they expect the chatbot to default to with customers.
+    public Language? ChatbotDefaultLanguage { get; set; }
+
     // Optional "Inquiry" section (WhatsAppController) alongside normal booking -- lets a customer
     // ask a free-form question / reach the owner directly instead of going through service
     // selection, via the literal $1 (booking) / $2 (inquiry) commands. Off by default; a business

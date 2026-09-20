@@ -115,6 +115,38 @@ public class ChatbotInquiryTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ArabicIndicDigit_AtGate_IsRecognizedAsBookingChoice()
+    {
+        // A customer replying in Arabic script naturally types the gate's "1" in Arabic-Indic
+        // digits (٠-٩) rather than switching to a Western keyboard -- same reasoning as
+        // TryHandleServiceSelectionReply's own NormalizeDigits handling of the real service list.
+        var (businessId, token) = await SeedBusinessWithService("inquiry-gate-arabic1@example.com", "inquiry-gate-arabic1");
+        await EnableInquiry(token);
+        await PostInboundWithAuth(businessId, "+15550013", "hi");
+
+        var resp = await PostInboundWithAuth(businessId, "+15550013", "١"); // Arabic-Indic "1" (U+0661)
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("1. Haircut", body!.Reply);
+    }
+
+    [Fact]
+    public async Task ArabicIndicDigit_AtGate_IsRecognizedAsInquiryChoice()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-gate-arabic2@example.com", "inquiry-gate-arabic2");
+        await EnableInquiry(token);
+        await PostInboundWithAuth(businessId, "+15550014", "hi");
+
+        var resp = await PostInboundWithAuth(businessId, "+15550014", "٢"); // Arabic-Indic "2" (U+0662)
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("$1", body!.Reply);
+        using var db = Db();
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15550014");
+        Assert.Equal("Inquiry", state.ChatbotMode);
+    }
+
+    [Fact]
     public async Task UnrecognizedReply_AtGate_ReShowsGate()
     {
         var (businessId, token) = await SeedBusinessWithService("inquiry-gate-bad@example.com", "inquiry-gate-bad");

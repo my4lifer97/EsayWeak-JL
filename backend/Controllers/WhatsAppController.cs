@@ -134,7 +134,7 @@ public class WhatsAppController(
 
         if (business.ChatbotInquiryEnabled)
         {
-            var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
+            var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
             var (handled, inquiryReply) = await HandleInquiryModeAsync(business, fromPhone, profileName, incomingMsg, lang);
             if (handled) return inquiryReply;
         }
@@ -166,7 +166,10 @@ public class WhatsAppController(
     private async Task<(bool Handled, string? Reply)> HandleInquiryModeAsync(
         Business business, string fromPhone, string profileName, string incomingMsg, string lang)
     {
-        var trimmed = incomingMsg.Trim();
+        // Normalized so a customer replying in Arabic-Indic digits (e.g. "١" for the gate, or "$١"
+        // for the mode-switch command) matches just as well as ASCII -- same reasoning as
+        // TryHandleServiceSelectionReply's own NormalizeDigits call below.
+        var trimmed = NormalizeDigits(incomingMsg.Trim());
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone);
         var isLive = state is not null && state.ExpiresAt > DateTime.UtcNow;
 
@@ -319,7 +322,7 @@ public class WhatsAppController(
     // too-many-invalid-replies lockout below (new behavior; the rest is otherwise unchanged).
     private async Task<string?> ProcessMessageRuleBasedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
-        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
+        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
 
         var conversationState = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
             s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
@@ -372,7 +375,7 @@ public class WhatsAppController(
     // open-ended Q&A grounded in the business data injected into the system prompt.
     private async Task<string> ProcessMessageWithAiAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
-        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
+        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
 
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
         var history = state?.HistoryJson is not null
