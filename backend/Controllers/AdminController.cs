@@ -43,7 +43,10 @@ public class AdminController(
             b.Description, b.Logo, b.Language.ToString(), b.WhatsAppNumber,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
-            b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage, b.ChatbotFinalMessage,
+            b.ChatbotEnabled,
+            b.ChatbotWelcomeMessageEn, b.ChatbotWelcomeMessageAr, b.ChatbotWelcomeMessageHe,
+            b.ChatbotConfirmationMessageEn, b.ChatbotConfirmationMessageAr, b.ChatbotConfirmationMessageHe,
+            b.ChatbotFinalMessageEn, b.ChatbotFinalMessageAr, b.ChatbotFinalMessageHe,
             b.ChatbotDefaultLanguage?.ToString(),
             b.ChatbotInquiryEnabled, b.InquiryNotifyViaWhatsApp, b.InquiryWhatsAppNumber,
             b.InquiryNotifyViaEmail, b.InquiryEmail,
@@ -117,9 +120,15 @@ public class AdminController(
         var oldWaitlistEnabled = b.WaitlistEnabled;
         var oldRequireApprovalOnCustomerCancel = b.RequireApprovalOnCustomerCancel;
         var oldChatbotEnabled = b.ChatbotEnabled;
-        var oldChatbotWelcomeMessage = b.ChatbotWelcomeMessage;
-        var oldChatbotConfirmationMessage = b.ChatbotConfirmationMessage;
-        var oldChatbotFinalMessage = b.ChatbotFinalMessage;
+        var oldChatbotWelcomeMessageEn = b.ChatbotWelcomeMessageEn;
+        var oldChatbotWelcomeMessageAr = b.ChatbotWelcomeMessageAr;
+        var oldChatbotWelcomeMessageHe = b.ChatbotWelcomeMessageHe;
+        var oldChatbotConfirmationMessageEn = b.ChatbotConfirmationMessageEn;
+        var oldChatbotConfirmationMessageAr = b.ChatbotConfirmationMessageAr;
+        var oldChatbotConfirmationMessageHe = b.ChatbotConfirmationMessageHe;
+        var oldChatbotFinalMessageEn = b.ChatbotFinalMessageEn;
+        var oldChatbotFinalMessageAr = b.ChatbotFinalMessageAr;
+        var oldChatbotFinalMessageHe = b.ChatbotFinalMessageHe;
         var oldChatbotDefaultLanguage = b.ChatbotDefaultLanguage;
         var oldChatbotInquiryEnabled = b.ChatbotInquiryEnabled;
         var oldInquiryNotifyViaWhatsApp = b.InquiryNotifyViaWhatsApp;
@@ -142,9 +151,15 @@ public class AdminController(
         if (Has("waitlistEnabled")) b.WaitlistEnabled = req.WaitlistEnabled;
         if (Has("requireApprovalOnCustomerCancel")) b.RequireApprovalOnCustomerCancel = req.RequireApprovalOnCustomerCancel;
         if (Has("chatbotEnabled")) b.ChatbotEnabled = req.ChatbotEnabled;
-        if (Has("chatbotWelcomeMessage")) b.ChatbotWelcomeMessage = req.ChatbotWelcomeMessage;
-        if (Has("chatbotConfirmationMessage")) b.ChatbotConfirmationMessage = req.ChatbotConfirmationMessage;
-        if (Has("chatbotFinalMessage")) b.ChatbotFinalMessage = req.ChatbotFinalMessage;
+        if (Has("chatbotWelcomeMessageEn")) b.ChatbotWelcomeMessageEn = req.ChatbotWelcomeMessageEn;
+        if (Has("chatbotWelcomeMessageAr")) b.ChatbotWelcomeMessageAr = req.ChatbotWelcomeMessageAr;
+        if (Has("chatbotWelcomeMessageHe")) b.ChatbotWelcomeMessageHe = req.ChatbotWelcomeMessageHe;
+        if (Has("chatbotConfirmationMessageEn")) b.ChatbotConfirmationMessageEn = req.ChatbotConfirmationMessageEn;
+        if (Has("chatbotConfirmationMessageAr")) b.ChatbotConfirmationMessageAr = req.ChatbotConfirmationMessageAr;
+        if (Has("chatbotConfirmationMessageHe")) b.ChatbotConfirmationMessageHe = req.ChatbotConfirmationMessageHe;
+        if (Has("chatbotFinalMessageEn")) b.ChatbotFinalMessageEn = req.ChatbotFinalMessageEn;
+        if (Has("chatbotFinalMessageAr")) b.ChatbotFinalMessageAr = req.ChatbotFinalMessageAr;
+        if (Has("chatbotFinalMessageHe")) b.ChatbotFinalMessageHe = req.ChatbotFinalMessageHe;
         if (Has("chatbotDefaultLanguage"))
         {
             b.ChatbotDefaultLanguage = !string.IsNullOrWhiteSpace(req.ChatbotDefaultLanguage)
@@ -177,9 +192,12 @@ public class AdminController(
         if (b.RequireApprovalOnCustomerCancel != oldRequireApprovalOnCustomerCancel)
             changes.Add($"cancellation approval {(b.RequireApprovalOnCustomerCancel ? "required" : "not required")}");
         if (b.ChatbotEnabled != oldChatbotEnabled) changes.Add($"chatbot {(b.ChatbotEnabled ? "enabled" : "disabled")}");
-        if (b.ChatbotWelcomeMessage != oldChatbotWelcomeMessage) changes.Add("chatbot welcome message");
-        if (b.ChatbotConfirmationMessage != oldChatbotConfirmationMessage) changes.Add("chatbot confirmation message");
-        if (b.ChatbotFinalMessage != oldChatbotFinalMessage) changes.Add("chatbot final message");
+        if (b.ChatbotWelcomeMessageEn != oldChatbotWelcomeMessageEn || b.ChatbotWelcomeMessageAr != oldChatbotWelcomeMessageAr || b.ChatbotWelcomeMessageHe != oldChatbotWelcomeMessageHe)
+            changes.Add("chatbot welcome message");
+        if (b.ChatbotConfirmationMessageEn != oldChatbotConfirmationMessageEn || b.ChatbotConfirmationMessageAr != oldChatbotConfirmationMessageAr || b.ChatbotConfirmationMessageHe != oldChatbotConfirmationMessageHe)
+            changes.Add("chatbot confirmation message");
+        if (b.ChatbotFinalMessageEn != oldChatbotFinalMessageEn || b.ChatbotFinalMessageAr != oldChatbotFinalMessageAr || b.ChatbotFinalMessageHe != oldChatbotFinalMessageHe)
+            changes.Add("chatbot final message");
         if (b.ChatbotDefaultLanguage != oldChatbotDefaultLanguage)
             changes.Add($"chatbot default language: {(object?)oldChatbotDefaultLanguage ?? "business default"} → {(object?)b.ChatbotDefaultLanguage ?? "business default"}");
         if (b.ChatbotInquiryEnabled != oldChatbotInquiryEnabled) changes.Add($"chatbot inquiry {(b.ChatbotInquiryEnabled ? "enabled" : "disabled")}");

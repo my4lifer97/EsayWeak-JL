@@ -54,8 +54,8 @@ public class WhatsAppControllerTests : IntegrationTestBase
         using var db = Db();
         var business = await db.Businesses.FirstAsync(b => b.Id == businessId);
         business.ChatbotEnabled = enabled;
-        business.ChatbotWelcomeMessage = welcome;
-        business.ChatbotConfirmationMessage = confirmation;
+        business.ChatbotWelcomeMessageEn = welcome;
+        business.ChatbotConfirmationMessageEn = confirmation;
         await db.SaveChangesAsync();
     }
 
@@ -343,6 +343,27 @@ public class WhatsAppControllerTests : IntegrationTestBase
         Assert.Matches(@"1\. Service \d", reply);
         Assert.Matches(@"2\. Service \d", reply);
         Assert.DoesNotContain("booking assistant", reply); // the default greeting text
+    }
+
+    [Fact]
+    public async Task WelcomeMessage_OnlySetForOneLanguage_OnlyAppliesToThatLanguagesConversation()
+    {
+        var (businessId, _, _) = await SeedBusinessWithServices("wa-webhook-welcome-lang@example.com", "wa-webhook-welcome-lang");
+        using (var db = Db())
+        {
+            var business = await db.Businesses.FirstAsync(b => b.Id == businessId);
+            business.ChatbotWelcomeMessageAr = "أهلاً بك في المحل!";
+            await db.SaveChangesAsync();
+        }
+
+        var arabicReply = await SendWhatsAppMessage("+15558880020", "مرحبا");
+        Assert.Contains("أهلاً بك في المحل!", arabicReply);
+
+        // No English welcome message was set, so an English conversation must fall back to the
+        // built-in default text -- never borrow the Arabic custom text.
+        var englishReply = await SendWhatsAppMessage("+15558880021", "hi");
+        Assert.DoesNotContain("أهلاً بك في المحل!", englishReply);
+        Assert.Contains("booking assistant", englishReply);
     }
 
     [Fact]

@@ -275,10 +275,11 @@ public class WhatsAppController(
     // greeting, same pattern as PromptServiceSelection's own welcomeMessage handling.
     private static string BuildModeGateMessage(Business business, string lang)
     {
+        var welcomeMessage = business.ResolveChatbotWelcomeMessage(lang);
         var tail = I18nService.T(lang, "whatsapp.modeGatePrompt");
-        return string.IsNullOrWhiteSpace(business.ChatbotWelcomeMessage)
+        return string.IsNullOrWhiteSpace(welcomeMessage)
             ? I18nService.T(lang, "whatsapp.modeGate", new() { ["businessName"] = business.Name })
-            : $"{business.ChatbotWelcomeMessage}\n\n{tail}";
+            : $"{welcomeMessage}\n\n{tail}";
     }
 
     // Best-effort on both channels -- a failed notification must never break the customer's own
@@ -323,6 +324,8 @@ public class WhatsAppController(
     private async Task<string?> ProcessMessageRuleBasedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
         var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
+        var welcomeMessage = business.ResolveChatbotWelcomeMessage(lang);
+        var confirmationMessage = business.ResolveChatbotConfirmationMessage(lang);
 
         var conversationState = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
             s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
@@ -343,26 +346,26 @@ public class WhatsAppController(
                 if (incomingMsg.Trim() != UnlockKeyword) return null;
                 db.WhatsAppConversationStates.Remove(conversationState);
                 await db.SaveChangesAsync();
-                return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled);
+                return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
             }
         }
 
         var lowerMsg = incomingMsg.ToLowerInvariant();
 
         if (CancelKeywords.Any(k => lowerMsg.Contains(k)))
-            return await HandleCancel(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled);
+            return await HandleCancel(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
 
         if (RescheduleKeywords.Any(k => lowerMsg.Contains(k)))
         {
             await ClearConversationState(business.Id, fromPhone);
             var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
-            return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled)}";
+            return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
         }
 
         // Either a fresh conversation (no state row yet -- falls through to the prompt below)
         // or a reply to an already-open "which service?" prompt (a numeric selection or junk).
-        var selectionReply = await TryHandleServiceSelectionReply(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, incomingMsg, business.ChatbotConfirmationMessage);
-        return selectionReply ?? await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled);
+        var selectionReply = await TryHandleServiceSelectionReply(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, incomingMsg, confirmationMessage);
+        return selectionReply ?? await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
     }
 
     // The customer's message is understood by an LLM instead of fixed keywords/numeric replies --
@@ -458,7 +461,7 @@ public class WhatsAppController(
         if (chosen.Id is null)
             return JsonSerializer.Serialize(new { error = "unknown itemId" });
 
-        var message = await IssueBookingLink(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, chosen, business.ChatbotConfirmationMessage);
+        var message = await IssueBookingLink(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, chosen, business.ResolveChatbotConfirmationMessage(lang));
         return JsonSerializer.Serialize(new { message });
     }
 

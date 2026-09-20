@@ -242,8 +242,9 @@ public class BookingController(
             // matching ChatbotWelcomeMessage's own pattern) -- the last message in the customer's
             // chatbot journey, as opposed to ChatbotConfirmationMessage (sent earlier, alongside
             // the booking *link* itself, before the appointment actually exists).
-            var message = !string.IsNullOrWhiteSpace(business.ChatbotFinalMessage)
-                ? business.ChatbotFinalMessage
+            var finalMessage = business.ResolveChatbotFinalMessage(confirmationLang);
+            var message = !string.IsNullOrWhiteSpace(finalMessage)
+                ? finalMessage
                 : I18nService.T(confirmationLang, "whatsapp.bookingConfirmed", new()
                 {
                     ["customerName"] = req.CustomerName,

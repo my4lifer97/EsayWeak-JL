@@ -7,9 +7,15 @@ import { t } from '../../lib/i18n'
 
 type ChatbotSettings = {
   chatbotEnabled: boolean
-  chatbotWelcomeMessage: string | null
-  chatbotConfirmationMessage: string | null
-  chatbotFinalMessage: string | null
+  chatbotWelcomeMessageEn: string | null
+  chatbotWelcomeMessageAr: string | null
+  chatbotWelcomeMessageHe: string | null
+  chatbotConfirmationMessageEn: string | null
+  chatbotConfirmationMessageAr: string | null
+  chatbotConfirmationMessageHe: string | null
+  chatbotFinalMessageEn: string | null
+  chatbotFinalMessageAr: string | null
+  chatbotFinalMessageHe: string | null
   chatbotDefaultLanguage: string | null
   chatbotInquiryEnabled: boolean
   inquiryNotifyViaWhatsApp: boolean
@@ -27,7 +33,9 @@ export default function ChatbotSettingsPage() {
   })
 
   const [form, setForm] = useState({
-    chatbotWelcomeMessage: '', chatbotConfirmationMessage: '', chatbotFinalMessage: '',
+    chatbotWelcomeMessageEn: '', chatbotWelcomeMessageAr: '', chatbotWelcomeMessageHe: '',
+    chatbotConfirmationMessageEn: '', chatbotConfirmationMessageAr: '', chatbotConfirmationMessageHe: '',
+    chatbotFinalMessageEn: '', chatbotFinalMessageAr: '', chatbotFinalMessageHe: '',
     inquiryWhatsAppNumber: '', inquiryEmail: '',
   })
   const [chatbotEnabled, setChatbotEnabled] = useState(true)
@@ -42,9 +50,15 @@ export default function ChatbotSettingsPage() {
 
   if (business && !initialized) {
     setForm({
-      chatbotWelcomeMessage: business.chatbotWelcomeMessage ?? '',
-      chatbotConfirmationMessage: business.chatbotConfirmationMessage ?? '',
-      chatbotFinalMessage: business.chatbotFinalMessage ?? '',
+      chatbotWelcomeMessageEn: business.chatbotWelcomeMessageEn ?? '',
+      chatbotWelcomeMessageAr: business.chatbotWelcomeMessageAr ?? '',
+      chatbotWelcomeMessageHe: business.chatbotWelcomeMessageHe ?? '',
+      chatbotConfirmationMessageEn: business.chatbotConfirmationMessageEn ?? '',
+      chatbotConfirmationMessageAr: business.chatbotConfirmationMessageAr ?? '',
+      chatbotConfirmationMessageHe: business.chatbotConfirmationMessageHe ?? '',
+      chatbotFinalMessageEn: business.chatbotFinalMessageEn ?? '',
+      chatbotFinalMessageAr: business.chatbotFinalMessageAr ?? '',
+      chatbotFinalMessageHe: business.chatbotFinalMessageHe ?? '',
       inquiryWhatsAppNumber: business.inquiryWhatsAppNumber ?? '',
       inquiryEmail: business.inquiryEmail ?? '',
     })
@@ -60,9 +74,15 @@ export default function ChatbotSettingsPage() {
     e.preventDefault(); setSaving(true); setError('')
     const payload = {
       chatbotEnabled,
-      chatbotWelcomeMessage: form.chatbotWelcomeMessage || null,
-      chatbotConfirmationMessage: form.chatbotConfirmationMessage || null,
-      chatbotFinalMessage: form.chatbotFinalMessage || null,
+      chatbotWelcomeMessageEn: form.chatbotWelcomeMessageEn || null,
+      chatbotWelcomeMessageAr: form.chatbotWelcomeMessageAr || null,
+      chatbotWelcomeMessageHe: form.chatbotWelcomeMessageHe || null,
+      chatbotConfirmationMessageEn: form.chatbotConfirmationMessageEn || null,
+      chatbotConfirmationMessageAr: form.chatbotConfirmationMessageAr || null,
+      chatbotConfirmationMessageHe: form.chatbotConfirmationMessageHe || null,
+      chatbotFinalMessageEn: form.chatbotFinalMessageEn || null,
+      chatbotFinalMessageAr: form.chatbotFinalMessageAr || null,
+      chatbotFinalMessageHe: form.chatbotFinalMessageHe || null,
       chatbotDefaultLanguage: chatbotDefaultLanguage || null,
       chatbotInquiryEnabled,
       inquiryNotifyViaWhatsApp,
@@ -101,31 +121,46 @@ export default function ChatbotSettingsPage() {
             </span>
           </label>
 
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'chatbotWelcomeMessage')}</label>
-            <p className="text-muted text-xs mb-1.5">{t(lang, 'chatbotWelcomeMessageHint')}</p>
-            <textarea value={form.chatbotWelcomeMessage} rows={2}
-              onChange={(e) => setForm((f) => ({ ...f, chatbotWelcomeMessage: e.target.value }))}
-              placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-ink">{t(lang, 'chatbotWelcomeMessage')}</label>
+            <p className="text-muted text-xs">{t(lang, 'chatbotWelcomeMessageHint')}</p>
+            {([['Welcome Message (English)', 'chatbotWelcomeMessageEn'], ['Welcome Message (Arabic)', 'chatbotWelcomeMessageAr'], ['Welcome Message (Hebrew)', 'chatbotWelcomeMessageHe']] as const).map(([label, key]) => (
+              <div key={key}>
+                <label className="block text-xs text-muted mb-1">{label}</label>
+                <textarea value={form[key]} rows={2}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+              </div>
+            ))}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'chatbotConfirmationMessage')}</label>
-            <p className="text-muted text-xs mb-1.5">{t(lang, 'chatbotConfirmationMessageHint')}</p>
-            <textarea value={form.chatbotConfirmationMessage} rows={2}
-              onChange={(e) => setForm((f) => ({ ...f, chatbotConfirmationMessage: e.target.value }))}
-              placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+          <div className="space-y-2 border-t border-line pt-4">
+            <label className="block text-sm font-medium text-ink">{t(lang, 'chatbotConfirmationMessage')}</label>
+            <p className="text-muted text-xs">{t(lang, 'chatbotConfirmationMessageHint')}</p>
+            {([['Confirmation Message (English)', 'chatbotConfirmationMessageEn'], ['Confirmation Message (Arabic)', 'chatbotConfirmationMessageAr'], ['Confirmation Message (Hebrew)', 'chatbotConfirmationMessageHe']] as const).map(([label, key]) => (
+              <div key={key}>
+                <label className="block text-xs text-muted mb-1">{label}</label>
+                <textarea value={form[key]} rows={2}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+              </div>
+            ))}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'chatbotFinalMessage')}</label>
-            <p className="text-muted text-xs mb-1.5">{t(lang, 'chatbotFinalMessageHint')}</p>
-            <textarea value={form.chatbotFinalMessage} rows={2}
-              onChange={(e) => setForm((f) => ({ ...f, chatbotFinalMessage: e.target.value }))}
-              placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+          <div className="space-y-2 border-t border-line pt-4">
+            <label className="block text-sm font-medium text-ink">{t(lang, 'chatbotFinalMessage')}</label>
+            <p className="text-muted text-xs">{t(lang, 'chatbotFinalMessageHint')}</p>
+            {([['Final Message (English)', 'chatbotFinalMessageEn'], ['Final Message (Arabic)', 'chatbotFinalMessageAr'], ['Final Message (Hebrew)', 'chatbotFinalMessageHe']] as const).map(([label, key]) => (
+              <div key={key}>
+                <label className="block text-xs text-muted mb-1">{label}</label>
+                <textarea value={form[key]} rows={2}
+                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
+                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+              </div>
+            ))}
           </div>
 
           <div>

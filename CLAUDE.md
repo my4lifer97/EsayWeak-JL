@@ -702,15 +702,20 @@ Per business, in `Settings > WhatsApp Chatbot`:
 - `Business.ChatbotEnabled` (default `true`) — when off, `WhatsAppController.Webhook` returns an
   empty `<Response></Response>` TwiML body (no automated reply at all) for every inbound message,
   cancel/reschedule keywords included — the business wants to answer customers themselves.
-- `Business.ChatbotWelcomeMessage` / `ChatbotConfirmationMessage` / `ChatbotFinalMessage` (all
-  nullable free text, one language each, not per-EN/AR/HE) — three distinct touchpoints in the
-  customer's journey: Welcome replaces the opening greeting (item list and instructions still stay
-  in the detected language, so a custom welcome is followed by `whatsapp.selectServicePrompt`, not
-  the full `whatsapp.selectService` template); Confirmation is sent alongside the booking *link*
-  (`IssueBookingLink`, may include a literal `{url}` placeholder, else the link is appended on its
-  own line); Final replaces the default text `BookingController` sends once the appointment is
-  *actually created* (`whatsapp.bookingConfirmed`) -- the last message in the journey, used as-is
-  with no placeholder substitution.
+- Three distinct touchpoints in the customer's journey, each per-language now (`...En`/`...Ar`/`...He`
+  suffixed nullable free text fields, mirroring `Item.NameEn/NameAr/NameHe`, plus a
+  `Business.Resolve<X>Message(lang)` method picking among them — see below): `ChatbotWelcomeMessage*`
+  replaces the opening greeting (item list and instructions still stay in the detected language, so
+  a custom welcome is followed by `whatsapp.selectServicePrompt`, not the full `whatsapp.selectService`
+  template); `ChatbotConfirmationMessage*` is sent alongside the booking *link* (`IssueBookingLink`,
+  may include a literal `{url}` placeholder, else the link is appended on its own line); `ChatbotFinalMessage*`
+  replaces the default text `BookingController` sends once the appointment is *actually created*
+  (`whatsapp.bookingConfirmed`) -- the last message in the journey, used as-is with no placeholder
+  substitution. A business writes each message per language exactly like item names; when the
+  customer's resolved conversation language (`lang`) has no custom text set for that message,
+  `Resolve<X>Message` returns `null` and every call site's existing `IsNullOrWhiteSpace` check falls
+  through to the built-in `I18nService` default for that language -- it never borrows another
+  language's custom text.
 
 **Language auto-detection** (`WhatsAppController.DetectLanguage`): every inbound message's script
 is checked against the Hebrew (`U+0590`–`U+05FF`) and Arabic (`U+0600`–`U+06FF`) Unicode blocks,

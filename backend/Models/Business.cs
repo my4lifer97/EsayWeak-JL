@@ -59,15 +59,29 @@ public class Business
 
     // WhatsApp chatbot customization ("Simple Mode" per the product spec). When ChatbotEnabled is
     // false, WhatsAppController sends no automated reply at all -- the business wants to answer
-    // messages themselves instead. The two message fields are free text the business writes in
-    // their own language; null means "use the built-in default text" (see I18nService).
+    // messages themselves instead. Each message is free text per language (like Item.NameEn/Ar/He);
+    // an empty/null value for the customer's resolved language means "use the built-in default
+    // text for that language" (see I18nService) -- it never borrows another language's text.
     public bool ChatbotEnabled { get; set; } = true;
-    public string? ChatbotWelcomeMessage { get; set; }
-    public string? ChatbotConfirmationMessage { get; set; }
+    public string? ChatbotWelcomeMessageEn { get; set; }
+    public string? ChatbotWelcomeMessageAr { get; set; }
+    public string? ChatbotWelcomeMessageHe { get; set; }
+    public string? ChatbotConfirmationMessageEn { get; set; }
+    public string? ChatbotConfirmationMessageAr { get; set; }
+    public string? ChatbotConfirmationMessageHe { get; set; }
     // Replaces the default "whatsapp.bookingConfirmed" text BookingController sends once a booking
     // actually completes -- the last message in the customer's chatbot journey, as opposed to
     // ChatbotConfirmationMessage (sent earlier, alongside the booking *link*).
-    public string? ChatbotFinalMessage { get; set; }
+    public string? ChatbotFinalMessageEn { get; set; }
+    public string? ChatbotFinalMessageAr { get; set; }
+    public string? ChatbotFinalMessageHe { get; set; }
+
+    public string? ResolveChatbotWelcomeMessage(string lang) =>
+        lang switch { "AR" => ChatbotWelcomeMessageAr, "HE" => ChatbotWelcomeMessageHe, _ => ChatbotWelcomeMessageEn };
+    public string? ResolveChatbotConfirmationMessage(string lang) =>
+        lang switch { "AR" => ChatbotConfirmationMessageAr, "HE" => ChatbotConfirmationMessageHe, _ => ChatbotConfirmationMessageEn };
+    public string? ResolveChatbotFinalMessage(string lang) =>
+        lang switch { "AR" => ChatbotFinalMessageAr, "HE" => ChatbotFinalMessageHe, _ => ChatbotFinalMessageEn };
 
     // Overrides the fallback language WhatsAppController.ResolveLanguage uses for a signal-less
     // message (pure digits/emoji, no letters) with no open conversation to inherit from. Null
