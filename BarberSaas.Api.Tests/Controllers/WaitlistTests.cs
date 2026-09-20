@@ -226,6 +226,57 @@ public class WaitlistTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task RetryEndpoint_NotificationInitiallyFailed_SendsOnRetryAndFlipsToNotified()
+    {
+        var token = await RegisterAndLoginBusiness("wl-retry@example.com", "wl-retry-shop");
+        var (businessId, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-retry-shop");
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        var bookerToken = await GetCustomerToken("+15551000020");
+        var booked = await BookAs(bookerToken, "wl-retry-shop", itemId, dateStr, "09:00");
+        var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        var waiterPhone = "+15551000021";
+        var waiterToken = await GetCustomerToken(waiterPhone);
+        await JoinWaitlistAs(waiterToken, "wl-retry-shop", appt!.AppointmentId);
+
+        // Simulates a bridge outage at the moment the owner cancels -- the notification attempt
+        // fails, leaving the entry WAITING with nothing else retrying it on its own.
+        Factory.WhatsAppSender.ShouldFail = true;
+        Authorize(Client, token);
+        await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt.AppointmentId}", new { status = "CANCELLED", notifyWaitlist = true });
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        using (var db = Db())
+        {
+            var entry = db.WaitlistEntries.Single(w => w.AppointmentId == appt.AppointmentId);
+            Assert.Equal(WaitlistEntryStatus.WAITING, entry.Status);
+        }
+
+        // The outage clears; the periodic retry endpoint should now succeed for that same entry.
+        Factory.WhatsAppSender.ShouldFail = false;
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+        var retryResp = await Client.GetAsync("/api/cron/retry-waitlist-notifications");
+
+        Assert.Equal(HttpStatusCode.OK, retryResp.StatusCode);
+        Assert.Contains(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == waiterPhone);
+
+        using (var db = Db())
+        {
+            var entry = db.WaitlistEntries.Single(w => w.AppointmentId == appt.AppointmentId);
+            Assert.Equal(WaitlistEntryStatus.NOTIFIED, entry.Status);
+        }
+    }
+
+    [Fact]
+    public async Task RetryEndpoint_NoAuth_ReturnsUnauthorized()
+    {
+        var resp = await Client.GetAsync("/api/cron/retry-waitlist-notifications");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task ConcurrentBooking_ExactlyOneSucceedsForTheFreedSlot()
     {
         var token = await RegisterAndLoginBusiness("wl-race@example.com", "wl-race-shop");

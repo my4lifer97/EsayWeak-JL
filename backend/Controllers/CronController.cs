@@ -8,8 +8,23 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/cron")]
-public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger, RecurringAppointmentService recurringAppointments, IWhatsAppSender whatsAppSender, ICardcomService cardcom) : ControllerBase
+public class CronController(AppDbContext db, IConfiguration config, ILogger<CronController> logger, RecurringAppointmentService recurringAppointments, IWhatsAppSender whatsAppSender, ICardcomService cardcom, WaitlistService waitlist) : ControllerBase
 {
+    [HttpGet("retry-waitlist-notifications")]
+    public async Task<IActionResult> RetryWaitlistNotifications()
+    {
+        var cronSecret = config["CronSecret"];
+        var auth = Request.Headers.Authorization.FirstOrDefault();
+        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
+            return Unauthorized(new { error = "Unauthorized" });
+
+        var (total, sent, failed) = await waitlist.RetryFailedNotifications();
+        await db.SaveChangesAsync();
+
+        return Ok(new { total, sent, failed });
+    }
+
+
     [HttpGet("charge-subscriptions")]
     public async Task<IActionResult> ChargeSubscriptions()
     {
