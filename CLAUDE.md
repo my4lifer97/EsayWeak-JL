@@ -794,10 +794,14 @@ Unlike Stripe, Cardcom has no server-side "Subscription" object that auto-recurs
 Live at Railway project **accomplished-vitality**: backend `https://esayweak-jl-production.up.railway.app`,
 frontend `https://frontend-production-5885.up.railway.app`, both deploying from `master` on push;
 Postgres is internal-only (`railway connect Postgres --tunnel-only` for migrations/manual fixes).
-**`whatsapp-bridge` is not yet deployed to Railway** (built 2026-09-18, still only run locally) — when
-it is, it needs its own service (root dir `whatsapp-bridge`), a **Volume** mounted where
-`SESSIONS_DIR` points (or every redeploy forces every business to re-scan their WhatsApp QR code),
-and `BACKEND_URL` pointed at the backend's Railway **private** URL — see `whatsapp-bridge/README.md`.
+**`whatsapp-bridge` is deployed to Railway** as its own service ("EsayWeak-JL - WhatsApp Bridge",
+root dir `whatsapp-bridge`), with a Volume mounted at `/data` (`SESSIONS_DIR=/data/sessions`) so
+sessions survive redeploys, and `BACKEND_URL` pointed at the backend's Railway **private** URL
+(`http://esayweak-jl.railway.internal:8080`) — see `whatsapp-bridge/README.md`. Confirmed connected
+in production as `+972556652545` (business `bbfc51d58c7d43f9adcdc0f34c8f5943`). Its logs show
+recurring `connection closed ... (code 403)` churn that always self-recovers to `WhatsApp connected`
+without a fresh QR scan — not yet fully explained (possibly normal Baileys/Railway network
+behavior), worth another look if a business ever reports the bot going quiet.
 **Production does not auto-migrate** — a migration-bearing commit must have its migration applied
 via the tunnel *before* the push that deploys the new code, not after; this ordering has been
 learned the hard way across five separate incidents (several full outages where EF selected a
