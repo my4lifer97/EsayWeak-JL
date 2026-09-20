@@ -26,7 +26,9 @@ public record SettingsDto(
     string? Description, string? Logo, string Language, string? WhatsAppNumber,
     DateTime TrialEndsAt, string SubscriptionStatus,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel,
-    bool ChatbotEnabled, string? ChatbotWelcomeMessage, string? ChatbotConfirmationMessage,
+    bool ChatbotEnabled, string? ChatbotWelcomeMessage, string? ChatbotConfirmationMessage, string? ChatbotFinalMessage,
+    bool ChatbotInquiryEnabled, bool InquiryNotifyViaWhatsApp, string? InquiryWhatsAppNumber,
+    bool InquiryNotifyViaEmail, string? InquiryEmail,
     string? City, string? AddressLine, string? MapUrl, bool IsListed);
 
 public record UpdateSettingsRequest(
@@ -34,10 +36,15 @@ public record UpdateSettingsRequest(
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled = false,
     bool RequireApprovalOnCustomerCancel = false,
     bool ChatbotEnabled = true, string? ChatbotWelcomeMessage = null, string? ChatbotConfirmationMessage = null,
+    string? ChatbotFinalMessage = null,
+    bool ChatbotInquiryEnabled = false, bool InquiryNotifyViaWhatsApp = false, string? InquiryWhatsAppNumber = null,
+    bool InquiryNotifyViaEmail = false, string? InquiryEmail = null,
     // The settings form always submits every field, so (like WaitlistEnabled) these are assigned
     // unconditionally rather than treated as "omitted when null". IsListed defaults true to match
     // Business.IsListed's default.
     string? City = null, string? AddressLine = null, string? MapUrl = null, bool IsListed = true);
+
+public record ChatbotInquiryDto(string Id, string CustomerPhone, string? CustomerName, string Message, bool IsRead, DateTime CreatedAt);
 
 public record BookAppointmentRequest(
     string ItemId, string Date, string StartTime,

@@ -11,6 +11,7 @@ const NAV: { to: string; key: TKey; icon: string }[] = [
   { to: '/admin/schedule', key: 'schedule', icon: '🕐' },
   { to: '/admin/services', key: 'services', icon: '✂️' },
   { to: '/admin/reviews', key: 'navReviews', icon: '★' },
+  { to: '/admin/inquiries', key: 'inquiries', icon: '💬' },
   { to: '/admin/settings', key: 'settings', icon: '⚙️' },
 ]
 

@@ -64,6 +64,23 @@ public class Business
     public bool ChatbotEnabled { get; set; } = true;
     public string? ChatbotWelcomeMessage { get; set; }
     public string? ChatbotConfirmationMessage { get; set; }
+    // Replaces the default "whatsapp.bookingConfirmed" text BookingController sends once a booking
+    // actually completes -- the last message in the customer's chatbot journey, as opposed to
+    // ChatbotConfirmationMessage (sent earlier, alongside the booking *link*).
+    public string? ChatbotFinalMessage { get; set; }
+
+    // Optional "Inquiry" section (WhatsAppController) alongside normal booking -- lets a customer
+    // ask a free-form question / reach the owner directly instead of going through service
+    // selection, via the literal $1 (booking) / $2 (inquiry) commands. Off by default; a business
+    // that only wants bookings sees no behavior change at all.
+    public bool ChatbotInquiryEnabled { get; set; } = false;
+    // Where the owner wants to be pinged when a customer starts an inquiry, on top of the always-on
+    // in-app inbox (see ChatbotInquiry) -- either channel, both, or neither. Each needs its own
+    // contact value filled in to actually fire (WhatsAppController checks both).
+    public bool InquiryNotifyViaWhatsApp { get; set; } = false;
+    public string? InquiryWhatsAppNumber { get; set; }
+    public bool InquiryNotifyViaEmail { get; set; } = false;
+    public string? InquiryEmail { get; set; }
 
     // Nullable so existing/legacy rows can be backfilled to a seeded lookup row rather than
     // requiring every tenant to have one from day one.

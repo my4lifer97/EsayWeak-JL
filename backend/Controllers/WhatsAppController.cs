@@ -16,8 +16,18 @@ public class WhatsAppController(
     AppointmentCancellationService cancellationService,
     WhatsAppBookingTokenService bookingTokens,
     IOpenAiChatClient openAi,
+    IWhatsAppSender whatsAppSender,
+    IEmailSender emailSender,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
+    // Literal commands, not natural language -- deliberately simple so a business can explain them
+    // to a customer in one sentence. Only meaningful when Business.ChatbotInquiryEnabled is on; a
+    // business that doesn't use the feature sees zero behavior change (these never get checked).
+    private const string BookingModeCommand = "$1";
+    private const string InquiryModeCommand = "$2";
+    private const string BookingMode = "Booking";
+    private const string InquiryMode = "Inquiry";
+
     private static readonly string[] CancelKeywords = ["cancel", "ביטול", "بطل", "إلغاء", "בטל"];
     private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "تغيير", "שנה"];
     private static readonly TimeSpan ConversationStateLifetime = TimeSpan.FromMinutes(10);
@@ -118,6 +128,13 @@ public class WhatsAppController(
         if (!business.ChatbotEnabled)
             return null;
 
+        if (business.ChatbotInquiryEnabled)
+        {
+            var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, business.Language.ToString());
+            var (handled, inquiryReply) = await HandleInquiryModeAsync(business, fromPhone, profileName, incomingMsg, lang);
+            if (handled) return inquiryReply;
+        }
+
         if (!string.IsNullOrEmpty(config["OpenAI:ApiKey"]))
         {
             try
@@ -131,6 +148,112 @@ public class WhatsAppController(
         }
 
         return await ProcessMessageRuleBasedAsync(business, appUrl, fromPhone, profileName, incomingMsg);
+    }
+
+    // Checked before either chatbot path (rule-based or AI) runs, for any business with
+    // ChatbotInquiryEnabled on -- lets a customer step out of the normal booking flow to ask a
+    // free-form question / reach the owner directly, via the literal $1 (booking) / $2 (inquiry)
+    // commands. Returns Handled=true with the reply to send when this message was about
+    // inquiry-mode navigation or content; Handled=false means "not mine, let the normal booking
+    // dispatch handle this message" (including a bare $1 from someone already in Booking mode,
+    // which just falls through to whatever booking already does with unrecognized text).
+    private async Task<(bool Handled, string? Reply)> HandleInquiryModeAsync(
+        Business business, string fromPhone, string profileName, string incomingMsg, string lang)
+    {
+        var trimmed = incomingMsg.Trim();
+        var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone);
+
+        if (trimmed == BookingModeCommand)
+        {
+            // Removed outright, not just flipped back to Booking mode -- a merely-updated row
+            // would still look "open" to TryHandleServiceSelectionReply below, which would then
+            // try to parse the literal text "$1" as a numeric service choice (fails) instead of
+            // falling through to a fresh prompt. Same idiom as the reschedule keyword's own
+            // ClearConversationState call.
+            if (state is not null && state.ChatbotMode == InquiryMode)
+                await ClearConversationState(business.Id, fromPhone);
+            // Falls through to the normal booking dispatch, which starts a fresh prompt for a
+            // phone with no (or an expired) conversation state -- exactly what "back to booking"
+            // should feel like, with no separate reply of its own needed here.
+            return (false, null);
+        }
+
+        if (trimmed == InquiryModeCommand)
+        {
+            if (state is null)
+            {
+                state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
+                db.WhatsAppConversationStates.Add(state);
+            }
+            state.ChatbotMode = InquiryMode;
+            state.Language = lang;
+            state.InquiryNotified = false;
+            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+            await db.SaveChangesAsync();
+            return (true, I18nService.T(lang, "whatsapp.inquiryStarted", new() { ["businessName"] = business.Name }));
+        }
+
+        if (state is not null && state.ChatbotMode == InquiryMode && state.ExpiresAt > DateTime.UtcNow)
+        {
+            db.ChatbotInquiries.Add(new ChatbotInquiry
+            {
+                BusinessId = business.Id,
+                CustomerPhone = fromPhone,
+                CustomerName = string.IsNullOrWhiteSpace(profileName) ? null : profileName,
+                Message = incomingMsg,
+            });
+
+            // Only the first message of a session pings the owner -- InquiryNotified is reset
+            // whenever the customer returns to Booking mode (above), so a later, separate inquiry
+            // still notifies again.
+            var shouldNotify = !state.InquiryNotified;
+            state.InquiryNotified = true;
+            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+            await db.SaveChangesAsync();
+
+            if (shouldNotify)
+                await SendInquiryNotificationsAsync(business, fromPhone, profileName, incomingMsg);
+
+            return (true, I18nService.T(lang, "whatsapp.inquiryAck"));
+        }
+
+        return (false, null);
+    }
+
+    // Best-effort on both channels -- a failed notification must never break the customer's own
+    // reply, and the inquiry itself is always saved to ChatbotInquiry regardless (the "in-app"
+    // channel, which is always on). WhatsApp goes out from the business's own bot number to
+    // whatever number the owner registered for inquiries -- a different recipient than the
+    // customer, not a reply in the same thread.
+    private async Task SendInquiryNotificationsAsync(Business business, string fromPhone, string profileName, string message)
+    {
+        var fromLabel = string.IsNullOrWhiteSpace(profileName) ? fromPhone : $"{profileName} ({fromPhone})";
+
+        if (business.InquiryNotifyViaWhatsApp && !string.IsNullOrWhiteSpace(business.InquiryWhatsAppNumber))
+        {
+            try
+            {
+                await whatsAppSender.SendAsync(business, business.InquiryWhatsAppNumber,
+                    $"📩 New inquiry from {fromLabel}:\n\n{message}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to send WhatsApp inquiry notification for business {BusinessId}", business.Id);
+            }
+        }
+
+        if (business.InquiryNotifyViaEmail && !string.IsNullOrWhiteSpace(business.InquiryEmail))
+        {
+            try
+            {
+                await emailSender.SendAsync(business.InquiryEmail, $"New customer inquiry — {business.Name}",
+                    $"From: {fromLabel}\n\nMessage:\n{message}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to send email inquiry notification for business {BusinessId}", business.Id);
+            }
+        }
     }
 
     // Everything from cancel/reschedule keyword matching through numbered service-selection
@@ -159,26 +282,26 @@ public class WhatsAppController(
                 if (incomingMsg.Trim() != UnlockKeyword) return null;
                 db.WhatsAppConversationStates.Remove(conversationState);
                 await db.SaveChangesAsync();
-                return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+                return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled);
             }
         }
 
         var lowerMsg = incomingMsg.ToLowerInvariant();
 
         if (CancelKeywords.Any(k => lowerMsg.Contains(k)))
-            return await HandleCancel(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+            return await HandleCancel(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled);
 
         if (RescheduleKeywords.Any(k => lowerMsg.Contains(k)))
         {
             await ClearConversationState(business.Id, fromPhone);
             var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
-            return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage)}";
+            return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled)}";
         }
 
         // Either a fresh conversation (no state row yet -- falls through to the prompt below)
         // or a reply to an already-open "which service?" prompt (a numeric selection or junk).
         var selectionReply = await TryHandleServiceSelectionReply(business.Id, business.Slug, appUrl, fromPhone, profileName, lang, incomingMsg, business.ChatbotConfirmationMessage);
-        return selectionReply ?? await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage);
+        return selectionReply ?? await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, business.ChatbotWelcomeMessage, business.ChatbotInquiryEnabled);
     }
 
     // The customer's message is understood by an LLM instead of fixed keywords/numeric replies --
@@ -242,6 +365,13 @@ public class WhatsAppController(
             ? "(no bookable services configured yet)"
             : string.Join("\n", services.Select(s => $"- id={s.Id}: {s.Name}"));
         var languageName = lang switch { "AR" => "Arabic", "HE" => "Hebrew", _ => "English" };
+        // The literal $2 command itself is intercepted before this path ever runs (see
+        // HandleInquiryModeAsync) -- the model never needs to act on it, just know to mention it
+        // exists, since (unlike the rule-based path's PromptServiceSelection) nothing else here
+        // surfaces that note to the customer.
+        var inquiryNote = business.ChatbotInquiryEnabled
+            ? "\n\nIf the customer asks something you can't help with, or wants to reach the owner directly, tell them to reply \"$2\" to talk to the owner directly."
+            : "";
 
         return $"""
             You are {business.Name}'s WhatsApp booking assistant. Always reply in {languageName}, in plain WhatsApp-friendly text (no markdown).
@@ -254,7 +384,7 @@ public class WhatsAppController(
             - cancel_upcoming_appointment(): call this when the customer wants to cancel their appointment. If the result's "found" field is true, it also has a "message" field -- output that text VERBATIM. If "found" is false, tell the customer yourself that you couldn't find an upcoming appointment and offer to help them book one.
             To reschedule: call cancel_upcoming_appointment first, then help the customer book a new time via create_booking_link.
 
-            Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.
+            Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.{inquiryNote}
             """;
     }
 
@@ -336,7 +466,7 @@ public class WhatsAppController(
         return pendingLang ?? businessDefault;
     }
 
-    private async Task<string> HandleCancel(string businessId, string businessName, string fromPhone, string lang, string? welcomeMessage)
+    private async Task<string> HandleCancel(string businessId, string businessName, string fromPhone, string lang, string? welcomeMessage, bool inquiryEnabled)
     {
         await ClearConversationState(businessId, fromPhone);
         var cancelled = await FindAndCancelUpcomingAppointment(businessId, fromPhone);
@@ -344,7 +474,7 @@ public class WhatsAppController(
         if (cancelled is null)
         {
             var intro = I18nService.T(lang, "whatsapp.noAppointment");
-            return $"{intro}\n\n{await PromptServiceSelection(businessId, businessName, fromPhone, lang, welcomeMessage)}";
+            return $"{intro}\n\n{await PromptServiceSelection(businessId, businessName, fromPhone, lang, welcomeMessage, inquiryEnabled)}";
         }
 
         return I18nService.T(lang, "whatsapp.cancelled", new()
@@ -409,7 +539,7 @@ public class WhatsAppController(
     // conversation-start path and by the reschedule/no-appointment paths, which prefix their own
     // intro line first. A business's custom welcome message replaces the default greeting -- the
     // "which service + list + instructions" tail always stays in the detected language.
-    private async Task<string> PromptServiceSelection(string businessId, string businessName, string phone, string lang, string? welcomeMessage)
+    private async Task<string> PromptServiceSelection(string businessId, string businessName, string phone, string lang, string? welcomeMessage, bool inquiryEnabled)
     {
         var services = await ActiveServices(businessId, lang);
         if (services.Count == 0)
@@ -425,15 +555,22 @@ public class WhatsAppController(
         existing.Language = lang;
         existing.InvalidAttempts = 0;
         existing.AwaitingBookingCompletion = false;
+        // A fresh booking prompt always means "back in Booking mode" -- without this, a row left
+        // over from an expired Inquiry session (see HandleInquiryModeAsync) would still read as
+        // Inquiry mode once its ExpiresAt gets refreshed below, silently swallowing the customer's
+        // next numeric service-selection reply as if it were inquiry content.
+        existing.ChatbotMode = BookingMode;
+        existing.InquiryNotified = false;
         await db.SaveChangesAsync();
 
         var list = string.Join("\n", services.Select((s, i) => $"{i + 1}. {s.Name}"));
+        var escapeHatch = inquiryEnabled ? I18nService.T(lang, "whatsapp.inquiryEscapeHatch") : "";
         if (!string.IsNullOrWhiteSpace(welcomeMessage))
         {
             var tail = I18nService.T(lang, "whatsapp.selectServicePrompt", new() { ["list"] = list });
-            return $"{welcomeMessage}\n\n{tail}";
+            return $"{welcomeMessage}\n\n{tail}{escapeHatch}";
         }
-        return I18nService.T(lang, "whatsapp.selectService", new() { ["businessName"] = businessName, ["list"] = list });
+        return I18nService.T(lang, "whatsapp.selectService", new() { ["businessName"] = businessName, ["list"] = list }) + escapeHatch;
     }
 
     // Returns null when there's no open "which service?" prompt for this phone -- the caller then

@@ -15,6 +15,7 @@ import RecurringAppointmentsPage from './pages/admin/RecurringAppointmentsPage'
 import SchedulePage from './pages/admin/SchedulePage'
 import ServicesPage from './pages/admin/ServicesPage'
 import ReviewsPage from './pages/admin/ReviewsPage'
+import InquiriesPage from './pages/admin/InquiriesPage'
 import SettingsPage from './pages/admin/SettingsPage'
 import AdminLayout from './components/admin/AdminLayout'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -65,6 +66,7 @@ export default function App() {
                     <Route path="/admin/schedule" element={<SchedulePage />} />
                     <Route path="/admin/services" element={<ServicesPage />} />
                     <Route path="/admin/reviews" element={<ReviewsPage />} />
+                    <Route path="/admin/inquiries" element={<InquiriesPage />} />
                     <Route path="/admin/settings" element={<SettingsPage />} />
                   </Route>
                 </Route>

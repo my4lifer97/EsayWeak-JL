@@ -238,14 +238,20 @@ public class BookingController(
         if (business.WhatsAppNumber is not null)
         {
             var itemDisplayName = confirmationLang switch { "AR" => item.NameAr, "HE" => item.NameHe, _ => item.NameEn };
-            var message = I18nService.T(confirmationLang, "whatsapp.bookingConfirmed", new()
-            {
-                ["customerName"] = req.CustomerName,
-                ["businessName"] = business.Name,
-                ["service"] = itemDisplayName,
-                ["date"] = req.Date,
-                ["time"] = req.StartTime,
-            });
+            // ChatbotFinalMessage replaces the default text as-is (no placeholder substitution,
+            // matching ChatbotWelcomeMessage's own pattern) -- the last message in the customer's
+            // chatbot journey, as opposed to ChatbotConfirmationMessage (sent earlier, alongside
+            // the booking *link* itself, before the appointment actually exists).
+            var message = !string.IsNullOrWhiteSpace(business.ChatbotFinalMessage)
+                ? business.ChatbotFinalMessage
+                : I18nService.T(confirmationLang, "whatsapp.bookingConfirmed", new()
+                {
+                    ["customerName"] = req.CustomerName,
+                    ["businessName"] = business.Name,
+                    ["service"] = itemDisplayName,
+                    ["date"] = req.Date,
+                    ["time"] = req.StartTime,
+                });
             try
             {
                 await whatsAppSender.SendAsync(business, phone, message);

@@ -209,6 +209,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). WhatsApp number is read-only here — see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
+- `GET /api/admin/chatbot-inquiries?unreadOnly=` / `POST .../{id}/read` — the always-on in-app inbox for the chatbot's optional Inquiry mode, see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
 - `GET/POST /api/admin/items` — items CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/items/{id}` — update / soft-delete (IsActive = false)
 - `POST /api/admin/items/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)
@@ -700,13 +701,15 @@ Per business, in `Settings > WhatsApp Chatbot`:
 - `Business.ChatbotEnabled` (default `true`) — when off, `WhatsAppController.Webhook` returns an
   empty `<Response></Response>` TwiML body (no automated reply at all) for every inbound message,
   cancel/reschedule keywords included — the business wants to answer customers themselves.
-- `Business.ChatbotWelcomeMessage` / `ChatbotConfirmationMessage` (both nullable free text, one
-  language each, not per-EN/AR/HE) — when set, replace the *default* greeting/confirmation text
-  only; the item list and its surrounding instructions always stay in the detected language
-  (see below), so a custom welcome message is followed by `whatsapp.selectServicePrompt`, not the
-  full `whatsapp.selectService` template. A custom confirmation message may include a literal
-  `{url}` placeholder to control where the booking link lands in the text; if omitted, the link is
-  appended on its own line.
+- `Business.ChatbotWelcomeMessage` / `ChatbotConfirmationMessage` / `ChatbotFinalMessage` (all
+  nullable free text, one language each, not per-EN/AR/HE) — three distinct touchpoints in the
+  customer's journey: Welcome replaces the opening greeting (item list and instructions still stay
+  in the detected language, so a custom welcome is followed by `whatsapp.selectServicePrompt`, not
+  the full `whatsapp.selectService` template); Confirmation is sent alongside the booking *link*
+  (`IssueBookingLink`, may include a literal `{url}` placeholder, else the link is appended on its
+  own line); Final replaces the default text `BookingController` sends once the appointment is
+  *actually created* (`whatsapp.bookingConfirmed`) -- the last message in the journey, used as-is
+  with no placeholder substitution.
 
 **Language auto-detection** (`WhatsAppController.DetectLanguage`): every inbound message's script
 is checked against the Hebrew (`U+0590`–`U+05FF`) and Arabic (`U+0600`–`U+06FF`) Unicode blocks,
@@ -725,6 +728,47 @@ same language the customer was just chatting in, not whatever was last stored in
 in Arabic-Indic (`٠`-`٩`) or Extended Arabic-Indic/Persian (`۰`-`۹`) digits is translated to ASCII
 before `int.TryParse` in `TryHandleServiceSelectionReply` — a customer replying in Arabic script
 naturally types the number in one of these, not by switching to a Western keyboard.
+
+### Chatbot Inquiry mode (optional, alongside booking)
+`Business.ChatbotInquiryEnabled` (default `false`, `Settings > Chatbot Settings`) lets a customer
+step out of the booking flow entirely to ask a free-form question or reach the owner directly, via
+two literal commands checked in `WhatsAppController.HandleInquiryModeAsync` **before** either
+chatbot path (rule-based or AI) ever runs — a business that doesn't enable this sees zero behavior
+change, since the check is skipped outright:
+- `$1` — back to Booking mode. The conversation-state row is *removed* outright (not just flipped),
+  matching the reschedule keyword's own `ClearConversationState` call — merely updating the row
+  would leave it looking "open" to `TryHandleServiceSelectionReply`, which would then try (and fail)
+  to parse the literal text `"$1"` as a numeric service choice instead of falling through to a
+  fresh prompt.
+- `$2` — enters Inquiry mode (`WhatsAppConversationState.ChatbotMode = "Inquiry"`). Every further
+  message from that phone is logged as a `ChatbotInquiry` row (always-on "in-app" channel, an inbox
+  at `/admin/inquiries`) and acknowledged with a short reply, **not** dispatched to booking logic at
+  all, until the customer sends `$1`. `PromptServiceSelection` (rule-based path) always resets
+  `ChatbotMode` back to `"Booking"` on every fresh prompt it issues — without this, a row left over
+  from an expired/exited Inquiry session would still read as Inquiry mode once its `ExpiresAt` gets
+  refreshed by the next prompt, silently swallowing the customer's next numeric service-selection
+  reply as if it were inquiry content instead.
+
+When enabled, the rule-based welcome/service-list message gets a `whatsapp.inquiryEscapeHatch` note
+appended (`PromptServiceSelection`); the AI path doesn't call that function at all, so it instead
+gets one extra line in its system prompt (`BuildAiSystemPrompt`) telling the model to mention `$2`
+when it can't help with something -- the model never handles the command itself, since `$2` is
+still intercepted before the AI path is ever reached.
+
+**Owner notification**: `WhatsAppController.SendInquiryNotificationsAsync` fires **once per inquiry
+session**, not per message (`WhatsAppConversationState.InquiryNotified`, reset whenever the customer
+returns to Booking mode via `$1`, so a *later*, separate inquiry still notifies again) — best-effort
+on both channels, a failure on either never blocks the customer's own reply or the always-on
+in-app log. Two independent settings, each needing its own contact value to actually fire:
+`InquiryNotifyViaWhatsApp` + `InquiryWhatsAppNumber` (sent from the business's own linked bot number
+to a *different* recipient — the owner's own number — via the existing `IWhatsAppSender`, not a
+reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (via the system
+`IEmailSender` chain — Brevo etc. — **not** `IOwnerEmailSender`, which is the platform admin's own
+personal Gmail for the unrelated owner-email composer feature).
+
+Admin API: `GET/POST /api/admin/chatbot-inquiries` (list, `?unreadOnly=true` filter) and
+`POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `pages/admin/InquiriesPage.tsx`
+(`/admin/inquiries`, in `AdminSidebar`'s nav).
 
 ### Customer login via WhatsApp
 The primary way a customer session starts: redeeming a link the WhatsApp bot sent them (no

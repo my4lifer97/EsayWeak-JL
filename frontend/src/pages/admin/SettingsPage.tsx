@@ -19,6 +19,12 @@ type BusinessSettings = {
   chatbotEnabled: boolean
   chatbotWelcomeMessage: string | null
   chatbotConfirmationMessage: string | null
+  chatbotFinalMessage: string | null
+  chatbotInquiryEnabled: boolean
+  inquiryNotifyViaWhatsApp: boolean
+  inquiryWhatsAppNumber: string | null
+  inquiryNotifyViaEmail: boolean
+  inquiryEmail: string | null
   city: string | null
   addressLine: string | null
   mapUrl: string | null
@@ -37,7 +43,8 @@ export default function SettingsPage() {
   const [form, setForm] = useState({
     name: '', phone: '', description: '', language: 'EN' as 'EN' | 'AR' | 'HE',
     maxBookingsPerDay: '', maxBookingsPerWeek: '',
-    chatbotWelcomeMessage: '', chatbotConfirmationMessage: '',
+    chatbotWelcomeMessage: '', chatbotConfirmationMessage: '', chatbotFinalMessage: '',
+    inquiryWhatsAppNumber: '', inquiryEmail: '',
     city: '', addressLine: '', mapUrl: '',
   })
   // Kept out of `form` above -- that object's values are read generically via
@@ -46,6 +53,9 @@ export default function SettingsPage() {
   const [waitlistEnabled, setWaitlistEnabled] = useState(false)
   const [requireApprovalOnCustomerCancel, setRequireApprovalOnCustomerCancel] = useState(false)
   const [chatbotEnabled, setChatbotEnabled] = useState(true)
+  const [chatbotInquiryEnabled, setChatbotInquiryEnabled] = useState(false)
+  const [inquiryNotifyViaWhatsApp, setInquiryNotifyViaWhatsApp] = useState(false)
+  const [inquiryNotifyViaEmail, setInquiryNotifyViaEmail] = useState(false)
   const [isListed, setIsListed] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -86,11 +96,16 @@ export default function SettingsPage() {
       maxBookingsPerWeek: business.maxBookingsPerWeek?.toString() ?? '',
       chatbotWelcomeMessage: business.chatbotWelcomeMessage ?? '',
       chatbotConfirmationMessage: business.chatbotConfirmationMessage ?? '',
+      chatbotFinalMessage: business.chatbotFinalMessage ?? '',
+      inquiryWhatsAppNumber: business.inquiryWhatsAppNumber ?? '', inquiryEmail: business.inquiryEmail ?? '',
       city: business.city ?? '', addressLine: business.addressLine ?? '', mapUrl: business.mapUrl ?? '',
     })
     setWaitlistEnabled(business.waitlistEnabled)
     setRequireApprovalOnCustomerCancel(business.requireApprovalOnCustomerCancel)
     setChatbotEnabled(business.chatbotEnabled)
+    setChatbotInquiryEnabled(business.chatbotInquiryEnabled)
+    setInquiryNotifyViaWhatsApp(business.inquiryNotifyViaWhatsApp)
+    setInquiryNotifyViaEmail(business.inquiryNotifyViaEmail)
     setIsListed(business.isListed)
     setLang(business.language)
     setInitialized(true)
@@ -108,6 +123,12 @@ export default function SettingsPage() {
       chatbotEnabled,
       chatbotWelcomeMessage: form.chatbotWelcomeMessage || null,
       chatbotConfirmationMessage: form.chatbotConfirmationMessage || null,
+      chatbotFinalMessage: form.chatbotFinalMessage || null,
+      chatbotInquiryEnabled,
+      inquiryNotifyViaWhatsApp,
+      inquiryWhatsAppNumber: form.inquiryWhatsAppNumber || null,
+      inquiryNotifyViaEmail,
+      inquiryEmail: form.inquiryEmail || null,
       city: form.city || null,
       addressLine: form.addressLine || null,
       mapUrl: form.mapUrl || null,
@@ -377,6 +398,61 @@ export default function SettingsPage() {
               onChange={(e) => setForm((f) => ({ ...f, chatbotConfirmationMessage: e.target.value }))}
               placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
               className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'chatbotFinalMessage')}</label>
+            <p className="text-muted text-xs mb-1.5">{t(lang, 'chatbotFinalMessageHint')}</p>
+            <textarea value={form.chatbotFinalMessage} rows={2}
+              onChange={(e) => setForm((f) => ({ ...f, chatbotFinalMessage: e.target.value }))}
+              placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+          </div>
+
+          <div className="border-t border-line pt-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" checked={chatbotInquiryEnabled}
+                onChange={(e) => setChatbotInquiryEnabled(e.target.checked)}
+                className="mt-1 w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
+              <span>
+                <span className="block text-sm font-medium text-ink">{t(lang, 'chatbotInquiryEnabledLabel')}</span>
+                <span className="block text-muted text-sm mt-0.5">{t(lang, 'chatbotInquiryEnabledHint')}</span>
+              </span>
+            </label>
+
+            {chatbotInquiryEnabled && (
+              <div className="mt-4 ms-7 space-y-3">
+                <h3 className="text-sm font-semibold text-ink">{t(lang, 'inquiryNotifications')}</h3>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={inquiryNotifyViaWhatsApp}
+                    onChange={(e) => setInquiryNotifyViaWhatsApp(e.target.checked)}
+                    className="w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
+                  <span className="text-sm text-ink">{t(lang, 'inquiryNotifyViaWhatsApp')}</span>
+                </label>
+                {inquiryNotifyViaWhatsApp && (
+                  <input value={form.inquiryWhatsAppNumber} type="tel"
+                    onChange={(e) => setForm((f) => ({ ...f, inquiryWhatsAppNumber: e.target.value }))}
+                    placeholder={t(lang, 'inquiryWhatsAppNumberPlaceholder')}
+                    className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
+                )}
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={inquiryNotifyViaEmail}
+                    onChange={(e) => setInquiryNotifyViaEmail(e.target.checked)}
+                    className="w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
+                  <span className="text-sm text-ink">{t(lang, 'inquiryNotifyViaEmail')}</span>
+                </label>
+                {inquiryNotifyViaEmail && (
+                  <input value={form.inquiryEmail} type="email"
+                    onChange={(e) => setForm((f) => ({ ...f, inquiryEmail: e.target.value }))}
+                    placeholder={t(lang, 'inquiryEmailPlaceholder')}
+                    className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
+                )}
+
+                <p className="text-muted text-xs">{t(lang, 'inquiryInboxHint')}</p>
+              </div>
+            )}
           </div>
         </div>
 

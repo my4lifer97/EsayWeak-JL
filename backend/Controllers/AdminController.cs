@@ -43,7 +43,9 @@ public class AdminController(
             b.Description, b.Logo, b.Language.ToString(), b.WhatsAppNumber,
             b.TrialEndsAt, b.SubscriptionStatus.ToString(),
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
-            b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage,
+            b.ChatbotEnabled, b.ChatbotWelcomeMessage, b.ChatbotConfirmationMessage, b.ChatbotFinalMessage,
+            b.ChatbotInquiryEnabled, b.InquiryNotifyViaWhatsApp, b.InquiryWhatsAppNumber,
+            b.InquiryNotifyViaEmail, b.InquiryEmail,
             b.City, b.AddressLine, b.MapUrl, b.IsListed));
     }
 
@@ -116,6 +118,12 @@ public class AdminController(
         var oldChatbotEnabled = b.ChatbotEnabled;
         var oldChatbotWelcomeMessage = b.ChatbotWelcomeMessage;
         var oldChatbotConfirmationMessage = b.ChatbotConfirmationMessage;
+        var oldChatbotFinalMessage = b.ChatbotFinalMessage;
+        var oldChatbotInquiryEnabled = b.ChatbotInquiryEnabled;
+        var oldInquiryNotifyViaWhatsApp = b.InquiryNotifyViaWhatsApp;
+        var oldInquiryWhatsAppNumber = b.InquiryWhatsAppNumber;
+        var oldInquiryNotifyViaEmail = b.InquiryNotifyViaEmail;
+        var oldInquiryEmail = b.InquiryEmail;
         var oldCity = b.City;
         var oldAddressLine = b.AddressLine;
         var oldMapUrl = b.MapUrl;
@@ -134,6 +142,12 @@ public class AdminController(
         if (Has("chatbotEnabled")) b.ChatbotEnabled = req.ChatbotEnabled;
         if (Has("chatbotWelcomeMessage")) b.ChatbotWelcomeMessage = req.ChatbotWelcomeMessage;
         if (Has("chatbotConfirmationMessage")) b.ChatbotConfirmationMessage = req.ChatbotConfirmationMessage;
+        if (Has("chatbotFinalMessage")) b.ChatbotFinalMessage = req.ChatbotFinalMessage;
+        if (Has("chatbotInquiryEnabled")) b.ChatbotInquiryEnabled = req.ChatbotInquiryEnabled;
+        if (Has("inquiryNotifyViaWhatsApp")) b.InquiryNotifyViaWhatsApp = req.InquiryNotifyViaWhatsApp;
+        if (Has("inquiryWhatsAppNumber")) b.InquiryWhatsAppNumber = string.IsNullOrWhiteSpace(req.InquiryWhatsAppNumber) ? null : req.InquiryWhatsAppNumber.Trim();
+        if (Has("inquiryNotifyViaEmail")) b.InquiryNotifyViaEmail = req.InquiryNotifyViaEmail;
+        if (Has("inquiryEmail")) b.InquiryEmail = string.IsNullOrWhiteSpace(req.InquiryEmail) ? null : req.InquiryEmail.Trim();
         // Discovery fields -- empty strings are still normalized to null (clearing the field),
         // only an actually-absent key leaves the current value alone.
         if (Has("city")) b.City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim();
@@ -158,6 +172,12 @@ public class AdminController(
         if (b.ChatbotEnabled != oldChatbotEnabled) changes.Add($"chatbot {(b.ChatbotEnabled ? "enabled" : "disabled")}");
         if (b.ChatbotWelcomeMessage != oldChatbotWelcomeMessage) changes.Add("chatbot welcome message");
         if (b.ChatbotConfirmationMessage != oldChatbotConfirmationMessage) changes.Add("chatbot confirmation message");
+        if (b.ChatbotFinalMessage != oldChatbotFinalMessage) changes.Add("chatbot final message");
+        if (b.ChatbotInquiryEnabled != oldChatbotInquiryEnabled) changes.Add($"chatbot inquiry {(b.ChatbotInquiryEnabled ? "enabled" : "disabled")}");
+        if (b.InquiryNotifyViaWhatsApp != oldInquiryNotifyViaWhatsApp) changes.Add($"inquiry WhatsApp notify {(b.InquiryNotifyViaWhatsApp ? "on" : "off")}");
+        if (b.InquiryWhatsAppNumber != oldInquiryWhatsAppNumber) changes.Add("inquiry WhatsApp number");
+        if (b.InquiryNotifyViaEmail != oldInquiryNotifyViaEmail) changes.Add($"inquiry email notify {(b.InquiryNotifyViaEmail ? "on" : "off")}");
+        if (b.InquiryEmail != oldInquiryEmail) changes.Add("inquiry email address");
         if (b.City != oldCity) changes.Add($"city: \"{oldCity}\" → \"{b.City}\"");
         if (b.AddressLine != oldAddressLine) changes.Add("address");
         if (b.MapUrl != oldMapUrl) changes.Add("map link");
@@ -166,6 +186,33 @@ public class AdminController(
         this.SetActivityDetail(changes.Count > 0 ? $"Updated settings: {string.Join(", ", changes)}" : "Updated settings (no fields changed)");
 
         return Ok(new { b.Id, b.Name, Language = b.Language.ToString() });
+    }
+
+    // ─── Chatbot inquiries ──────────────────────────────────────────────────
+    // Always-on "in-app" side of owner notification for the chatbot's Inquiry mode (see
+    // WhatsAppController.HandleInquiryModeAsync) -- exists regardless of whether
+    // InquiryNotifyViaWhatsApp/Email are also on.
+
+    [HttpGet("chatbot-inquiries")]
+    public async Task<IActionResult> GetChatbotInquiries([FromQuery] bool unreadOnly = false)
+    {
+        var query = db.ChatbotInquiries.Where(i => i.BusinessId == BusinessId);
+        if (unreadOnly) query = query.Where(i => !i.IsRead);
+
+        var inquiries = await query.OrderByDescending(i => i.CreatedAt).Take(200)
+            .Select(i => new ChatbotInquiryDto(i.Id, i.CustomerPhone, i.CustomerName, i.Message, i.IsRead, i.CreatedAt))
+            .ToListAsync();
+        return Ok(inquiries);
+    }
+
+    [HttpPost("chatbot-inquiries/{id}/read")]
+    public async Task<IActionResult> MarkChatbotInquiryRead(string id)
+    {
+        var inquiry = await db.ChatbotInquiries.FirstOrDefaultAsync(i => i.Id == id && i.BusinessId == BusinessId);
+        if (inquiry is null) return NotFound();
+        inquiry.IsRead = true;
+        await db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     // ─── Items ──────────────────────────────────────────────────────────────

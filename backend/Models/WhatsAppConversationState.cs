@@ -33,6 +33,15 @@ public class WhatsAppConversationState
     // the link opened. Cleared by BookingController once the appointment is actually created (or just
     // expires naturally with the row, same as everything else here).
     public bool AwaitingBookingCompletion { get; set; }
+    // "Booking" (default) or "Inquiry" -- which section of the chatbot this phone is currently in,
+    // when Business.ChatbotInquiryEnabled is on. Switched only by the literal "$1"/"$2" commands
+    // (checked before either chatbot path runs -- see WhatsAppController.HandleInquiryModeAsync);
+    // meaningless/unused while the feature is off for this business.
+    public string ChatbotMode { get; set; } = "Booking";
+    // Whether the owner has already been notified (WhatsApp/email) for the CURRENT inquiry
+    // session -- a back-and-forth conversation only pings once, not per message. Reset to false
+    // whenever the customer returns to Booking mode, so a later inquiry session notifies again.
+    public bool InquiryNotified { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

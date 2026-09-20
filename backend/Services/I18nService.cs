@@ -22,6 +22,9 @@ public static class I18nService
             ["whatsapp.rescheduleIntro"] = "To reschedule, let's book a new appointment.",
             ["whatsapp.waitlistSlotOpen"] = "Hi {customerName}! A slot with {businessName} on {date} at {time} for {service} just opened up. Book it here (first come, first served): {url}",
             ["whatsapp.ownerCancellationApprovalNeeded"] = "Hi! {customerName} just cancelled their appointment on {date} at {time} for {service}. It's on hold until you decide what to do with it — open your dashboard to offer it to the waitlist, cancel it, or assign someone else: {url}",
+            ["whatsapp.inquiryEscapeHatch"] = "\n\n💬 Have a question instead? Reply $2 to talk to us directly.",
+            ["whatsapp.inquiryStarted"] = "You're now chatting directly with {businessName}. Type your question or request below — reply $1 anytime to go back to booking.",
+            ["whatsapp.inquiryAck"] = "Got it — we'll get back to you soon. (Reply $1 to return to booking.)",
         },
         ["AR"] = new()
         {
@@ -39,6 +42,9 @@ public static class I18nService
             ["whatsapp.rescheduleIntro"] = "لإعادة الجدولة، لنحجز موعدًا جديدًا.",
             ["whatsapp.waitlistSlotOpen"] = "مرحبًا {customerName}! أصبح هناك موعد متاح مع {businessName} في {date} الساعة {time} لخدمة {service}. احجزه هنا (الأسبقية للأسرع): {url}",
             ["whatsapp.ownerCancellationApprovalNeeded"] = "مرحبًا! قام {customerName} للتو بإلغاء موعده في {date} الساعة {time} لخدمة {service}. الموعد معلّق حتى تقرر ماذا تفعل به — افتح لوحة التحكم لعرضه على قائمة الانتظار أو إلغائه أو تعيين شخص آخر: {url}",
+            ["whatsapp.inquiryEscapeHatch"] = "\n\n💬 لديك سؤال؟ أرسل $2 للتحدث معنا مباشرة.",
+            ["whatsapp.inquiryStarted"] = "أنت الآن تتحدث مباشرة مع {businessName}. اكتب سؤالك أو طلبك أدناه — أرسل $1 في أي وقت للعودة إلى الحجز.",
+            ["whatsapp.inquiryAck"] = "تم الاستلام — سنعاود التواصل معك قريبًا. (أرسل $1 للعودة إلى الحجز.)",
         },
         ["HE"] = new()
         {
@@ -56,6 +62,9 @@ public static class I18nService
             ["whatsapp.rescheduleIntro"] = "לשינוי תור, בוא נקבע תור חדש.",
             ["whatsapp.waitlistSlotOpen"] = "שלום {customerName}! התפנה תור אצל {businessName} בתאריך {date} בשעה {time} לשירות {service}. קבע אותו כאן (הראשון שמזמין זוכה): {url}",
             ["whatsapp.ownerCancellationApprovalNeeded"] = "שלום! {customerName} זה עתה ביטל את התור בתאריך {date} בשעה {time} לשירות {service}. התור מוקפא עד שתחליט מה לעשות איתו — פתח את לוח הבקרה כדי להציע אותו לרשימת ההמתנה, לבטל אותו, או לשייך מישהו אחר: {url}",
+            ["whatsapp.inquiryEscapeHatch"] = "\n\n💬 יש לך שאלה? שלח $2 כדי לדבר איתנו ישירות.",
+            ["whatsapp.inquiryStarted"] = "אתה עכשיו מדבר ישירות עם {businessName}. כתוב את השאלה או הבקשה שלך למטה — שלח $1 בכל שלב כדי לחזור להזמנת תור.",
+            ["whatsapp.inquiryAck"] = "התקבל — נחזור אליך בקרוב. (שלח $1 כדי לחזור להזמנת תור.)",
         },
     };
 
