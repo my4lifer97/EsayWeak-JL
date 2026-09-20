@@ -490,7 +490,12 @@ public class WhatsAppController(
     private static string? DetectLanguage(string text)
     {
         if (text.Any(c => c >= HebrewBlockStart && c <= HebrewBlockEnd)) return "HE";
-        if (text.Any(c => c >= ArabicBlockStart && c <= ArabicBlockEnd)) return "AR";
+        // Arabic-Indic/Extended Arabic-Indic digits (see below) sit inside this same Unicode block
+        // but are just numerals, not a language signal -- a customer whose keyboard defaults numeric
+        // input to Arabic-Indic digits may be chatting in English or Hebrew the whole conversation.
+        // Excluded here so a digit-only reply doesn't flip an otherwise-English/Hebrew conversation
+        // to Arabic; only an actual Arabic *letter* counts.
+        if (text.Any(c => c >= ArabicBlockStart && c <= ArabicBlockEnd && !IsArabicIndicDigit(c))) return "AR";
         if (text.Any(char.IsLetter)) return "EN";
         return null;
     }
@@ -503,6 +508,10 @@ public class WhatsAppController(
     private const char ArabicIndicDigitEnd = (char)0x0669;
     private const char ExtendedArabicIndicDigitStart = (char)0x06F0;
     private const char ExtendedArabicIndicDigitEnd = (char)0x06F9;
+
+    private static bool IsArabicIndicDigit(char c) =>
+        (c >= ArabicIndicDigitStart && c <= ArabicIndicDigitEnd)
+        || (c >= ExtendedArabicIndicDigitStart && c <= ExtendedArabicIndicDigitEnd);
 
     private static string NormalizeDigits(string text)
     {

@@ -734,13 +734,18 @@ than their own dashboard.
 **Arabic-Indic numeral replies** (`WhatsAppController.NormalizeDigits`): a numbered-selection reply
 in Arabic-Indic (`٠`-`٩`) or Extended Arabic-Indic/Persian (`۰`-`۹`) digits is translated to ASCII
 before `int.TryParse` in `TryHandleServiceSelectionReply` — a customer replying in Arabic script
-naturally types the number in one of these, not by switching to a Western keyboard. Note this same
-Unicode range also holds the Arabic-Indic digits themselves, so `DetectLanguage` already classifies
-a bare Arabic-Indic-digit message as `AR`. `HandleInquiryModeAsync`'s own gate ("1"/"2") and
-`$1`/`$2` commands run `NormalizeDigits` on the trimmed message too, for the same reason —
-comparing the raw text directly against the literal ASCII commands would silently reject an
-Arabic-Indic reply at the gate even though the identical reply works fine once past it, on the
-real service list.
+naturally types the number in one of these, not by switching to a Western keyboard.
+`HandleInquiryModeAsync`'s own gate ("1"/"2") and `$1`/`$2` commands run `NormalizeDigits` on the
+trimmed message too, for the same reason — comparing the raw text directly against the literal
+ASCII commands would silently reject an Arabic-Indic reply at the gate even though the identical
+reply works fine once past it, on the real service list.
+
+These same digit ranges sit inside the Arabic Unicode block (`U+0600`–`U+06FF`), so
+`DetectLanguage` explicitly excludes them (`IsArabicIndicDigit`) from counting as an Arabic
+language signal — a digit alone, in any script, isn't linguistic content. Without this exclusion, a
+customer chatting in English or Hebrew whose phone happens to default numeric input to Arabic-Indic
+digits would have their whole conversation flip to Arabic on the next numeric reply, even though
+they never typed an actual Arabic word. Only a real Arabic *letter* triggers `AR` detection.
 
 ### Chatbot Inquiry mode (optional, alongside booking)
 `Business.ChatbotInquiryEnabled` (default `false`, `Settings > Chatbot Settings`) lets a customer
