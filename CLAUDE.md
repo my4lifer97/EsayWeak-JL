@@ -247,7 +247,8 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/business-types` (`BusinessOwnerRequestsController`) — active `BusinessTypeDefinition` rows, ordered by display name; backs both the public request form's picker and the browse category chips
 
 **Business owner onboarding (no JWT except the review side)**
-- `POST /api/business-owner-requests` — public submission `{ businessName, ownerFirstName, ownerFamilyName, email, phone, businessTypeId, businessDescription?, systemNeeds? }`; names must be English-letters-only (the username is derived from them); 400 on an email that already has a `Business`, 409 on a second concurrent `Pending` request for the same email; best-effort admin-notification email
+- `POST /api/business-owner-requests/send-email-code` — public `{ email }`; sends a 6-digit code via the admin's Gmail (`IOwnerEmailSender`); rate-limited (45s cooldown, 5/hour)
+- `POST /api/business-owner-requests` — public submission `{ businessName, ownerFirstName, ownerFamilyName, email, phone, businessTypeId, businessDescription?, systemNeeds?, code }`; `code` must match an unconsumed, unexpired row from `send-email-code` for that email (400 otherwise); names must be English-letters-only (the username is derived from them); phone must be 7–15 digits; 400 on an email that already has a `Business`, 409 on a second concurrent `Pending` request for the same email; best-effort admin-notification email
 - Platform-admin review side is under `/api/platform-admin` — see [Platform admin](#platform-admin) below
 
 **Reviews (customer JWT, `CustomerOnly`)**
@@ -475,10 +476,15 @@ Two ways a `Business` account comes into existence:
 1. **Self-service** — `POST /api/auth/register` (`AuthController`), unchanged in shape since before
    the multi-vertical work: email + password, `EmailVerified = false` until the 6-digit code is
    confirmed. Logs in by email only (`Username` stays null).
-2. **Admin-approved** — a prospective owner submits `POST /api/business-owner-requests`
-   (`BusinessOwnerRequestsController`, public) with their name, business name/type, and contact
-   info; a `BusinessOwnerRequest` row (`Pending`/`Approved`/`Rejected`) is created and a platform
-   admin reviews it at `/platform-admin/requests`. Approving
+2. **Admin-approved** — a prospective owner first proves they control the email address they typed
+   (`POST /api/business-owner-requests/send-email-code` `{ email }` -- 6-digit code, `BusinessOwnerRequestEmailOtp`,
+   same 45s cooldown/5-per-hour/10-min-expiry limits as `AuthController`'s self-service codes, sent
+   via the platform admin's own Gmail (`IOwnerEmailSender`, see below) rather than the system
+   `IEmailSender` chain, so it visibly comes from a real account), then submits
+   `POST /api/business-owner-requests` (`BusinessOwnerRequestsController`, public) with that code
+   plus their name, business name/type, and contact info -- 400 if the code doesn't match an
+   unconsumed, unexpired row for that email. A `BusinessOwnerRequest` row (`Pending`/`Approved`/`Rejected`)
+   is created and a platform admin reviews it at `/platform-admin/requests`. Approving
    (`PlatformAdminController.ApproveBusinessOwnerRequest`) picks a slug, generates a unique login
    `Username` (`UsernameGenerator`: first name + first two letters of family name, deduped with a
    numeric suffix against every existing `Business.Username`), a random 12-character temp password

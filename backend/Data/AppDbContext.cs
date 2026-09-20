@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WhatsAppLinkToken> WhatsAppLinkTokens => Set<WhatsAppLinkToken>();
     public DbSet<WhatsAppConversationState> WhatsAppConversationStates => Set<WhatsAppConversationState>();
     public DbSet<BusinessEmailOtp> BusinessEmailOtps => Set<BusinessEmailOtp>();
+    public DbSet<BusinessOwnerRequestEmailOtp> BusinessOwnerRequestEmailOtps => Set<BusinessOwnerRequestEmailOtp>();
     public DbSet<BusinessPasswordResetOtp> BusinessPasswordResetOtps => Set<BusinessPasswordResetOtp>();
     public DbSet<RecurringSeries> RecurringSeries => Set<RecurringSeries>();
     public DbSet<RecurringSkip> RecurringSkips => Set<RecurringSkip>();
@@ -79,6 +80,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => new { x.BusinessId, x.Phone }).IsUnique();
 
         b.Entity<BusinessEmailOtp>()
+            .HasIndex(x => new { x.Email, x.CreatedAt });
+
+        b.Entity<BusinessOwnerRequestEmailOtp>()
             .HasIndex(x => new { x.Email, x.CreatedAt });
 
         b.Entity<BusinessPasswordResetOtp>()

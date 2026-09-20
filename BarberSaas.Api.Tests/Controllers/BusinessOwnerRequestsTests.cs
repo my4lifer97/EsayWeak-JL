@@ -19,9 +19,31 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         return type.Id;
     }
 
-    private CreateBusinessOwnerRequestRequest ValidRequest(
-        string typeId, string email = "prospect@example.com", string first = "Jamel", string family = "Marie") =>
-        new("Prospect Barbershop", first, family, email, "+15551230000", typeId, "We cut hair", "Online booking");
+    // Seeds an already-verified OTP row directly (rather than going through the real
+    // send-email-code endpoint, which is rate-limited) so tests that reuse the same email across
+    // multiple ValidRequest calls -- reapplying after rejection, duplicate-pending checks, etc. --
+    // aren't tripped up by the 45s cooldown a real repeat send would hit. SendEmailCode's own
+    // behavior (rate limiting, real send, devCode) gets its own dedicated tests below.
+    private async Task<string> SeedVerifiedEmailCode(string email)
+    {
+        const string code = "123456";
+        using var db = Db();
+        db.BusinessOwnerRequestEmailOtps.Add(new BusinessOwnerRequestEmailOtp
+        {
+            Email = email,
+            CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(10),
+        });
+        await db.SaveChangesAsync();
+        return code;
+    }
+
+    private async Task<CreateBusinessOwnerRequestRequest> ValidRequest(
+        string typeId, string email = "prospect@example.com", string first = "Jamel", string family = "Marie")
+    {
+        var code = await SeedVerifiedEmailCode(email);
+        return new("Prospect Barbershop", first, family, email, "+15551230000", typeId, "We cut hair", "Online booking", code);
+    }
 
     private async Task<string> BootstrapAdmin(string email = "owner@example.com")
     {
@@ -36,15 +58,67 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     {
         var typeId = await SeedBusinessType();
 
-        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", ValidRequest(typeId));
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
+    // ─── Email verification (send-email-code) ────────────────────────────────
+
+    [Fact]
+    public async Task SendEmailCode_Succeeds_AndSendsViaOwnerEmailSender()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests/send-email-code",
+            new SendBusinessOwnerRequestEmailCodeRequest("verify-me@example.com"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<DevCodeResponse>();
+        Assert.NotNull(body!.DevCode);
+        Assert.Equal(6, body.DevCode!.Length);
+
+        var sent = Assert.Single(Factory.OwnerEmail.Sent);
+        Assert.Equal("verify-me@example.com", sent.Email);
+        Assert.Contains(body.DevCode, sent.Body);
+    }
+
+    [Fact]
+    public async Task SendEmailCode_RepeatWithinCooldown_ReturnsTooManyRequests()
+    {
+        await Client.PostAsJsonAsync("/api/business-owner-requests/send-email-code",
+            new SendBusinessOwnerRequestEmailCodeRequest("cooldown@example.com"));
+
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests/send-email-code",
+            new SendBusinessOwnerRequestEmailCodeRequest("cooldown@example.com"));
+
+        Assert.Equal((HttpStatusCode)429, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_WithoutVerifyingEmailFirst_ReturnsBadRequest()
+    {
+        var typeId = await SeedBusinessType();
+
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests",
+            new CreateBusinessOwnerRequestRequest("Prospect Barbershop", "Jamel", "Marie", "unverified@example.com", "+15551230000", typeId, null, null, "000000"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_WrongCode_ReturnsBadRequest()
+    {
+        var typeId = await SeedBusinessType();
+        var request = await ValidRequest(typeId, email: "wrong-code@example.com");
+
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", request with { Code = "999999" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     [Fact]
     public async Task Create_MissingBusinessType_ReturnsBadRequest()
     {
-        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", ValidRequest(typeId: ""));
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId: ""));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -57,7 +131,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
 
         var resp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            ValidRequest(typeId) with { Phone = phone });
+            await ValidRequest(typeId) with { Phone = phone });
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -68,7 +142,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
 
         var resp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            ValidRequest(typeId, email: "arabic-name@example.com", first: "جمال", family: "Marie"));
+            await ValidRequest(typeId, email: "arabic-name@example.com", first: "جمال", family: "Marie"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -77,9 +151,9 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     public async Task Create_DuplicatePending_ReturnsConflict()
     {
         var typeId = await SeedBusinessType();
-        await Client.PostAsJsonAsync("/api/business-owner-requests", ValidRequest(typeId, email: "dupe-pending@example.com"));
+        await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId, email: "dupe-pending@example.com"));
 
-        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", ValidRequest(typeId, email: "dupe-pending@example.com"));
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId, email: "dupe-pending@example.com"));
 
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
@@ -90,7 +164,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
         await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Existing Business", "existing@example.com", "password123", "existing-shop"));
 
-        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", ValidRequest(typeId, email: "existing@example.com"));
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId, email: "existing@example.com"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -101,7 +175,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
         var adminToken = await BootstrapAdmin();
         var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            ValidRequest(typeId, email: "jamel@example.com", first: "Jamel", family: "Marie"));
+            await ValidRequest(typeId, email: "jamel@example.com", first: "Jamel", family: "Marie"));
         var created = await createResp.Content.ReadFromJsonAsync<JsonRequestId>();
 
         Authorize(Client, adminToken);
@@ -123,7 +197,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         {
             Client.DefaultRequestHeaders.Authorization = null;
             var c = await Client.PostAsJsonAsync("/api/business-owner-requests",
-                ValidRequest(typeId, email: email, first: "Jamel", family: "Marie"));
+                await ValidRequest(typeId, email: email, first: "Jamel", family: "Marie"));
             var id = (await c.Content.ReadFromJsonAsync<JsonRequestId>())!.Id;
             Authorize(Client, adminToken);
             var a = await Client.PostAsJsonAsync($"/api/platform-admin/business-owner-requests/{id}/approve",
@@ -142,7 +216,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
         var adminToken = await BootstrapAdmin();
         var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            ValidRequest(typeId, email: "mail-me@example.com"));
+            await ValidRequest(typeId, email: "mail-me@example.com"));
         var created = await createResp.Content.ReadFromJsonAsync<JsonRequestId>();
 
         Authorize(Client, adminToken);
@@ -168,7 +242,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
         var adminToken = await BootstrapAdmin();
         var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            ValidRequest(typeId, email: "silent-approve@example.com"));
+            await ValidRequest(typeId, email: "silent-approve@example.com"));
         var created = await createResp.Content.ReadFromJsonAsync<JsonRequestId>();
 
         Authorize(Client, adminToken);
@@ -188,7 +262,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
         var adminToken = await BootstrapAdmin();
         var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            ValidRequest(typeId, email: "approve-me@example.com", first: "Jamel", family: "Marie"));
+            await ValidRequest(typeId, email: "approve-me@example.com", first: "Jamel", family: "Marie"));
         var created = await createResp.Content.ReadFromJsonAsync<JsonRequestId>();
 
         Authorize(Client, adminToken);
@@ -226,7 +300,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
         var adminToken = await BootstrapAdmin();
         var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            ValidRequest(typeId, email: "detail@example.com", first: "Jamel", family: "Marie"));
+            await ValidRequest(typeId, email: "detail@example.com", first: "Jamel", family: "Marie"));
         var created = await createResp.Content.ReadFromJsonAsync<JsonRequestId>();
 
         Authorize(Client, adminToken);
@@ -247,7 +321,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     {
         var typeId = await SeedBusinessType();
         var adminToken = await BootstrapAdmin();
-        var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests", ValidRequest(typeId, email: "reject-then-reapply@example.com"));
+        var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId, email: "reject-then-reapply@example.com"));
         var created = await createResp.Content.ReadFromJsonAsync<JsonRequestId>();
 
         Authorize(Client, adminToken);
@@ -257,10 +331,11 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, rejectResp.StatusCode);
 
         Client.DefaultRequestHeaders.Authorization = null;
-        var reapplyResp = await Client.PostAsJsonAsync("/api/business-owner-requests", ValidRequest(typeId, email: "reject-then-reapply@example.com"));
+        var reapplyResp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId, email: "reject-then-reapply@example.com"));
 
         Assert.Equal(HttpStatusCode.Created, reapplyResp.StatusCode);
     }
 
     private record JsonRequestId(string Id);
+    private record DevCodeResponse(string? DevCode);
 }

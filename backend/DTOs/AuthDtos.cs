@@ -142,7 +142,9 @@ public record BusinessTypeDto(string Id, string Key, string DisplayNameEn, strin
 
 public record CreateBusinessOwnerRequestRequest(
     string BusinessName, string OwnerFirstName, string OwnerFamilyName, string Email, string Phone,
-    string BusinessTypeId, string? BusinessDescription, string? SystemNeeds);
+    string BusinessTypeId, string? BusinessDescription, string? SystemNeeds, string Code);
+
+public record SendBusinessOwnerRequestEmailCodeRequest(string Email);
 
 public record BusinessOwnerRequestDto(
     string Id, string BusinessName, string OwnerFirstName, string OwnerFamilyName, string Email, string Phone,

@@ -22,6 +22,12 @@ export default function RequestBusinessAccountPage() {
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
+  const [emailCode, setEmailCode] = useState('')
+  const [codeSentForEmail, setCodeSentForEmail] = useState<string | null>(null)
+  const [sendingCode, setSendingCode] = useState(false)
+  const [codeError, setCodeError] = useState('')
+  const [devCode, setDevCode] = useState<string | null>(null)
+
   const { data: businessTypes } = useQuery<BusinessType[]>({
     queryKey: ['business-types'],
     queryFn: () => api.get('/business-types').then((r) => r.data),
@@ -33,6 +39,24 @@ export default function RequestBusinessAccountPage() {
   const phoneDigitCount = phone.replace(/\D/g, '').length
   const phoneError = phone.length > 0 && (phoneDigitCount < 7 || phoneDigitCount > 15)
 
+  const emailLooksValid = /\S+@\S+\.\S+/.test(email)
+  const codeSent = !!email && codeSentForEmail === email
+
+  async function handleSendCode() {
+    setCodeError(''); setSendingCode(true)
+    try {
+      const { data } = await api.post('/business-owner-requests/send-email-code', { email })
+      setCodeSentForEmail(email)
+      setEmailCode('')
+      if (data.devCode) { setDevCode(data.devCode); setEmailCode(data.devCode) }
+    } catch (err: unknown) {
+      const resp = (err as { response?: { status?: number; data?: { error?: string } } })?.response
+      setCodeError(resp?.status === 429 ? 'Please wait before requesting another code.' : (resp?.data?.error ?? 'Could not send the code.'))
+    } finally {
+      setSendingCode(false)
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -42,6 +66,14 @@ export default function RequestBusinessAccountPage() {
     }
     if (phoneDigitCount < 7 || phoneDigitCount > 15) {
       setError('Please enter a valid phone number.')
+      return
+    }
+    if (!codeSent) {
+      setError('Please verify your email address first.')
+      return
+    }
+    if (emailCode.trim().length !== 6) {
+      setError('Please enter the 6-digit code sent to your email.')
       return
     }
     if (!businessTypeId) {
@@ -59,6 +91,7 @@ export default function RequestBusinessAccountPage() {
         businessTypeId,
         businessDescription: description || null,
         systemNeeds: systemNeeds || null,
+        code: emailCode.trim(),
       })
       setSubmitted(true)
     } catch (err: unknown) {
@@ -111,10 +144,28 @@ export default function RequestBusinessAccountPage() {
                 <p className={`text-xs ${nameError ? 'text-red-600 dark:text-red-400' : 'text-muted'}`}>
                   Enter both names in English — they're used to create your login username.
                 </p>
-                <input
-                  type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Active email address" autoComplete="email" className={inputClass}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Active email address" autoComplete="email" className={`flex-1 ${inputClass}`}
+                  />
+                  <button type="button" onClick={handleSendCode} disabled={!emailLooksValid || sendingCode}
+                    className="shrink-0 border border-line text-ink hover:bg-cream disabled:opacity-50 font-semibold text-sm px-4 rounded-xl transition-colors">
+                    {sendingCode ? '…' : codeSent ? 'Resend' : 'Send code'}
+                  </button>
+                </div>
+                {codeError && <p className="text-xs text-red-600 dark:text-red-400">{codeError}</p>}
+                {codeSent && (
+                  <div>
+                    <input
+                      value={emailCode} onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="6-digit code from your email" inputMode="numeric" className={inputClass}
+                    />
+                    {devCode && (
+                      <p className="text-xs text-muted mt-1">Dev mode — your code is <span className="font-mono font-bold">{devCode}</span></p>
+                    )}
+                  </div>
+                )}
                 <input
                   type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)}
                   placeholder="Phone number" autoComplete="tel" className={inputClass}
