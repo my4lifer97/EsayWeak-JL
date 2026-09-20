@@ -134,7 +134,7 @@ public record PlatformAdminImpersonateResponse(string Token);
 
 public record PlatformAdminActivityLogDto(
     string Id, string Action, string Description, string Method, string Path,
-    int StatusCode, string? IpAddress, DateTime CreatedAt, bool Impersonated);
+    int StatusCode, string? IpAddress, string? UserAgent, DateTime CreatedAt, bool Impersonated);
 
 public record BusinessTypeDto(string Id, string Key, string DisplayNameEn, string DisplayNameAr, string DisplayNameHe);
 

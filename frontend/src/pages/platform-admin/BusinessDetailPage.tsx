@@ -34,6 +34,9 @@ export default function PlatformAdminBusinessDetailPage() {
   const [copied, setCopied] = useState(false)
   const [showCustomPasswordForm, setShowCustomPasswordForm] = useState(false)
   const [customPassword, setCustomPassword] = useState('')
+  const [shareableLink, setShareableLink] = useState<string | null>(null)
+  const [generatingLink, setGeneratingLink] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const { data: business } = useQuery<BusinessDetail>({
     queryKey: ['platform-admin-business', id],
@@ -79,6 +82,27 @@ export default function PlatformAdminBusinessDetailPage() {
     } finally {
       setUnlinking(false)
     }
+  }
+
+  // Lets the owner complete the QR scan themselves (their own screen, their own phone) instead of
+  // this admin relaying a screenshot that goes stale within seconds -- see WhatsAppLinkPage.
+  async function handleGetShareableLink() {
+    if (!business) return
+    setLinkError(''); setGeneratingLink(true); setLinkCopied(false)
+    try {
+      const { data } = await platformAdminApi.post(`/platform-admin/businesses/${business.id}/whatsapp/link-token`)
+      setShareableLink(data.url)
+    } catch {
+      setLinkError('Could not generate a shareable link')
+    } finally {
+      setGeneratingLink(false)
+    }
+  }
+
+  async function handleCopyLink() {
+    if (!shareableLink) return
+    await navigator.clipboard.writeText(shareableLink)
+    setLinkCopied(true)
   }
   async function handleToggleDisabled() {
     if (!business) return
@@ -283,6 +307,30 @@ export default function PlatformAdminBusinessDetailPage() {
               className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
               {starting ? 'Starting...' : 'Link WhatsApp'}
             </button>
+          )}
+
+          {!business.whatsAppNumber && (
+            <div className="mt-4 pt-4 border-t border-line">
+              <p className="text-muted text-sm mb-2">
+                Or let the owner scan it themselves — generate a link they can open on their own
+                screen, instead of you relaying a QR screenshot that goes stale in seconds.
+              </p>
+              {shareableLink ? (
+                <div className="flex items-center gap-2">
+                  <input readOnly value={shareableLink} onFocus={(e) => e.target.select()}
+                    className="flex-1 bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm font-mono" />
+                  <button onClick={handleCopyLink}
+                    className="border border-line text-ink hover:bg-cream font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors shrink-0">
+                    {linkCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              ) : (
+                <button onClick={handleGetShareableLink} disabled={generatingLink}
+                  className="border border-line text-ink hover:bg-cream disabled:opacity-50 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+                  {generatingLink ? 'Generating...' : 'Get shareable link'}
+                </button>
+              )}
+            </div>
           )}
         </div>
 

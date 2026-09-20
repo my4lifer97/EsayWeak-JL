@@ -108,7 +108,28 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             return StatusCode(403, new { error = "Please verify your email before signing in.", emailNotVerified = true });
 
         var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.MustChangePassword);
+        await LogLoginAsync(business.Id, nameof(Login));
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug, business.MustChangePassword));
+    }
+
+    // Login itself is anonymous (no JWT on the request yet), so ActivityLogFilter's generic
+    // per-request sweep -- which reads identity off the *incoming* request -- never sees it, even
+    // though the response carries a freshly minted token. Explicit logging here (and at every
+    // other action that logs someone in) is the only way "signed in" ends up in the activity feed.
+    private async Task LogLoginAsync(string businessId, string action)
+    {
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = businessId,
+            Action = $"{nameof(AuthController)}.{action}",
+            Description = "Signed in",
+            Method = Request.Method,
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null,
+        });
+        await db.SaveChangesAsync();
     }
 
     [HttpPost("resend-verification")]
@@ -176,6 +197,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         await db.SaveChangesAsync();
 
         var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.MustChangePassword);
+        await LogLoginAsync(business.Id, nameof(VerifyEmail));
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug, business.MustChangePassword));
     }
 
@@ -246,6 +268,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         await db.SaveChangesAsync();
 
         var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
+        await LogLoginAsync(business.Id, nameof(ResetPassword));
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }
 

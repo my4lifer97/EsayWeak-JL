@@ -20,6 +20,9 @@ public class ActivityLog
     public string Path { get; set; } = "";
     public int StatusCode { get; set; }
     public string? IpAddress { get; set; }
+    // Raw User-Agent header -- shown as-is in the platform-admin UI rather than parsed into a
+    // device/browser name server-side, since a mis-parsed UA is worse than the raw string.
+    public string? UserAgent { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Business? Business { get; set; }

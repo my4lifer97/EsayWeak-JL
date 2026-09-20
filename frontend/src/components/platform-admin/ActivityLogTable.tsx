@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 export type ActivityLogEntry = {
   id: string; action: string; description: string; method: string; path: string
-  statusCode: number; ipAddress: string | null; createdAt: string; impersonated: boolean
+  statusCode: number; ipAddress: string | null; userAgent: string | null; createdAt: string; impersonated: boolean
 }
 
 // "RecurringAppointmentsController.Delete" -> "Delete" -- same regex as the backend's
@@ -18,6 +18,7 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('')
   const [impersonatedFilter, setImpersonatedFilter] = useState<'all' | 'impersonated' | 'direct'>('all')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   if (!entries) return <p className="text-muted text-sm">Loading...</p>
   if (entries.length === 0) return <p className="text-muted text-sm">No activity recorded yet.</p>
@@ -70,18 +71,35 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => (
-                <tr key={e.id} className="border-b border-line">
-                  <td className="py-2 pr-4">
-                    {e.description}
-                    {e.impersonated && (
-                      <span className="ml-2 text-xs text-yellow-700 dark:text-yellow-400">(via impersonation)</span>
+              {filtered.map((e) => {
+                const expanded = expandedId === e.id
+                return (
+                  <Fragment key={e.id}>
+                    <tr onClick={() => setExpandedId(expanded ? null : e.id)}
+                      className="border-b border-line cursor-pointer hover:bg-cream transition-colors">
+                      <td className="py-2 pr-4">
+                        {e.description}
+                        {e.impersonated && (
+                          <span className="ml-2 text-xs text-yellow-700 dark:text-yellow-400">(via impersonation)</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-4 text-muted">{e.method} {e.statusCode}</td>
+                      <td className="py-2 pr-4 text-muted">{new Date(e.createdAt).toLocaleString()}</td>
+                    </tr>
+                    {expanded && (
+                      <tr className="border-b border-line bg-cream">
+                        <td colSpan={3} className="py-3 px-4 text-xs text-muted space-y-1">
+                          <div><span className="font-medium text-ink">Action:</span> {e.action}</div>
+                          <div><span className="font-medium text-ink">Path:</span> {e.method} {e.path}</div>
+                          <div><span className="font-medium text-ink">IP address:</span> {e.ipAddress ?? '—'}</div>
+                          <div><span className="font-medium text-ink">Device:</span> {e.userAgent ?? '—'}</div>
+                          <div><span className="font-medium text-ink">Timestamp:</span> {new Date(e.createdAt).toISOString()}</div>
+                        </td>
+                      </tr>
                     )}
-                  </td>
-                  <td className="py-2 pr-4 text-muted">{e.method} {e.statusCode}</td>
-                  <td className="py-2 pr-4 text-muted">{new Date(e.createdAt).toLocaleString()}</td>
-                </tr>
-              ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

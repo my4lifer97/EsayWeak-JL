@@ -73,6 +73,7 @@ else
 builder.Services.AddScoped<WaitlistService>();
 builder.Services.AddScoped<AppointmentCancellationService>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
+builder.Services.AddScoped<WhatsAppLinkingService>();
 // Email delivery, in order of precedence: Brevo (Brevo:ApiKey set -- the only option that can
 // reach arbitrary recipients without a verified domain, see BrevoEmailSender), then SMTP (e.g.
 // Gmail with an app password -- note this needs Railway's Pro plan or a non-Railway host, since

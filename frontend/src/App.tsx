@@ -25,6 +25,7 @@ import BusinessPage from './pages/public/BusinessPage'
 import BookPage from './pages/public/BookPage'
 import AppointmentPage from './pages/public/AppointmentPage'
 import WhatsAppLandingPage from './pages/public/WhatsAppLandingPage'
+import WhatsAppLinkPage from './pages/public/WhatsAppLinkPage'
 import BrowseBusinessesPage from './pages/public/BrowseBusinessesPage'
 import MyBookingsPage from './pages/public/MyBookingsPage'
 import RequestBusinessAccountPage from './pages/public/RequestBusinessAccountPage'
@@ -85,6 +86,9 @@ export default function App() {
                 {/* WhatsApp booking-link landing point — establishes the customer session itself
                     (see WhatsAppLandingPage), so it's public and outside CustomerProtectedRoute. */}
                 <Route path="/:slug/w/:token" element={<WhatsAppLandingPage />} />
+                {/* Shareable link a platform admin hands off to a business owner so they can scan
+                    their own WhatsApp-link QR code themselves -- see WhatsAppLinkController. */}
+                <Route path="/wa-link/:token" element={<WhatsAppLinkPage />} />
                 {/* Deliberately not linked from any public nav -- internal tool only. */}
                 <Route path="/platform-admin/login" element={<PlatformAdminLoginPage />} />
                 <Route element={<PlatformAdminProtectedRoute />}>

@@ -18,6 +18,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CustomerOtp> CustomerOtps => Set<CustomerOtp>();
     public DbSet<Follow> Follows => Set<Follow>();
     public DbSet<WhatsAppBookingToken> WhatsAppBookingTokens => Set<WhatsAppBookingToken>();
+    public DbSet<WhatsAppLinkToken> WhatsAppLinkTokens => Set<WhatsAppLinkToken>();
     public DbSet<WhatsAppConversationState> WhatsAppConversationStates => Set<WhatsAppConversationState>();
     public DbSet<BusinessEmailOtp> BusinessEmailOtps => Set<BusinessEmailOtp>();
     public DbSet<BusinessPasswordResetOtp> BusinessPasswordResetOtps => Set<BusinessPasswordResetOtp>();
@@ -69,6 +70,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(x => new { x.CustomerAccountId, x.BusinessId }).IsUnique();
 
         b.Entity<WhatsAppBookingToken>()
+            .HasIndex(x => x.ExpiresAt);
+
+        b.Entity<WhatsAppLinkToken>()
             .HasIndex(x => x.ExpiresAt);
 
         b.Entity<WhatsAppConversationState>()
@@ -265,6 +269,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.Item).WithMany()
             .HasForeignKey(x => x.ItemId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WhatsAppConversationState>()
+            .HasOne(x => x.Business).WithMany()
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<WhatsAppLinkToken>()
             .HasOne(x => x.Business).WithMany()
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
 

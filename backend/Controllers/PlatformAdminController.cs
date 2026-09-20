@@ -15,7 +15,7 @@ namespace BarberSaas.Api.Controllers;
 public class PlatformAdminController(
     AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt,
     IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger,
-    ReviewService reviews, IWhatsAppBridgeClient whatsAppBridge) : ControllerBase
+    ReviewService reviews, IWhatsAppBridgeClient whatsAppBridge, WhatsAppLinkingService whatsAppLinking) : ControllerBase
 {
     private string AdminId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -214,8 +214,9 @@ public class PlatformAdminController(
 
     // Links a business's WhatsApp chatbot to a real, self-hosted (Baileys) session via
     // whatsapp-bridge -- see Business.WhatsAppNumber and BridgeWhatsAppSender. Business.WhatsAppNumber
-    // itself is only ever written by GetWhatsAppLinkStatus below, once the bridge reports a
-    // successful link -- these three endpoints just proxy the bridge's linking flow.
+    // itself is only ever written by WhatsAppLinkingService.GetStatusAndRecordAsync, once the bridge
+    // reports a successful link -- these endpoints (plus the token-based ones below) just proxy the
+    // bridge's linking flow. See CreateWhatsAppLinkToken for the shareable-link variant of this.
     [HttpPost("businesses/{id}/whatsapp/link")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> StartWhatsAppLink(string id)
@@ -234,25 +235,26 @@ public class PlatformAdminController(
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
 
-        var status = await whatsAppBridge.GetStatusAsync(id);
-        if (status.State == "connected" && status.PhoneNumber is not null && b.WhatsAppNumber != status.PhoneNumber)
-        {
-            var old = b.WhatsAppNumber;
-            b.WhatsAppNumber = status.PhoneNumber;
-            db.ActivityLogs.Add(new ActivityLog
-            {
-                BusinessId = b.Id,
-                ImpersonatedByPlatformAdminId = AdminId,
-                Action = $"{nameof(PlatformAdminController)}.{nameof(GetWhatsAppLinkStatus)}",
-                Description = $"WhatsApp number: \"{old}\" → \"{b.WhatsAppNumber}\"",
-                Method = "GET",
-                Path = Request.Path.ToString(),
-                StatusCode = 200,
-                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
-            });
-            await db.SaveChangesAsync();
-        }
+        var status = await whatsAppLinking.GetStatusAndRecordAsync(
+            b, AdminId, "GET", Request.Path.ToString(), HttpContext.Connection.RemoteIpAddress?.ToString());
         return Ok(status);
+    }
+
+    // Generates a short-lived, opaque link the admin can hand off (over any channel) to the
+    // business owner, so the owner can complete the QR scan themselves on their own screen instead
+    // of the admin relaying a screenshot that goes stale within seconds -- see WhatsAppLinkToken
+    // and WhatsAppLinkController. The admin still initiates every session; this only removes the
+    // admin as a manual relay for the scan step.
+    [HttpPost("businesses/{id}/whatsapp/link-token")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> CreateWhatsAppLinkToken(string id)
+    {
+        var exists = await db.Businesses.AnyAsync(b => b.Id == id);
+        if (!exists) return NotFound();
+
+        var token = await whatsAppLinking.CreateTokenAsync(id, AdminId);
+        var appUrl = config["AppUrl"];
+        return Ok(new { token = token.Id, url = $"{appUrl}/wa-link/{token.Id}" });
     }
 
     [HttpDelete("businesses/{id}/whatsapp/link")]
@@ -289,7 +291,7 @@ public class PlatformAdminController(
         var logs = await db.ActivityLogs.Where(a => a.BusinessId == id)
             .OrderByDescending(a => a.CreatedAt).Take(200)
             .Select(a => new PlatformAdminActivityLogDto(
-                a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.CreatedAt,
+                a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.UserAgent, a.CreatedAt,
                 a.ImpersonatedByPlatformAdminId != null))
             .ToListAsync();
         return Ok(logs);
@@ -343,7 +345,7 @@ public class PlatformAdminController(
         var logs = await db.ActivityLogs.Where(a => a.CustomerAccountId == id)
             .OrderByDescending(a => a.CreatedAt).Take(200)
             .Select(a => new PlatformAdminActivityLogDto(
-                a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.CreatedAt,
+                a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.UserAgent, a.CreatedAt,
                 a.ImpersonatedByPlatformAdminId != null))
             .ToListAsync();
         return Ok(logs);

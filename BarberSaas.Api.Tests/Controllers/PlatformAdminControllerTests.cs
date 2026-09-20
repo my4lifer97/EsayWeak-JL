@@ -182,6 +182,80 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         Assert.Contains(activity!, a => a.Action.Contains("ImpersonateBusiness") && a.Impersonated);
     }
 
+    // ─── WhatsApp linking ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateWhatsAppLinkToken_ReturnsAShareableUrl()
+    {
+        var adminToken = await BootstrapAdmin();
+        var businessToken = await RegisterAndLoginBusiness("wa-link-business@example.com", "wa-link-business-shop");
+        Authorize(Client, businessToken);
+        var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
+
+        Authorize(Client, adminToken);
+        var resp = await Client.PostAsync($"/api/platform-admin/businesses/{settings!.Id}/whatsapp/link-token", null);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        Assert.Contains("/wa-link/", body!["url"]);
+        Assert.False(string.IsNullOrWhiteSpace(body["token"]));
+    }
+
+    [Fact]
+    public async Task WaLinkController_WithValidToken_ReturnsLiveStatusWithNoAuthNeeded()
+    {
+        var adminToken = await BootstrapAdmin();
+        var businessToken = await RegisterAndLoginBusiness("wa-link-scan@example.com", "wa-link-scan-shop");
+        Authorize(Client, businessToken);
+        var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
+
+        Authorize(Client, adminToken);
+        var createResp = await Client.PostAsync($"/api/platform-admin/businesses/{settings!.Id}/whatsapp/link-token", null);
+        var created = await createResp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+
+        Client.DefaultRequestHeaders.Authorization = null; // the owner's browser has no session at all
+        var resp = await Client.GetAsync($"/api/wa-link/{created!["token"]}");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(settings.Name, body.GetProperty("businessName").GetString());
+        Assert.Equal("qr", body.GetProperty("state").GetString());
+    }
+
+    [Fact]
+    public async Task WaLinkController_WithUnknownToken_ReturnsNotFound()
+    {
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        var resp = await Client.GetAsync("/api/wa-link/not-a-real-token");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task WaLinkController_WhenBridgeReportsConnected_WritesWhatsAppNumberAndLogsIt()
+    {
+        var adminToken = await BootstrapAdmin();
+        var businessToken = await RegisterAndLoginBusiness("wa-link-connected@example.com", "wa-link-connected-shop");
+        Authorize(Client, businessToken);
+        var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
+
+        Authorize(Client, adminToken);
+        var createResp = await Client.PostAsync($"/api/platform-admin/businesses/{settings!.Id}/whatsapp/link-token", null);
+        var created = await createResp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+
+        Factory.WhatsAppBridge.StatusToReturn = new("connected", null, "+15551234567");
+        Client.DefaultRequestHeaders.Authorization = null;
+        var resp = await Client.GetAsync($"/api/wa-link/{created!["token"]}");
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        using var db = Db();
+        var business = db.Businesses.Single(b => b.Id == settings.Id);
+        Assert.Equal("+15551234567", business.WhatsAppNumber);
+        var log = db.ActivityLogs.Single(a => a.BusinessId == settings.Id && a.Action == "WhatsAppLink.Connected");
+        Assert.NotNull(log.ImpersonatedByPlatformAdminId);
+    }
+
     // ─── Generic activity logging ───────────────────────────────────────────
 
     [Fact]

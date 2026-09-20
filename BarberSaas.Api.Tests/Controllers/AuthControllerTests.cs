@@ -89,6 +89,30 @@ public class AuthControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Login_RecordsAnActivityLogEntry_WithIpAndUserAgent()
+    {
+        // Login is anonymous (no JWT on the request yet), so the generic per-request
+        // ActivityLogFilter -- which reads identity off the incoming request -- never sees it.
+        // AuthController.LogLoginAsync is the only thing that puts a "signed in" row in the feed.
+        var code = await RegisterAndGetDevCode("login-logged@example.com", "login-logged-shop");
+        await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("login-logged@example.com", code));
+
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login")
+        {
+            Content = JsonContent.Create(new LoginRequest("login-logged@example.com", "password123")),
+        };
+        req.Headers.UserAgent.ParseAdd("TestAgent/1.0");
+        var resp = await Client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        using var db = Db();
+        var business = db.Businesses.Single(b => b.Email == "login-logged@example.com");
+        var log = db.ActivityLogs.Single(a => a.BusinessId == business.Id && a.Action == "AuthController.Login");
+        Assert.Equal("Signed in", log.Description);
+        Assert.Equal("TestAgent/1.0", log.UserAgent);
+    }
+
+    [Fact]
     public async Task Login_WithWrongPassword_ReturnsUnauthorized()
     {
         await Client.PostAsJsonAsync("/api/auth/register", ValidRegister(email: "wrongpw@example.com", slug: "wrongpw-shop"));

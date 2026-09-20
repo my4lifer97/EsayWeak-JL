@@ -59,6 +59,7 @@ public class ActivityLogFilter(AppDbContext db) : IAsyncResultFilter
             Path = request.Path.ToString(),
             StatusCode = context.HttpContext.Response.StatusCode,
             IpAddress = context.HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null,
         };
 
         if (type == "customer")
