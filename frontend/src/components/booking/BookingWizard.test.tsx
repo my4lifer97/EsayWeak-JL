@@ -120,6 +120,25 @@ describe('BookingWizard', () => {
     expect(screen.queryByText('Select a Service')).not.toBeInTheDocument()
   })
 
+  it('WhatsApp deep-link customer can change the pre-selected service via the explicit "Change" link', async () => {
+    // The floor above blocks the implicit "← Back" control from reaching step 1, but a customer
+    // who deliberately wants a different service than the one picked in the WhatsApp chat still
+    // needs a way there -- a separate, explicit control, not a relaxation of the floor itself.
+    renderWizard(`/${business.slug}/book?itemId=svc-gallery`)
+
+    await waitFor(() => expect(screen.getByText('Select a Date')).toBeInTheDocument())
+    expect(screen.getByText('Gallery Cut', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('Change')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Change'))
+
+    expect(screen.getByText('Select a Service')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Haircut'))
+
+    expect(screen.getByText('Select a Date')).toBeInTheDocument()
+  })
+
   it('a customer who opened the site directly keeps normal back navigation', async () => {
     renderWizard() // no ?itemId= -- a direct visit, not from a WhatsApp link
     await userEvent.click(screen.getByText('Haircut'))

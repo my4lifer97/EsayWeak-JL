@@ -3,6 +3,7 @@ const translations = {
     // public booking flow
     loading: 'Loading...',
     back: 'Back',
+    changeService: 'Change',
     selectService: 'Select a Service',
     selectDate: 'Select a Date',
     selectTime: 'Select a Time',
@@ -345,6 +346,7 @@ const translations = {
     // public booking flow
     loading: 'جارٍ التحميل...',
     back: 'رجوع',
+    changeService: 'تغيير',
     selectService: 'اختر خدمة',
     selectDate: 'اختر تاريخًا',
     selectTime: 'اختر وقتًا',
@@ -687,6 +689,7 @@ const translations = {
     // public booking flow
     loading: 'טוען...',
     back: 'חזור',
+    changeService: 'החלף',
     selectService: 'בחר שירות',
     selectDate: 'בחר תאריך',
     selectTime: 'בחר שעה',

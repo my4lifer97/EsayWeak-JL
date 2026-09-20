@@ -206,6 +206,12 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
         <h1 className="text-2xl font-bold mb-2">{business.name}</h1>
 
+        {isFromLink && step > 1 && item && (
+          <button onClick={() => setStep(1)} className="text-sm text-muted hover:text-ink mb-6 -mt-1 block">
+            {itemName(item, lang)} · <span className="text-coral-dark">{t(lang, 'changeService')}</span>
+          </button>
+        )}
+
         {step === 1 && (
           <div>
             <p className="text-muted mb-6">{t(lang, 'selectService')}</p>
