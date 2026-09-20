@@ -105,6 +105,23 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Create_WithNoCodeAtAll_ReturnsBadRequestWithAClearMessage()
+    {
+        // Covers a stale frontend bundle (from before this verification step existed) still
+        // submitting the old request shape -- Code is nullable specifically so this hits the
+        // explicit check below and gets a real "error" field, not [ApiController]'s generic
+        // automatic-validation response (which the frontend can't render a message from).
+        var typeId = await SeedBusinessType();
+
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests",
+            new CreateBusinessOwnerRequestRequest("Prospect Barbershop", "Jamel", "Marie", "no-code@example.com", "+15551230000", typeId, null, null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<ErrorResponse>();
+        Assert.False(string.IsNullOrEmpty(body!.Error));
+    }
+
+    [Fact]
     public async Task Create_WrongCode_ReturnsBadRequest()
     {
         var typeId = await SeedBusinessType();
@@ -338,4 +355,5 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
 
     private record JsonRequestId(string Id);
     private record DevCodeResponse(string? DevCode);
+    private record ErrorResponse(string Error);
 }

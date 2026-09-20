@@ -106,6 +106,13 @@ public class BusinessOwnerRequestsController(
             return BadRequest(new { error = "Please enter a valid phone number" });
         if (string.IsNullOrWhiteSpace(req.BusinessTypeId))
             return BadRequest(new { error = "Business type is required" });
+        // Non-nullable string params would otherwise trigger [ApiController]'s automatic
+        // ModelState validation (a generic ValidationProblemDetails body, no "error" field the
+        // frontend knows to show) if this field is ever missing -- e.g. a stale client-side bundle
+        // from before this verification step existed, still submitting the old request shape.
+        // An explicit check here gives a message the frontend can actually surface.
+        if (string.IsNullOrWhiteSpace(req.Code))
+            return BadRequest(new { error = "Please verify your email address first." });
 
         var businessType = await db.BusinessTypeDefinitions
             .FirstOrDefaultAsync(t => t.Id == req.BusinessTypeId && t.IsActive);
