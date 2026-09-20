@@ -78,8 +78,16 @@ export async function startSession(businessId) {
         await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
       } else {
         session.status = 'disconnected'
-        console.log(`[${businessId}] connection closed, reconnecting in 3s (code ${statusCode})`)
-        setTimeout(() => startSession(businessId), 3000)
+        // DisconnectReason.forbidden means WhatsApp is actively (and temporarily) blocking this
+        // connection -- retrying every few seconds during that window looks like exactly the
+        // bot-like reconnect-hammering pattern that gets a block escalated into a full logout.
+        // `error.data.expire` (unix seconds), when present, says when the block actually lifts;
+        // otherwise back off a full minute rather than guessing low.
+        const forbidden = statusCode === DisconnectReason.forbidden
+        const expireAt = lastDisconnect?.error?.data?.expire
+        const delayMs = forbidden ? Math.max((expireAt ? expireAt * 1000 - Date.now() : 60_000), 60_000) : 3000
+        console.log(`[${businessId}] connection closed, reconnecting in ${Math.round(delayMs / 1000)}s (code ${statusCode}${forbidden ? ', WhatsApp temporary block' : ''})`)
+        setTimeout(() => startSession(businessId), delayMs)
       }
     }
   })
