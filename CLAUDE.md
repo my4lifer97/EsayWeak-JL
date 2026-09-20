@@ -367,15 +367,19 @@ just "Luna", would leave `FamilyName` permanently empty). So `LoginWithWhatsApp`
 the existing per-business `Customer.Name`/`FamilyName` for that (business, phone) when one exists,
 falling back to the account's own name only for a true first-time-with-this-business customer.
 
-### No back-navigation once a customer arrives via a WhatsApp link
+### Back-navigation floor once a customer arrives via a WhatsApp link
 `BookingWizard` reads `?itemId=` (set by both `WhatsAppLandingPage`'s redirect and a waitlist
-notification's deep link) once on mount into `isFromLink` — when true, the item (and sometimes
-date/time) was already chosen in the WhatsApp chat, so this session gets **no way back** to
-reconsider it: the in-page "← Back"/`BackButton` controls are hidden entirely, and a `popstate`
-listener re-pushes the current history entry as a best-effort trap against the browser's own back
-button too (this can't fully override the OS/browser back gesture, only discourage it — there's no
-web API that can). A customer who opened the site directly (no `itemId` param, always starts at
-step 1) is unaffected and keeps normal back navigation at every step.
+notification's deep link) once on mount into `isFromLink` — when true, the item was already chosen
+in the WhatsApp chat, so this session can't get back to item selection (step 1) or leave the wizard
+page entirely: a `popstate` listener re-pushes the current history entry as a best-effort trap
+against the browser's own back button (this can't fully override the OS/browser back gesture, only
+discourage it — there's no web API that can), and the `BackButton`/leave-page control never renders
+for this flow. Date selection (step 2) is the floor the customer lands on and can't go back past.
+From step 3 (time) or step 4 (details/confirm) onward, though, the normal in-page "← Back" control
+*does* render and steps them back one at a time (time → date, confirm → time) — only reconsidering
+the already-chosen item is blocked, not the date/time/details picked on this page. A customer who
+opened the site directly (no `itemId` param, always starts at step 1) is unaffected and keeps normal
+back navigation at every step.
 
 ### Item reference photos
 Each `Item` has a `PhotoMode` (`None` / `OwnerGallery` / `CustomerUpload` / `Both`), set per-item on

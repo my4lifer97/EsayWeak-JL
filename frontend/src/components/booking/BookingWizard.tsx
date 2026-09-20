@@ -184,12 +184,12 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     <div className="min-h-screen bg-cream text-ink" dir={dir}>
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="flex items-center gap-2 mb-8">
-          {isFromLink ? (
-            <div />
-          ) : step > 1 ? (
+          {step > (isFromLink ? 2 : 1) ? (
             <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-muted hover:text-ink text-sm">
               ← {t(lang, 'back')}
             </button>
+          ) : isFromLink ? (
+            <div />
           ) : (
             <BackButton lang={lang} />
           )}

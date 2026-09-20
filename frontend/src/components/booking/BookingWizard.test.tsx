@@ -99,15 +99,25 @@ describe('BookingWizard', () => {
     expect(screen.getByText('Select a Service')).toBeInTheDocument()
   })
 
-  it('WhatsApp deep-link lands on date selection with no way back to service selection', async () => {
+  it('WhatsApp deep-link lands on date selection with no way back to service selection, but back returns once past it', async () => {
     // Mirrors WhatsAppLandingPage's redirect: /:slug/book?itemId=<id>, skipping step 1. The
-    // service was already chosen in the WhatsApp chat, so this session gets no back navigation
-    // at all -- neither the in-page control nor (best-effort) the browser's own back button.
+    // service was already chosen in the WhatsApp chat, so date selection is the floor: no back
+    // control here, and the browser's own back button is (best-effort) trapped too. Past this
+    // floor, though, the in-page back control comes back and steps down to (never past) it.
     renderWizard(`/${business.slug}/book?itemId=svc-gallery`)
 
     await waitFor(() => expect(screen.getByText('Select a Date')).toBeInTheDocument())
     expect(screen.queryByText('Select a Service')).not.toBeInTheDocument()
     expect(screen.queryByText('← Back')).not.toBeInTheDocument()
+
+    vi.mocked(customerApi.get).mockResolvedValue({ data: { slots: [{ start: '09:00', end: '09:30', available: true }] } })
+    await userEvent.click(findDateButtons()[0])
+
+    await waitFor(() => expect(screen.getByText('← Back')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('← Back'))
+
+    expect(screen.getByText('Select a Date')).toBeInTheDocument()
+    expect(screen.queryByText('Select a Service')).not.toBeInTheDocument()
   })
 
   it('a customer who opened the site directly keeps normal back navigation', async () => {
