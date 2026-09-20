@@ -15,7 +15,8 @@ namespace BarberSaas.Api.Controllers;
 public class PlatformAdminController(
     AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt,
     IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger,
-    ReviewService reviews, IWhatsAppBridgeClient whatsAppBridge, WhatsAppLinkingService whatsAppLinking) : ControllerBase
+    ReviewService reviews, IWhatsAppBridgeClient whatsAppBridge, WhatsAppLinkingService whatsAppLinking,
+    IOwnerEmailSender ownerEmailSender) : ControllerBase
 {
     private string AdminId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -90,7 +91,8 @@ public class PlatformAdminController(
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
         return Ok(new PlatformAdminBusinessDetailDto(
-            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber, b.IsDisabled));
+            b.Id, b.Name, b.Email, b.Slug, b.Phone, b.Username,
+            b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber, b.IsDisabled));
     }
 
     // "Active Directory"-style account lock -- blocks only AuthController.Login (see
@@ -162,7 +164,12 @@ public class PlatformAdminController(
             tempPassword = GenerateTempPassword();
             b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword);
             b.MustChangePassword = true;
-            emailSent = await SendPasswordResetEmailAsync(b, tempPassword);
+            // Silent: the owner-email composer just wants the generated value to include in its
+            // own admin-composed message -- the system's own generic reset email would otherwise
+            // fire in parallel and undercut the whole point of the composer's "choose exactly what
+            // gets sent" promise.
+            if (!req.Silent)
+                emailSent = await SendPasswordResetEmailAsync(b, tempPassword);
         }
         else
         {
@@ -282,6 +289,53 @@ public class PlatformAdminController(
         await db.SaveChangesAsync();
 
         return Ok(new { b.Id, b.WhatsAppNumber });
+    }
+
+    // Backs the platform-admin panel's owner-email composer: the admin picks exactly which pieces
+    // (username, password, chatbot link, any combination) to include, previews the exact text, and
+    // this just sends whatever was composed -- no server-side templating, so the preview the admin
+    // saw is exactly the email that goes out. Sent via the admin's own Gmail (IOwnerEmailSender),
+    // not the system IEmailSender chain -- see IOwnerEmailSender for why.
+    [HttpPost("businesses/{id}/email")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> EmailOwner(string id, [FromBody] EmailOwnerRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Subject) || string.IsNullOrWhiteSpace(req.Body))
+            return BadRequest(new { error = "Subject and body are required" });
+
+        var gmailConfigured = !string.IsNullOrEmpty(config["Gmail:ClientId"])
+            && !string.IsNullOrEmpty(config["Gmail:ClientSecret"])
+            && !string.IsNullOrEmpty(config["Gmail:RefreshToken"]);
+        if (!gmailConfigured)
+            return StatusCode(503, new { error = "Gmail isn't configured yet -- set Gmail:ClientId/ClientSecret/RefreshToken/FromEmail." });
+
+        var b = await db.Businesses.FindAsync(id);
+        if (b is null) return NotFound();
+
+        try
+        {
+            await ownerEmailSender.SendAsync(b.Email, req.Subject, req.Body);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to email business owner {BusinessId}", id);
+            return StatusCode(502, new { error = "Could not send the email. Please try again shortly." });
+        }
+
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = b.Id,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{nameof(EmailOwner)}",
+            Description = $"Emailed owner: \"{req.Subject}\"",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { ok = true });
     }
 
     [HttpGet("businesses/{id}/activity")]
@@ -483,7 +537,10 @@ public class PlatformAdminController(
         });
         await db.SaveChangesAsync();
 
-        var emailSent = await SendApprovalEmailAsync(request, username, tempPassword);
+        // Silent: the owner-email composer wants to present the generated credentials for the
+        // admin to review/edit before anything goes out -- the automatic approval email would
+        // otherwise fire immediately and undercut that choice.
+        var emailSent = req.Silent ? false : await SendApprovalEmailAsync(request, username, tempPassword);
 
         // The temp password is still returned even when the email went out, so the admin can send
         // it by hand if delivery failed (bad address, provider limit). Never logged, never stored

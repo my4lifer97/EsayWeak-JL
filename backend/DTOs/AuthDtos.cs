@@ -122,10 +122,12 @@ public record PlatformAdminLoginResponse(string Token, string Id, string Name, s
 
 public record PlatformAdminBusinessSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
 public record PlatformAdminBusinessDetailDto(
-    string Id, string Name, string Email, string Slug, string? Phone,
+    string Id, string Name, string Email, string Slug, string? Phone, string? Username,
     DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? WhatsAppNumber, bool IsDisabled);
 
 public record WhatsAppLinkStatusDto(string State, string? Qr, string? PhoneNumber);
+
+public record EmailOwnerRequest(string Subject, string Body);
 
 public record PlatformAdminCustomerSummaryDto(string Id, string Name, string FamilyName, string Phone);
 public record PlatformAdminCustomerDetailDto(string Id, string Name, string FamilyName, string Phone, DateTime CreatedAt);
@@ -148,12 +150,12 @@ public record BusinessOwnerRequestDto(
     string Status, string? RejectionNote,
     DateTime CreatedAt, DateTime? ReviewedAt, string? CreatedBusinessSlug, string? CreatedUsername);
 
-public record ApproveBusinessOwnerRequestRequest(string Slug);
+public record ApproveBusinessOwnerRequestRequest(string Slug, bool Silent = false);
 public record ApproveBusinessOwnerRequestResponse(
     string BusinessId, string Slug, string Username, string TempPassword, bool EmailSent);
 public record RejectBusinessOwnerRequestRequest(string? Note);
 
-public record PlatformAdminResetPasswordRequest(bool Temporary, string? NewPassword);
+public record PlatformAdminResetPasswordRequest(bool Temporary, string? NewPassword, bool Silent = false);
 public record PlatformAdminResetPasswordResponse(string? TempPassword, bool EmailSent);
 
 // ---- Reviews & discovery ----

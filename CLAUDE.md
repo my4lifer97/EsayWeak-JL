@@ -508,10 +508,39 @@ business's platform-owned Twilio WhatsApp number, and **impersonate** either a b
 customer — minting a real JWT for that account so the admin can act as them for support purposes.
 Every write made by `ActivityLogFilter` (global action filter, every authenticated write request)
 and every impersonation start is recorded as an `ActivityLog` row (`BusinessId`/`CustomerAccountId`,
-`Action`, `Description`, method/path/status/IP, and `ImpersonatedByPlatformAdminId` when acting via
-an impersonation token) — deliberately request metadata only, never request bodies, so passwords or
-Twilio tokens can never end up in a log row. `/platform-admin/businesses/:id` and
-`/customers/:id` render that entity's activity feed via `ActivityLogTable`.
+`Action`, `Description`, method/path/status/IP/device (`UserAgent`), and `ImpersonatedByPlatformAdminId`
+when acting via an impersonation token) — deliberately request metadata only, never request bodies,
+so passwords or Twilio tokens can never end up in a log row. A business owner **signing in** is
+logged explicitly too (`AuthController.LogLoginAsync`, called from `Login`/`VerifyEmail`/
+`ResetPassword`) since login itself is anonymous and the generic filter never sees it (no identity
+on the *incoming* request, even though the response carries a fresh token). `/platform-admin/businesses/:id`
+and `/customers/:id` render that entity's activity feed via `ActivityLogTable`, whose rows expand
+on click to show the full action/path/IP/device.
+
+#### Owner-email composer
+`/platform-admin/businesses/:id`'s "Email owner" button and the business-owner-request approval
+flow both open `OwnerEmailComposer` (`components/platform-admin/`) — lets the admin check any
+combination of username / a freshly generated temporary password / a freshly generated WhatsApp
+shareable link (see below) to include, edit the exact subject/body live before anything is sent,
+then either send it for real, copy it to paste into their own mail client, or just read it off
+screen during a phone call. `POST /api/platform-admin/businesses/{id}/email` sends whatever
+subject/body the frontend composed — no server-side templating, so the preview is exactly what
+goes out. Sent via `IOwnerEmailSender` (`GmailApiEmailSender`), **not** the system `IEmailSender`
+chain used for verification/forgot-password codes: the Gmail API is a plain HTTPS call
+authenticated via OAuth2 against the platform admin's own Gmail account, so (like self-hosting
+WhatsApp via Baileys instead of a paid Business API) it sidesteps Railway's outbound SMTP port
+block instead of relying on a third-party relay (Brevo) the recipient has never heard of. See the
+`Gmail:*` config keys below for the one-time OAuth setup.
+
+Both `POST .../whatsapp/link-token` (WhatsApp shareable link, see
+[WhatsApp chatbot](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)) and
+`POST .../reset-password` (with `{ temporary: true, silent: true }`) can be called from inside the
+composer purely to *generate* a value for the preview — `reset-password`'s `Silent` flag (default
+`false`, so every other caller of that endpoint is unaffected) skips its own automatic system email
+so it doesn't fire in parallel with whatever the composer ends up sending. `POST
+.../business-owner-requests/{id}/approve` has the same `Silent` flag for the same reason — the
+composer opens immediately after a successful approval, pre-filled with the new username and
+temp password.
 
 ### Waitlist & cancellation approval
 Two related, independently-toggleable `Business` settings (`Settings > Booking Limits` area):
@@ -765,11 +794,15 @@ WhatsAppBridge:Url          Base URL of the whatsapp-bridge service (its Railway
 WhatsAppBridge:Secret       Shared secret between this backend and whatsapp-bridge (checked on both ends, same pattern as CronSecret)
 OpenAI:ApiKey               Enables the optional LLM-driven WhatsApp chatbot layer when set (see the OpenAI layer section above) -- rule-based flow used otherwise
 OpenAI:Model                Chat model to use (optional, defaults to "gpt-4o-mini" -- check current OpenAI model availability/pricing before relying on this default)
+Gmail:ClientId               OAuth2 client ID for the platform-admin owner-email composer's Gmail sender (GmailApiEmailSender) -- a "Web application"-type OAuth client (Desktop-app type won't let the OAuth Playground register a redirect URI for the one-time token step)
+Gmail:ClientSecret           OAuth2 client secret paired with Gmail:ClientId
+Gmail:RefreshToken           Long-lived refresh token for the Gmail account owner-emails are sent from, obtained once via https://developers.google.com/oauthplayground (gear icon -> "Use your own OAuth credentials" -> scope gmail.send -> Authorize -> Exchange authorization code for tokens); the app must be in "Testing" publishing status with that Gmail account added as a test user, or authorization is rejected
+Gmail:FromEmail               The Gmail address the refresh token was issued for (the actual From on sent mail)
 ```
 
-`Jwt:Secret`, `CronSecret`, `Twilio:AccountSid`/`Twilio:AuthToken`, `Twilio:FromNumber`, `WhatsAppBridge:Secret`, and `OpenAI:ApiKey` are **not** in `appsettings.json` — there's no default, so the app fails fast (or, for the Twilio/bridge values, simply can't validate/send) if they're missing rather than silently falling back to a guessable value. `Twilio:FromNumber` is a platform-level SMS-capable Twilio number for the phone+OTP customer login code (`TwilioOtpSender`) — separate from WhatsApp entirely. `Twilio:AccountSid`/`Twilio:AuthToken` back the dormant legacy WhatsApp path only (see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)) — nothing in production currently uses them for WhatsApp.
-- **Local dev**: stored in the `dotnet user-secrets` store for `backend/BarberSaas.Api.csproj` (`UserSecretsId` in the `.csproj`, values live outside the repo at `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `dotnet run` loads them automatically in Development.
-- **Production**: supply via environment variables (`Jwt__Secret`, `CronSecret`, `Twilio__AccountSid`, `Twilio__AuthToken`, `Twilio__FromNumber`, `WhatsAppBridge__Url`, `WhatsAppBridge__Secret`, `OpenAI__ApiKey`, `OpenAI__Model`) or `appsettings.Production.json` (gitignored) — never commit real values.
+`Jwt:Secret`, `CronSecret`, `Twilio:AccountSid`/`Twilio:AuthToken`, `Twilio:FromNumber`, `WhatsAppBridge:Secret`, `OpenAI:ApiKey`, and `Gmail:ClientId`/`ClientSecret`/`RefreshToken`/`FromEmail` are **not** in `appsettings.json` — there's no default, so the app fails fast (or, for the Twilio/bridge/Gmail values, simply can't validate/send) if they're missing rather than silently falling back to a guessable value. `Twilio:FromNumber` is a platform-level SMS-capable Twilio number for the phone+OTP customer login code (`TwilioOtpSender`) — separate from WhatsApp entirely. `Twilio:AccountSid`/`Twilio:AuthToken` back the dormant legacy WhatsApp path only (see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)) — nothing in production currently uses them for WhatsApp.
+- **Local dev**: stored in the `dotnet user-secrets` store for `backend/BarberSaas.Api.csproj` (`UserSecretsId` in the `.csproj`, values live outside the repo at `%APPDATA%\Microsoft\UserSecrets\<id>\secrets.json`). `dotnet run` loads them automatically in Development. **The test suite forces dummy `Gmail:*` env vars in `TestWebApplicationFactory`'s constructor specifically to shadow these** (same reasoning as its `Resend:ApiKey` override) — a developer's real local Gmail secrets would otherwise leak into test runs via the shared `UserSecretsId`.
+- **Production**: supply via environment variables (`Jwt__Secret`, `CronSecret`, `Twilio__AccountSid`, `Twilio__AuthToken`, `Twilio__FromNumber`, `WhatsAppBridge__Url`, `WhatsAppBridge__Secret`, `OpenAI__ApiKey`, `OpenAI__Model`, `Gmail__ClientId`, `Gmail__ClientSecret`, `Gmail__RefreshToken`, `Gmail__FromEmail`) or `appsettings.Production.json` (gitignored) — never commit real values.
 - Rotating `Jwt:Secret`/`CronSecret` invalidates all existing JWTs/cron callers signed with the old value — expected, not a bug.
 
 **Email delivery** (`Services/IEmailSender.cs` + implementations) — precedence decided once at

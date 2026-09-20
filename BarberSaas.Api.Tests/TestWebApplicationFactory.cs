@@ -77,6 +77,16 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         // otherwise leak into the test run and make Program.cs wire up the real ResendEmailSender,
         // which then fails for test-only addresses instead of returning a devCode.
         Environment.SetEnvironmentVariable("Resend__ApiKey", "");
+
+        // Same leakage risk for Gmail -- a developer's real local Gmail:ClientId/ClientSecret/
+        // RefreshToken (see GmailApiEmailSender) would otherwise let PlatformAdminController.EmailOwner's
+        // config check pass in tests. These dummy, non-empty values only make that check pass
+        // deterministically; the actual send never reaches Google since IOwnerEmailSender itself
+        // is swapped for FakeOwnerEmailSender below.
+        Environment.SetEnvironmentVariable("Gmail__ClientId", "test-gmail-client-id");
+        Environment.SetEnvironmentVariable("Gmail__ClientSecret", "test-gmail-client-secret");
+        Environment.SetEnvironmentVariable("Gmail__RefreshToken", "test-gmail-refresh-token");
+        Environment.SetEnvironmentVariable("Gmail__FromEmail", "test-sender@example.com");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -139,6 +149,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender, FakeEmailSender>();
 
+            // Real Gmail API calls would need live OAuth credentials (see the Gmail__* dummy env
+            // vars above) and would actually send mail -- always use the fake.
+            services.RemoveAll<IOwnerEmailSender>();
+            services.AddSingleton<IOwnerEmailSender, FakeOwnerEmailSender>();
+
             // Real Cardcom calls would dial out to the real gateway -- always use the fake
             // regardless of _configureCardcom, which only controls whether Cardcom:* config keys
             // are present (i.e. whether BillingController/CronController even attempt a call).
@@ -161,6 +176,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     public FakeOpenAiChatClient OpenAi => (FakeOpenAiChatClient)Services.GetRequiredService<IOpenAiChatClient>();
     public FakeCardcomService Cardcom => (FakeCardcomService)Services.GetRequiredService<ICardcomService>();
     public FakeEmailSender Email => (FakeEmailSender)Services.GetRequiredService<IEmailSender>();
+    public FakeOwnerEmailSender OwnerEmail => (FakeOwnerEmailSender)Services.GetRequiredService<IOwnerEmailSender>();
 
     protected override void Dispose(bool disposing)
     {

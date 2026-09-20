@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import ThemeToggle from '../../components/ThemeToggle'
+import OwnerEmailComposer from '../../components/platform-admin/OwnerEmailComposer'
 
 type BusinessOwnerRequest = {
   id: string
@@ -46,8 +47,7 @@ export default function PlatformAdminRequestsPage() {
   const [noteDraft, setNoteDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [rowError, setRowError] = useState('')
-  const [credsResult, setCredsResult] = useState<{ slug: string; username: string; tempPassword: string; emailSent: boolean; email: string } | null>(null)
-  const [copied, setCopied] = useState<'user' | 'pass' | null>(null)
+  const [composerFor, setComposerFor] = useState<{ businessId: string; businessName: string; businessEmail: string; username: string; tempPassword: string } | null>(null)
 
   const { data: requests } = useQuery<BusinessOwnerRequest[]>({
     queryKey: ['platform-admin-requests', tab],
@@ -71,8 +71,10 @@ export default function PlatformAdminRequestsPage() {
     setBusy(true)
     setRowError('')
     try {
-      const { data } = await platformAdminApi.post(`/platform-admin/business-owner-requests/${open.id}/approve`, { slug: slugDraft })
-      setCredsResult({ slug: data.slug, username: data.username, tempPassword: data.tempPassword, emailSent: data.emailSent, email: open.email })
+      // Silent: the composer that opens right after decides what (if anything) actually gets
+      // emailed -- the automatic approval email would otherwise fire immediately and duplicate it.
+      const { data } = await platformAdminApi.post(`/platform-admin/business-owner-requests/${open.id}/approve`, { slug: slugDraft, silent: true })
+      setComposerFor({ businessId: data.businessId, businessName: open.businessName, businessEmail: open.email, username: data.username, tempPassword: data.tempPassword })
       setOpenId(null)
       queryClient.invalidateQueries({ queryKey: ['platform-admin-requests'] })
     } catch (err: unknown) {
@@ -98,13 +100,6 @@ export default function PlatformAdminRequestsPage() {
     }
   }
 
-  function copy(text: string, which: 'user' | 'pass') {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(which)
-      setTimeout(() => setCopied(null), 2000)
-    })
-  }
-
   return (
     <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-5xl mx-auto">
@@ -113,36 +108,6 @@ export default function PlatformAdminRequestsPage() {
           <ThemeToggle />
         </div>
         <h1 className="text-xl font-bold mb-6">Business account requests</h1>
-
-        {credsResult && (
-          <div className="bg-yellow-50 border border-yellow-200 dark:bg-yellow-900/30 dark:border-yellow-700/50 rounded-2xl p-5 mb-6">
-            <p className="text-yellow-800 dark:text-yellow-300 font-semibold mb-1">Account created for /{credsResult.slug}</p>
-            <p className="text-muted text-sm mb-3">
-              {credsResult.emailSent
-                ? `Credentials were emailed to ${credsResult.email}. Copy them below only if the email doesn't arrive — the password will not be shown again.`
-                : `Couldn't email the owner — send these to them yourself. The password will not be shown again.`}
-            </p>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted w-20 shrink-0">Username</span>
-                <code className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 font-mono">{credsResult.username}</code>
-                <button onClick={() => copy(credsResult.username, 'user')}
-                  className="bg-coral hover:bg-coral-dark text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
-                  {copied === 'user' ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted w-20 shrink-0">Password</span>
-                <code className="flex-1 bg-surface border border-line rounded-lg px-3 py-2 font-mono text-lg tracking-wide">{credsResult.tempPassword}</code>
-                <button onClick={() => copy(credsResult.tempPassword, 'pass')}
-                  className="bg-coral hover:bg-coral-dark text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
-                  {copied === 'pass' ? 'Copied!' : 'Copy'}
-                </button>
-              </div>
-            </div>
-            <button onClick={() => setCredsResult(null)} className="text-muted hover:text-ink text-sm mt-3">Dismiss</button>
-          </div>
-        )}
 
         <div className="flex gap-1 mb-4">
           {STATUS_TABS.map((t) => (
@@ -253,6 +218,17 @@ export default function PlatformAdminRequestsPage() {
             )}
           </div>
         </div>
+      )}
+
+      {composerFor && (
+        <OwnerEmailComposer
+          businessId={composerFor.businessId}
+          businessName={composerFor.businessName}
+          businessEmail={composerFor.businessEmail}
+          username={composerFor.username}
+          initialPassword={composerFor.tempPassword}
+          onClose={() => setComposerFor(null)}
+        />
       )}
     </div>
   )

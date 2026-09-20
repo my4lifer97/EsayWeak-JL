@@ -94,6 +94,13 @@ else
 
 builder.Services.AddHttpClient<ICardcomService, CardcomService>();
 
+// Powers PlatformAdminController's owner-email composer (see IOwnerEmailSender) -- separate from
+// the IEmailSender chain above, which handles system emails only. Always registered (its own
+// constructor needs no config at construction time); the controller checks Gmail:ClientId/
+// ClientSecret/RefreshToken are all set before calling it, same pattern as CardcomService/
+// BillingController for a not-yet-configured integration.
+builder.Services.AddHttpClient<IOwnerEmailSender, GmailApiEmailSender>();
+
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p
         .WithOrigins((builder.Configuration["AllowedOrigin"] ?? "http://localhost:5173")

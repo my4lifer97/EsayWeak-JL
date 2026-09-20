@@ -384,6 +384,64 @@ public class PlatformAdminControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ResetPassword_Silent_DoesNotSendTheSystemEmail()
+    {
+        // Same reasoning as Approve's Silent flag -- the owner-email composer decides what (if
+        // anything) gets sent, so the automatic reset email must not fire in parallel.
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("silent-reset@example.com", "silent-reset-shop");
+        // RegisterAndVerifyBusiness itself sends a verification-code email to this address --
+        // capture that baseline so the assertion below checks for a *new* reset email, not just
+        // any email ever sent to it.
+        var sentBefore = Factory.Email.Sent.Count(e => e.Email == email);
+
+        Authorize(Client, adminToken);
+        var resetResp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/reset-password",
+            new PlatformAdminResetPasswordRequest(true, null, true));
+        var resetBody = await resetResp.Content.ReadFromJsonAsync<PlatformAdminResetPasswordResponse>();
+
+        Assert.False(resetBody!.EmailSent);
+        Assert.False(string.IsNullOrEmpty(resetBody.TempPassword));
+        Assert.Equal(sentBefore, Factory.Email.Sent.Count(e => e.Email == email));
+    }
+
+    // ─── Owner-email composer ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EmailOwner_SendsViaOwnerEmailSender_AndLogsIt()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("compose-email@example.com", "compose-email-shop");
+
+        Authorize(Client, adminToken);
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/email",
+            new EmailOwnerRequest("Your account", "Username: composeemail\nPassword: abc123"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var sent = Assert.Single(Factory.OwnerEmail.Sent);
+        Assert.Equal(email, sent.Email);
+        Assert.Equal("Your account", sent.Subject);
+        Assert.Contains("abc123", sent.Body);
+
+        var activity = await Client.GetFromJsonAsync<List<PlatformAdminActivityLogDto>>($"/api/platform-admin/businesses/{businessId}/activity");
+        Assert.Contains(activity!, a => a.Action == "PlatformAdminController.EmailOwner");
+    }
+
+    [Fact]
+    public async Task EmailOwner_MissingSubjectOrBody_ReturnsBadRequest()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, _) = await RegisterAndVerifyBusiness("compose-blank@example.com", "compose-blank-shop");
+
+        Authorize(Client, adminToken);
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/email",
+            new EmailOwnerRequest("", "some body"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Empty(Factory.OwnerEmail.Sent);
+    }
+
+    [Fact]
     public async Task ResetPassword_ActivityLog_NeverContainsTheRawPassword()
     {
         var adminToken = await BootstrapAdmin();

@@ -147,6 +147,29 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Approve_Silent_DoesNotEmailOwner_ButStillReturnsCredentials()
+    {
+        // The owner-email composer (platform-admin panel) opens right after approval and decides
+        // what -- if anything -- actually gets sent; the automatic approval email would otherwise
+        // fire immediately and duplicate whatever the admin composes.
+        var typeId = await SeedBusinessType();
+        var adminToken = await BootstrapAdmin();
+        var createResp = await Client.PostAsJsonAsync("/api/business-owner-requests",
+            ValidRequest(typeId, email: "silent-approve@example.com"));
+        var created = await createResp.Content.ReadFromJsonAsync<JsonRequestId>();
+
+        Authorize(Client, adminToken);
+        var approveResp = await Client.PostAsJsonAsync(
+            $"/api/platform-admin/business-owner-requests/{created!.Id}/approve",
+            new ApproveBusinessOwnerRequestRequest("silent-approve-shop", true));
+        var approved = await approveResp.Content.ReadFromJsonAsync<ApproveBusinessOwnerRequestResponse>();
+
+        Assert.False(approved!.EmailSent);
+        Assert.False(string.IsNullOrEmpty(approved.TempPassword));
+        Assert.DoesNotContain(Factory.Email.Sent, e => e.Email == "silent-approve@example.com");
+    }
+
+    [Fact]
     public async Task ApproveThenLogin_WithUsername_ThenForcedPasswordChange()
     {
         var typeId = await SeedBusinessType();

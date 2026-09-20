@@ -3,10 +3,11 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
+import OwnerEmailComposer from '../../components/platform-admin/OwnerEmailComposer'
 import ThemeToggle from '../../components/ThemeToggle'
 
 type BusinessDetail = {
-  id: string; name: string; email: string; slug: string; phone: string | null
+  id: string; name: string; email: string; slug: string; phone: string | null; username: string | null
   trialEndsAt: string; subscriptionStatus: string; createdAt: string; whatsAppNumber: string | null
   isDisabled: boolean
 }
@@ -37,6 +38,7 @@ export default function PlatformAdminBusinessDetailPage() {
   const [shareableLink, setShareableLink] = useState<string | null>(null)
   const [generatingLink, setGeneratingLink] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [showEmailComposer, setShowEmailComposer] = useState(false)
 
   const { data: business } = useQuery<BusinessDetail>({
     queryKey: ['platform-admin-business', id],
@@ -210,10 +212,16 @@ export default function PlatformAdminBusinessDetailPage() {
 
           {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
 
-          <button onClick={handleImpersonate} disabled={impersonating}
-            className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
-            {impersonating ? 'Logging in...' : 'Log in as this account'}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleImpersonate} disabled={impersonating}
+              className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+              {impersonating ? 'Logging in...' : 'Log in as this account'}
+            </button>
+            <button onClick={() => setShowEmailComposer(true)}
+              className="border border-line text-ink hover:bg-cream font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+              Email owner
+            </button>
+          </div>
         </div>
 
         <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
@@ -366,6 +374,16 @@ export default function PlatformAdminBusinessDetailPage() {
           <ActivityLogTable entries={activity} />
         </div>
       </div>
+
+      {showEmailComposer && (
+        <OwnerEmailComposer
+          businessId={business.id}
+          businessName={business.name}
+          businessEmail={business.email}
+          username={business.username}
+          onClose={() => setShowEmailComposer(false)}
+        />
+      )}
     </div>
   )
 }
