@@ -10,15 +10,34 @@ type Props = {
   onClose: () => void
 }
 
-function buildEmail(businessName: string, username: string | null, includeUsername: boolean, password: string | null, includePassword: boolean, chatbotLink: string | null, includeChatbotLink: boolean) {
-  const lines = [`Hi,`, '', `Here's your EsayWeek account information for ${businessName}:`, '']
-  const hasAny = (includeUsername && username) || (includePassword && password) || (includeChatbotLink && chatbotLink)
+const TEMPLATE_STORAGE_KEY = 'ownerEmailTemplate'
+const DEFAULT_TEMPLATE = `Hi,
+
+Here's your EsayWeek account information for {{businessName}}:
+
+{{fields}}
+
+Thanks,
+EsayWeek`
+
+function loadTemplate(): string {
+  try {
+    return localStorage.getItem(TEMPLATE_STORAGE_KEY) || DEFAULT_TEMPLATE
+  } catch {
+    return DEFAULT_TEMPLATE
+  }
+}
+
+function buildFields(username: string | null, includeUsername: boolean, password: string | null, includePassword: boolean, chatbotLink: string | null, includeChatbotLink: boolean) {
+  const lines: string[] = []
   if (includeUsername && username) lines.push(`Username: ${username}`)
   if (includePassword && password) lines.push(`Password: ${password}`)
   if (includeChatbotLink && chatbotLink) lines.push(`Connect your WhatsApp chatbot (open on your phone and scan): ${chatbotLink}`)
-  if (!hasAny) lines.push('(nothing selected yet)')
-  lines.push('', 'Thanks,', 'EsayWeek')
-  return lines.join('\n')
+  return lines.length ? lines.join('\n') : '(nothing selected yet)'
+}
+
+function applyTemplate(template: string, businessName: string, fields: string) {
+  return template.split('{{businessName}}').join(businessName).split('{{fields}}').join(fields)
 }
 
 // Lets the admin pick exactly which pieces of an owner's account info to send -- username,
@@ -27,6 +46,12 @@ function buildEmail(businessName: string, username: string | null, includeUserna
 // by hand, or just read it off screen during a phone call. Reused from both the request-approval
 // flow (pre-filled with a fresh username+temp password) and the business detail page (general
 // "email the owner" utility, e.g. a password reset or a WhatsApp link on its own).
+//
+// The surrounding wording (greeting, sign-off) is admin-editable and persisted in localStorage
+// (per browser, not synced -- there's only one admin account today, so this is simpler than a
+// backend-stored setting) as a template with {{businessName}}/{{fields}} placeholders; the
+// per-checkbox field lines are always composed automatically so the preview never silently drops
+// a selected item just because the saved template forgot the placeholder.
 export default function OwnerEmailComposer({ businessId, businessName, businessEmail, username, initialPassword, onClose }: Props) {
   const [includeUsername, setIncludeUsername] = useState(!!username)
   const [includePassword, setIncludePassword] = useState(!!initialPassword)
@@ -37,21 +62,44 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [generatingLink, setGeneratingLink] = useState(false)
   const [genError, setGenError] = useState('')
 
+  const [template, setTemplate] = useState(loadTemplate)
+  const [editingTemplate, setEditingTemplate] = useState(false)
+  const [templateDraft, setTemplateDraft] = useState('')
+
   const [subject, setSubject] = useState(`Your EsayWeek account — ${businessName}`)
-  const [body, setBody] = useState(() => buildEmail(businessName, username, !!username, password, !!initialPassword, chatbotLink, false))
+  const [body, setBody] = useState(() =>
+    applyTemplate(template, businessName, buildFields(username, !!username, password, !!initialPassword, null, false)))
 
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [sent, setSent] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Re-templates the body whenever a checkbox or a generated value changes; edits made directly in
-  // the textarea persist until the next such change, at which point they're intentionally replaced
-  // (keeps the preview trustworthy -- what you see is always consistent with what's checked).
+  // Re-templates the body whenever a checkbox, a generated value, or the template itself changes;
+  // edits made directly in the Body textarea persist until the next such change, at which point
+  // they're intentionally replaced (keeps the preview trustworthy -- what you see is always
+  // consistent with what's checked and with the saved template).
   useEffect(() => {
-    setBody(buildEmail(businessName, username, includeUsername, password, includePassword, chatbotLink, includeChatbotLink))
+    setBody(applyTemplate(template, businessName, buildFields(username, includeUsername, password, includePassword, chatbotLink, includeChatbotLink)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includeUsername, includePassword, includeChatbotLink, password, chatbotLink])
+  }, [includeUsername, includePassword, includeChatbotLink, password, chatbotLink, template])
+
+  function startEditingTemplate() {
+    setTemplateDraft(template)
+    setEditingTemplate(true)
+  }
+
+  function saveTemplate() {
+    setTemplate(templateDraft)
+    try {
+      localStorage.setItem(TEMPLATE_STORAGE_KEY, templateDraft)
+    } catch { /* private-mode/blocked storage -- template still applies for this session */ }
+    setEditingTemplate(false)
+  }
+
+  function resetTemplateToOriginal() {
+    setTemplateDraft(DEFAULT_TEMPLATE)
+  }
 
   async function generatePassword() {
     setGenError(''); setGeneratingPassword(true)
@@ -140,25 +188,54 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
           </label>
         </div>
 
-        <div className="space-y-2 mb-4">
-          <label className="block text-xs text-muted">Subject</label>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)}
-            className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
-          <label className="block text-xs text-muted">Body (editable — this is exactly what will be sent)</label>
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8}
-            className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-coral resize-y" />
-        </div>
+        {editingTemplate ? (
+          <div className="space-y-2 mb-4 border border-line rounded-lg p-3 bg-cream">
+            <label className="block text-xs text-muted">
+              Default template — use <code>{'{{businessName}}'}</code> and <code>{'{{fields}}'}</code> as placeholders; {'{{fields}}'} is always replaced with whatever's checked above.
+            </label>
+            <textarea value={templateDraft} onChange={(e) => setTemplateDraft(e.target.value)} rows={7}
+              className="w-full bg-surface border border-line rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-coral resize-y" />
+            <div className="flex gap-2">
+              <button type="button" onClick={saveTemplate}
+                className="bg-coral hover:bg-coral-dark text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-colors">
+                Save as default
+              </button>
+              <button type="button" onClick={() => setEditingTemplate(false)}
+                className="border border-line text-ink hover:bg-surface font-semibold text-xs px-3 py-1.5 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button type="button" onClick={resetTemplateToOriginal}
+                className="text-muted hover:text-ink text-xs ms-auto">
+                Reset to original
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs text-muted">Subject</label>
+              <button type="button" onClick={startEditingTemplate} className="text-coral-dark hover:underline text-xs">
+                Edit default template
+              </button>
+            </div>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)}
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
+            <label className="block text-xs text-muted">Body (editable — this is exactly what will be sent)</label>
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8}
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-coral resize-y" />
+          </div>
+        )}
 
         {sendError && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-3 py-2 mb-3">{sendError}</div>}
         {sent && <div className="bg-green-50 border border-green-200 text-green-700 dark:bg-green-950/40 dark:border-green-800/50 dark:text-green-400 text-sm rounded-lg px-3 py-2 mb-3">Sent ✓</div>}
 
         <div className="flex gap-2">
-          <button onClick={send} disabled={sending}
+          <button onClick={send} disabled={sending || editingTemplate}
             className="flex-1 bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm py-2.5 rounded-lg transition-colors">
             {sending ? 'Sending…' : 'Send Email'}
           </button>
-          <button onClick={copyToClipboard}
-            className="flex-1 border border-line text-ink hover:bg-cream font-semibold text-sm py-2.5 rounded-lg transition-colors">
+          <button onClick={copyToClipboard} disabled={editingTemplate}
+            className="flex-1 border border-line text-ink hover:bg-cream disabled:opacity-50 font-semibold text-sm py-2.5 rounded-lg transition-colors">
             {copied ? 'Copied!' : 'Copy to Clipboard'}
           </button>
         </div>

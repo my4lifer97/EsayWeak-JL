@@ -44,6 +44,11 @@ public class BusinessOwnerRequestsController(AppDbContext db, IEmailSender email
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Phone))
             return BadRequest(new { error = "Phone is required" });
+        // Digit count only (not a full E.164 check) -- catches an obviously-truncated or junk
+        // entry ("12", "0") without rejecting real numbers in whatever local format someone types.
+        var phoneDigits = Regex.Replace(req.Phone, @"[^\d]", "");
+        if (phoneDigits.Length < 7 || phoneDigits.Length > 15)
+            return BadRequest(new { error = "Please enter a valid phone number" });
         if (string.IsNullOrWhiteSpace(req.BusinessTypeId))
             return BadRequest(new { error = "Business type is required" });
 

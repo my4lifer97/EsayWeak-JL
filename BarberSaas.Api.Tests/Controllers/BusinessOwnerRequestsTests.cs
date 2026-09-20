@@ -49,6 +49,19 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
+    [Theory]
+    [InlineData("123")]      // too short
+    [InlineData("1234567890123456")]  // too long (16 digits)
+    public async Task Create_InvalidPhoneLength_ReturnsBadRequest(string phone)
+    {
+        var typeId = await SeedBusinessType();
+
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests",
+            ValidRequest(typeId) with { Phone = phone });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
     [Fact]
     public async Task Create_NonEnglishName_ReturnsBadRequest()
     {

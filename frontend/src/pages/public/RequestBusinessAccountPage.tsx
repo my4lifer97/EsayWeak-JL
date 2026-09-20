@@ -30,11 +30,18 @@ export default function RequestBusinessAccountPage() {
   const nameError =
     (firstName && !ENGLISH_NAME.test(firstName.trim())) || (familyName && !ENGLISH_NAME.test(familyName.trim()))
 
+  const phoneDigitCount = phone.replace(/\D/g, '').length
+  const phoneError = phone.length > 0 && (phoneDigitCount < 7 || phoneDigitCount > 15)
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
     if (!ENGLISH_NAME.test(firstName.trim()) || !ENGLISH_NAME.test(familyName.trim())) {
       setError('First name and family name must be in English letters.')
+      return
+    }
+    if (phoneDigitCount < 7 || phoneDigitCount > 15) {
+      setError('Please enter a valid phone number.')
       return
     }
     if (!businessTypeId) {
@@ -109,9 +116,12 @@ export default function RequestBusinessAccountPage() {
                   placeholder="Active email address" autoComplete="email" className={inputClass}
                 />
                 <input
-                  required value={phone} onChange={(e) => setPhone(e.target.value)}
+                  type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)}
                   placeholder="Phone number" autoComplete="tel" className={inputClass}
                 />
+                {phoneError && (
+                  <p className="text-xs text-red-600 dark:text-red-400">Enter a valid phone number (7–15 digits).</p>
+                )}
               </div>
             </div>
 
