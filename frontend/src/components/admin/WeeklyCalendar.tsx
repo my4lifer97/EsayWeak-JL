@@ -6,12 +6,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import CancelOptionsModal from './CancelOptionsModal'
+import RescheduleModal from './RescheduleModal'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
   customer: { name: string; phone: string }
-  item: { nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null }
+  item: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null }
   price: number
   photoUrl: string | null
   recurringSeriesId: string | null
@@ -39,6 +40,7 @@ export default function WeeklyCalendar({
 }) {
   const [selected, setSelected] = useState<Appointment | null>(null)
   const [showCancelOptions, setShowCancelOptions] = useState(false)
+  const [showReschedule, setShowReschedule] = useState(false)
   const queryClient = useQueryClient()
 
   const { data: settings } = useQuery<{ waitlistEnabled: boolean }>({
@@ -54,6 +56,12 @@ export default function WeeklyCalendar({
 
   function onCancelFlowDone() {
     setShowCancelOptions(false)
+    setSelected(null)
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+  }
+
+  function onRescheduleDone() {
+    setShowReschedule(false)
     setSelected(null)
     queryClient.invalidateQueries({ queryKey: ['dashboard'] })
   }
@@ -179,12 +187,20 @@ export default function WeeklyCalendar({
               </div>
             )}
             {selected.status === 'CONFIRMED' && (
-              <button onClick={() => setShowCancelOptions(true)}
-                className={`w-full text-white text-sm font-medium py-2 rounded-lg transition-colors ${
-                  selected.pendingCancellationApproval ? 'bg-amber-600 hover:bg-amber-500' : 'bg-teal hover:bg-teal/80'
-                }`}>
-                {selected.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
-              </button>
+              <div className="space-y-2">
+                {!selected.pendingCancellationApproval && (
+                  <button onClick={() => setShowReschedule(true)}
+                    className="w-full border border-line text-ink hover:bg-cream text-sm font-medium py-2 rounded-lg transition-colors">
+                    {t(lang, 'rescheduleAppointment')}
+                  </button>
+                )}
+                <button onClick={() => setShowCancelOptions(true)}
+                  className={`w-full text-white text-sm font-medium py-2 rounded-lg transition-colors ${
+                    selected.pendingCancellationApproval ? 'bg-amber-600 hover:bg-amber-500' : 'bg-teal hover:bg-teal/80'
+                  }`}>
+                  {selected.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -197,6 +213,16 @@ export default function WeeklyCalendar({
           waitlistEnabled={settings?.waitlistEnabled ?? false}
           onClose={() => setShowCancelOptions(false)}
           onDone={onCancelFlowDone}
+        />
+      )}
+
+      {selected && showReschedule && (
+        <RescheduleModal
+          lang={lang}
+          appointmentId={selected.id}
+          itemId={selected.item.id}
+          onClose={() => setShowReschedule(false)}
+          onDone={onRescheduleDone}
         />
       )}
     </div>

@@ -639,6 +639,40 @@ public class AdminController(
             item.Price, appointment.PhotoUrl, appointment.RecurringSeriesId));
     }
 
+    [HttpPatch("appointments/{id}/reschedule")]
+    public async Task<IActionResult> RescheduleAppointment(string id, [FromBody] RescheduleRequest req)
+    {
+        var appt = await db.Appointments
+            .Include(a => a.Item).Include(a => a.Customer)
+            .FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
+        if (appt is null) return NotFound(new { error = "Not found" });
+        if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
+        if (!appt.Item.IsBookable || appt.Item.DurationMinutes is null)
+            return Conflict(new { error = "This appointment can no longer be modified" });
+
+        var slots = await availability.GetAvailableSlots(BusinessId, req.Date, appt.Item.DurationMinutes.Value);
+        if (!slots.Any(s => s.Start == req.StartTime))
+            return Conflict(new { error = "Slot not available" });
+
+        var oldDate = appt.Date.ToString("yyyy-MM-dd");
+        var oldStartTime = appt.StartTime;
+
+        appt.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
+        appt.StartTime = req.StartTime;
+        appt.EndTime = AvailabilityService.AddMinutes(req.StartTime, appt.Item.DurationMinutes.Value);
+        appt.ReminderSent = false;
+
+        await waitlist.ResolveForRebooking(BusinessId, appt.Date, req.StartTime);
+        if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, appt.EndTime))
+            return Conflict(new { error = "Slot not available" });
+
+        this.SetActivityDetail(
+            $"Rescheduled appointment: {appt.Item.NameEn} for {ActivityDetailExtensions.FullName(appt.Customer.Name, appt.Customer.FamilyName)} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
+
+        return Ok(new { appt.Id, Status = appt.Status.ToString() });
+    }
+
     [HttpPatch("appointments/{id}")]
     public async Task<IActionResult> UpdateAppointmentStatus(string id, [FromBody] UpdateStatusRequest req)
     {

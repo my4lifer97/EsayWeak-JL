@@ -7,6 +7,7 @@ import { t, itemName, type TKey } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
 import CancelOptionsModal from '../../components/admin/CancelOptionsModal'
+import RescheduleModal from '../../components/admin/RescheduleModal'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
@@ -43,6 +44,7 @@ export default function AppointmentsPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'recurring' | 'onetime'>('all')
   const [showNewAppointment, setShowNewAppointment] = useState(false)
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null)
+  const [rescheduleTarget, setRescheduleTarget] = useState<{ id: string; itemId: string } | null>(null)
   const queryClient = useQueryClient()
 
   const { data: appointments = [] } = useQuery<Appointment[]>({
@@ -86,6 +88,11 @@ export default function AppointmentsPage() {
 
   function onCancelFlowDone() {
     setCancelTargetId(null)
+    queryClient.invalidateQueries({ queryKey: ['appointments'] })
+  }
+
+  function onRescheduleDone() {
+    setRescheduleTarget(null)
     queryClient.invalidateQueries({ queryKey: ['appointments'] })
   }
 
@@ -177,10 +184,18 @@ export default function AppointmentsPage() {
                   </td>
                   <td className="px-4 py-3">
                     {a.status === 'CONFIRMED' && (
-                      <button onClick={() => setCancelTargetId(a.id)}
-                        className={`text-xs ${a.pendingCancellationApproval ? 'text-amber-700 dark:text-amber-400 hover:text-amber-600 font-semibold' : 'text-red-600 hover:text-red-500'}`}>
-                        {a.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {!a.pendingCancellationApproval && (
+                          <button onClick={() => setRescheduleTarget({ id: a.id, itemId: a.item.id })}
+                            className="text-xs text-coral-dark hover:text-coral">
+                            {t(lang, 'rescheduleAppointment')}
+                          </button>
+                        )}
+                        <button onClick={() => setCancelTargetId(a.id)}
+                          className={`text-xs ${a.pendingCancellationApproval ? 'text-amber-700 dark:text-amber-400 hover:text-amber-600 font-semibold' : 'text-red-600 hover:text-red-500'}`}>
+                          {a.pendingCancellationApproval ? t(lang, 'resolveCancellationRequest') : t(lang, 'cancel')}
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -199,6 +214,15 @@ export default function AppointmentsPage() {
           waitlistEnabled={settings?.waitlistEnabled ?? false}
           onClose={() => setCancelTargetId(null)}
           onDone={onCancelFlowDone}
+        />
+      )}
+      {rescheduleTarget && (
+        <RescheduleModal
+          lang={lang}
+          appointmentId={rescheduleTarget.id}
+          itemId={rescheduleTarget.itemId}
+          onClose={() => setRescheduleTarget(null)}
+          onDone={onRescheduleDone}
         />
       )}
     </div>

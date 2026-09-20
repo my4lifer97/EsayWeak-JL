@@ -298,6 +298,83 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
     }
 
+    // ─── Owner-side reschedule ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task Reschedule_ToAnAvailableSlot_MovesItAndFreesTheOldSlot()
+    {
+        var slug = "admin-reschedule-ok";
+        var token = await RegisterAndLoginBusiness("admin-reschedule-ok@example.com", slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        Authorize(Client, token);
+        var created = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Riley", "+15551115001", itemId, dateStr, "09:00", null));
+        var appt = await created.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
+
+        var resp = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt!.Id}/reschedule",
+            new RescheduleRequest(dateStr, "10:00"));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        using (var db = Db())
+        {
+            var stored = db.Appointments.First(a => a.Id == appt.Id);
+            Assert.Equal("10:00", stored.StartTime);
+        }
+
+        // The old 09:00 slot is free again.
+        var rebooked = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Someone Else", "+15551115002", itemId, dateStr, "09:00", null));
+        Assert.Equal(HttpStatusCode.Created, rebooked.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reschedule_ToAnUnavailableSlot_ReturnsConflict()
+    {
+        var slug = "admin-reschedule-conflict";
+        var token = await RegisterAndLoginBusiness("admin-reschedule-conflict@example.com", slug);
+        var (_, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        Authorize(Client, token);
+        var created = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Riley", "+15551115003", itemId, dateStr, "09:00", null));
+        var appt = await created.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
+
+        // 19:00 is outside the seeded 09:00-18:00 working hours.
+        var resp = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt!.Id}/reschedule",
+            new RescheduleRequest(dateStr, "19:00"));
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Reschedule_WhilePendingCancellationApproval_ReturnsConflict()
+    {
+        var slug = "admin-reschedule-pending";
+        var token = await RegisterAndLoginBusiness("admin-reschedule-pending@example.com", slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        Authorize(Client, token);
+        var created = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Riley", "+15551115004", itemId, dateStr, "09:00", null));
+        var appt = await created.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
+
+        using (var db = Db())
+        {
+            var stored = db.Appointments.First(a => a.Id == appt!.Id);
+            stored.PendingCancellationApproval = true;
+            db.SaveChanges();
+        }
+
+        var resp = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt!.Id}/reschedule",
+            new RescheduleRequest(dateStr, "10:00"));
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
     // ─── Customer search (used by CustomerPicker when booking) ─────────────
 
     [Fact]
