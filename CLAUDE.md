@@ -279,10 +279,19 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 **Integrations**
 - `POST /api/whatsapp/bridge/inbound` — active inbound path; called by the self-hosted whatsapp-bridge service (auth: `X-Bridge-Secret`), resolves the business directly by `BusinessId`, drives the item-selection chatbot flow (see below) plus cancel/reschedule keywords, in the business's language
 - `POST /api/whatsapp/webhook` — dormant legacy Twilio webhook (validates X-Twilio-Signature); kept as a fallback path, see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
-- `GET /api/cron/reminders` — sends two kinds of WhatsApp reminders in one call: a day-before one (`a.Date == tomorrow`, `ReminderSent` flag) and a ~3-hours-before one (local start within the next 3 hours, `ReminderSentSoon` flag), each idempotent via its own flag so repeated calls are safe; requires `Authorization: Bearer <CronSecret>`; response shape `{ dayBefore: { total, sent, failed }, soon: { total, sent, failed } }`; actually triggered every 15 minutes by `.github/workflows/cron-reminders.yml` (needs a `CRON_SECRET` repo secret matching Railway's `CronSecret`)
+- `GET /api/cron/reminders` — sends two kinds of WhatsApp reminders in one call: a day-before one (`a.Date == tomorrow`, `ReminderSent` flag) and a ~3-hours-before one (local start within the next 3 hours, `ReminderSentSoon` flag), each idempotent via its own flag so repeated calls are safe; requires `Authorization: Bearer <CronSecret>`; response shape `{ dayBefore: { total, sent, failed }, soon: { total, sent, failed } }`; triggered every 15 minutes by an external cron-job.org job, not GitHub Actions — see the cron scheduling note below
 - `GET /api/cron/generate-recurring` — extends every active `RecurringSeries`' generated `Appointment` rows to the rolling horizon (default 8 weeks, `RecurringGeneration:HorizonWeeks` config); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, created, skipped }`; triggered once daily by `.github/workflows/cron-generate-recurring.yml` — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
 - `GET /api/cron/charge-subscriptions` — charges every `ACTIVE` business with a stored `CardcomToken` whose `CardcomNextChargeAt` has passed, via Cardcom's token-charge API; same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, charged, failed }`; a successful charge bumps `CardcomNextChargeAt` by 1 month, a failed one sets `SubscriptionStatus = EXPIRED`; triggered once daily by `.github/workflows/cron-charge-subscriptions.yml` — see [Billing (Cardcom)](#billing-cardcom)
-- `GET /api/cron/retry-waitlist-notifications` — re-attempts `WaitlistService.NotifyForCancellation` for every still-`WAITING` entry whose appointment is `CANCELLED` (i.e. the first attempt never went out or failed); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, sent, failed }`; triggered every 15 minutes by `.github/workflows/cron-retry-waitlist.yml`
+- `GET /api/cron/retry-waitlist-notifications` — re-attempts `WaitlistService.NotifyForCancellation` for every still-`WAITING` entry whose appointment is `CANCELLED` (i.e. the first attempt never went out or failed); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, sent, failed }`; triggered every 15 minutes by an external cron-job.org job, not GitHub Actions — see the cron scheduling note below
+
+**Cron scheduling**: `generate-recurring` and `charge-subscriptions` only need to run once a day, so
+`.github/workflows/cron-generate-recurring.yml`/`cron-charge-subscriptions.yml` (GitHub Actions
+`schedule` trigger) are reliable enough for them. `reminders` and `retry-waitlist-notifications`
+need a genuine ~15-minute cadence, and GitHub Actions does **not** reliably honor sub-hourly
+`schedule` triggers (confirmed in practice: a `*/15 * * * *` workflow on this repo actually fired
+every 2-4 hours) — those two are instead triggered by external cron-job.org jobs calling the same
+endpoints with the same `Authorization: Bearer <CronSecret>` header, configured directly on
+cron-job.org's dashboard (not tracked in this repo).
 
 ### Frontend Routes
 - `/` — landing/marketing page (`HomePage`)
@@ -594,9 +603,9 @@ number). `Twilio:AccountSid`/`Twilio:AuthToken` config still exists for this dor
 to WhatsApp).
 - `WhatsAppController.ProcessMessageAsync` is the shared dispatcher for both the bridge-inbound and
   legacy Twilio paths — see the AI layer subsection below for what it dispatches to.
-- Reminders (day-before and ~3-hours-before, see `/api/cron/reminders` above) are sent by
-  `.github/workflows/cron-reminders.yml`, a scheduled GitHub Actions workflow that calls the
-  endpoint every 15 minutes.
+- Reminders (day-before and ~3-hours-before, see `/api/cron/reminders` above) are sent via an
+  external cron-job.org job calling the endpoint every 15 minutes — see the cron scheduling note
+  earlier in this doc for why this isn't a GitHub Actions workflow.
 - **Lockout after repeated invalid replies** (rule-based path only): 3 consecutive non-numeric/
   out-of-range replies to a "which service?" prompt (`WhatsAppConversationState.InvalidAttempts`,
   `WhatsAppController.MaxInvalidAttempts`) stops the bot replying to anything at all -- including
