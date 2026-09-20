@@ -307,7 +307,8 @@ cron-job.org's dashboard (not tracked in this repo).
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — items CRUD (route/page names kept as "services" — see the note under Admin routes above)
 - `/admin/reviews` — this business's reviews with an inline owner-reply editor; hidden reviews shown greyed
-- `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), booking limits, waitlist + cancellation-approval toggles, chatbot customization, read-only assigned WhatsApp number
+- `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle + notification contacts, and the `ChatbotInquiriesInbox` — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
+- `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), booking limits, waitlist + cancellation-approval toggles, read-only assigned WhatsApp number
 - `/browse` — public discovery directory (`BrowseBusinessesPage`): category chips (`GET /api/business-types`), city + sort filters, a default top-rated list (no "type first" gate), "Load more" paging, rich cards linking to `/:slug`; the authenticated-only "Businesses You Follow" list stays below
 - `/:slug` — **public** business storefront (`BusinessPage`) — viewable logged-out (stars, location, reviews); the Follow button is disabled with a WhatsApp-only tooltip for anonymous visitors
 - `/:slug/book` — booking wizard (item → date → time → details) — **requires a customer session**; `?serviceId=` alone (from a WhatsApp booking link) skips item selection straight to date selection, `?serviceId=&date=&time=` (from a waitlist notification) skips straight to the confirm step if the slot's still open
@@ -731,29 +732,47 @@ naturally types the number in one of these, not by switching to a Western keyboa
 
 ### Chatbot Inquiry mode (optional, alongside booking)
 `Business.ChatbotInquiryEnabled` (default `false`, `Settings > Chatbot Settings`) lets a customer
-step out of the booking flow entirely to ask a free-form question or reach the owner directly, via
-two literal commands checked in `WhatsAppController.HandleInquiryModeAsync` **before** either
-chatbot path (rule-based or AI) ever runs — a business that doesn't enable this sees zero behavior
-change, since the check is skipped outright:
+step out of the booking flow entirely to ask a free-form question or reach the owner directly.
+Handled in `WhatsAppController.HandleInquiryModeAsync`, called **before** either chatbot path
+(rule-based or AI) ever runs — a business that doesn't enable this sees zero behavior change, since
+the check is skipped outright.
+
+**Opening gate, not the service list.** When Inquiry is enabled, a customer's very first message (no
+open `WhatsAppConversationState` row, or one left in `AwaitingModeChoiceMode`) gets a plain two-option
+gate (`whatsapp.modeGate` / the welcome-message-tail variant `whatsapp.modeGatePrompt`) instead of the
+service list:
+```
+1. Book a service
+2. Ask a question / talk to us
+```
+Replying `1` clears any gate state and falls through to the normal rule-based/AI dispatch, which then
+shows the real numbered service list. Replying `2` enters Inquiry mode directly. Anything else re-shows
+the gate. Once *past* the gate — mid-booking, looking at the actual service list — the plain `1`/`2`
+digits are already spoken for (service selection), so switching modes from there uses the dollar-prefixed
+commands instead, checked ahead of the gate/service logic:
 - `$1` — back to Booking mode. The conversation-state row is *removed* outright (not just flipped),
   matching the reschedule keyword's own `ClearConversationState` call — merely updating the row
   would leave it looking "open" to `TryHandleServiceSelectionReply`, which would then try (and fail)
   to parse the literal text `"$1"` as a numeric service choice instead of falling through to a
-  fresh prompt.
-- `$2` — enters Inquiry mode (`WhatsAppConversationState.ChatbotMode = "Inquiry"`). Every further
-  message from that phone is logged as a `ChatbotInquiry` row (always-on "in-app" channel, an inbox
-  inside Settings — see below) and acknowledged with a short reply, **not** dispatched to booking
-  logic at all, until the customer sends `$1`. `PromptServiceSelection` (rule-based path) always resets
-  `ChatbotMode` back to `"Booking"` on every fresh prompt it issues — without this, a row left over
-  from an expired/exited Inquiry session would still read as Inquiry mode once its `ExpiresAt` gets
-  refreshed by the next prompt, silently swallowing the customer's next numeric service-selection
-  reply as if it were inquiry content instead.
+  fresh prompt. The same clear-not-update rule applies to the gate's own `1` reply, for the identical
+  reason.
+- `$2` — enters Inquiry mode (`WhatsAppConversationState.ChatbotMode = "Inquiry"`), same as the gate's
+  `2` reply (both go through the shared `EnterInquiryModeAsync` helper).
 
-When enabled, the rule-based welcome/service-list message gets a `whatsapp.inquiryEscapeHatch` note
-appended (`PromptServiceSelection`); the AI path doesn't call that function at all, so it instead
-gets one extra line in its system prompt (`BuildAiSystemPrompt`) telling the model to mention `$2`
-when it can't help with something -- the model never handles the command itself, since `$2` is
-still intercepted before the AI path is ever reached.
+While in Inquiry mode, every further message from that phone is logged as a `ChatbotInquiry` row
+(always-on "in-app" channel, an inbox inside Settings — see below) and acknowledged with a short
+reply, **not** dispatched to booking logic at all, until the customer sends `$1`. `PromptServiceSelection`
+(rule-based path) always resets `ChatbotMode` back to `"Booking"` on every fresh prompt it issues —
+without this, a row left over from an expired/exited Inquiry session would still read as Inquiry mode
+once its `ExpiresAt` gets refreshed by the next prompt, silently swallowing the customer's next numeric
+service-selection reply as if it were inquiry content instead.
+
+Once past the gate, the rule-based service-list message gets a `whatsapp.inquiryEscapeHatch` note
+appended (`PromptServiceSelection`) reminding the customer that `$2` switches to Inquiry mid-booking;
+the AI path doesn't call that function at all, so it instead gets one extra line in its system prompt
+(`BuildAiSystemPrompt`) telling the model to mention `$2` when it can't help with something -- the
+model never handles the command itself, since `$2` is still intercepted before the AI path is ever
+reached.
 
 **Owner notification**: `WhatsAppController.SendInquiryNotificationsAsync` fires **once per inquiry
 session**, not per message (`WhatsAppConversationState.InquiryNotified`, reset whenever the customer
@@ -767,11 +786,13 @@ reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (vi
 personal Gmail for the unrelated owner-email composer feature).
 
 Admin API: `GET/POST /api/admin/chatbot-inquiries` (list, `?unreadOnly=true` filter) and
-`POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `ChatbotInquiriesInbox`, a component inside
-`pages/admin/SettingsPage.tsx` itself (not a separate nav page/route) — shown directly under the
-Inquiry Notifications fields whenever `chatbotInquiryEnabled` is on, so every chatbot-related
-control (messages, the inquiry toggle, notification contacts, and the inquiries themselves) lives
-in one place.
+`POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `pages/admin/ChatbotSettingsPage.tsx`, its
+own top-level sidebar page (`/admin/chatbot`, separate from the general `/admin/settings` page) —
+holds the enable toggle, all three chatbot messages, the inquiry toggle, notification contacts, and
+the `ChatbotInquiriesInbox` component (shown whenever `chatbotInquiryEnabled` is on), so every
+chatbot-related control lives in one place instead of being buried in general Settings. It PATCHes
+`/api/admin/settings` with only its own fields, same partial-update endpoint the general Settings
+page uses for the rest of the business record.
 
 ### Customer login via WhatsApp
 The primary way a customer session starts: redeeming a link the WhatsApp bot sent them (no

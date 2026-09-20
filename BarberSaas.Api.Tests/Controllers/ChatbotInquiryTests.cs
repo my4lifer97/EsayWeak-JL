@@ -71,7 +71,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task WelcomeMessage_WhenInquiryEnabled_IncludesEscapeHatchNote()
+    public async Task WelcomeMessage_WhenInquiryEnabled_ShowsModeGateFirst()
     {
         var (businessId, token) = await SeedBusinessWithService("inquiry-welcome@example.com", "inquiry-welcome");
         await EnableInquiry(token);
@@ -79,7 +79,52 @@ public class ChatbotInquiryTests : IntegrationTestBase
         var resp = await PostInboundWithAuth(businessId, "+15550002", "hi");
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Contains("$2", body!.Reply);
+        Assert.Contains("1. Book a service", body!.Reply);
+        Assert.Contains("2. Ask a question", body.Reply);
+        Assert.DoesNotContain("Haircut", body.Reply); // service list not shown until "1" is chosen
+    }
+
+    [Fact]
+    public async Task ChoosingOne_AtGate_ShowsServiceListWithEscapeHatchNote()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-gate-one@example.com", "inquiry-gate-one");
+        await EnableInquiry(token);
+        await PostInboundWithAuth(businessId, "+15550010", "hi");
+
+        var resp = await PostInboundWithAuth(businessId, "+15550010", "1");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("1. Haircut", body!.Reply);
+        Assert.Contains("$2", body.Reply);
+    }
+
+    [Fact]
+    public async Task ChoosingTwo_AtGate_EntersInquiryModeDirectly()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-gate-two@example.com", "inquiry-gate-two");
+        await EnableInquiry(token);
+        await PostInboundWithAuth(businessId, "+15550011", "hi");
+
+        var resp = await PostInboundWithAuth(businessId, "+15550011", "2");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("$1", body!.Reply);
+        using var db = Db();
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15550011");
+        Assert.Equal("Inquiry", state.ChatbotMode);
+    }
+
+    [Fact]
+    public async Task UnrecognizedReply_AtGate_ReShowsGate()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-gate-bad@example.com", "inquiry-gate-bad");
+        await EnableInquiry(token);
+        await PostInboundWithAuth(businessId, "+15550012", "hi");
+
+        var resp = await PostInboundWithAuth(businessId, "+15550012", "blah");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("1. Book a service", body!.Reply);
     }
 
     [Fact]

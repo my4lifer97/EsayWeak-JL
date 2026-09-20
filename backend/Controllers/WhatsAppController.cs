@@ -27,6 +27,10 @@ public class WhatsAppController(
     private const string InquiryModeCommand = "$2";
     private const string BookingMode = "Booking";
     private const string InquiryMode = "Inquiry";
+    // A fresh conversation (or one that gave an unrecognized reply to the gate below) sits here
+    // until it resolves to "1" or "2" -- distinct from BookingMode so TryHandleServiceSelectionReply
+    // never mistakes the gate's own "1"/"2" reply for an actual service-list numeric selection.
+    private const string AwaitingModeChoiceMode = "AwaitingModeChoice";
 
     private static readonly string[] CancelKeywords = ["cancel", "ביטול", "بطل", "إلغاء", "בטל"];
     private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "تغيير", "שנה"];
@@ -152,16 +156,19 @@ public class WhatsAppController(
 
     // Checked before either chatbot path (rule-based or AI) runs, for any business with
     // ChatbotInquiryEnabled on -- lets a customer step out of the normal booking flow to ask a
-    // free-form question / reach the owner directly, via the literal $1 (booking) / $2 (inquiry)
-    // commands. Returns Handled=true with the reply to send when this message was about
-    // inquiry-mode navigation or content; Handled=false means "not mine, let the normal booking
-    // dispatch handle this message" (including a bare $1 from someone already in Booking mode,
-    // which just falls through to whatever booking already does with unrecognized text).
+    // free-form question / reach the owner directly. A brand-new conversation opens on a plain
+    // "1"/"2" gate (Book a service / Talk to the owner) rather than the service list directly;
+    // once past the gate, "$1"/"$2" (dollar-prefixed, to stay unambiguous against a plain numeric
+    // service-selection reply) switch between the two sections for the rest of the conversation.
+    // Returns Handled=true with the reply to send when this message was about inquiry-mode
+    // navigation or content; Handled=false means "not mine, let the normal booking dispatch handle
+    // this message" (a customer already past the gate, answering the real service list).
     private async Task<(bool Handled, string? Reply)> HandleInquiryModeAsync(
         Business business, string fromPhone, string profileName, string incomingMsg, string lang)
     {
         var trimmed = incomingMsg.Trim();
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone);
+        var isLive = state is not null && state.ExpiresAt > DateTime.UtcNow;
 
         if (trimmed == BookingModeCommand)
         {
@@ -170,30 +177,23 @@ public class WhatsAppController(
             // try to parse the literal text "$1" as a numeric service choice (fails) instead of
             // falling through to a fresh prompt. Same idiom as the reschedule keyword's own
             // ClearConversationState call.
-            if (state is not null && state.ChatbotMode == InquiryMode)
+            if (isLive && state!.ChatbotMode == InquiryMode)
                 await ClearConversationState(business.Id, fromPhone);
             // Falls through to the normal booking dispatch, which starts a fresh prompt for a
             // phone with no (or an expired) conversation state -- exactly what "back to booking"
-            // should feel like, with no separate reply of its own needed here.
+            // should feel like, with no separate reply of its own needed here. Since
+            // ChatbotInquiryEnabled is on, that fresh prompt is this same method's own gate below,
+            // reached on the customer's *next* message (this call returns unhandled).
             return (false, null);
         }
 
         if (trimmed == InquiryModeCommand)
         {
-            if (state is null)
-            {
-                state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
-                db.WhatsAppConversationStates.Add(state);
-            }
-            state.ChatbotMode = InquiryMode;
-            state.Language = lang;
-            state.InquiryNotified = false;
-            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
-            await db.SaveChangesAsync();
+            await EnterInquiryModeAsync(business.Id, fromPhone, lang);
             return (true, I18nService.T(lang, "whatsapp.inquiryStarted", new() { ["businessName"] = business.Name }));
         }
 
-        if (state is not null && state.ChatbotMode == InquiryMode && state.ExpiresAt > DateTime.UtcNow)
+        if (isLive && state!.ChatbotMode == InquiryMode)
         {
             db.ChatbotInquiries.Add(new ChatbotInquiry
             {
@@ -217,7 +217,65 @@ public class WhatsAppController(
             return (true, I18nService.T(lang, "whatsapp.inquiryAck"));
         }
 
+        // Not in Inquiry mode and not a $-command -- either a brand-new conversation, or one still
+        // sitting at the gate (an unrecognized first reply re-shows it). Once past the gate
+        // (ChatbotMode == Booking), fall through and let normal booking dispatch handle everything,
+        // including plain numeric service-selection replies.
+        if (!isLive || state!.ChatbotMode == AwaitingModeChoiceMode)
+        {
+            if (trimmed == "1")
+            {
+                // Cleared, not just flipped to Booking -- same reasoning as the $1 branch above:
+                // TryHandleServiceSelectionReply must see no open state and let PromptServiceSelection
+                // start a genuinely fresh service list, not try to parse this gate reply as one.
+                if (isLive) await ClearConversationState(business.Id, fromPhone);
+                return (false, null);
+            }
+            if (trimmed == "2")
+            {
+                await EnterInquiryModeAsync(business.Id, fromPhone, lang);
+                return (true, I18nService.T(lang, "whatsapp.inquiryStarted", new() { ["businessName"] = business.Name }));
+            }
+
+            if (state is null)
+            {
+                state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
+                db.WhatsAppConversationStates.Add(state);
+            }
+            state.ChatbotMode = AwaitingModeChoiceMode;
+            state.Language = lang;
+            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+            await db.SaveChangesAsync();
+            return (true, BuildModeGateMessage(business, lang));
+        }
+
         return (false, null);
+    }
+
+    private async Task EnterInquiryModeAsync(string businessId, string phone, string lang)
+    {
+        var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == businessId && s.Phone == phone);
+        if (state is null)
+        {
+            state = new WhatsAppConversationState { BusinessId = businessId, Phone = phone };
+            db.WhatsAppConversationStates.Add(state);
+        }
+        state.ChatbotMode = InquiryMode;
+        state.Language = lang;
+        state.InquiryNotified = false;
+        state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        await db.SaveChangesAsync();
+    }
+
+    // The very first thing a customer sees when Business.ChatbotInquiryEnabled is on -- a plain
+    // "1"/"2" choice, not the service list yet. A custom welcome message replaces just the
+    // greeting, same pattern as PromptServiceSelection's own welcomeMessage handling.
+    private static string BuildModeGateMessage(Business business, string lang)
+    {
+        var tail = I18nService.T(lang, "whatsapp.modeGatePrompt");
+        return string.IsNullOrWhiteSpace(business.ChatbotWelcomeMessage)
+            ? I18nService.T(lang, "whatsapp.modeGate", new() { ["businessName"] = business.Name })
+            : $"{business.ChatbotWelcomeMessage}\n\n{tail}";
     }
 
     // Best-effort on both channels -- a failed notification must never break the customer's own
