@@ -742,8 +742,8 @@ change, since the check is skipped outright:
   fresh prompt.
 - `$2` — enters Inquiry mode (`WhatsAppConversationState.ChatbotMode = "Inquiry"`). Every further
   message from that phone is logged as a `ChatbotInquiry` row (always-on "in-app" channel, an inbox
-  at `/admin/inquiries`) and acknowledged with a short reply, **not** dispatched to booking logic at
-  all, until the customer sends `$1`. `PromptServiceSelection` (rule-based path) always resets
+  inside Settings — see below) and acknowledged with a short reply, **not** dispatched to booking
+  logic at all, until the customer sends `$1`. `PromptServiceSelection` (rule-based path) always resets
   `ChatbotMode` back to `"Booking"` on every fresh prompt it issues — without this, a row left over
   from an expired/exited Inquiry session would still read as Inquiry mode once its `ExpiresAt` gets
   refreshed by the next prompt, silently swallowing the customer's next numeric service-selection
@@ -767,8 +767,11 @@ reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (vi
 personal Gmail for the unrelated owner-email composer feature).
 
 Admin API: `GET/POST /api/admin/chatbot-inquiries` (list, `?unreadOnly=true` filter) and
-`POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `pages/admin/InquiriesPage.tsx`
-(`/admin/inquiries`, in `AdminSidebar`'s nav).
+`POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `ChatbotInquiriesInbox`, a component inside
+`pages/admin/SettingsPage.tsx` itself (not a separate nav page/route) — shown directly under the
+Inquiry Notifications fields whenever `chatbotInquiryEnabled` is on, so every chatbot-related
+control (messages, the inquiry toggle, notification contacts, and the inquiries themselves) lives
+in one place.
 
 ### Customer login via WhatsApp
 The primary way a customer session starts: redeeming a link the WhatsApp bot sent them (no
