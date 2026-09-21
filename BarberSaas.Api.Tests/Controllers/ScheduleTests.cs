@@ -87,33 +87,6 @@ public class ScheduleTests : IntegrationTestBase
         Assert.False(await db.BlockedSlots.AnyAsync());
     }
 
-    [Fact]
-    public async Task WorkingHoursOverride_UpsertThenDelete()
-    {
-        var token = await RegisterAndLoginBusiness("schedule-override-1@example.com", "schedule-override-1");
-        Authorize(Client, token);
-
-        var createResp = await Client.PostAsJsonAsync("/api/admin/schedule/overrides",
-            new UpsertWorkingHoursOverrideRequest("2026-12-25", "10:00", "14:00", true));
-        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
-        var created = await createResp.Content.ReadFromJsonAsync<WorkingHoursOverrideDto>();
-        Assert.Equal("2026-12-25", created!.Date);
-
-        // Upserting the same date again updates in place rather than creating a second row.
-        var updateResp = await Client.PostAsJsonAsync("/api/admin/schedule/overrides",
-            new UpsertWorkingHoursOverrideRequest("2026-12-25", "11:00", "13:00", true));
-        var updated = await updateResp.Content.ReadFromJsonAsync<WorkingHoursOverrideDto>();
-        Assert.Equal(created.Id, updated!.Id);
-        Assert.Equal("11:00", updated.StartTime);
-
-        var list = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
-        Assert.Single(list!.Overrides);
-
-        var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/overrides/{created.Id}");
-        Assert.Equal(HttpStatusCode.OK, deleteResp.StatusCode);
-        var listAfter = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
-        Assert.Empty(listAfter!.Overrides);
-    }
 
     [Fact]
     public async Task SchedulePreset_SaveThenApply_OverwritesWorkingHours()

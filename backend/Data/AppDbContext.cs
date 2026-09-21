@@ -12,7 +12,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WorkingHours> WorkingHours => Set<WorkingHours>();
     public DbSet<Break> Breaks => Set<Break>();
     public DbSet<BlockedSlot> BlockedSlots => Set<BlockedSlot>();
-    public DbSet<WorkingHoursOverride> WorkingHoursOverrides => Set<WorkingHoursOverride>();
     public DbSet<SchedulePreset> SchedulePresets => Set<SchedulePreset>();
     public DbSet<SchedulePresetDay> SchedulePresetDays => Set<SchedulePresetDay>();
     public DbSet<Customer> Customers => Set<Customer>();
@@ -61,8 +60,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<WorkingHours>()
             .HasIndex(x => new { x.BusinessId, x.DayOfWeek }).IsUnique();
-        b.Entity<WorkingHoursOverride>()
-            .HasIndex(x => new { x.BusinessId, x.Date }).IsUnique();
 
         b.Entity<Customer>()
             .HasIndex(x => new { x.BusinessId, x.Phone }).IsUnique();
@@ -140,10 +137,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasColumnType("decimal(10,2)");
 
         b.Entity<BlockedSlot>()
-            .Property(x => x.Date)
-            .HasColumnType("date");
-
-        b.Entity<WorkingHoursOverride>()
             .Property(x => x.Date)
             .HasColumnType("date");
 
@@ -238,9 +231,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<BlockedSlot>()
             .HasOne(x => x.Business).WithMany(x => x.BlockedSlots)
-            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
-        b.Entity<WorkingHoursOverride>()
-            .HasOne(x => x.Business).WithMany(x => x.WorkingHoursOverrides)
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<SchedulePreset>()
             .HasOne(x => x.Business).WithMany(x => x.SchedulePresets)

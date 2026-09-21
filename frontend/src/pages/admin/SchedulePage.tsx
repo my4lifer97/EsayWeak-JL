@@ -7,7 +7,6 @@ import { t } from '../../lib/i18n'
 type WorkingHour = { id?: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
 type Break = { id: string; dayOfWeek: number; startTime: string; endTime: string }
 type BlockedSlot = { id: string; date: string; startTime: string | null; endTime: string | null; reason: string | null }
-type WorkingHoursOverrideRow = { id: string; date: string; startTime: string; endTime: string; isActive: boolean }
 type SchedulePresetDay = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
 type SchedulePreset = { id: string; name: string; createdAt: string; days: SchedulePresetDay[] }
 
@@ -26,11 +25,10 @@ export default function SchedulePage() {
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
   const [blockRangeMode, setBlockRangeMode] = useState(false)
   const [rangeEndDate, setRangeEndDate] = useState('')
-  const [newException, setNewException] = useState({ date: '', startTime: '09:00', endTime: '18:00' })
   const [newPresetName, setNewPresetName] = useState('')
   const [showPresetInput, setShowPresetInput] = useState(false)
 
-  const { data } = useQuery<{ workingHours: WorkingHour[]; breaks: Break[]; blockedSlots: BlockedSlot[]; overrides: WorkingHoursOverrideRow[] }>({
+  const { data } = useQuery<{ workingHours: WorkingHour[]; breaks: Break[]; blockedSlots: BlockedSlot[] }>({
     queryKey: ['schedule'],
     queryFn: () => api.get('/admin/schedule').then((r) => r.data),
   })
@@ -47,7 +45,6 @@ export default function SchedulePage() {
   const [hours, setHours] = useState<WorkingHour[]>(initHours)
   const [breaks, setBreaks] = useState<Break[]>(data?.breaks ?? [])
   const [blocked, setBlocked] = useState<BlockedSlot[]>(data?.blockedSlots ?? [])
-  const [overrides, setOverrides] = useState<WorkingHoursOverrideRow[]>(data?.overrides ?? [])
 
   // Sync state when data loads
   if (data && hours.every((h) => !h.id) && data.workingHours.length > 0) {
@@ -56,7 +53,6 @@ export default function SchedulePage() {
       setHours(synced)
       setBreaks(data.breaks)
       setBlocked(data.blockedSlots)
-      setOverrides(data.overrides)
     }
   }
 
@@ -105,26 +101,6 @@ export default function SchedulePage() {
   async function deleteBlocked(id: string) {
     await api.delete(`/admin/schedule/blocked/${id}`)
     setBlocked((prev) => prev.filter((b) => b.id !== id))
-  }
-
-  async function addException() {
-    if (!newException.date) return
-    // Reuses the WorkingHoursOverride upsert endpoint -- an exception day is just an override
-    // that's always active/open; AvailabilityService treats an active override as superseding
-    // any BlockedSlot for that date, which is what reopens it within a blocked range.
-    const { data: ovr } = await api.post('/admin/schedule/overrides', {
-      date: newException.date,
-      startTime: newException.startTime,
-      endTime: newException.endTime,
-      isActive: true,
-    })
-    setOverrides((prev) => [...prev.filter((o) => o.date !== ovr.date), ovr])
-    setNewException((p) => ({ ...p, date: '' }))
-  }
-
-  async function deleteException(id: string) {
-    await api.delete(`/admin/schedule/overrides/${id}`)
-    setOverrides((prev) => prev.filter((o) => o.id !== id))
   }
 
   async function savePreset() {
@@ -297,33 +273,6 @@ export default function SchedulePage() {
             <button onClick={blockRangeMode ? addBlockedRange : addBlocked} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
               {t(lang, blockRangeMode ? 'blockDateRange' : 'blockDate')}
             </button>
-          </div>
-
-          <div className="border-t border-line mt-5 pt-4">
-            <h3 className="text-ink font-medium text-sm mb-1">{t(lang, 'scheduleExceptions')}</h3>
-            <p className="text-muted text-xs mb-3">{t(lang, 'scheduleExceptionsHint')}</p>
-            {overrides.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {overrides.map((o) => (
-                  <div key={o.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
-                    <span className="text-ink text-sm">{o.date} · {o.startTime}–{o.endTime}</span>
-                    <button onClick={() => deleteException(o.id)} className="text-red-600 hover:text-red-500 text-xs">{t(lang, 'remove')}</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="flex flex-wrap items-center gap-3">
-              <input type="date" value={newException.date} onChange={(e) => setNewException((p) => ({ ...p, date: e.target.value }))}
-                className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
-              <input type="time" value={newException.startTime} onChange={(e) => setNewException((p) => ({ ...p, startTime: e.target.value }))}
-                className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
-              <span className="text-muted text-sm">{t(lang, 'timeTo')}</span>
-              <input type="time" value={newException.endTime} onChange={(e) => setNewException((p) => ({ ...p, endTime: e.target.value }))}
-                className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
-              <button onClick={addException} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-                {t(lang, 'addException')}
-              </button>
-            </div>
           </div>
         </section>
       </div>

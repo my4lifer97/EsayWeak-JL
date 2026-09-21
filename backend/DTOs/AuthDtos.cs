@@ -19,8 +19,6 @@ public record CreateBreakRequest(int DayOfWeek, string StartTime, string EndTime
 public record BlockedSlotDto(string Id, string Date, string? StartTime, string? EndTime, string? Reason);
 public record CreateBlockedSlotRequest(string Date, string? StartTime, string? EndTime, string? Reason);
 public record CreateBlockedRangeRequest(string StartDate, string EndDate, string? StartTime, string? EndTime, string? Reason);
-public record WorkingHoursOverrideDto(string Id, string Date, string StartTime, string EndTime, bool IsActive);
-public record UpsertWorkingHoursOverrideRequest(string Date, string StartTime, string EndTime, bool IsActive = true);
 public record SchedulePresetDayDto(int DayOfWeek, string StartTime, string EndTime, bool IsActive);
 public record SchedulePresetDto(string Id, string Name, DateTime CreatedAt, List<SchedulePresetDayDto> Days);
 public record SaveSchedulePresetRequest(string Name);
@@ -118,8 +116,7 @@ public record DashboardAppointmentDto(
 public record ScheduleResponse(
     List<WorkingHoursDto> WorkingHours,
     List<BreakDto> Breaks,
-    List<BlockedSlotDto> BlockedSlots,
-    List<WorkingHoursOverrideDto> Overrides);
+    List<BlockedSlotDto> BlockedSlots);
 
 public record PublicBusinessDto(
     string Slug, string Name, string? Description, string? Logo,

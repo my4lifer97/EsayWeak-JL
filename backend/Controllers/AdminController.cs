@@ -421,11 +421,7 @@ public class AdminController(
             .OrderBy(b => b.Date)
             .Select(b => new BlockedSlotDto(b.Id, b.Date.ToString("yyyy-MM-dd"), b.StartTime, b.EndTime, b.Reason))
             .ToListAsync();
-        var ovr = await db.WorkingHoursOverrides.Where(o => o.BusinessId == BusinessId)
-            .OrderBy(o => o.Date)
-            .Select(o => new WorkingHoursOverrideDto(o.Id, o.Date.ToString("yyyy-MM-dd"), o.StartTime, o.EndTime, o.IsActive))
-            .ToListAsync();
-        return Ok(new ScheduleResponse(wh, brk, bsl, ovr));
+        return Ok(new ScheduleResponse(wh, brk, bsl));
     }
 
     // Shared by SaveWorkingHours and ApplySchedulePreset -- both overwrite the standing 7-day
@@ -578,52 +574,11 @@ public class AdminController(
         return Ok(new { ok = true });
     }
 
-    // ─── Working-hours date overrides ───────────────────────────────────────
-    // Bidirectional per-date override of the weekly WorkingHours template -- see
-    // WorkingHoursOverride's doc comment and AvailabilityService.GetSlotsWithBookingInfo, which
-    // checks this table before the DayOfWeek lookup.
-
-    [HttpPost("schedule/overrides")]
-    public async Task<IActionResult> UpsertWorkingHoursOverride([FromBody] UpsertWorkingHoursOverrideRequest req)
-    {
-        var date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
-        var existing = await db.WorkingHoursOverrides.FirstOrDefaultAsync(o => o.BusinessId == BusinessId && o.Date == date);
-        if (existing is not null)
-        {
-            existing.StartTime = req.StartTime;
-            existing.EndTime = req.EndTime;
-            existing.IsActive = req.IsActive;
-        }
-        else
-        {
-            existing = new WorkingHoursOverride { BusinessId = BusinessId, Date = date, StartTime = req.StartTime, EndTime = req.EndTime, IsActive = req.IsActive };
-            db.WorkingHoursOverrides.Add(existing);
-        }
-        await db.SaveChangesAsync();
-
-        this.SetActivityDetail(req.IsActive
-            ? $"Set date-specific hours for {req.Date}: {req.StartTime}–{req.EndTime}"
-            : $"Marked {req.Date} closed (date-specific override)");
-
-        return StatusCode(201, new WorkingHoursOverrideDto(existing.Id, req.Date, existing.StartTime, existing.EndTime, existing.IsActive));
-    }
-
-    [HttpDelete("schedule/overrides/{id}")]
-    public async Task<IActionResult> DeleteWorkingHoursOverride(string id)
-    {
-        var ovr = await db.WorkingHoursOverrides.FirstOrDefaultAsync(o => o.Id == id && o.BusinessId == BusinessId);
-        if (ovr is null) return NotFound();
-        db.WorkingHoursOverrides.Remove(ovr);
-        await db.SaveChangesAsync();
-        this.SetActivityDetail($"Removed date-specific override for {ovr.Date:yyyy-MM-dd}");
-        return Ok(new { ok = true });
-    }
-
     // ─── Schedule presets ───────────────────────────────────────────────────
     // A named snapshot of the 7-day WorkingHours template, saveable and re-applicable later (e.g.
     // "Christmas Hours"). Applying overwrites the standing weekly template via the same
-    // UpsertWorkingHours helper SaveWorkingHours uses -- it does not touch WorkingHoursOverrides
-    // or auto-revert; confirmed with the business owner as the desired behavior.
+    // UpsertWorkingHours helper SaveWorkingHours uses -- it does not auto-revert; confirmed with
+    // the business owner as the desired behavior.
 
     [HttpGet("schedule/presets")]
     public async Task<IActionResult> GetSchedulePresets()

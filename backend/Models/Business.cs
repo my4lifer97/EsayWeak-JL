@@ -142,7 +142,6 @@ public class Business
     public ICollection<WorkingHours> WorkingHours { get; set; } = [];
     public ICollection<Break> Breaks { get; set; } = [];
     public ICollection<BlockedSlot> BlockedSlots { get; set; } = [];
-    public ICollection<WorkingHoursOverride> WorkingHoursOverrides { get; set; } = [];
     public ICollection<SchedulePreset> SchedulePresets { get; set; } = [];
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<Customer> Customers { get; set; } = [];
@@ -221,27 +220,10 @@ public class Break
     public Business Business { get; set; } = null!;
 }
 
-// Per-date override of the weekly WorkingHours template -- bidirectional: can open a normally
-// closed day with custom hours (IsActive true), or close a normally open one entirely (IsActive
-// false), for one specific calendar date, without touching the standing weekly schedule. Checked
-// first in AvailabilityService.GetSlotsWithBookingInfo, before the DayOfWeek lookup; falls back to
-// the weekly template when no override row exists for that exact date.
-public class WorkingHoursOverride
-{
-    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string BusinessId { get; set; } = "";
-    public DateTime Date { get; set; }
-    public string StartTime { get; set; } = "";
-    public string EndTime { get; set; } = "";
-    public bool IsActive { get; set; } = true;
-
-    public Business Business { get; set; } = null!;
-}
-
 // A named snapshot of the 7-day WorkingHours template (e.g. "Christmas Hours"), saved so it can be
 // re-applied later without re-entering every day's hours by hand. Applying overwrites the standing
-// weekly template -- it does not touch WorkingHoursOverride rows for specific dates, and doesn't
-// auto-revert; the owner switches back (or applies a different preset) manually.
+// weekly template and doesn't auto-revert; the owner switches back (or applies a different preset)
+// manually.
 public class SchedulePreset
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
