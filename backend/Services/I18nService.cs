@@ -27,6 +27,7 @@ public static class I18nService
             ["whatsapp.inquiryEscapeHatch"] = "\n\n💬 Have a question instead? Reply $2 to talk to us directly.",
             ["whatsapp.inquiryStarted"] = "You're now chatting directly with {businessName}. Type your question or request below — reply $1 anytime to go back to booking.",
             ["whatsapp.inquiryAck"] = "Got it — we'll get back to you soon. (Reply $1 to return to booking.)",
+            ["whatsapp.aiConversationRestarted"] = "Let's start fresh — how can I help you today?",
         },
         ["AR"] = new()
         {
@@ -49,6 +50,7 @@ public static class I18nService
             ["whatsapp.inquiryEscapeHatch"] = "\n\n💬 لديك سؤال؟ أرسل $2 للتحدث معنا مباشرة.",
             ["whatsapp.inquiryStarted"] = "أنت الآن تتحدث مباشرة مع {businessName}. اكتب سؤالك أو طلبك أدناه — أرسل $1 في أي وقت للعودة إلى الحجز.",
             ["whatsapp.inquiryAck"] = "تم الاستلام — سنعاود التواصل معك قريبًا. (أرسل $1 للعودة إلى الحجز.)",
+            ["whatsapp.aiConversationRestarted"] = "لنبدأ من جديد — كيف يمكنني مساعدتك اليوم؟",
         },
         ["HE"] = new()
         {
@@ -71,6 +73,7 @@ public static class I18nService
             ["whatsapp.inquiryEscapeHatch"] = "\n\n💬 יש לך שאלה? שלח $2 כדי לדבר איתנו ישירות.",
             ["whatsapp.inquiryStarted"] = "אתה עכשיו מדבר ישירות עם {businessName}. כתוב את השאלה או הבקשה שלך למטה — שלח $1 בכל שלב כדי לחזור להזמנת תור.",
             ["whatsapp.inquiryAck"] = "התקבל — נחזור אליך בקרוב. (שלח $1 כדי לחזור להזמנת תור.)",
+            ["whatsapp.aiConversationRestarted"] = "בוא נתחיל מחדש — איך אוכל לעזור לך היום?",
         },
     };
 

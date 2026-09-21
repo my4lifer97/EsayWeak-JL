@@ -97,6 +97,58 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ThreeNonCompletingRepliesInARow_LocksOutUntilUnlockKeyword()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-4@example.com", "wa-ai-4");
+        var phone = "+15559991004";
+        Factory.OpenAi.PlainTextReply = "Sure, we're open 9-6 Mon-Fri.";
+
+        await PostInbound(businessId, phone, "what are your hours?");
+        await PostInbound(businessId, phone, "and do you take walk-ins?");
+        var thirdResp = await PostInbound(businessId, phone, "cool, one more question");
+        var thirdBody = await thirdResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+
+        // The 3rd non-completing reply is replaced with the lockout message, not the AI's own text.
+        Assert.Contains("$", thirdBody!.Reply);
+        Assert.DoesNotContain("9-6", thirdBody.Reply);
+
+        var fourthResp = await PostInbound(businessId, phone, "hello?");
+        var fourthBody = await fourthResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Null(fourthBody!.Reply); // silently ignored -- not the literal "$"
+
+        var unlockResp = await PostInbound(businessId, phone, "$");
+        var unlockBody = await unlockResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("start fresh", unlockBody!.Reply, StringComparison.OrdinalIgnoreCase);
+
+        // Unlocking clears the conversation state entirely (mirrors the rule-based path's unlock) --
+        // a fresh row only gets created once the customer actually sends a real next message.
+        using var db = Db();
+        Assert.False(await db.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone));
+    }
+
+    [Fact]
+    public async Task SuccessfulToolCall_ResetsInvalidAttemptCounter()
+    {
+        var (businessId, slug, itemId) = await SeedBusinessWithService("wa-ai-5@example.com", "wa-ai-5");
+        var phone = "+15559991005";
+        Factory.OpenAi.PlainTextReply = "Not sure I follow.";
+
+        await PostInbound(businessId, phone, "random message one");
+        await PostInbound(businessId, phone, "random message two");
+
+        Factory.OpenAi.PlainTextReply = null;
+        Factory.OpenAi.ToolCallName = "create_booking_link";
+        Factory.OpenAi.ToolCallArgsJson = JsonSerializer.Serialize(new { itemId });
+        var bookingResp = await PostInbound(businessId, phone, "ok let's book a haircut");
+        var bookingBody = await bookingResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains($"/{slug}/w/", bookingBody!.Reply);
+
+        using var db = Db();
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+        Assert.Equal(0, state.InvalidAttempts); // reset by the successful tool call, not left at 2
+    }
+
+    [Fact]
     public async Task OpenAiThrows_FallsBackToRuleBasedReply()
     {
         var (businessId, _, _) = await SeedBusinessWithService("wa-ai-3@example.com", "wa-ai-3");

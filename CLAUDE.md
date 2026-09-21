@@ -708,6 +708,19 @@ open-ended Q&A (hours, prices, greetings) grounded in the business data (name, a
 language) injected into its system prompt each turn. Rescheduling isn't a separate tool — the
 system prompt tells the model to call `cancel_upcoming_appointment` then `create_booking_link`.
 
+**Lockout after repeated non-completing replies (added 2026-09-21)**: mirrors the rule-based path's
+`"$"`-unlock lockout above, reusing the same `WhatsAppConversationState.InvalidAttempts` field and
+`MaxInvalidAttempts`/`UnlockKeyword` constants, but counted differently here — a turn counts as
+"invalid" when the model replies without the AI ever calling `create_booking_link` or
+`cancel_upcoming_appointment` (tracked via a local `toolCalled` flag set inside the `executeToolAsync`
+closure passed to `IOpenAiChatClient.GetReplyAsync`), so a customer chatting without ever completing
+a booking/cancellation doesn't keep burning paid OpenAI calls indefinitely. A successful tool call
+resets the counter to 0. On the 3rd non-completing reply in a row, the AI's own reply text is
+replaced with the `whatsapp.tooManyInvalidReplies` message (same as rule-based); every message after
+that is silently ignored (`return null`) until the customer sends the literal `"$"`, which clears the
+conversation state entirely and replies with `whatsapp.aiConversationRestarted` — a fresh state row
+only gets created once the customer sends a real next message, same as the rule-based unlock.
+
 `WhatsAppConversationState.HistoryJson` (nullable, added alongside this) holds the rolling chat
 history (last ~12 turns, `List<OpenAiTurn>` JSON) for this path — the same (BusinessId, Phone) +
 `ExpiresAt` row the rule-based path already used for its "awaiting numbered reply" flag, repurposed

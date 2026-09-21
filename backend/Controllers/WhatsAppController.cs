@@ -376,11 +376,24 @@ public class WhatsAppController(
     // model to relay a tool's "message" field verbatim. This is what prevents a hallucinated URL,
     // price, or date from ever reaching a customer; the model only freely composes text for
     // open-ended Q&A grounded in the business data injected into the system prompt.
-    private async Task<string> ProcessMessageWithAiAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    private async Task<string?> ProcessMessageWithAiAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
         var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
 
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
+
+        // Same "$"-unlock lockout the rule-based path uses (see ProcessMessageRuleBasedAsync) --
+        // reuses the same InvalidAttempts field, just counted differently: here a turn counts as
+        // "invalid" when the model replies without ever completing a booking or cancellation (no
+        // tool call), so someone chatting without actually booking anything doesn't burn OpenAI
+        // calls indefinitely.
+        if (state is not null && state.InvalidAttempts >= MaxInvalidAttempts)
+        {
+            if (incomingMsg.Trim() != UnlockKeyword) return null;
+            await ClearConversationState(business.Id, fromPhone);
+            return I18nService.T(lang, "whatsapp.aiConversationRestarted");
+        }
+
         var history = state?.HistoryJson is not null
             ? JsonSerializer.Deserialize<List<OpenAiTurn>>(state.HistoryJson) ?? []
             : [];
@@ -396,12 +409,17 @@ public class WhatsAppController(
                 """{"type":"object","properties":{}}"""),
         ];
 
-        async Task<string> ExecuteTool(string name, string argsJson) => name switch
+        var toolCalled = false;
+        async Task<string> ExecuteTool(string name, string argsJson)
         {
-            "create_booking_link" => await ExecuteCreateBookingLink(business, appUrl, fromPhone, profileName, lang, argsJson),
-            "cancel_upcoming_appointment" => await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang),
-            _ => JsonSerializer.Serialize(new { error = "unknown tool" }),
-        };
+            toolCalled = true;
+            return name switch
+            {
+                "create_booking_link" => await ExecuteCreateBookingLink(business, appUrl, fromPhone, profileName, lang, argsJson),
+                "cancel_upcoming_appointment" => await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang),
+                _ => JsonSerializer.Serialize(new { error = "unknown tool" }),
+            };
+        }
 
         var reply = await openAi.GetReplyAsync(systemPrompt, history, incomingMsg, tools, ExecuteTool);
 
@@ -417,6 +435,18 @@ public class WhatsAppController(
         state.Language = lang;
         state.HistoryJson = JsonSerializer.Serialize(history);
         state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+
+        if (toolCalled)
+        {
+            state.InvalidAttempts = 0;
+        }
+        else
+        {
+            state.InvalidAttempts++;
+            if (state.InvalidAttempts >= MaxInvalidAttempts)
+                reply = I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword });
+        }
+
         await db.SaveChangesAsync();
 
         return reply;
