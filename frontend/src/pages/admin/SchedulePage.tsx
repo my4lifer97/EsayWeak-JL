@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
-import PresetEditorModal, { WeekHoursEditor, type SchedulePreset } from '../../components/admin/PresetEditorModal'
+import PresetEditorModal, { type SchedulePreset } from '../../components/admin/PresetEditorModal'
 
 type WorkingHour = { id?: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
 type Break = { id: string; dayOfWeek: number; startTime: string; endTime: string }
@@ -19,8 +19,18 @@ export default function SchedulePage() {
       lang === 'AR' ? 'ar-SA' : lang === 'HE' ? 'he-IL' : 'en-US',
       { weekday: 'long' }
     )
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const nextDateForDay = (dayOfWeek: number) => {
+    const today = new Date()
+    let diff = dayOfWeek - today.getDay()
+    if (diff < 0) diff += 7
+    const d = new Date(today)
+    d.setDate(today.getDate() + diff)
+    return d.toLocaleDateString(
+      lang === 'AR' ? 'ar-SA' : lang === 'HE' ? 'he-IL' : 'en-US',
+      { day: 'numeric', month: 'short' }
+    )
+  }
+
   const [newBreak, setNewBreak] = useState({ dayOfWeek: 1, startTime: '12:00', endTime: '13:00' })
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
   const [blockRangeMode, setBlockRangeMode] = useState(false)
@@ -59,14 +69,6 @@ export default function SchedulePage() {
       setBreaks(data.breaks)
       setBlocked(data.blockedSlots)
     }
-  }
-
-  async function saveHours() {
-    setSaving(true)
-    await api.post('/admin/schedule', hours)
-    setSaving(false); setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-    queryClient.invalidateQueries({ queryKey: ['schedule'] })
   }
 
   async function addBreak() {
@@ -131,7 +133,8 @@ export default function SchedulePage() {
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'schedule')}</h1>
       <div className="space-y-8">
         <section className="bg-surface border border-line rounded-2xl p-6">
-          <h2 className="text-ink font-semibold text-lg mb-5">{t(lang, 'workingHours')}</h2>
+          <h2 className="text-ink font-semibold text-lg mb-1">{t(lang, 'workingHours')}</h2>
+          <p className="text-muted text-sm mb-5">{t(lang, 'workingHoursReadOnlyHint')}</p>
           {scheduledChange && (
             <div className="bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-900/40 dark:border-blue-800/50 dark:text-blue-400 text-sm rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-3">
               <span>
@@ -144,21 +147,35 @@ export default function SchedulePage() {
               </button>
             </div>
           )}
-          <WeekHoursEditor lang={lang} days={hours} onChange={setHours} />
-          <button onClick={saveHours} disabled={saving}
-            className="mt-5 bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors">
-            {saved ? t(lang, 'saved') : saving ? t(lang, 'saving') : t(lang, 'saveWorkingHours')}
-          </button>
-        </section>
+          <div className="space-y-2">
+            {hours.map((h) => (
+              <div key={h.dayOfWeek} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2.5">
+                <span className="text-ink text-sm font-medium">
+                  {dayName(h.dayOfWeek)} <span className="text-muted font-normal">· {nextDateForDay(h.dayOfWeek)}</span>
+                </span>
+                <span className={h.isActive ? 'text-ink text-sm' : 'text-muted text-sm'}>
+                  {h.isActive ? `${h.startTime} – ${h.endTime}` : t(lang, 'dayClosedLabel')}
+                </span>
+              </div>
+            ))}
+          </div>
 
-        <section className="bg-surface border border-line rounded-2xl p-6">
+          <div className="border-t border-line my-6" />
+
           <h2 className="text-ink font-semibold text-lg mb-1">{t(lang, 'schedulePresets')}</h2>
           <p className="text-muted text-sm mb-5">{t(lang, 'schedulePresetsHint')}</p>
           {presets.length > 0 && (
             <div className="space-y-2 mb-4">
               {presets.map((p) => (
                 <div key={p.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
-                  <span className="text-ink text-sm">{p.name}</span>
+                  <span className="text-ink text-sm flex items-center gap-2">
+                    {p.name}
+                    {p.isDefault && (
+                      <span className="text-[10px] uppercase tracking-wide bg-teal-tint text-ink px-1.5 py-0.5 rounded">
+                        {t(lang, 'defaultPresetBadge')}
+                      </span>
+                    )}
+                  </span>
                   <button onClick={() => setModalPreset(p)} className="text-coral-dark hover:text-coral text-xs font-medium">{t(lang, 'edit')}</button>
                 </div>
               ))}

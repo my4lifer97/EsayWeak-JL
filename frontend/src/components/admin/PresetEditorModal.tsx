@@ -3,7 +3,7 @@ import { api } from '../../lib/api'
 import { t } from '../../lib/i18n'
 
 export type DayHours = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
-export type SchedulePreset = { id: string; name: string; createdAt: string; days: DayHours[] }
+export type SchedulePreset = { id: string; name: string; createdAt: string; isDefault: boolean; days: DayHours[] }
 
 const dayName = (dayOfWeek: number, lang: string) =>
   new Date(2024, 0, 7 + dayOfWeek).toLocaleDateString(
@@ -64,11 +64,11 @@ export default function PresetEditorModal({
   }
 
   async function handleSave() {
-    if (!name.trim()) { setError(t(lang, 'presetNameRequired')); return }
+    if (!preset?.isDefault && !name.trim()) { setError(t(lang, 'presetNameRequired')); return }
     setSaving(true); setError('')
     try {
       if (preset) {
-        await api.put(`/admin/schedule/presets/${preset.id}`, { name: name.trim(), days })
+        await api.put(`/admin/schedule/presets/${preset.id}`, { name: preset.isDefault ? 'Default' : name.trim(), days })
       } else {
         await api.post('/admin/schedule/presets', { name: name.trim(), days })
       }
@@ -123,9 +123,11 @@ export default function PresetEditorModal({
         {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
 
         <div className="space-y-4">
-          <input type="text" value={name} placeholder={t(lang, 'presetNamePlaceholder')}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none" />
+          {!preset?.isDefault && (
+            <input type="text" value={name} placeholder={t(lang, 'presetNamePlaceholder')}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none" />
+          )}
 
           <WeekHoursEditor lang={lang} days={days} onChange={setDays} />
 
@@ -134,7 +136,7 @@ export default function PresetEditorModal({
             {saving ? t(lang, 'saving') : t(lang, 'saveChanges')}
           </button>
 
-          {preset && (
+          {preset && !preset.isDefault && (
             <div className="border-t border-line pt-4 space-y-3">
               <h3 className="text-ink font-medium text-sm">{t(lang, 'useThisSchedule')}</h3>
 

@@ -553,15 +553,16 @@ public class AdminController(
     [HttpGet("schedule/presets")]
     public async Task<IActionResult> GetSchedulePresets()
     {
+        await schedulePresets.GetOrCreateDefaultPreset(BusinessId);
+
         var presets = await db.SchedulePresets.Where(p => p.BusinessId == BusinessId)
             .Include(p => p.Days)
-            .OrderByDescending(p => p.CreatedAt)
+            .OrderByDescending(p => p.IsDefault).ThenByDescending(p => p.CreatedAt)
             .ToListAsync();
-        return Ok(presets.Select(p => new SchedulePresetDto(p.Id, p.Name, p.CreatedAt,
-            p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList())).ToList());
+        return Ok(presets.Select(ToPresetDto).ToList());
     }
 
-    private static SchedulePresetDto ToPresetDto(SchedulePreset p) => new(p.Id, p.Name, p.CreatedAt,
+    private static SchedulePresetDto ToPresetDto(SchedulePreset p) => new(p.Id, p.Name, p.CreatedAt, p.IsDefault,
         p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList());
 
     private static void ValidateDays(List<SchedulePresetDayDto> days)
@@ -592,13 +593,16 @@ public class AdminController(
     [HttpPut("schedule/presets/{id}")]
     public async Task<IActionResult> UpdateSchedulePreset(string id, [FromBody] UpdateSchedulePresetRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
-        try { ValidateDays(req.Days); } catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
-
         var preset = await db.SchedulePresets.Include(p => p.Days).FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
         if (preset is null) return NotFound();
+        try { ValidateDays(req.Days); } catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
 
-        preset.Name = req.Name.Trim();
+        // The Default preset's name is locked -- it's always "Default", regardless of what's sent.
+        if (!preset.IsDefault)
+        {
+            if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
+            preset.Name = req.Name.Trim();
+        }
         foreach (var d in req.Days)
         {
             var existing = preset.Days.First(x => x.DayOfWeek == d.DayOfWeek);
@@ -607,6 +611,13 @@ public class AdminController(
             existing.IsActive = d.IsActive;
         }
         await db.SaveChangesAsync();
+
+        // The Default preset IS the live baseline -- editing it applies immediately unless a
+        // scheduled range is currently overriding the weekly template (in which case it'll take
+        // effect once that range reverts back to Default).
+        if (preset.IsDefault && !await schedulePresets.HasActiveSchedule(BusinessId))
+            await schedulePresets.ApplyPresetToWorkingHours(preset.Id);
+
         this.SetActivityDetail($"Updated schedule preset \"{preset.Name}\"");
 
         return Ok(ToPresetDto(preset));
@@ -629,6 +640,7 @@ public class AdminController(
     {
         var preset = await db.SchedulePresets.FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
         if (preset is null) return NotFound();
+        if (preset.IsDefault) return BadRequest(new { error = "The default schedule can't be deleted -- the system always needs a baseline." });
         try
         {
             db.SchedulePresets.Remove(preset);

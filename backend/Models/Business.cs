@@ -225,11 +225,18 @@ public class Break
 // re-applied later without re-entering every day's hours by hand. Applying overwrites the standing
 // weekly template and doesn't auto-revert; the owner switches back (or applies a different preset)
 // manually.
+//
+// Every business always has exactly one preset with IsDefault true (auto-created lazily by
+// SchedulePresetService.GetOrCreateDefaultPreset if missing) -- this is the baseline schedule the
+// owner always falls back to. It can be edited but never deleted or scheduled for a date range
+// (see AdminController's schedule-preset endpoints), and it's the implicit RevertToPreset for
+// every date-range schedule.
 public class SchedulePreset
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string BusinessId { get; set; } = "";
     public string Name { get; set; } = "";
+    public bool IsDefault { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Business Business { get; set; } = null!;
@@ -249,12 +256,11 @@ public class SchedulePresetDay
 }
 
 // A preset scheduled to take over the weekly WorkingHours template for a date range, then
-// automatically revert -- e.g. "Christmas Hours" from Dec 24 to Jan 2. RevertToPresetId points at
-// a preset auto-created from whatever the weekly template was at the moment this was scheduled
-// (SchedulePresetService.SchedulePresetForRange), so reverting restores exactly what was live
-// before, not just "whatever the template happens to be by EndDate" if it was edited meanwhile.
-// Only one row per business may be un-reverted at a time (enforced in the service) -- overlapping
-// scheduled changes aren't supported.
+// automatically revert -- e.g. "Christmas Hours" from Dec 24 to Jan 2. RevertToPresetId always
+// points at the business's Default preset (SchedulePresetService.GetOrCreateDefaultPreset), so
+// reverting always lands back on the baseline schedule, not a one-off snapshot. Only one row per
+// business may be un-reverted at a time (enforced in the service) -- overlapping scheduled changes
+// aren't supported.
 public class PresetSchedule
 {
     [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");

@@ -138,7 +138,7 @@ public class ScheduleTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.OK, deleteResp.StatusCode);
         var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
-        Assert.Empty(presets!);
+        Assert.All(presets!, p => Assert.True(p.IsDefault)); // only the (undeletable) Default preset remains
         var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
         Assert.True(schedule!.WorkingHours.Single(h => h.DayOfWeek == 0).IsActive);
     }
@@ -162,7 +162,7 @@ public class ScheduleTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task SchedulePresetRange_StartingTodayAppliesImmediatelyAndCreatesBackup()
+    public async Task SchedulePresetRange_StartingTodayAppliesImmediatelyAndRevertsToDefaultLater()
     {
         var token = await RegisterAndLoginBusiness("schedule-preset-range-1@example.com", "schedule-preset-range-1");
         Authorize(Client, token);
@@ -185,9 +185,11 @@ public class ScheduleTests : IntegrationTestBase
         Assert.True(wednesday.IsActive);
         Assert.Equal("10:00", wednesday.StartTime);
 
-        // The original (pre-schedule) hours were auto-backed-up as their own preset.
+        // A Default preset was lazily created (capturing the pre-schedule hours) as the revert target.
         var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
-        Assert.Contains(presets!, p => p.Name.StartsWith("Before Christmas Hours"));
+        var defaultPreset = presets!.Single(p => p.IsDefault);
+        Assert.Equal("Default", defaultPreset.Name);
+        Assert.True(defaultPreset.Days.Single(d => d.DayOfWeek == 0).IsActive);
 
         var current = await Client.GetFromJsonAsync<PresetScheduleResponse>("/api/admin/schedule/preset-schedule");
         Assert.NotNull(current!.Schedule);
@@ -230,7 +232,7 @@ public class ScheduleTests : IntegrationTestBase
         var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
         var sunday = schedule!.WorkingHours.Single(h => h.DayOfWeek == 0);
         var wednesday = schedule.WorkingHours.Single(h => h.DayOfWeek == 3);
-        Assert.True(sunday.IsActive); // reverted back to the original (auto-backed-up) hours
+        Assert.True(sunday.IsActive); // reverted back to the Default preset's (pre-schedule) hours
         Assert.False(wednesday.IsActive);
         var current = await Client.GetFromJsonAsync<PresetScheduleResponse>("/api/admin/schedule/preset-schedule");
         Assert.Null(current!.Schedule);
@@ -250,5 +252,50 @@ public class ScheduleTests : IntegrationTestBase
         var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/presets/{preset.Id}");
 
         Assert.Equal(HttpStatusCode.BadRequest, deleteResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task DefaultPreset_IsAutoCreatedAndCannotBeDeletedOrScheduledForARange()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-default-1@example.com", "schedule-default-1");
+        Authorize(Client, token);
+
+        var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
+        var defaultPreset = Assert.Single(presets!);
+        Assert.True(defaultPreset.IsDefault);
+        Assert.Equal("Default", defaultPreset.Name);
+        Assert.Equal(7, defaultPreset.Days.Count);
+
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{defaultPreset.Id}/schedule",
+            new SchedulePresetRangeRequest(today, future));
+        Assert.Equal(HttpStatusCode.BadRequest, scheduleResp.StatusCode);
+
+        var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/presets/{defaultPreset.Id}");
+        Assert.Equal(HttpStatusCode.BadRequest, deleteResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task DefaultPreset_Update_AppliesImmediatelyAndKeepsNameLocked()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-default-2@example.com", "schedule-default-2");
+        Authorize(Client, token);
+        var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
+        var defaultPreset = presets!.Single(p => p.IsDefault);
+
+        var updateResp = await Client.PutAsJsonAsync($"/api/admin/schedule/presets/{defaultPreset.Id}",
+            new UpdateSchedulePresetRequest("Tried To Rename", PresetDays(2, "08:00", "16:00")));
+
+        Assert.Equal(HttpStatusCode.OK, updateResp.StatusCode);
+        var updated = await updateResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        Assert.Equal("Default", updated!.Name); // name stays locked regardless of what's sent
+        Assert.True(updated.IsDefault);
+
+        // No scheduled range is active, so editing the Default preset applies straight to WorkingHours.
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        var tuesday = schedule!.WorkingHours.Single(h => h.DayOfWeek == 2);
+        Assert.True(tuesday.IsActive);
+        Assert.Equal("08:00", tuesday.StartTime);
     }
 }

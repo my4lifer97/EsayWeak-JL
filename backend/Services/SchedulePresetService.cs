@@ -37,28 +37,36 @@ public class SchedulePresetService(AppDbContext db)
         await db.SaveChangesAsync();
     }
 
-    // Used only for the automatic backup a scheduled range creates (see ScheduleForRange) -- the
-    // preset editor modal itself always saves caller-supplied Days, not a snapshot of the DB.
-    public async Task<SchedulePreset> SnapshotCurrentHoursAsPreset(string businessId, string name)
+    // Every business always has exactly one Default preset -- the baseline schedule everything
+    // else reverts to. Existing businesses got theirs backfilled by the AddDefaultSchedulePreset
+    // migration; this lazily creates one (snapshotting whatever WorkingHours currently holds) for
+    // any business that somehow doesn't have one yet, so callers never have to special-case it.
+    public async Task<SchedulePreset> GetOrCreateDefaultPreset(string businessId)
     {
+        var existing = await db.SchedulePresets.FirstOrDefaultAsync(p => p.BusinessId == businessId && p.IsDefault);
+        if (existing is not null) return existing;
+
         var currentHours = await db.WorkingHours.Where(w => w.BusinessId == businessId).ToListAsync();
-        var preset = new SchedulePreset { BusinessId = businessId, Name = name };
+        var preset = new SchedulePreset { BusinessId = businessId, Name = "Default", IsDefault = true };
         preset.Days = Enumerable.Range(0, 7).Select(dow =>
         {
-            var existing = currentHours.FirstOrDefault(w => w.DayOfWeek == dow);
+            var wh = currentHours.FirstOrDefault(w => w.DayOfWeek == dow);
             return new SchedulePresetDay
             {
                 SchedulePresetId = preset.Id,
                 DayOfWeek = dow,
-                StartTime = existing?.StartTime ?? "09:00",
-                EndTime = existing?.EndTime ?? "18:00",
-                IsActive = existing?.IsActive ?? false,
+                StartTime = wh?.StartTime ?? "09:00",
+                EndTime = wh?.EndTime ?? "18:00",
+                IsActive = wh?.IsActive ?? false,
             };
         }).ToList();
         db.SchedulePresets.Add(preset);
         await db.SaveChangesAsync();
         return preset;
     }
+
+    public async Task<bool> HasActiveSchedule(string businessId) =>
+        await db.PresetSchedules.AnyAsync(s => s.BusinessId == businessId && s.Applied && !s.Reverted);
 
     public async Task ApplyPresetToWorkingHours(string presetId)
     {
@@ -67,26 +75,27 @@ public class SchedulePresetService(AppDbContext db)
     }
 
     // "Schedule for a date range": the weekly template switches to `preset`'s hours on StartDate
-    // and automatically reverts after EndDate. Always creates a backup preset from whatever the
-    // template is right now, so reverting restores exactly that -- not just "whatever the template
-    // happens to be by EndDate" if it gets edited in the meantime. Only one un-reverted
-    // PresetSchedule per business is allowed at a time.
+    // and automatically reverts to the business's Default preset after EndDate. Only one
+    // un-reverted PresetSchedule per business is allowed at a time. The Default preset itself can't
+    // be scheduled this way -- it's already the baseline everything reverts to.
     public async Task<PresetSchedule> ScheduleForRange(string businessId, string presetId, DateTime startDate, DateTime endDate)
     {
         var preset = await db.SchedulePresets.FirstOrDefaultAsync(p => p.Id == presetId && p.BusinessId == businessId)
             ?? throw new InvalidOperationException("Preset not found");
+        if (preset.IsDefault)
+            throw new InvalidOperationException("The default schedule is always the baseline -- it can't be scheduled for a date range.");
 
         var alreadyScheduled = await db.PresetSchedules.AnyAsync(s => s.BusinessId == businessId && !s.Reverted);
         if (alreadyScheduled)
             throw new InvalidOperationException("A scheduled preset change is already pending or active for this business");
 
-        var backup = await SnapshotCurrentHoursAsPreset(businessId, $"Before {preset.Name} ({DateTime.Now:yyyy-MM-dd})");
+        var defaultPreset = await GetOrCreateDefaultPreset(businessId);
 
         var schedule = new PresetSchedule
         {
             BusinessId = businessId,
             PresetId = presetId,
-            RevertToPresetId = backup.Id,
+            RevertToPresetId = defaultPreset.Id,
             StartDate = startDate,
             EndDate = endDate,
         };
