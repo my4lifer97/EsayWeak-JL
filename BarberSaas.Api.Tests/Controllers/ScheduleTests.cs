@@ -298,4 +298,77 @@ public class ScheduleTests : IntegrationTestBase
         Assert.True(tuesday.IsActive);
         Assert.Equal("08:00", tuesday.StartTime);
     }
+
+    [Fact]
+    public async Task SchedulePreset_SaveWithBreaks_RoundTrips()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-breaks-1@example.com", "schedule-preset-breaks-1");
+        Authorize(Client, token);
+        var breaks = new List<SchedulePresetBreakDto> { new(1, "12:00", "13:00"), new(3, "12:00", "13:00") };
+
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets",
+            new SaveSchedulePresetRequest("Christmas Hours", PresetDays(0, "09:00", "18:00"), breaks));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        Assert.Equal(2, preset!.Breaks.Count);
+        Assert.Contains(preset.Breaks, b => b.DayOfWeek == 1 && b.StartTime == "12:00");
+
+        var fetched = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
+        var refetched = fetched!.Single(p => p.Id == preset.Id);
+        Assert.Equal(2, refetched.Breaks.Count);
+    }
+
+    [Fact]
+    public async Task SchedulePreset_UpdateBreaks_ReplacesEntireList()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-breaks-2@example.com", "schedule-preset-breaks-2");
+        Authorize(Client, token);
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets",
+            new SaveSchedulePresetRequest("Draft", PresetDays(0, "09:00", "18:00"), [new SchedulePresetBreakDto(1, "12:00", "13:00")]));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        var updateResp = await Client.PutAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}",
+            new UpdateSchedulePresetRequest("Draft", PresetDays(0, "09:00", "18:00"),
+                [new SchedulePresetBreakDto(2, "14:00", "15:00"), new SchedulePresetBreakDto(4, "14:00", "15:00")]));
+
+        var updated = await updateResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        Assert.Equal(2, updated!.Breaks.Count);
+        Assert.DoesNotContain(updated.Breaks, b => b.DayOfWeek == 1); // old break is gone, not just added-to
+        Assert.Contains(updated.Breaks, b => b.DayOfWeek == 2);
+        Assert.Contains(updated.Breaks, b => b.DayOfWeek == 4);
+    }
+
+    [Fact]
+    public async Task ApplyingAPreset_ReplacesLiveBreaksWithThePresetsOwn()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-breaks-3@example.com", "schedule-preset-breaks-3");
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/schedule/breaks", new CreateBreakRequest(1, "12:00", "13:00"));
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets",
+            new SaveSchedulePresetRequest("Summer Hours", PresetDays(0, "09:00", "18:00"), [new SchedulePresetBreakDto(5, "16:00", "16:30")]));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        var applyResp = await Client.PostAsync($"/api/admin/schedule/presets/{preset!.Id}/apply", null);
+
+        Assert.Equal(HttpStatusCode.OK, applyResp.StatusCode);
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.Single(schedule!.Breaks); // the old Monday lunch break is gone
+        Assert.Equal(5, schedule.Breaks.Single().DayOfWeek);
+        Assert.Equal("16:00", schedule.Breaks.Single().StartTime);
+    }
+
+    [Fact]
+    public async Task DefaultPreset_LazilyCreated_CapturesExistingLiveBreaks()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-breaks-4@example.com", "schedule-preset-breaks-4");
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/schedule/breaks", new CreateBreakRequest(1, "12:00", "13:00"));
+
+        // First call to the presets list is what lazily creates the Default preset (GetOrCreateDefaultPreset).
+        var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
+        var defaultPreset = presets!.Single(p => p.IsDefault);
+
+        Assert.Single(defaultPreset.Breaks);
+        Assert.Equal(1, defaultPreset.Breaks.Single().DayOfWeek);
+    }
 }

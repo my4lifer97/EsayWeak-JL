@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BlockedSlot> BlockedSlots => Set<BlockedSlot>();
     public DbSet<SchedulePreset> SchedulePresets => Set<SchedulePreset>();
     public DbSet<SchedulePresetDay> SchedulePresetDays => Set<SchedulePresetDay>();
+    public DbSet<SchedulePresetBreak> SchedulePresetBreaks => Set<SchedulePresetBreak>();
     public DbSet<PresetSchedule> PresetSchedules => Set<PresetSchedule>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
@@ -245,6 +246,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<SchedulePresetDay>()
             .HasOne(x => x.SchedulePreset).WithMany(x => x.Days)
+            .HasForeignKey(x => x.SchedulePresetId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<SchedulePresetBreak>()
+            .HasOne(x => x.SchedulePreset).WithMany(x => x.Breaks)
             .HasForeignKey(x => x.SchedulePresetId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<PresetSchedule>()
             .HasOne(x => x.Business).WithMany(x => x.PresetSchedules)

@@ -557,13 +557,15 @@ public class AdminController(
 
         var presets = await db.SchedulePresets.Where(p => p.BusinessId == BusinessId)
             .Include(p => p.Days)
+            .Include(p => p.Breaks)
             .OrderByDescending(p => p.IsDefault).ThenByDescending(p => p.CreatedAt)
             .ToListAsync();
         return Ok(presets.Select(ToPresetDto).ToList());
     }
 
     private static SchedulePresetDto ToPresetDto(SchedulePreset p) => new(p.Id, p.Name, p.CreatedAt, p.IsDefault,
-        p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList());
+        p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList(),
+        p.Breaks.OrderBy(b => b.DayOfWeek).ThenBy(b => b.StartTime).Select(b => new SchedulePresetBreakDto(b.DayOfWeek, b.StartTime, b.EndTime)).ToList());
 
     private static void ValidateDays(List<SchedulePresetDayDto> days)
     {
@@ -571,16 +573,33 @@ public class AdminController(
             throw new ArgumentException("Days must cover all 7 days of the week exactly once");
     }
 
+    // Unlike Days there's no fixed count -- zero or many breaks per day, same as the live Break table.
+    private static void ValidateBreaks(List<SchedulePresetBreakDto> breaks)
+    {
+        if (breaks.Any(b => b.DayOfWeek is < 0 or > 6))
+            throw new ArgumentException("Break day must be between 0 and 6");
+    }
+
     [HttpPost("schedule/presets")]
     public async Task<IActionResult> SaveSchedulePreset([FromBody] SaveSchedulePresetRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
-        try { ValidateDays(req.Days); } catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        var breaks = req.Breaks ?? [];
+        try
+        {
+            ValidateDays(req.Days);
+            ValidateBreaks(breaks);
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
 
         var preset = new SchedulePreset { BusinessId = BusinessId, Name = req.Name.Trim() };
         preset.Days = req.Days.Select(d => new SchedulePresetDay
         {
             SchedulePresetId = preset.Id, DayOfWeek = d.DayOfWeek, StartTime = d.StartTime, EndTime = d.EndTime, IsActive = d.IsActive,
+        }).ToList();
+        preset.Breaks = breaks.Select(b => new SchedulePresetBreak
+        {
+            SchedulePresetId = preset.Id, DayOfWeek = b.DayOfWeek, StartTime = b.StartTime, EndTime = b.EndTime,
         }).ToList();
 
         db.SchedulePresets.Add(preset);
@@ -593,9 +612,15 @@ public class AdminController(
     [HttpPut("schedule/presets/{id}")]
     public async Task<IActionResult> UpdateSchedulePreset(string id, [FromBody] UpdateSchedulePresetRequest req)
     {
-        var preset = await db.SchedulePresets.Include(p => p.Days).FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
+        var preset = await db.SchedulePresets.Include(p => p.Days).Include(p => p.Breaks).FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
         if (preset is null) return NotFound();
-        try { ValidateDays(req.Days); } catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+        var breaks = req.Breaks ?? [];
+        try
+        {
+            ValidateDays(req.Days);
+            ValidateBreaks(breaks);
+        }
+        catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
 
         // The Default preset's name is locked -- it's always "Default", regardless of what's sent.
         if (!preset.IsDefault)
@@ -610,6 +635,13 @@ public class AdminController(
             existing.EndTime = d.EndTime;
             existing.IsActive = d.IsActive;
         }
+        // Breaks don't have Days' fixed 7-row shape, so the count can change -- replace the whole
+        // collection rather than upserting in place.
+        db.SchedulePresetBreaks.RemoveRange(preset.Breaks);
+        preset.Breaks = breaks.Select(b => new SchedulePresetBreak
+        {
+            SchedulePresetId = preset.Id, DayOfWeek = b.DayOfWeek, StartTime = b.StartTime, EndTime = b.EndTime,
+        }).ToList();
         await db.SaveChangesAsync();
 
         // The Default preset IS the live baseline -- editing it applies immediately unless a

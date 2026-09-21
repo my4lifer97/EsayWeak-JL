@@ -241,6 +241,7 @@ public class SchedulePreset
 
     public Business Business { get; set; } = null!;
     public ICollection<SchedulePresetDay> Days { get; set; } = [];
+    public ICollection<SchedulePresetBreak> Breaks { get; set; } = [];
 }
 
 public class SchedulePresetDay
@@ -251,6 +252,22 @@ public class SchedulePresetDay
     public string StartTime { get; set; } = "";
     public string EndTime { get; set; } = "";
     public bool IsActive { get; set; } = true;
+
+    public SchedulePreset SchedulePreset { get; set; } = null!;
+}
+
+// A preset's own copy of recurring breaks (e.g. lunch break), separate from the live `Break` table
+// the same way SchedulePresetDay is separate from WorkingHours -- applying a preset replaces the
+// live Breaks with these (SchedulePresetService.ReplaceBreaks), so each preset carries its own
+// break schedule rather than sharing one global list. Unlike SchedulePresetDay there's no fixed
+// 7-row shape -- zero or many breaks per day, same as the live Break table.
+public class SchedulePresetBreak
+{
+    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string SchedulePresetId { get; set; } = "";
+    public int DayOfWeek { get; set; }
+    public string StartTime { get; set; } = "";
+    public string EndTime { get; set; } = "";
 
     public SchedulePreset SchedulePreset { get; set; } = null!;
 }

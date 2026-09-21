@@ -20,12 +20,13 @@ public record BlockedSlotDto(string Id, string Date, string? StartTime, string? 
 public record CreateBlockedSlotRequest(string Date, string? StartTime, string? EndTime, string? Reason);
 public record CreateBlockedRangeRequest(string StartDate, string EndDate, string? StartTime, string? EndTime, string? Reason);
 public record SchedulePresetDayDto(int DayOfWeek, string StartTime, string EndTime, bool IsActive);
-public record SchedulePresetDto(string Id, string Name, DateTime CreatedAt, bool IsDefault, List<SchedulePresetDayDto> Days);
-// Days is caller-supplied (the preset editor modal always opens pre-filled with a copy of the
-// current weekly hours, but the owner can freely redesign it before saving) -- NOT a server-side
-// snapshot of whatever WorkingHours happens to be at save time.
-public record SaveSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days);
-public record UpdateSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days);
+public record SchedulePresetBreakDto(int DayOfWeek, string StartTime, string EndTime);
+public record SchedulePresetDto(string Id, string Name, DateTime CreatedAt, bool IsDefault, List<SchedulePresetDayDto> Days, List<SchedulePresetBreakDto> Breaks);
+// Days/Breaks are caller-supplied (the preset editor modal always opens pre-filled with a copy of
+// the current weekly hours/breaks, but the owner can freely redesign it before saving, including
+// copying another preset's breaks in) -- NOT a server-side snapshot taken at save time.
+public record SaveSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days, List<SchedulePresetBreakDto>? Breaks = null);
+public record UpdateSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days, List<SchedulePresetBreakDto>? Breaks = null);
 public record SchedulePresetRangeRequest(string StartDate, string EndDate);
 public record PresetScheduleDto(string Id, string PresetId, string PresetName, string StartDate, string EndDate, bool Applied);
 public record PresetScheduleResponse(PresetScheduleDto? Schedule);

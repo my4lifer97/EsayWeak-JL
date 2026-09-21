@@ -31,7 +31,6 @@ export default function SchedulePage() {
     )
   }
 
-  const [newBreak, setNewBreak] = useState({ dayOfWeek: 1, startTime: '12:00', endTime: '13:00' })
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
   const [blockRangeMode, setBlockRangeMode] = useState(false)
   const [rangeEndDate, setRangeEndDate] = useState('')
@@ -69,16 +68,6 @@ export default function SchedulePage() {
       setBreaks(data.breaks)
       setBlocked(data.blockedSlots)
     }
-  }
-
-  async function addBreak() {
-    const { data: br } = await api.post('/admin/schedule/breaks', newBreak)
-    setBreaks((prev) => [...prev, br])
-  }
-
-  async function deleteBreak(id: string) {
-    await api.delete(`/admin/schedule/breaks/${id}`)
-    setBreaks((prev) => prev.filter((b) => b.id !== id))
   }
 
   async function addBlocked() {
@@ -119,6 +108,7 @@ export default function SchedulePage() {
     queryClient.invalidateQueries({ queryKey: ['preset-schedule'] })
     const { data: fresh } = await api.get('/admin/schedule')
     setHours(Array.from({ length: 7 }, (_, i) => fresh.workingHours.find((h: WorkingHour) => h.dayOfWeek === i) ?? { dayOfWeek: i, startTime: '09:00', endTime: '18:00', isActive: false }))
+    setBreaks(fresh.breaks)
     queryClient.invalidateQueries({ queryKey: ['schedule'] })
   }
 
@@ -189,35 +179,23 @@ export default function SchedulePage() {
         {modalPreset && (
           <PresetEditorModal lang={lang} preset={modalPreset === 'new' ? null : modalPreset}
             initialDays={hours.map((h) => ({ dayOfWeek: h.dayOfWeek, startTime: h.startTime, endTime: h.endTime, isActive: h.isActive }))}
+            initialBreaks={breaks.map((b) => ({ dayOfWeek: b.dayOfWeek, startTime: b.startTime, endTime: b.endTime }))}
+            allPresets={presets}
             onClose={() => setModalPreset(null)} onSaved={refreshAfterPresetChange} />
         )}
 
         <section className="bg-surface border border-line rounded-2xl p-6">
-          <h2 className="text-ink font-semibold text-lg mb-5">{t(lang, 'recurringBreaks')}</h2>
+          <h2 className="text-ink font-semibold text-lg mb-1">{t(lang, 'recurringBreaks')}</h2>
+          <p className="text-muted text-sm mb-5">{t(lang, 'recurringBreaksReadOnlyHint')}</p>
           {breaks.length > 0 && (
-            <div className="space-y-2 mb-4">
+            <div className="space-y-2">
               {breaks.map((br) => (
                 <div key={br.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
                   <span className="text-ink text-sm">{dayName(br.dayOfWeek)} · {br.startTime}–{br.endTime}</span>
-                  <button onClick={() => deleteBreak(br.id)} className="text-red-600 hover:text-red-500 text-xs">{t(lang, 'remove')}</button>
                 </div>
               ))}
             </div>
           )}
-          <div className="flex flex-wrap items-center gap-3">
-            <select value={newBreak.dayOfWeek} onChange={(e) => setNewBreak((p) => ({ ...p, dayOfWeek: Number(e.target.value) }))}
-              className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none">
-              {Array.from({ length: 7 }, (_, i) => <option key={i} value={i}>{dayName(i)}</option>)}
-            </select>
-            <input type="time" value={newBreak.startTime} onChange={(e) => setNewBreak((p) => ({ ...p, startTime: e.target.value }))}
-              className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
-            <span className="text-muted text-sm">{t(lang, 'timeTo')}</span>
-            <input type="time" value={newBreak.endTime} onChange={(e) => setNewBreak((p) => ({ ...p, endTime: e.target.value }))}
-              className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
-            <button onClick={addBreak} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-              {t(lang, 'addBreak')}
-            </button>
-          </div>
         </section>
 
         <section className="bg-surface border border-line rounded-2xl p-6">

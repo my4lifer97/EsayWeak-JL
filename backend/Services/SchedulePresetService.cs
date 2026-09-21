@@ -37,16 +37,29 @@ public class SchedulePresetService(AppDbContext db)
         await db.SaveChangesAsync();
     }
 
+    // Replaces the business's entire live Breaks list with the given set -- unlike WorkingHours
+    // there's no fixed 7-row shape to upsert against (zero or many breaks per day), so this is a
+    // straight delete-then-insert rather than an upsert.
+    public async Task ReplaceBreaks(string businessId, IEnumerable<(int DayOfWeek, string StartTime, string EndTime)> breaks)
+    {
+        var existing = await db.Breaks.Where(b => b.BusinessId == businessId).ToListAsync();
+        db.Breaks.RemoveRange(existing);
+        foreach (var b in breaks)
+            db.Breaks.Add(new Break { BusinessId = businessId, DayOfWeek = b.DayOfWeek, StartTime = b.StartTime, EndTime = b.EndTime });
+        await db.SaveChangesAsync();
+    }
+
     // Every business always has exactly one Default preset -- the baseline schedule everything
     // else reverts to. Existing businesses got theirs backfilled by the AddDefaultSchedulePreset
-    // migration; this lazily creates one (snapshotting whatever WorkingHours currently holds) for
-    // any business that somehow doesn't have one yet, so callers never have to special-case it.
+    // migration; this lazily creates one (snapshotting whatever WorkingHours/Breaks currently hold)
+    // for any business that somehow doesn't have one yet, so callers never have to special-case it.
     public async Task<SchedulePreset> GetOrCreateDefaultPreset(string businessId)
     {
         var existing = await db.SchedulePresets.FirstOrDefaultAsync(p => p.BusinessId == businessId && p.IsDefault);
         if (existing is not null) return existing;
 
         var currentHours = await db.WorkingHours.Where(w => w.BusinessId == businessId).ToListAsync();
+        var currentBreaks = await db.Breaks.Where(b => b.BusinessId == businessId).ToListAsync();
         var preset = new SchedulePreset { BusinessId = businessId, Name = "Default", IsDefault = true };
         preset.Days = Enumerable.Range(0, 7).Select(dow =>
         {
@@ -60,6 +73,13 @@ public class SchedulePresetService(AppDbContext db)
                 IsActive = wh?.IsActive ?? false,
             };
         }).ToList();
+        preset.Breaks = currentBreaks.Select(b => new SchedulePresetBreak
+        {
+            SchedulePresetId = preset.Id,
+            DayOfWeek = b.DayOfWeek,
+            StartTime = b.StartTime,
+            EndTime = b.EndTime,
+        }).ToList();
         db.SchedulePresets.Add(preset);
         await db.SaveChangesAsync();
         return preset;
@@ -68,10 +88,13 @@ public class SchedulePresetService(AppDbContext db)
     public async Task<bool> HasActiveSchedule(string businessId) =>
         await db.PresetSchedules.AnyAsync(s => s.BusinessId == businessId && s.Applied && !s.Reverted);
 
+    // Applies both a preset's Days (-> WorkingHours) and its Breaks (-> Breaks) -- each preset
+    // carries its own break schedule, so applying one replaces the live breaks too, not just hours.
     public async Task ApplyPresetToWorkingHours(string presetId)
     {
-        var preset = await db.SchedulePresets.Include(p => p.Days).FirstAsync(p => p.Id == presetId);
+        var preset = await db.SchedulePresets.Include(p => p.Days).Include(p => p.Breaks).FirstAsync(p => p.Id == presetId);
         await UpsertWorkingHours(preset.BusinessId, preset.Days.Select(d => (d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)));
+        await ReplaceBreaks(preset.BusinessId, preset.Breaks.Select(b => (b.DayOfWeek, b.StartTime, b.EndTime)));
     }
 
     // "Schedule for a date range": the weekly template switches to `preset`'s hours on StartDate
