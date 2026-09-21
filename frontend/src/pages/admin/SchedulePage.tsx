@@ -21,6 +21,8 @@ export default function SchedulePage() {
   const [saved, setSaved] = useState(false)
   const [newBreak, setNewBreak] = useState({ dayOfWeek: 1, startTime: '12:00', endTime: '13:00' })
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
+  const [blockRangeMode, setBlockRangeMode] = useState(false)
+  const [rangeEndDate, setRangeEndDate] = useState('')
 
   const { data } = useQuery<{ workingHours: WorkingHour[]; breaks: Break[]; blockedSlots: BlockedSlot[] }>({
     queryKey: ['schedule'],
@@ -72,6 +74,19 @@ export default function SchedulePage() {
       reason: newBlocked.reason || null,
     })
     setBlocked((prev) => [...prev, slot])
+  }
+
+  async function addBlockedRange() {
+    if (!newBlocked.date || !rangeEndDate) return
+    const { data: slots } = await api.post('/admin/schedule/blocked/range', {
+      startDate: newBlocked.date,
+      endDate: rangeEndDate,
+      startTime: newBlocked.fullDay ? null : newBlocked.startTime || null,
+      endTime: newBlocked.fullDay ? null : newBlocked.endTime || null,
+      reason: newBlocked.reason || null,
+    })
+    setBlocked((prev) => [...prev, ...slots])
+    setRangeEndDate('')
   }
 
   async function deleteBlocked(id: string) {
@@ -156,9 +171,21 @@ export default function SchedulePage() {
               ))}
             </div>
           )}
+          <label className="flex items-center gap-2 text-ink text-sm cursor-pointer mb-3">
+            <input type="checkbox" checked={blockRangeMode} onChange={(e) => setBlockRangeMode(e.target.checked)}
+              className="accent-coral" />
+            {t(lang, 'blockRangeToggle')}
+          </label>
           <div className="flex flex-wrap items-center gap-3">
             <input type="date" value={newBlocked.date} onChange={(e) => setNewBlocked((p) => ({ ...p, date: e.target.value }))}
               className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
+            {blockRangeMode && (
+              <>
+                <span className="text-muted text-sm">{t(lang, 'throughDate')}</span>
+                <input type="date" value={rangeEndDate} onChange={(e) => setRangeEndDate(e.target.value)}
+                  className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
+              </>
+            )}
             <label className="flex items-center gap-2 text-ink text-sm cursor-pointer">
               <input type="checkbox" checked={newBlocked.fullDay} onChange={(e) => setNewBlocked((p) => ({ ...p, fullDay: e.target.checked }))}
                 className="accent-coral" />
@@ -176,8 +203,8 @@ export default function SchedulePage() {
             <input type="text" placeholder={t(lang, 'reasonOptional')} value={newBlocked.reason}
               onChange={(e) => setNewBlocked((p) => ({ ...p, reason: e.target.value }))}
               className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none" />
-            <button onClick={addBlocked} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-              {t(lang, 'blockDate')}
+            <button onClick={blockRangeMode ? addBlockedRange : addBlocked} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              {t(lang, blockRangeMode ? 'blockDateRange' : 'blockDate')}
             </button>
           </div>
         </section>

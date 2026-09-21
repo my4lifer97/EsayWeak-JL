@@ -18,6 +18,7 @@ public record BreakDto(string Id, int DayOfWeek, string StartTime, string EndTim
 public record CreateBreakRequest(int DayOfWeek, string StartTime, string EndTime);
 public record BlockedSlotDto(string Id, string Date, string? StartTime, string? EndTime, string? Reason);
 public record CreateBlockedSlotRequest(string Date, string? StartTime, string? EndTime, string? Reason);
+public record CreateBlockedRangeRequest(string StartDate, string EndDate, string? StartTime, string? EndTime, string? Reason);
 
 public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,

@@ -217,6 +217,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET/POST /api/admin/schedule` — working hours (upsert by DayOfWeek)
 - `POST/DELETE /api/admin/schedule/breaks/{id}` — recurring breaks
 - `POST/DELETE /api/admin/schedule/blocked/{id}` — one-off blocked dates/slots
+- `POST /api/admin/schedule/blocked/range` — blocks a consecutive streak of dates in one call (`startDate`/`endDate` inclusive, shared `startTime`/`endTime`/`reason`), inside one DB transaction so a failure partway rolls back the whole range; each date created is still an ordinary independent `BlockedSlot` row afterward, so the single-date endpoints above need no special-casing to edit/delete one. Kept alongside the single-date endpoint, not replacing it — `SchedulePage.tsx`'s Blocked Dates form has a "block a range" checkbox that reveals a second date input and switches which endpoint the same form submits to.
 - `GET /api/admin/dashboard?week=0` — weekly appointments (week offset from current)
 - `GET /api/admin/appointments?filter=today|upcoming|past` — appointment list (omit `filter` for all); each row includes `recurringSeriesId` (null for one-off bookings)
 - `PATCH /api/admin/appointments/{id}` — cancel only (`{ status: "CANCELLED" }`); any other status is rejected — see [Appointment status](#appointment-status-no-manual-complete)

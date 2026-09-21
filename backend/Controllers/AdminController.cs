@@ -518,6 +518,40 @@ public class AdminController(
         return StatusCode(201, new BlockedSlotDto(slot.Id, req.Date, slot.StartTime, slot.EndTime, slot.Reason));
     }
 
+    // Blocks a consecutive streak of dates in one action (e.g. a week off) -- kept as a separate
+    // endpoint alongside AddBlockedSlot rather than replacing it, since the owner still wants the
+    // single-date picker for the common case. One transaction wraps the whole loop so a failure
+    // partway rolls back the entire range instead of leaving it half-blocked; each row created is
+    // otherwise an ordinary independent BlockedSlot, so the existing per-row delete endpoint needs
+    // no changes to handle rows created this way.
+    [HttpPost("schedule/blocked/range")]
+    public async Task<IActionResult> AddBlockedRange([FromBody] CreateBlockedRangeRequest req)
+    {
+        var start = DateTime.Parse(req.StartDate + "T00:00:00Z").ToUniversalTime();
+        var end = DateTime.Parse(req.EndDate + "T00:00:00Z").ToUniversalTime();
+        if (end < start) return BadRequest(new { error = "End date cannot be before start date" });
+        if ((end - start).Days > 366) return BadRequest(new { error = "Range too large (max 366 days)" });
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var created = new List<BlockedSlot>();
+        for (var d = start; d <= end; d = d.AddDays(1))
+        {
+            var slot = new BlockedSlot { BusinessId = BusinessId, Date = d, StartTime = req.StartTime, EndTime = req.EndTime, Reason = req.Reason };
+            db.BlockedSlots.Add(slot);
+            created.Add(slot);
+        }
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        var timeRange = req.StartTime is not null && req.EndTime is not null ? $" {req.StartTime}–{req.EndTime}" : " (full day)";
+        var reasonSuffix = string.IsNullOrWhiteSpace(req.Reason) ? "" : $" — {req.Reason}";
+        this.SetActivityDetail($"Blocked date range {req.StartDate}–{req.EndDate}{timeRange}{reasonSuffix}");
+
+        return StatusCode(201, created.OrderBy(s => s.Date)
+            .Select(s => new BlockedSlotDto(s.Id, s.Date.ToString("yyyy-MM-dd"), s.StartTime, s.EndTime, s.Reason))
+            .ToList());
+    }
+
     [HttpDelete("schedule/blocked/{id}")]
     public async Task<IActionResult> DeleteBlockedSlot(string id)
     {
