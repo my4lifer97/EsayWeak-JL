@@ -13,6 +13,12 @@ public class ScheduleTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
 
+    // A full 7-day preset payload: one day active with the given hours, the rest inactive at a
+    // placeholder time -- matches what the preset editor modal always submits (all 7 days, every
+    // save), never a partial list.
+    private static List<SchedulePresetDayDto> PresetDays(int activeDay, string start, string end) =>
+        Enumerable.Range(0, 7).Select(d => new SchedulePresetDayDto(d, d == activeDay ? start : "09:00", d == activeDay ? end : "18:00", d == activeDay)).ToList();
+
     private async Task<string> RegisterAndLoginBusiness(string email, string slug)
     {
         var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
@@ -97,7 +103,7 @@ public class ScheduleTests : IntegrationTestBase
         await Client.PostAsJsonAsync("/api/admin/schedule",
             Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
 
-        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours"));
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours", PresetDays(0, "09:00", "18:00")));
         Assert.Equal(HttpStatusCode.Created, saveResp.StatusCode);
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
         Assert.Equal(7, preset!.Days.Count);
@@ -125,7 +131,7 @@ public class ScheduleTests : IntegrationTestBase
         Authorize(Client, token);
         await Client.PostAsJsonAsync("/api/admin/schedule",
             Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
-        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Temp"));
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Temp", PresetDays(0, "09:00", "18:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
 
         var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/presets/{preset!.Id}");
@@ -135,5 +141,114 @@ public class ScheduleTests : IntegrationTestBase
         Assert.Empty(presets!);
         var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
         Assert.True(schedule!.WorkingHours.Single(h => h.DayOfWeek == 0).IsActive);
+    }
+
+    [Fact]
+    public async Task SchedulePreset_Update_ChangesNameAndDays()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-3@example.com", "schedule-preset-3");
+        Authorize(Client, token);
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Draft", PresetDays(0, "09:00", "18:00")));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        var updateResp = await Client.PutAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}",
+            new UpdateSchedulePresetRequest("Christmas Hours", PresetDays(1, "10:00", "14:00")));
+
+        Assert.Equal(HttpStatusCode.OK, updateResp.StatusCode);
+        var updated = await updateResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        Assert.Equal("Christmas Hours", updated!.Name);
+        Assert.True(updated.Days.Single(d => d.DayOfWeek == 1).IsActive);
+        Assert.False(updated.Days.Single(d => d.DayOfWeek == 0).IsActive);
+    }
+
+    [Fact]
+    public async Task SchedulePresetRange_StartingTodayAppliesImmediatelyAndCreatesBackup()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-range-1@example.com", "schedule-preset-range-1");
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours", PresetDays(3, "10:00", "14:00")));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+
+        var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule",
+            new SchedulePresetRangeRequest(today, future));
+
+        Assert.Equal(HttpStatusCode.Created, scheduleResp.StatusCode);
+        var scheduled = await scheduleResp.Content.ReadFromJsonAsync<PresetScheduleDto>();
+        Assert.True(scheduled!.Applied); // start date is today -- takes effect immediately
+
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        var wednesday = schedule!.WorkingHours.Single(h => h.DayOfWeek == 3);
+        Assert.True(wednesday.IsActive);
+        Assert.Equal("10:00", wednesday.StartTime);
+
+        // The original (pre-schedule) hours were auto-backed-up as their own preset.
+        var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
+        Assert.Contains(presets!, p => p.Name.StartsWith("Before Christmas Hours"));
+
+        var current = await Client.GetFromJsonAsync<PresetScheduleResponse>("/api/admin/schedule/preset-schedule");
+        Assert.NotNull(current!.Schedule);
+        Assert.Equal(preset.Id, current.Schedule!.PresetId);
+    }
+
+    [Fact]
+    public async Task SchedulePresetRange_OnlyOneActiveAtATime()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-range-2@example.com", "schedule-preset-range-2");
+        Authorize(Client, token);
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("A", PresetDays(0, "09:00", "18:00")));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
+
+        var secondResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}/schedule", new SchedulePresetRangeRequest(today, future));
+
+        Assert.Equal(HttpStatusCode.BadRequest, secondResp.StatusCode);
+    }
+
+    [Fact]
+    public async Task CancelPresetSchedule_WhileActive_RevertsWorkingHoursImmediately()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-range-3@example.com", "schedule-preset-range-3");
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours", PresetDays(3, "10:00", "14:00")));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
+        var scheduled = await scheduleResp.Content.ReadFromJsonAsync<PresetScheduleDto>();
+
+        var cancelResp = await Client.DeleteAsync($"/api/admin/schedule/preset-schedule/{scheduled!.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        var sunday = schedule!.WorkingHours.Single(h => h.DayOfWeek == 0);
+        var wednesday = schedule.WorkingHours.Single(h => h.DayOfWeek == 3);
+        Assert.True(sunday.IsActive); // reverted back to the original (auto-backed-up) hours
+        Assert.False(wednesday.IsActive);
+        var current = await Client.GetFromJsonAsync<PresetScheduleResponse>("/api/admin/schedule/preset-schedule");
+        Assert.Null(current!.Schedule);
+    }
+
+    [Fact]
+    public async Task DeleteSchedulePreset_BlockedWhileReferencedByAnActiveSchedule()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-range-4@example.com", "schedule-preset-range-4");
+        Authorize(Client, token);
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours", PresetDays(0, "09:00", "18:00")));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
+
+        var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/presets/{preset.Id}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, deleteResp.StatusCode);
     }
 }

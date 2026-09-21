@@ -3,12 +3,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
+import PresetEditorModal, { WeekHoursEditor, type SchedulePreset } from '../../components/admin/PresetEditorModal'
 
 type WorkingHour = { id?: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
 type Break = { id: string; dayOfWeek: number; startTime: string; endTime: string }
 type BlockedSlot = { id: string; date: string; startTime: string | null; endTime: string | null; reason: string | null }
-type SchedulePresetDay = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
-type SchedulePreset = { id: string; name: string; createdAt: string; days: SchedulePresetDay[] }
+type PresetSchedule = { id: string; presetId: string; presetName: string; startDate: string; endDate: string; applied: boolean }
 
 export default function SchedulePage() {
   const queryClient = useQueryClient()
@@ -25,8 +25,8 @@ export default function SchedulePage() {
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
   const [blockRangeMode, setBlockRangeMode] = useState(false)
   const [rangeEndDate, setRangeEndDate] = useState('')
-  const [newPresetName, setNewPresetName] = useState('')
-  const [showPresetInput, setShowPresetInput] = useState(false)
+  // null = closed, 'new' = creating a preset from the current live hours, a SchedulePreset = editing it.
+  const [modalPreset, setModalPreset] = useState<SchedulePreset | 'new' | null>(null)
 
   const { data } = useQuery<{ workingHours: WorkingHour[]; breaks: Break[]; blockedSlots: BlockedSlot[] }>({
     queryKey: ['schedule'],
@@ -36,6 +36,11 @@ export default function SchedulePage() {
   const { data: presets = [] } = useQuery<SchedulePreset[]>({
     queryKey: ['schedule-presets'],
     queryFn: () => api.get('/admin/schedule/presets').then((r) => r.data),
+  })
+
+  const { data: scheduledChange } = useQuery<PresetSchedule | null>({
+    queryKey: ['preset-schedule'],
+    queryFn: () => api.get('/admin/schedule/preset-schedule').then((r) => r.data.schedule),
   })
 
   const initHours = Array.from({ length: 7 }, (_, i) => {
@@ -103,27 +108,22 @@ export default function SchedulePage() {
     setBlocked((prev) => prev.filter((b) => b.id !== id))
   }
 
-  async function savePreset() {
-    if (!newPresetName.trim()) return
-    await api.post('/admin/schedule/presets', { name: newPresetName.trim() })
-    setNewPresetName(''); setShowPresetInput(false)
+  // Called after the modal saves/applies/schedules/deletes a preset -- the Working Hours section
+  // above only syncs its local `hours` state from the query once (to avoid clobbering in-progress
+  // manual edits), so an apply/schedule/cancel that changes the live hours needs to push the fresh
+  // values into that state directly rather than relying on that one-time sync to notice.
+  async function refreshAfterPresetChange() {
     queryClient.invalidateQueries({ queryKey: ['schedule-presets'] })
-  }
-
-  async function applyPreset(id: string) {
-    if (!confirm(t(lang, 'applyPresetConfirm'))) return
-    await api.post(`/admin/schedule/presets/${id}/apply`)
-    // The Working Hours section above only syncs from the query once (to avoid clobbering
-    // in-progress edits), so re-fetch and push the applied hours into it directly here rather
-    // than relying on that one-time sync to notice the change.
+    queryClient.invalidateQueries({ queryKey: ['preset-schedule'] })
     const { data: fresh } = await api.get('/admin/schedule')
     setHours(Array.from({ length: 7 }, (_, i) => fresh.workingHours.find((h: WorkingHour) => h.dayOfWeek === i) ?? { dayOfWeek: i, startTime: '09:00', endTime: '18:00', isActive: false }))
     queryClient.invalidateQueries({ queryKey: ['schedule'] })
   }
 
-  async function deletePreset(id: string) {
-    await api.delete(`/admin/schedule/presets/${id}`)
-    queryClient.invalidateQueries({ queryKey: ['schedule-presets'] })
+  async function cancelScheduledChange(id: string) {
+    if (!confirm(t(lang, 'cancelScheduledChangeConfirm'))) return
+    await api.delete(`/admin/schedule/preset-schedule/${id}`)
+    await refreshAfterPresetChange()
   }
 
   return (
@@ -132,29 +132,19 @@ export default function SchedulePage() {
       <div className="space-y-8">
         <section className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold text-lg mb-5">{t(lang, 'workingHours')}</h2>
-          <div className="space-y-3">
-            {hours.map((h, i) => (
-              <div key={i} className="flex items-center gap-4">
-                <label className="flex items-center gap-2 w-32 cursor-pointer">
-                  <input type="checkbox" checked={h.isActive}
-                    onChange={(e) => setHours((prev) => prev.map((x, j) => j === i ? { ...x, isActive: e.target.checked } : x))}
-                    className="w-4 h-4 rounded accent-coral" />
-                  <span className={h.isActive ? 'text-ink' : 'text-muted'}>{dayName(i)}</span>
-                </label>
-                {h.isActive && (
-                  <>
-                    <input type="time" value={h.startTime}
-                      onChange={(e) => setHours((prev) => prev.map((x, j) => j === i ? { ...x, startTime: e.target.value } : x))}
-                      className="bg-cream border border-line rounded-lg px-3 py-1.5 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
-                    <span className="text-muted">{t(lang, 'timeTo')}</span>
-                    <input type="time" value={h.endTime}
-                      onChange={(e) => setHours((prev) => prev.map((x, j) => j === i ? { ...x, endTime: e.target.value } : x))}
-                      className="bg-cream border border-line rounded-lg px-3 py-1.5 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
+          {scheduledChange && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-900/40 dark:border-blue-800/50 dark:text-blue-400 text-sm rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-3">
+              <span>
+                {scheduledChange.applied
+                  ? `${t(lang, 'yourScheduleIsCurrently')} "${scheduledChange.presetName}" ${t(lang, 'untilDate')} ${scheduledChange.endDate}`
+                  : `${t(lang, 'scheduledFrom')} ${scheduledChange.startDate} ${t(lang, 'throughDate')} ${scheduledChange.endDate}, ${t(lang, 'yourScheduleWillBe')} "${scheduledChange.presetName}"`}
+              </span>
+              <button onClick={() => cancelScheduledChange(scheduledChange.id)} className="shrink-0 text-blue-700 dark:text-blue-400 hover:underline text-xs font-medium">
+                {t(lang, 'cancelScheduledChange')}
+              </button>
+            </div>
+          )}
+          <WeekHoursEditor lang={lang} days={hours} onChange={setHours} />
           <button onClick={saveHours} disabled={saving}
             className="mt-5 bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors">
             {saved ? t(lang, 'saved') : saving ? t(lang, 'saving') : t(lang, 'saveWorkingHours')}
@@ -169,32 +159,21 @@ export default function SchedulePage() {
               {presets.map((p) => (
                 <div key={p.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
                   <span className="text-ink text-sm">{p.name}</span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => applyPreset(p.id)} className="text-coral-dark hover:text-coral text-xs font-medium">{t(lang, 'applyPreset')}</button>
-                    <button onClick={() => deletePreset(p.id)} className="text-red-600 hover:text-red-500 text-xs">{t(lang, 'remove')}</button>
-                  </div>
+                  <button onClick={() => setModalPreset(p)} className="text-coral-dark hover:text-coral text-xs font-medium">{t(lang, 'edit')}</button>
                 </div>
               ))}
             </div>
           )}
-          {showPresetInput ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <input type="text" value={newPresetName} placeholder={t(lang, 'presetNamePlaceholder')}
-                onChange={(e) => setNewPresetName(e.target.value)}
-                className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none" />
-              <button onClick={savePreset} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-                {t(lang, 'saveChanges')}
-              </button>
-              <button onClick={() => { setShowPresetInput(false); setNewPresetName('') }} className="text-muted hover:text-ink text-sm">
-                {t(lang, 'back')}
-              </button>
-            </div>
-          ) : (
-            <button onClick={() => setShowPresetInput(true)} className="text-sm text-coral-dark hover:text-coral">
-              {t(lang, 'saveAsPreset')}
-            </button>
-          )}
+          <button onClick={() => setModalPreset('new')} className="text-sm text-coral-dark hover:text-coral">
+            {t(lang, 'saveAsPreset')}
+          </button>
         </section>
+
+        {modalPreset && (
+          <PresetEditorModal lang={lang} preset={modalPreset === 'new' ? null : modalPreset}
+            initialDays={hours.map((h) => ({ dayOfWeek: h.dayOfWeek, startTime: h.startTime, endTime: h.endTime, isActive: h.isActive }))}
+            onClose={() => setModalPreset(null)} onSaved={refreshAfterPresetChange} />
+        )}
 
         <section className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold text-lg mb-5">{t(lang, 'recurringBreaks')}</h2>

@@ -50,6 +50,7 @@ builder.Services.AddScoped<AvailabilityService>();
 builder.Services.AddScoped<RecurringAppointmentService>();
 builder.Services.AddScoped<FollowService>();
 builder.Services.AddScoped<ReviewService>();
+builder.Services.AddScoped<SchedulePresetService>();
 // WhatsApp chatbot transport: self-hosted Baileys via whatsapp-bridge (see BridgeWhatsAppSender) --
 // TwilioWhatsAppSender is kept in the codebase, unregistered, as the fallback path if a real
 // registered business + Trust Hub approval ever happens later.

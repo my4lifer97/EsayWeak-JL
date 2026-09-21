@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BlockedSlot> BlockedSlots => Set<BlockedSlot>();
     public DbSet<SchedulePreset> SchedulePresets => Set<SchedulePreset>();
     public DbSet<SchedulePresetDay> SchedulePresetDays => Set<SchedulePresetDay>();
+    public DbSet<PresetSchedule> PresetSchedules => Set<PresetSchedule>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<CustomerAccount> CustomerAccounts => Set<CustomerAccount>();
@@ -140,6 +141,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .Property(x => x.Date)
             .HasColumnType("date");
 
+        b.Entity<PresetSchedule>()
+            .Property(x => x.StartDate)
+            .HasColumnType("date");
+        b.Entity<PresetSchedule>()
+            .Property(x => x.EndDate)
+            .HasColumnType("date");
+
         b.Entity<Appointment>()
             .Property(x => x.Date)
             .HasColumnType("date");
@@ -238,6 +246,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<SchedulePresetDay>()
             .HasOne(x => x.SchedulePreset).WithMany(x => x.Days)
             .HasForeignKey(x => x.SchedulePresetId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<PresetSchedule>()
+            .HasOne(x => x.Business).WithMany(x => x.PresetSchedules)
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
+        // Restrict (not Cascade) on both preset links -- deleting a preset that's referenced by a
+        // pending/active PresetSchedule must fail loudly rather than silently orphan the schedule
+        // (SchedulePresetService prevents this in practice by only allowing preset deletion once
+        // no PresetSchedule references it, but the DB constraint is the backstop).
+        b.Entity<PresetSchedule>()
+            .HasOne(x => x.Preset).WithMany()
+            .HasForeignKey(x => x.PresetId).OnDelete(DeleteBehavior.Restrict);
+        b.Entity<PresetSchedule>()
+            .HasOne(x => x.RevertToPreset).WithMany()
+            .HasForeignKey(x => x.RevertToPresetId).OnDelete(DeleteBehavior.Restrict);
         b.Entity<Customer>()
             .HasOne(x => x.Business).WithMany(x => x.Customers)
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);

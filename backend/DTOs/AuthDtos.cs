@@ -21,7 +21,14 @@ public record CreateBlockedSlotRequest(string Date, string? StartTime, string? E
 public record CreateBlockedRangeRequest(string StartDate, string EndDate, string? StartTime, string? EndTime, string? Reason);
 public record SchedulePresetDayDto(int DayOfWeek, string StartTime, string EndTime, bool IsActive);
 public record SchedulePresetDto(string Id, string Name, DateTime CreatedAt, List<SchedulePresetDayDto> Days);
-public record SaveSchedulePresetRequest(string Name);
+// Days is caller-supplied (the preset editor modal always opens pre-filled with a copy of the
+// current weekly hours, but the owner can freely redesign it before saving) -- NOT a server-side
+// snapshot of whatever WorkingHours happens to be at save time.
+public record SaveSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days);
+public record UpdateSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days);
+public record SchedulePresetRangeRequest(string StartDate, string EndDate);
+public record PresetScheduleDto(string Id, string PresetId, string PresetName, string StartDate, string EndDate, bool Applied);
+public record PresetScheduleResponse(PresetScheduleDto? Schedule);
 
 public record SettingsDto(
     string Id, string Name, string Email, string Slug, string? Phone,

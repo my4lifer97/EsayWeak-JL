@@ -143,6 +143,7 @@ public class Business
     public ICollection<Break> Breaks { get; set; } = [];
     public ICollection<BlockedSlot> BlockedSlots { get; set; } = [];
     public ICollection<SchedulePreset> SchedulePresets { get; set; } = [];
+    public ICollection<PresetSchedule> PresetSchedules { get; set; } = [];
     public ICollection<Appointment> Appointments { get; set; } = [];
     public ICollection<Customer> Customers { get; set; } = [];
     public ICollection<Follow> Follows { get; set; } = [];
@@ -245,6 +246,34 @@ public class SchedulePresetDay
     public bool IsActive { get; set; } = true;
 
     public SchedulePreset SchedulePreset { get; set; } = null!;
+}
+
+// A preset scheduled to take over the weekly WorkingHours template for a date range, then
+// automatically revert -- e.g. "Christmas Hours" from Dec 24 to Jan 2. RevertToPresetId points at
+// a preset auto-created from whatever the weekly template was at the moment this was scheduled
+// (SchedulePresetService.SchedulePresetForRange), so reverting restores exactly what was live
+// before, not just "whatever the template happens to be by EndDate" if it was edited meanwhile.
+// Only one row per business may be un-reverted at a time (enforced in the service) -- overlapping
+// scheduled changes aren't supported.
+public class PresetSchedule
+{
+    [Key] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string BusinessId { get; set; } = "";
+    public string PresetId { get; set; } = "";
+    public string RevertToPresetId { get; set; } = "";
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    // Set true once SchedulePresetService has copied Preset's days onto WorkingHours (either
+    // immediately, if StartDate isn't in the future, or by the daily cron once it arrives).
+    public bool Applied { get; set; } = false;
+    // Set true once RevertToPreset's days have been copied back -- the row is then deleted rather
+    // than kept around, so this flag only matters transiently.
+    public bool Reverted { get; set; } = false;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public Business Business { get; set; } = null!;
+    public SchedulePreset Preset { get; set; } = null!;
+    public SchedulePreset RevertToPreset { get; set; } = null!;
 }
 
 public class BlockedSlot

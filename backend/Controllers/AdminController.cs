@@ -17,7 +17,7 @@ namespace BarberSaas.Api.Controllers;
 public class AdminController(
     AppDbContext db, IWebHostEnvironment env, AvailabilityService availability,
     WaitlistService waitlist, AppointmentCancellationService cancellationService,
-    IWhatsAppSender whatsAppSender, ILogger<AdminController> logger) : ControllerBase
+    IWhatsAppSender whatsAppSender, ILogger<AdminController> logger, SchedulePresetService schedulePresets) : ControllerBase
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -424,36 +424,6 @@ public class AdminController(
         return Ok(new ScheduleResponse(wh, brk, bsl));
     }
 
-    // Shared by SaveWorkingHours and ApplySchedulePreset -- both overwrite the standing 7-day
-    // weekly template via the same upsert-by-DayOfWeek semantics, just sourced differently (the
-    // request body vs. a saved preset's days).
-    private async Task UpsertWorkingHours(IEnumerable<(int DayOfWeek, string StartTime, string EndTime, bool IsActive)> days)
-    {
-        foreach (var h in days)
-        {
-            var existing = await db.WorkingHours
-                .FirstOrDefaultAsync(w => w.BusinessId == BusinessId && w.DayOfWeek == h.DayOfWeek);
-            if (existing is not null)
-            {
-                existing.StartTime = h.StartTime;
-                existing.EndTime = h.EndTime;
-                existing.IsActive = h.IsActive;
-            }
-            else
-            {
-                db.WorkingHours.Add(new WorkingHours
-                {
-                    BusinessId = BusinessId,
-                    DayOfWeek = h.DayOfWeek,
-                    StartTime = h.StartTime,
-                    EndTime = h.EndTime,
-                    IsActive = h.IsActive,
-                });
-            }
-        }
-        await db.SaveChangesAsync();
-    }
-
     [HttpPost("schedule")]
     public async Task<IActionResult> SaveWorkingHours([FromBody] List<WorkingHoursDto> hours)
     {
@@ -462,7 +432,7 @@ public class AdminController(
         var oldByDay = await db.WorkingHours.Where(w => w.BusinessId == BusinessId)
             .ToDictionaryAsync(w => w.DayOfWeek, w => (w.StartTime, w.EndTime, w.IsActive));
 
-        await UpsertWorkingHours(hours.Select(h => (h.DayOfWeek, h.StartTime, h.EndTime, h.IsActive)));
+        await schedulePresets.UpsertWorkingHours(BusinessId, hours.Select(h => (h.DayOfWeek, h.StartTime, h.EndTime, h.IsActive)));
 
         var changes = new List<string>();
         foreach (var h in hours.OrderBy(h => h.DayOfWeek))
@@ -591,41 +561,64 @@ public class AdminController(
             p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList())).ToList());
     }
 
+    private static SchedulePresetDto ToPresetDto(SchedulePreset p) => new(p.Id, p.Name, p.CreatedAt,
+        p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList());
+
+    private static void ValidateDays(List<SchedulePresetDayDto> days)
+    {
+        if (days.Count != 7 || days.Select(d => d.DayOfWeek).Distinct().Count() != 7 || days.Any(d => d.DayOfWeek is < 0 or > 6))
+            throw new ArgumentException("Days must cover all 7 days of the week exactly once");
+    }
+
     [HttpPost("schedule/presets")]
     public async Task<IActionResult> SaveSchedulePreset([FromBody] SaveSchedulePresetRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
+        try { ValidateDays(req.Days); } catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
 
-        var currentHours = await db.WorkingHours.Where(w => w.BusinessId == BusinessId).ToListAsync();
         var preset = new SchedulePreset { BusinessId = BusinessId, Name = req.Name.Trim() };
-        preset.Days = Enumerable.Range(0, 7).Select(dow =>
+        preset.Days = req.Days.Select(d => new SchedulePresetDay
         {
-            var existing = currentHours.FirstOrDefault(w => w.DayOfWeek == dow);
-            return new SchedulePresetDay
-            {
-                SchedulePresetId = preset.Id,
-                DayOfWeek = dow,
-                StartTime = existing?.StartTime ?? "09:00",
-                EndTime = existing?.EndTime ?? "18:00",
-                IsActive = existing?.IsActive ?? false,
-            };
+            SchedulePresetId = preset.Id, DayOfWeek = d.DayOfWeek, StartTime = d.StartTime, EndTime = d.EndTime, IsActive = d.IsActive,
         }).ToList();
 
         db.SchedulePresets.Add(preset);
         await db.SaveChangesAsync();
         this.SetActivityDetail($"Saved schedule preset \"{preset.Name}\"");
 
-        return StatusCode(201, new SchedulePresetDto(preset.Id, preset.Name, preset.CreatedAt,
-            preset.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList()));
+        return StatusCode(201, ToPresetDto(preset));
+    }
+
+    [HttpPut("schedule/presets/{id}")]
+    public async Task<IActionResult> UpdateSchedulePreset(string id, [FromBody] UpdateSchedulePresetRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
+        try { ValidateDays(req.Days); } catch (ArgumentException ex) { return BadRequest(new { error = ex.Message }); }
+
+        var preset = await db.SchedulePresets.Include(p => p.Days).FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
+        if (preset is null) return NotFound();
+
+        preset.Name = req.Name.Trim();
+        foreach (var d in req.Days)
+        {
+            var existing = preset.Days.First(x => x.DayOfWeek == d.DayOfWeek);
+            existing.StartTime = d.StartTime;
+            existing.EndTime = d.EndTime;
+            existing.IsActive = d.IsActive;
+        }
+        await db.SaveChangesAsync();
+        this.SetActivityDetail($"Updated schedule preset \"{preset.Name}\"");
+
+        return Ok(ToPresetDto(preset));
     }
 
     [HttpPost("schedule/presets/{id}/apply")]
     public async Task<IActionResult> ApplySchedulePreset(string id)
     {
-        var preset = await db.SchedulePresets.Include(p => p.Days).FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
+        var preset = await db.SchedulePresets.FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
         if (preset is null) return NotFound();
 
-        await UpsertWorkingHours(preset.Days.Select(d => (d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)));
+        await schedulePresets.ApplyPresetToWorkingHours(id);
         this.SetActivityDetail($"Applied schedule preset \"{preset.Name}\" (overwrote weekly working hours)");
 
         return Ok(new { ok = true });
@@ -636,9 +629,72 @@ public class AdminController(
     {
         var preset = await db.SchedulePresets.FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
         if (preset is null) return NotFound();
-        db.SchedulePresets.Remove(preset);
-        await db.SaveChangesAsync();
+        try
+        {
+            db.SchedulePresets.Remove(preset);
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            return BadRequest(new { error = "This preset is used by a pending or active scheduled change -- cancel that first." });
+        }
         this.SetActivityDetail($"Deleted schedule preset \"{preset.Name}\"");
+        return Ok(new { ok = true });
+    }
+
+    // ─── Preset schedules (date-range application) ─────────────────────────
+    // "Apply now" (above) overwrites the weekly template immediately and permanently. This instead
+    // schedules a preset to take over for a date range and automatically revert afterward -- see
+    // SchedulePresetService for the actual apply/revert mechanics, which the daily
+    // /api/cron/apply-scheduled-presets sweep also drives.
+
+    [HttpGet("schedule/preset-schedule")]
+    public async Task<IActionResult> GetPresetSchedule()
+    {
+        var schedule = await db.PresetSchedules.Include(s => s.Preset)
+            .Where(s => s.BusinessId == BusinessId && !s.Reverted)
+            .FirstOrDefaultAsync();
+        // Wrapped in an object (never a bare null body) so the client can always deserialize the
+        // response the same way, whether or not a schedule exists.
+        if (schedule is null) return Ok(new PresetScheduleResponse(null));
+
+        return Ok(new PresetScheduleResponse(new PresetScheduleDto(schedule.Id, schedule.PresetId, schedule.Preset.Name,
+            schedule.StartDate.ToString("yyyy-MM-dd"), schedule.EndDate.ToString("yyyy-MM-dd"), schedule.Applied)));
+    }
+
+    [HttpPost("schedule/presets/{id}/schedule")]
+    public async Task<IActionResult> SchedulePresetForRange(string id, [FromBody] SchedulePresetRangeRequest req)
+    {
+        var start = DateTime.Parse(req.StartDate + "T00:00:00Z").ToUniversalTime();
+        var end = DateTime.Parse(req.EndDate + "T00:00:00Z").ToUniversalTime();
+        if (end < start) return BadRequest(new { error = "End date cannot be before start date" });
+
+        try
+        {
+            var schedule = await schedulePresets.ScheduleForRange(BusinessId, id, start, end);
+            var preset = await db.SchedulePresets.FirstAsync(p => p.Id == id);
+            this.SetActivityDetail($"Scheduled preset \"{preset.Name}\" for {req.StartDate}–{req.EndDate}");
+            return StatusCode(201, new PresetScheduleDto(schedule.Id, schedule.PresetId, preset.Name, req.StartDate, req.EndDate, schedule.Applied));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("schedule/preset-schedule/{id}")]
+    public async Task<IActionResult> CancelPresetSchedule(string id)
+    {
+        try
+        {
+            await schedulePresets.CancelPresetSchedule(BusinessId, id);
+        }
+        catch (InvalidOperationException)
+        {
+            return NotFound();
+        }
+        this.SetActivityDetail("Cancelled scheduled preset change");
         return Ok(new { ok = true });
     }
 
