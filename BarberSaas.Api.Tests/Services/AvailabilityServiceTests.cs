@@ -102,6 +102,54 @@ public class AvailabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExceptionDayOverride_SupersedesAFullDayBlock()
+    {
+        // The "exception day" flow: a date sits inside an otherwise-blocked range (e.g. a
+        // vacation), but the owner adds an override to reopen just this one date with its own
+        // hours. The override must win over the block entirely, not just supply the hours.
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "18:00");
+        var date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime();
+        db.BlockedSlots.Add(new BlockedSlot { BusinessId = business.Id, Date = date, StartTime = null, EndTime = null, Reason = "Vacation" });
+        db.WorkingHoursOverrides.Add(new WorkingHoursOverride { BusinessId = business.Id, Date = date, StartTime = "10:00", EndTime = "11:00", IsActive = true });
+        await db.SaveChangesAsync();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 30);
+
+        Assert.Equal(2, slots.Count);
+        Assert.Contains(slots, s => s.Start == "10:00");
+
+        var blockInfo = await new AvailabilityService(db).GetFullDayBlockInfo(business.Id, TestDate);
+        Assert.Null(blockInfo); // the exception day is open, so it must not report as blocked
+    }
+
+    [Fact]
+    public async Task GetFullDayBlockInfo_ReturnsReasonForAFullDayBlock()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "18:00");
+        var date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime();
+        db.BlockedSlots.Add(new BlockedSlot { BusinessId = business.Id, Date = date, StartTime = null, EndTime = null, Reason = "I'm on a trip, not in the country" });
+        await db.SaveChangesAsync();
+
+        var blockInfo = await new AvailabilityService(db).GetFullDayBlockInfo(business.Id, TestDate);
+
+        Assert.NotNull(blockInfo);
+        Assert.Equal("I'm on a trip, not in the country", blockInfo!.Reason);
+    }
+
+    [Fact]
+    public async Task GetFullDayBlockInfo_ReturnsNullWhenNotBlocked()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "18:00");
+
+        var blockInfo = await new AvailabilityService(db).GetFullDayBlockInfo(business.Id, TestDate);
+
+        Assert.Null(blockInfo);
+    }
+
+    [Fact]
     public async Task DateOverride_ClosesANormallyOpenDayEntirely()
     {
         using var db = NewDb();

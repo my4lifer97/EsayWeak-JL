@@ -66,7 +66,10 @@ public class BookingController(
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
         var slots = await availability.GetAvailableSlots(business.Id, date, item.DurationMinutes.Value);
-        return Ok(new { slots });
+        // Only worth the extra query when there's actually nothing to offer -- lets the customer
+        // see WHY (closed by the owner, with an optional reason) instead of a bare "no times".
+        var blockInfo = slots.Count == 0 ? await availability.GetFullDayBlockInfo(business.Id, date) : null;
+        return Ok(new { slots, isBlocked = blockInfo is not null, blockedReason = blockInfo?.Reason });
     }
 
     // Same as availability above, but includes booked slots (flagged, not hidden) so the
@@ -83,7 +86,8 @@ public class BookingController(
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
         var slots = await availability.GetSlotsWithBookingInfo(business.Id, date, item.DurationMinutes.Value);
-        return Ok(new { slots });
+        var blockInfo = slots.Count == 0 ? await availability.GetFullDayBlockInfo(business.Id, date) : null;
+        return Ok(new { slots, isBlocked = blockInfo is not null, blockedReason = blockInfo?.Reason });
     }
 
     [HttpPost("appointments")]

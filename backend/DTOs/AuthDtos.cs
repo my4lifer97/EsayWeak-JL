@@ -85,6 +85,7 @@ public record CreateRecurringSeriesRequest(
     bool Force = false);
 
 public record TimeSlot(string Start, string End);
+public record BlockedDayInfo(string? Reason);
 
 public record AvailabilityResponse(List<TimeSlot> Slots);
 

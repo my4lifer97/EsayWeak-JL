@@ -70,6 +70,8 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const [bookedSlot, setBookedSlot] = useState<Slot | null>(null)
   const [joiningWaitlist, setJoiningWaitlist] = useState(false)
   const [joinedWaitlist, setJoinedWaitlist] = useState(false)
+  const [blockedReason, setBlockedReason] = useState<string | null>(null)
+  const [isBlocked, setIsBlocked] = useState(false)
 
   // The customer's own language choice drives the UI everywhere, overriding this specific
   // business's configured storefront language.
@@ -77,9 +79,11 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
 
   async function fetchSlots(d: string, it: Item) {
-    setSlotsLoading(true); setSlots([])
+    setSlotsLoading(true); setSlots([]); setIsBlocked(false); setBlockedReason(null)
     const { data } = await customerApi.get(`/${business.slug}/availability/full?date=${d}&itemId=${it.id}`)
     setSlots(data.slots ?? [])
+    setIsBlocked(!!data.isBlocked)
+    setBlockedReason(data.blockedReason ?? null)
     setSlotsLoading(false)
   }
 
@@ -130,6 +134,8 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     customerApi.get(`/${business.slug}/availability/full?date=${prefillDate}&itemId=${it.id}`).then(({ data }) => {
       const fetchedSlots: Slot[] = data.slots ?? []
       setSlots(fetchedSlots)
+      setIsBlocked(!!data.isBlocked)
+      setBlockedReason(data.blockedReason ?? null)
       const match = prefillTime && fetchedSlots.find((s) => s.start === prefillTime && s.available)
       if (match) { setSlot(match); setStep(4) }
     })
@@ -264,7 +270,10 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
             {slotsLoading ? (
               <div className="text-muted text-center py-8">{t(lang, 'loadingTimes')}</div>
             ) : slots.length === 0 ? (
-              <div className="text-muted text-center py-8">{t(lang, 'noTimes')}</div>
+              <div className="text-muted text-center py-8">
+                <p>{isBlocked ? t(lang, 'closedByOwner') : t(lang, 'noTimes')}</p>
+                {isBlocked && blockedReason && <p className="text-sm mt-1">{blockedReason}</p>}
+              </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 {slots.map((s) => (

@@ -29,12 +29,14 @@ public class AvailabilityService(AppDbContext db)
         var dayOfWeek = (int)DateTime.Parse(dateStr).DayOfWeek;
 
         // A date-specific override (WorkingHoursOverride) takes priority over the weekly template
-        // for this exact date -- can open a normally-closed day with custom hours, or close a
-        // normally-open one entirely, without touching the standing weekly schedule. Falls back to
-        // the weekly DayOfWeek lookup when no override row exists for this date.
+        // for this exact date -- "exception days" that reopen a date the owner otherwise blocked
+        // off (e.g. one working day in the middle of a two-week vacation), with their own hours,
+        // set from the Blocked Dates section (SchedulePage.tsx). Falls back to the weekly
+        // DayOfWeek lookup when no override row exists for this date.
         var overrideRow = await db.WorkingHoursOverrides
             .FirstOrDefaultAsync(o => o.BusinessId == businessId && o.Date == date);
         string startTime, endTime;
+        var isExceptionDay = overrideRow is not null && overrideRow.IsActive;
         if (overrideRow is not null)
         {
             if (!overrideRow.IsActive) return [];
@@ -54,9 +56,13 @@ public class AvailabilityService(AppDbContext db)
             .Where(b => b.BusinessId == businessId && b.DayOfWeek == dayOfWeek)
             .ToListAsync();
 
-        var blockedSlots = await db.BlockedSlots
-            .Where(b => b.BusinessId == businessId && b.Date == date)
-            .ToListAsync();
+        // An exception day ignores any BlockedSlot rows for this date entirely -- it's a reopened
+        // day within (or overlapping) a blocked range, not just a schedule change, so the block
+        // that would otherwise cover it must not apply. A business that never uses overrides sees
+        // no change here: this only differs from before when isExceptionDay is true.
+        var blockedSlots = isExceptionDay
+            ? []
+            : await db.BlockedSlots.Where(b => b.BusinessId == businessId && b.Date == date).ToListAsync();
 
         var existingAppointments = await db.Appointments
             .Where(a => a.BusinessId == businessId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED)
@@ -101,6 +107,20 @@ public class AvailabilityService(AppDbContext db)
                 return new SlotWithBookingInfoDto(slot.Start, slot.End, booking is null, booking?.Id);
             })
             .ToList();
+    }
+
+    // Lets the customer-facing booking flow explain WHY a date has no slots, instead of a bare
+    // "no available times" -- only reports a block when the date is genuinely closed (an active
+    // exception-day override, if any, has already reopened it -- see GetSlotsWithBookingInfo).
+    // Returns null when the date isn't blocked at all (e.g. just no working hours that weekday).
+    public async Task<BlockedDayInfo?> GetFullDayBlockInfo(string businessId, string dateStr)
+    {
+        var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
+        var overrideRow = await db.WorkingHoursOverrides.FirstOrDefaultAsync(o => o.BusinessId == businessId && o.Date == date);
+        if (overrideRow is not null && overrideRow.IsActive) return null;
+
+        var blocked = await db.BlockedSlots.FirstOrDefaultAsync(b => b.BusinessId == businessId && b.Date == date && b.StartTime == null);
+        return blocked is null ? null : new BlockedDayInfo(blocked.Reason);
     }
 
     public async Task<bool> HasConflictingAppointment(string businessId, string dateStr, string startTime, string endTime)
