@@ -64,7 +64,7 @@ export default function PresetEditorModal({
   }
 
   async function handleSave() {
-    if (!name.trim()) { setError(t(lang, 'nameRequired')); return }
+    if (!name.trim()) { setError(t(lang, 'presetNameRequired')); return }
     setSaving(true); setError('')
     try {
       if (preset) {
