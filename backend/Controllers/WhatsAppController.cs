@@ -132,9 +132,18 @@ public class WhatsAppController(
         if (!business.ChatbotEnabled)
             return null;
 
+        // Resolved exactly once per message and threaded through everything below, rather than
+        // re-resolved independently inside each path. This matters specifically for a signal-less
+        // message (e.g. a bare "1"): HandleInquiryModeAsync's "$1"/"1" (back to booking) branches
+        // call ClearConversationState and fall through (Handled=false) to the booking dispatch below
+        // -- if that dispatch re-resolved language on its own, it would find no conversation state
+        // left to fall back on (just deleted) and wrongly use the business's default language for a
+        // message that, moments earlier in this same call, clearly resolved to the customer's actual
+        // language.
+        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
+
         if (business.ChatbotInquiryEnabled)
         {
-            var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
             var (handled, inquiryReply) = await HandleInquiryModeAsync(business, fromPhone, profileName, incomingMsg, lang);
             if (handled) return inquiryReply;
         }
@@ -143,7 +152,7 @@ public class WhatsAppController(
         {
             try
             {
-                return await ProcessMessageWithAiAsync(business, appUrl, fromPhone, profileName, incomingMsg);
+                return await ProcessMessageWithAiAsync(business, appUrl, fromPhone, profileName, incomingMsg, lang);
             }
             catch (Exception ex)
             {
@@ -151,7 +160,7 @@ public class WhatsAppController(
             }
         }
 
-        return await ProcessMessageRuleBasedAsync(business, appUrl, fromPhone, profileName, incomingMsg);
+        return await ProcessMessageRuleBasedAsync(business, appUrl, fromPhone, profileName, incomingMsg, lang);
     }
 
     // Checked before either chatbot path (rule-based or AI) runs, for any business with
@@ -321,9 +330,8 @@ public class WhatsAppController(
     // Everything from cancel/reschedule keyword matching through numbered service-selection
     // dispatch -- now the fallback path when OpenAI isn't configured or fails. Gated by the
     // too-many-invalid-replies lockout below (new behavior; the rest is otherwise unchanged).
-    private async Task<string?> ProcessMessageRuleBasedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    private async Task<string?> ProcessMessageRuleBasedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg, string lang)
     {
-        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
         var welcomeMessage = business.ResolveChatbotWelcomeMessage(lang);
         var confirmationMessage = business.ResolveChatbotConfirmationMessage(lang);
 
@@ -376,10 +384,8 @@ public class WhatsAppController(
     // model to relay a tool's "message" field verbatim. This is what prevents a hallucinated URL,
     // price, or date from ever reaching a customer; the model only freely composes text for
     // open-ended Q&A grounded in the business data injected into the system prompt.
-    private async Task<string?> ProcessMessageWithAiAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    private async Task<string?> ProcessMessageWithAiAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg, string lang)
     {
-        var lang = await ResolveLanguage(business.Id, fromPhone, incomingMsg, (business.ChatbotDefaultLanguage ?? business.Language).ToString());
-
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
 
         // Same "$"-unlock lockout the rule-based path uses (see ProcessMessageRuleBasedAsync) --

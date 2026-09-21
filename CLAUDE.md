@@ -769,6 +769,19 @@ conversation in Arabic. A message with no script signal at all (a bare ASCII num
 the language already stored on the open `WhatsAppConversationState` row (see below) for that phone,
 and only falls back to the business's own default when there's no open conversation either (a
 signal-less first message).
+
+**`ResolveLanguage` is called exactly once per inbound message, in `ProcessMessageAsync`, and
+threaded through as a parameter** to `HandleInquiryModeAsync`, `ProcessMessageWithAiAsync`, and
+`ProcessMessageRuleBasedAsync` — none of the three re-resolve it independently (fixed 2026-09-21;
+they each used to call `ResolveLanguage` again on their own). This matters because
+`HandleInquiryModeAsync`'s "1" and `$1` (both mean "back to booking") branches call
+`ClearConversationState` and then fall through (`Handled=false`) to the booking dispatch for the
+*same* message — if that dispatch re-resolved language afterward, it would find no conversation
+state left to read (just cleared) and wrongly fall back to the business's default language for a
+signal-less reply like a bare `"1"`, even though the language had already correctly resolved to
+whatever the customer was using moments earlier in the very same request. If this method's
+signature changes again, keep `lang` as a parameter, not an internal `ResolveLanguage` call.
+
 `WhatsAppConversationState.Language` and `WhatsAppBookingToken.Language` both persist the resolved
 language — the latter is returned by `POST /api/customer/auth/whatsapp` (`language` field) and the
 frontend's `loginWithWhatsAppToken` calls `setLang()` with it, so the booking wizard opens in the

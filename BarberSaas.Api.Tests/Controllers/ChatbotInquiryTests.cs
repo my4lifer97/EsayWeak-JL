@@ -147,6 +147,36 @@ public class ChatbotInquiryTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ChoosingBookingAtTheGate_KeepsTheLanguageTheCustomerWasAlreadyUsing()
+    {
+        // Regression test: HandleInquiryModeAsync's "1" (back-to-booking) branch clears the
+        // conversation state and falls through to the booking dispatch (Handled=false) -- if that
+        // dispatch re-resolved the language on its own instead of reusing what was already resolved
+        // for this same message, it would find no state left to read (just cleared) and wrongly fall
+        // back to the business's default language, even though "1" was clearly sent as part of an
+        // Arabic conversation moments earlier.
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "inquiry-gate-lang@example.com", "password123", "inquiry-gate-lang"));
+        var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
+        var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("inquiry-gate-lang@example.com", registerBody!.DevCode!));
+        var businessBody = await verify.Content.ReadFromJsonAsync<LoginResponse>();
+        Authorize(Client, businessBody!.Token);
+        // Distinct per-language names -- SeedBusinessWithService's "Haircut"/"Haircut"/"Haircut"
+        // item can't distinguish EN from AR in the reply text, so this test seeds its own item.
+        await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Haircut", "قص شعر", "תספורת", 30, 50m));
+        await EnableInquiry(businessBody.Token);
+
+        using var db = Db();
+        var businessId = await db.Businesses.Where(b => b.Slug == "inquiry-gate-lang").Select(b => b.Id).FirstAsync();
+
+        await PostInboundWithAuth(businessId, "+15550015", "مرحبا"); // opens the gate in Arabic
+        var resp = await PostInboundWithAuth(businessId, "+15550015", "1"); // chooses booking
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("قص شعر", body!.Reply);
+        Assert.DoesNotContain("Haircut", body.Reply);
+    }
+
+    [Fact]
     public async Task UnrecognizedReply_AtGate_ReShowsGate()
     {
         var (businessId, token) = await SeedBusinessWithService("inquiry-gate-bad@example.com", "inquiry-gate-bad");
