@@ -300,12 +300,12 @@ public class WhatsAppControllerTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task ArabicIndicDigitReply_DoesNotFlipAnEnglishConversationToArabic()
+    public async Task ArabicIndicDigitReply_FlipsAnEnglishConversationToArabic()
     {
-        // Arabic-Indic digits (٠-٩) sit inside the same Unicode block as Arabic letters, but a
-        // customer whose keyboard defaults numeric input to Arabic-Indic digits may be chatting in
-        // English (or Hebrew) the whole time -- DetectLanguage must treat the digit as carrying no
-        // language signal, not as an Arabic-language signal.
+        // Arabic-Indic digits (٠-٩) sit inside the same Unicode block as Arabic letters -- confirmed
+        // with the business owner that, unlike ASCII digits, a customer only sends these because
+        // their keyboard/locale is actually Arabic, so DetectLanguage must treat them as a genuine
+        // Arabic-language signal, switching the conversation even mid-flow.
         await SeedBusinessWithServices("wa-webhook-lang-arabic-digit-sticky@example.com", "wa-webhook-lang-arabic-digit-sticky");
         var phone = "+15558880014";
         await SendWhatsAppMessage(phone, "hi"); // opens the conversation in English
@@ -314,7 +314,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
 
         using var db = Db();
         var token = await db.WhatsAppBookingTokens.FirstAsync(t => t.Phone == phone);
-        Assert.Equal("EN", token.Language);
+        Assert.Equal("AR", token.Language);
     }
 
     [Fact]

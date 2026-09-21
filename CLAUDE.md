@@ -760,10 +760,15 @@ Per business, in `Settings > WhatsApp Chatbot`:
 is checked against the Hebrew (`U+0590`–`U+05FF`) and Arabic (`U+0600`–`U+06FF`) Unicode blocks,
 falling back to `EN` if it has any Latin letters at all. This is independent of the business's own
 configured storefront `Language` — the bot always replies in whatever language the *customer* just
-typed in. A message with no letters at all (a bare numeric reply like `"1"`) carries no signal of
-its own, so `ResolveLanguage` falls back to the language already stored on the open
-`WhatsAppConversationState` row (see below) for that phone, and only falls back to the business's own
-default when there's no open conversation either (a signal-less first message, e.g. an emoji).
+typed in. The Arabic block check counts **Arabic-Indic/Extended Arabic-Indic digits** (`٠`-`٩` /
+`۰`-`۹`, see below) as a genuine Arabic signal too, not just Arabic letters — confirmed with the
+business owner (2026-09-21) that, unlike ASCII digits, a customer only sends these because their
+keyboard/locale is actually Arabic, so a bare Arabic-Indic-digit reply switches/keeps the
+conversation in Arabic. A message with no script signal at all (a bare ASCII numeric reply like
+`"1"`, punctuation, or an emoji) carries no signal of its own, so `ResolveLanguage` falls back to
+the language already stored on the open `WhatsAppConversationState` row (see below) for that phone,
+and only falls back to the business's own default when there's no open conversation either (a
+signal-less first message).
 `WhatsAppConversationState.Language` and `WhatsAppBookingToken.Language` both persist the resolved
 language — the latter is returned by `POST /api/customer/auth/whatsapp` (`language` field) and the
 frontend's `loginWithWhatsAppToken` calls `setLang()` with it, so the booking wizard opens in the
@@ -784,12 +789,11 @@ trimmed message too, for the same reason — comparing the raw text directly aga
 ASCII commands would silently reject an Arabic-Indic reply at the gate even though the identical
 reply works fine once past it, on the real service list.
 
-These same digit ranges sit inside the Arabic Unicode block (`U+0600`–`U+06FF`), so
-`DetectLanguage` explicitly excludes them (`IsArabicIndicDigit`) from counting as an Arabic
-language signal — a digit alone, in any script, isn't linguistic content. Without this exclusion, a
-customer chatting in English or Hebrew whose phone happens to default numeric input to Arabic-Indic
-digits would have their whole conversation flip to Arabic on the next numeric reply, even though
-they never typed an actual Arabic word. Only a real Arabic *letter* triggers `AR` detection.
+These same digit ranges sit inside the Arabic Unicode block (`U+0600`–`U+06FF`), so `DetectLanguage`
+counts them as an `AR` signal the same as an Arabic letter would (see above) — this was flipped
+2026-09-21 from an earlier version that explicitly excluded them (`IsArabicIndicDigit` is still used
+for `NormalizeDigits`, just no longer for language detection); if this area needs touching again,
+don't reintroduce that exclusion without re-confirming with the owner first.
 
 ### Chatbot Inquiry mode (optional, alongside booking)
 `Business.ChatbotInquiryEnabled` (default `false`, `Settings > Chatbot Settings`) lets a customer

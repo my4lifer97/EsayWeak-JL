@@ -509,12 +509,13 @@ public class WhatsAppController(
         return JsonSerializer.Serialize(new { found = true, message });
     }
 
-    // Detects the language from the incoming message's script (Hebrew/Arabic Unicode blocks, or
-    // Latin letters -> English) so the bot always replies in whatever language the customer just
-    // wrote in, regardless of the business's own configured storefront language. A message with no
-    // letters at all (e.g. a bare "1" reply) carries no signal of its own, so it falls back to
-    // whatever language the open conversation was already using, and only falls back to the
-    // business's default when there's no open conversation either (a fresh, signal-less first message).
+    // Detects the language from the incoming message's script (Hebrew/Arabic Unicode blocks --
+    // Arabic-Indic digits included, see below -- or Latin letters -> English) so the bot always
+    // replies in whatever language the customer just wrote in, regardless of the business's own
+    // configured storefront language. A message with no script signal at all (e.g. a bare ASCII "1"
+    // reply, punctuation, or an emoji) carries no signal of its own, so it falls back to whatever
+    // language the open conversation was already using, and only falls back to the business's
+    // default when there's no open conversation either (a fresh, signal-less first message).
     private const char HebrewBlockStart = (char)0x0590;
     private const char HebrewBlockEnd = (char)0x05FF;
     private const char ArabicBlockStart = (char)0x0600;
@@ -523,12 +524,12 @@ public class WhatsAppController(
     private static string? DetectLanguage(string text)
     {
         if (text.Any(c => c >= HebrewBlockStart && c <= HebrewBlockEnd)) return "HE";
-        // Arabic-Indic/Extended Arabic-Indic digits (see below) sit inside this same Unicode block
-        // but are just numerals, not a language signal -- a customer whose keyboard defaults numeric
-        // input to Arabic-Indic digits may be chatting in English or Hebrew the whole conversation.
-        // Excluded here so a digit-only reply doesn't flip an otherwise-English/Hebrew conversation
-        // to Arabic; only an actual Arabic *letter* counts.
-        if (text.Any(c => c >= ArabicBlockStart && c <= ArabicBlockEnd && !IsArabicIndicDigit(c))) return "AR";
+        // Arabic-Indic/Extended Arabic-Indic digits (0x0660-0x0669 / 0x06F0-0x06F9) sit inside this
+        // same Unicode block and DO count as an Arabic signal here -- confirmed with the business
+        // owner: unlike ASCII digits, a customer only sends these because their keyboard/locale is
+        // actually set to Arabic, so a bare Arabic-Indic-digit reply (e.g. "١" to a numbered prompt)
+        // should switch/keep the conversation in Arabic, not fall through to the default language.
+        if (text.Any(c => c >= ArabicBlockStart && c <= ArabicBlockEnd)) return "AR";
         if (text.Any(char.IsLetter)) return "EN";
         return null;
     }
