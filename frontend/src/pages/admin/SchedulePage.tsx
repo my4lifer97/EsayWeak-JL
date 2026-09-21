@@ -7,6 +7,9 @@ import { t } from '../../lib/i18n'
 type WorkingHour = { id?: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
 type Break = { id: string; dayOfWeek: number; startTime: string; endTime: string }
 type BlockedSlot = { id: string; date: string; startTime: string | null; endTime: string | null; reason: string | null }
+type WorkingHoursOverrideRow = { id: string; date: string; startTime: string; endTime: string; isActive: boolean }
+type SchedulePresetDay = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
+type SchedulePreset = { id: string; name: string; createdAt: string; days: SchedulePresetDay[] }
 
 export default function SchedulePage() {
   const queryClient = useQueryClient()
@@ -23,10 +26,18 @@ export default function SchedulePage() {
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
   const [blockRangeMode, setBlockRangeMode] = useState(false)
   const [rangeEndDate, setRangeEndDate] = useState('')
+  const [newOverride, setNewOverride] = useState({ date: '', startTime: '09:00', endTime: '18:00', closed: false })
+  const [newPresetName, setNewPresetName] = useState('')
+  const [showPresetInput, setShowPresetInput] = useState(false)
 
-  const { data } = useQuery<{ workingHours: WorkingHour[]; breaks: Break[]; blockedSlots: BlockedSlot[] }>({
+  const { data } = useQuery<{ workingHours: WorkingHour[]; breaks: Break[]; blockedSlots: BlockedSlot[]; overrides: WorkingHoursOverrideRow[] }>({
     queryKey: ['schedule'],
     queryFn: () => api.get('/admin/schedule').then((r) => r.data),
+  })
+
+  const { data: presets = [] } = useQuery<SchedulePreset[]>({
+    queryKey: ['schedule-presets'],
+    queryFn: () => api.get('/admin/schedule/presets').then((r) => r.data),
   })
 
   const initHours = Array.from({ length: 7 }, (_, i) => {
@@ -36,6 +47,7 @@ export default function SchedulePage() {
   const [hours, setHours] = useState<WorkingHour[]>(initHours)
   const [breaks, setBreaks] = useState<Break[]>(data?.breaks ?? [])
   const [blocked, setBlocked] = useState<BlockedSlot[]>(data?.blockedSlots ?? [])
+  const [overrides, setOverrides] = useState<WorkingHoursOverrideRow[]>(data?.overrides ?? [])
 
   // Sync state when data loads
   if (data && hours.every((h) => !h.id) && data.workingHours.length > 0) {
@@ -44,6 +56,7 @@ export default function SchedulePage() {
       setHours(synced)
       setBreaks(data.breaks)
       setBlocked(data.blockedSlots)
+      setOverrides(data.overrides)
     }
   }
 
@@ -94,6 +107,45 @@ export default function SchedulePage() {
     setBlocked((prev) => prev.filter((b) => b.id !== id))
   }
 
+  async function saveOverride() {
+    if (!newOverride.date) return
+    const { data: ovr } = await api.post('/admin/schedule/overrides', {
+      date: newOverride.date,
+      startTime: newOverride.startTime,
+      endTime: newOverride.endTime,
+      isActive: !newOverride.closed,
+    })
+    setOverrides((prev) => [...prev.filter((o) => o.date !== ovr.date), ovr])
+  }
+
+  async function deleteOverride(id: string) {
+    await api.delete(`/admin/schedule/overrides/${id}`)
+    setOverrides((prev) => prev.filter((o) => o.id !== id))
+  }
+
+  async function savePreset() {
+    if (!newPresetName.trim()) return
+    await api.post('/admin/schedule/presets', { name: newPresetName.trim() })
+    setNewPresetName(''); setShowPresetInput(false)
+    queryClient.invalidateQueries({ queryKey: ['schedule-presets'] })
+  }
+
+  async function applyPreset(id: string) {
+    if (!confirm(t(lang, 'applyPresetConfirm'))) return
+    await api.post(`/admin/schedule/presets/${id}/apply`)
+    // The Working Hours section above only syncs from the query once (to avoid clobbering
+    // in-progress edits), so re-fetch and push the applied hours into it directly here rather
+    // than relying on that one-time sync to notice the change.
+    const { data: fresh } = await api.get('/admin/schedule')
+    setHours(Array.from({ length: 7 }, (_, i) => fresh.workingHours.find((h: WorkingHour) => h.dayOfWeek === i) ?? { dayOfWeek: i, startTime: '09:00', endTime: '18:00', isActive: false }))
+    queryClient.invalidateQueries({ queryKey: ['schedule'] })
+  }
+
+  async function deletePreset(id: string) {
+    await api.delete(`/admin/schedule/presets/${id}`)
+    queryClient.invalidateQueries({ queryKey: ['schedule-presets'] })
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'schedule')}</h1>
@@ -127,6 +179,79 @@ export default function SchedulePage() {
             className="mt-5 bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors">
             {saved ? t(lang, 'saved') : saving ? t(lang, 'saving') : t(lang, 'saveWorkingHours')}
           </button>
+        </section>
+
+        <section className="bg-surface border border-line rounded-2xl p-6">
+          <h2 className="text-ink font-semibold text-lg mb-1">{t(lang, 'workingHoursOverrides')}</h2>
+          <p className="text-muted text-sm mb-5">{t(lang, 'workingHoursOverridesHint')}</p>
+          {overrides.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {overrides.map((o) => (
+                <div key={o.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
+                  <span className="text-ink text-sm">
+                    {o.date}{o.isActive ? ` · ${o.startTime}–${o.endTime}` : ` · ${t(lang, 'closedThisDay')}`}
+                  </span>
+                  <button onClick={() => deleteOverride(o.id)} className="text-red-600 hover:text-red-500 text-xs">{t(lang, 'remove')}</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3">
+            <input type="date" value={newOverride.date} onChange={(e) => setNewOverride((p) => ({ ...p, date: e.target.value }))}
+              className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
+            <label className="flex items-center gap-2 text-ink text-sm cursor-pointer">
+              <input type="checkbox" checked={newOverride.closed} onChange={(e) => setNewOverride((p) => ({ ...p, closed: e.target.checked }))}
+                className="accent-coral" />
+              {t(lang, 'closedThisDay')}
+            </label>
+            {!newOverride.closed && (
+              <>
+                <input type="time" value={newOverride.startTime} onChange={(e) => setNewOverride((p) => ({ ...p, startTime: e.target.value }))}
+                  className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
+                <span className="text-muted text-sm">{t(lang, 'timeTo')}</span>
+                <input type="time" value={newOverride.endTime} onChange={(e) => setNewOverride((p) => ({ ...p, endTime: e.target.value }))}
+                  className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm focus:outline-none" />
+              </>
+            )}
+            <button onClick={saveOverride} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              {t(lang, 'saveOverride')}
+            </button>
+          </div>
+        </section>
+
+        <section className="bg-surface border border-line rounded-2xl p-6">
+          <h2 className="text-ink font-semibold text-lg mb-1">{t(lang, 'schedulePresets')}</h2>
+          <p className="text-muted text-sm mb-5">{t(lang, 'schedulePresetsHint')}</p>
+          {presets.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {presets.map((p) => (
+                <div key={p.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
+                  <span className="text-ink text-sm">{p.name}</span>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => applyPreset(p.id)} className="text-coral-dark hover:text-coral text-xs font-medium">{t(lang, 'applyPreset')}</button>
+                    <button onClick={() => deletePreset(p.id)} className="text-red-600 hover:text-red-500 text-xs">{t(lang, 'remove')}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {showPresetInput ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <input type="text" value={newPresetName} placeholder={t(lang, 'presetNamePlaceholder')}
+                onChange={(e) => setNewPresetName(e.target.value)}
+                className="bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none" />
+              <button onClick={savePreset} className="bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                {t(lang, 'saveChanges')}
+              </button>
+              <button onClick={() => { setShowPresetInput(false); setNewPresetName('') }} className="text-muted hover:text-ink text-sm">
+                {t(lang, 'back')}
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowPresetInput(true)} className="text-sm text-coral-dark hover:text-coral">
+              {t(lang, 'saveAsPreset')}
+            </button>
+          )}
         </section>
 
         <section className="bg-surface border border-line rounded-2xl p-6">

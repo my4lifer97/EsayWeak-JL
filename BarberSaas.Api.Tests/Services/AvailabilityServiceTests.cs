@@ -77,6 +77,73 @@ public class AvailabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task DateOverride_OpensANormallyClosedDayWithCustomHours()
+    {
+        using var db = NewDb();
+        // No active WorkingHours row for this day at all -- an override must still be able to
+        // open it, e.g. an owner working an otherwise-closed Sunday.
+        var business = new Business { Name = "No Hours", Email = "n2@example.com", Slug = "no-hours-2" };
+        db.Businesses.Add(business);
+        db.WorkingHoursOverrides.Add(new WorkingHoursOverride
+        {
+            BusinessId = business.Id,
+            Date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime(),
+            StartTime = "10:00",
+            EndTime = "11:00",
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 30);
+
+        Assert.Equal(2, slots.Count);
+        Assert.Contains(slots, s => s.Start == "10:00" && s.End == "10:30");
+        Assert.Contains(slots, s => s.Start == "10:30" && s.End == "11:00");
+    }
+
+    [Fact]
+    public async Task DateOverride_ClosesANormallyOpenDayEntirely()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "12:00"); // active Monday hours
+        db.WorkingHoursOverrides.Add(new WorkingHoursOverride
+        {
+            BusinessId = business.Id,
+            Date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime(),
+            StartTime = "09:00",
+            EndTime = "12:00",
+            IsActive = false,
+        });
+        await db.SaveChangesAsync();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 30);
+
+        Assert.Empty(slots);
+    }
+
+    [Fact]
+    public async Task NoOverrideForDate_FallsBackToWeeklyTemplate()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "10:00");
+        // An override exists, but for a different date -- must not affect TestDate.
+        db.WorkingHoursOverrides.Add(new WorkingHoursOverride
+        {
+            BusinessId = business.Id,
+            Date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime().AddDays(7),
+            StartTime = "14:00",
+            EndTime = "15:00",
+            IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 30);
+
+        Assert.Equal(2, slots.Count);
+        Assert.Contains(slots, s => s.Start == "09:00");
+    }
+
+    [Fact]
     public async Task GeneratesThirtyMinuteSlotsWithinWorkingHours()
     {
         using var db = NewDb();

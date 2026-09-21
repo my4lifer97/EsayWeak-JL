@@ -28,10 +28,27 @@ public class AvailabilityService(AppDbContext db)
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
         var dayOfWeek = (int)DateTime.Parse(dateStr).DayOfWeek;
 
-        var workingHours = await db.WorkingHours
-            .FirstOrDefaultAsync(w => w.BusinessId == businessId && w.DayOfWeek == dayOfWeek && w.IsActive);
-
-        if (workingHours is null) return [];
+        // A date-specific override (WorkingHoursOverride) takes priority over the weekly template
+        // for this exact date -- can open a normally-closed day with custom hours, or close a
+        // normally-open one entirely, without touching the standing weekly schedule. Falls back to
+        // the weekly DayOfWeek lookup when no override row exists for this date.
+        var overrideRow = await db.WorkingHoursOverrides
+            .FirstOrDefaultAsync(o => o.BusinessId == businessId && o.Date == date);
+        string startTime, endTime;
+        if (overrideRow is not null)
+        {
+            if (!overrideRow.IsActive) return [];
+            startTime = overrideRow.StartTime;
+            endTime = overrideRow.EndTime;
+        }
+        else
+        {
+            var workingHours = await db.WorkingHours
+                .FirstOrDefaultAsync(w => w.BusinessId == businessId && w.DayOfWeek == dayOfWeek && w.IsActive);
+            if (workingHours is null) return [];
+            startTime = workingHours.StartTime;
+            endTime = workingHours.EndTime;
+        }
 
         var breaks = await db.Breaks
             .Where(b => b.BusinessId == businessId && b.DayOfWeek == dayOfWeek)
@@ -54,7 +71,7 @@ public class AvailabilityService(AppDbContext db)
                 .Select(b => new TimeSlot(b.StartTime!, b.EndTime!)))
             .ToList();
 
-        var candidates = GenerateSlots(workingHours.StartTime, workingHours.EndTime, 30);
+        var candidates = GenerateSlots(startTime, endTime, 30);
 
         // For today, don't offer slots that have already started — a customer booking at
         // 15:00 shouldn't see (or be able to grab) a 10:00 slot. WorkingHours/Appointment
@@ -71,7 +88,7 @@ public class AvailabilityService(AppDbContext db)
             .Where(slot =>
             {
                 var slotEnd = AddMinutes(slot.Start, serviceDuration);
-                if (string.Compare(slotEnd, workingHours.EndTime, StringComparison.Ordinal) > 0) return false;
+                if (string.Compare(slotEnd, endTime, StringComparison.Ordinal) > 0) return false;
                 if (isToday && string.Compare(slot.Start, nowTime, StringComparison.Ordinal) <= 0) return false;
                 return !blockedPeriods.Any(b => Overlaps(slot.Start, slotEnd, b.Start, b.End));
             })

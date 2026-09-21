@@ -421,18 +421,19 @@ public class AdminController(
             .OrderBy(b => b.Date)
             .Select(b => new BlockedSlotDto(b.Id, b.Date.ToString("yyyy-MM-dd"), b.StartTime, b.EndTime, b.Reason))
             .ToListAsync();
-        return Ok(new ScheduleResponse(wh, brk, bsl));
+        var ovr = await db.WorkingHoursOverrides.Where(o => o.BusinessId == BusinessId)
+            .OrderBy(o => o.Date)
+            .Select(o => new WorkingHoursOverrideDto(o.Id, o.Date.ToString("yyyy-MM-dd"), o.StartTime, o.EndTime, o.IsActive))
+            .ToListAsync();
+        return Ok(new ScheduleResponse(wh, brk, bsl, ovr));
     }
 
-    [HttpPost("schedule")]
-    public async Task<IActionResult> SaveWorkingHours([FromBody] List<WorkingHoursDto> hours)
+    // Shared by SaveWorkingHours and ApplySchedulePreset -- both overwrite the standing 7-day
+    // weekly template via the same upsert-by-DayOfWeek semantics, just sourced differently (the
+    // request body vs. a saved preset's days).
+    private async Task UpsertWorkingHours(IEnumerable<(int DayOfWeek, string StartTime, string EndTime, bool IsActive)> days)
     {
-        // Captured before assignment so we can report only the days that actually changed --
-        // the schedule form always submits all 7 days on every save, mirroring UpdateSettings.
-        var oldByDay = await db.WorkingHours.Where(w => w.BusinessId == BusinessId)
-            .ToDictionaryAsync(w => w.DayOfWeek, w => (w.StartTime, w.EndTime, w.IsActive));
-
-        foreach (var h in hours)
+        foreach (var h in days)
         {
             var existing = await db.WorkingHours
                 .FirstOrDefaultAsync(w => w.BusinessId == BusinessId && w.DayOfWeek == h.DayOfWeek);
@@ -455,6 +456,17 @@ public class AdminController(
             }
         }
         await db.SaveChangesAsync();
+    }
+
+    [HttpPost("schedule")]
+    public async Task<IActionResult> SaveWorkingHours([FromBody] List<WorkingHoursDto> hours)
+    {
+        // Captured before assignment so we can report only the days that actually changed --
+        // the schedule form always submits all 7 days on every save, mirroring UpdateSettings.
+        var oldByDay = await db.WorkingHours.Where(w => w.BusinessId == BusinessId)
+            .ToDictionaryAsync(w => w.DayOfWeek, w => (w.StartTime, w.EndTime, w.IsActive));
+
+        await UpsertWorkingHours(hours.Select(h => (h.DayOfWeek, h.StartTime, h.EndTime, h.IsActive)));
 
         var changes = new List<string>();
         foreach (var h in hours.OrderBy(h => h.DayOfWeek))
@@ -563,6 +575,115 @@ public class AdminController(
         var timeRange = slot.StartTime is not null && slot.EndTime is not null ? $" {slot.StartTime}–{slot.EndTime}" : " (full day)";
         this.SetActivityDetail($"Unblocked {slot.Date:yyyy-MM-dd}{timeRange}");
 
+        return Ok(new { ok = true });
+    }
+
+    // ─── Working-hours date overrides ───────────────────────────────────────
+    // Bidirectional per-date override of the weekly WorkingHours template -- see
+    // WorkingHoursOverride's doc comment and AvailabilityService.GetSlotsWithBookingInfo, which
+    // checks this table before the DayOfWeek lookup.
+
+    [HttpPost("schedule/overrides")]
+    public async Task<IActionResult> UpsertWorkingHoursOverride([FromBody] UpsertWorkingHoursOverrideRequest req)
+    {
+        var date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
+        var existing = await db.WorkingHoursOverrides.FirstOrDefaultAsync(o => o.BusinessId == BusinessId && o.Date == date);
+        if (existing is not null)
+        {
+            existing.StartTime = req.StartTime;
+            existing.EndTime = req.EndTime;
+            existing.IsActive = req.IsActive;
+        }
+        else
+        {
+            existing = new WorkingHoursOverride { BusinessId = BusinessId, Date = date, StartTime = req.StartTime, EndTime = req.EndTime, IsActive = req.IsActive };
+            db.WorkingHoursOverrides.Add(existing);
+        }
+        await db.SaveChangesAsync();
+
+        this.SetActivityDetail(req.IsActive
+            ? $"Set date-specific hours for {req.Date}: {req.StartTime}–{req.EndTime}"
+            : $"Marked {req.Date} closed (date-specific override)");
+
+        return StatusCode(201, new WorkingHoursOverrideDto(existing.Id, req.Date, existing.StartTime, existing.EndTime, existing.IsActive));
+    }
+
+    [HttpDelete("schedule/overrides/{id}")]
+    public async Task<IActionResult> DeleteWorkingHoursOverride(string id)
+    {
+        var ovr = await db.WorkingHoursOverrides.FirstOrDefaultAsync(o => o.Id == id && o.BusinessId == BusinessId);
+        if (ovr is null) return NotFound();
+        db.WorkingHoursOverrides.Remove(ovr);
+        await db.SaveChangesAsync();
+        this.SetActivityDetail($"Removed date-specific override for {ovr.Date:yyyy-MM-dd}");
+        return Ok(new { ok = true });
+    }
+
+    // ─── Schedule presets ───────────────────────────────────────────────────
+    // A named snapshot of the 7-day WorkingHours template, saveable and re-applicable later (e.g.
+    // "Christmas Hours"). Applying overwrites the standing weekly template via the same
+    // UpsertWorkingHours helper SaveWorkingHours uses -- it does not touch WorkingHoursOverrides
+    // or auto-revert; confirmed with the business owner as the desired behavior.
+
+    [HttpGet("schedule/presets")]
+    public async Task<IActionResult> GetSchedulePresets()
+    {
+        var presets = await db.SchedulePresets.Where(p => p.BusinessId == BusinessId)
+            .Include(p => p.Days)
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
+        return Ok(presets.Select(p => new SchedulePresetDto(p.Id, p.Name, p.CreatedAt,
+            p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList())).ToList());
+    }
+
+    [HttpPost("schedule/presets")]
+    public async Task<IActionResult> SaveSchedulePreset([FromBody] SaveSchedulePresetRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
+
+        var currentHours = await db.WorkingHours.Where(w => w.BusinessId == BusinessId).ToListAsync();
+        var preset = new SchedulePreset { BusinessId = BusinessId, Name = req.Name.Trim() };
+        preset.Days = Enumerable.Range(0, 7).Select(dow =>
+        {
+            var existing = currentHours.FirstOrDefault(w => w.DayOfWeek == dow);
+            return new SchedulePresetDay
+            {
+                SchedulePresetId = preset.Id,
+                DayOfWeek = dow,
+                StartTime = existing?.StartTime ?? "09:00",
+                EndTime = existing?.EndTime ?? "18:00",
+                IsActive = existing?.IsActive ?? false,
+            };
+        }).ToList();
+
+        db.SchedulePresets.Add(preset);
+        await db.SaveChangesAsync();
+        this.SetActivityDetail($"Saved schedule preset \"{preset.Name}\"");
+
+        return StatusCode(201, new SchedulePresetDto(preset.Id, preset.Name, preset.CreatedAt,
+            preset.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList()));
+    }
+
+    [HttpPost("schedule/presets/{id}/apply")]
+    public async Task<IActionResult> ApplySchedulePreset(string id)
+    {
+        var preset = await db.SchedulePresets.Include(p => p.Days).FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
+        if (preset is null) return NotFound();
+
+        await UpsertWorkingHours(preset.Days.Select(d => (d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)));
+        this.SetActivityDetail($"Applied schedule preset \"{preset.Name}\" (overwrote weekly working hours)");
+
+        return Ok(new { ok = true });
+    }
+
+    [HttpDelete("schedule/presets/{id}")]
+    public async Task<IActionResult> DeleteSchedulePreset(string id)
+    {
+        var preset = await db.SchedulePresets.FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
+        if (preset is null) return NotFound();
+        db.SchedulePresets.Remove(preset);
+        await db.SaveChangesAsync();
+        this.SetActivityDetail($"Deleted schedule preset \"{preset.Name}\"");
         return Ok(new { ok = true });
     }
 

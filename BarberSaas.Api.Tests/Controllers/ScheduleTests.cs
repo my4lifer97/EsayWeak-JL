@@ -6,9 +6,9 @@ using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
 
-// Covers the "block a range of dates" addition to Blocked Dates -- the existing single-date
-// path (AddBlockedSlot) is unchanged and untested here; this only exercises the new range
-// endpoint (AddBlockedRange).
+// Covers three schedule additions: blocking a range of dates (Blocked Dates -- the existing
+// single-date path, AddBlockedSlot, is unchanged and untested here), per-date working-hours
+// overrides, and saveable/reusable weekly schedule presets.
 public class ScheduleTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
@@ -85,5 +85,82 @@ public class ScheduleTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         using var db = Db();
         Assert.False(await db.BlockedSlots.AnyAsync());
+    }
+
+    [Fact]
+    public async Task WorkingHoursOverride_UpsertThenDelete()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-override-1@example.com", "schedule-override-1");
+        Authorize(Client, token);
+
+        var createResp = await Client.PostAsJsonAsync("/api/admin/schedule/overrides",
+            new UpsertWorkingHoursOverrideRequest("2026-12-25", "10:00", "14:00", true));
+        Assert.Equal(HttpStatusCode.Created, createResp.StatusCode);
+        var created = await createResp.Content.ReadFromJsonAsync<WorkingHoursOverrideDto>();
+        Assert.Equal("2026-12-25", created!.Date);
+
+        // Upserting the same date again updates in place rather than creating a second row.
+        var updateResp = await Client.PostAsJsonAsync("/api/admin/schedule/overrides",
+            new UpsertWorkingHoursOverrideRequest("2026-12-25", "11:00", "13:00", true));
+        var updated = await updateResp.Content.ReadFromJsonAsync<WorkingHoursOverrideDto>();
+        Assert.Equal(created.Id, updated!.Id);
+        Assert.Equal("11:00", updated.StartTime);
+
+        var list = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.Single(list!.Overrides);
+
+        var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/overrides/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, deleteResp.StatusCode);
+        var listAfter = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.Empty(listAfter!.Overrides);
+    }
+
+    [Fact]
+    public async Task SchedulePreset_SaveThenApply_OverwritesWorkingHours()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-1@example.com", "schedule-preset-1");
+        Authorize(Client, token);
+        // Sunday (0) active 09:00-18:00, every other day inactive -- the "normal" schedule.
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
+
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours"));
+        Assert.Equal(HttpStatusCode.Created, saveResp.StatusCode);
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        Assert.Equal(7, preset!.Days.Count);
+        Assert.True(preset.Days.Single(d => d.DayOfWeek == 0).IsActive);
+
+        // Change the live schedule to something different from what was saved.
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "10:00", "12:00", d == 3)).ToList());
+
+        var applyResp = await Client.PostAsync($"/api/admin/schedule/presets/{preset.Id}/apply", null);
+        Assert.Equal(HttpStatusCode.OK, applyResp.StatusCode);
+
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        var sunday = schedule!.WorkingHours.Single(h => h.DayOfWeek == 0);
+        var wednesday = schedule.WorkingHours.Single(h => h.DayOfWeek == 3);
+        Assert.True(sunday.IsActive);
+        Assert.Equal("09:00", sunday.StartTime);
+        Assert.False(wednesday.IsActive); // reverted back to the preset's (inactive) Wednesday
+    }
+
+    [Fact]
+    public async Task SchedulePreset_Delete_RemovesItWithoutTouchingWorkingHours()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-2@example.com", "schedule-preset-2");
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Temp"));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/presets/{preset!.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, deleteResp.StatusCode);
+        var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
+        Assert.Empty(presets!);
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.True(schedule!.WorkingHours.Single(h => h.DayOfWeek == 0).IsActive);
     }
 }
