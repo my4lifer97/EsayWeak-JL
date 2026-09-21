@@ -37,6 +37,9 @@ export default function RecurringAppointmentsPage() {
   const [customer, setCustomer] = useState<CustomerSelection | null>(null)
   const [dayOfWeek, setDayOfWeek] = useState<number | null>(null)
   const [slot, setSlot] = useState<Slot | null>(null)
+  const [showCustomTime, setShowCustomTime] = useState(false)
+  const [customTime, setCustomTime] = useState('')
+  const [forceBook, setForceBook] = useState(false)
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -57,24 +60,28 @@ export default function RecurringAppointmentsPage() {
   const { data: slots = [], isFetching: slotsLoading } = useQuery<Slot[]>({
     queryKey: ['admin-availability', effectiveDate, serviceId],
     queryFn: () => api.get(`/admin/appointments/availability?date=${effectiveDate}&itemId=${serviceId}`).then((r) => r.data.slots),
-    enabled: !!effectiveDate && !!serviceId,
+    enabled: !!effectiveDate && !!serviceId && !showCustomTime,
   })
+
+  const startTime = showCustomTime ? customTime : slot?.start ?? ''
+  const canSubmit = !!serviceId && !!customer && dayOfWeek !== null && !!startTime && (!showCustomTime || forceBook)
 
   function resetForm() {
     setServiceId(''); setCustomer(null); setDayOfWeek(null); setSlot(null)
+    setShowCustomTime(false); setCustomTime(''); setForceBook(false)
     setNotes(''); setError('')
   }
 
   async function submit() {
-    if (!serviceId || !customer || dayOfWeek === null || !slot) return
+    if (!canSubmit || !customer || dayOfWeek === null) return
     setSubmitting(true); setError('')
     try {
       await api.post('/admin/recurring', {
         ...('customerId' in customer ? { customerId: customer.customerId }
           : 'customerName' in customer ? { customerName: customer.customerName, customerFamilyName: customer.customerFamilyName, customerPhone: customer.customerPhone }
           : {}),
-        itemId: serviceId, dayOfWeek, startTime: slot.start, notes: notes || undefined,
-        startDate: effectiveDate,
+        itemId: serviceId, dayOfWeek, startTime, notes: notes || undefined,
+        startDate: effectiveDate, force: showCustomTime ? forceBook : false,
       })
       queryClient.invalidateQueries({ queryKey: ['recurring-series'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -193,7 +200,7 @@ export default function RecurringAppointmentsPage() {
                 </div>
               </div>
 
-              {dayOfWeek !== null && serviceId && (
+              {dayOfWeek !== null && serviceId && !showCustomTime && (
                 <div>
                   <label className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'time')}</label>
                   {slotsLoading ? (
@@ -217,9 +224,29 @@ export default function RecurringAppointmentsPage() {
                 </div>
               )}
 
-              {dayOfWeek !== null && slot && (
+              {dayOfWeek !== null && (
+                <button type="button" onClick={() => { setShowCustomTime((v) => !v); setForceBook(false); setSlot(null) }}
+                  className="text-sm text-coral-dark hover:text-coral">
+                  {showCustomTime ? `← ${t(lang, 'back')}` : t(lang, 'enterCustomTime')}
+                </button>
+              )}
+
+              {showCustomTime && (
+                <div className="space-y-2">
+                  <input type="time" value={customTime} onChange={(e) => setCustomTime(e.target.value)}
+                    className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
+                  <label className="flex items-start gap-2 text-sm text-ink">
+                    <input type="checkbox" checked={forceBook} onChange={(e) => setForceBook(e.target.checked)} className="mt-0.5" />
+                    <span>{t(lang, 'forceBookLabel')}</span>
+                  </label>
+                  <p className="text-muted text-xs">{t(lang, 'forceBookHint')}</p>
+                  <p className="text-muted text-xs">{t(lang, 'forceBookRecurringHint')}</p>
+                </div>
+              )}
+
+              {dayOfWeek !== null && startTime && (
                 <p className="text-muted text-xs">
-                  {t(lang, 'everyWeekAt')} {t(lang, DAY_KEYS[dayOfWeek])} {t(lang, 'atTime')} {slot.start}
+                  {t(lang, 'everyWeekAt')} {t(lang, DAY_KEYS[dayOfWeek])} {t(lang, 'atTime')} {startTime}
                 </p>
               )}
 
@@ -228,7 +255,7 @@ export default function RecurringAppointmentsPage() {
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
                   className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
               </div>
-              <button type="button" onClick={submit} disabled={!serviceId || !customer || dayOfWeek === null || !slot || submitting}
+              <button type="button" onClick={submit} disabled={!canSubmit || submitting}
                 className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
                 {submitting ? t(lang, 'saving') : t(lang, 'createAppointment')}
               </button>

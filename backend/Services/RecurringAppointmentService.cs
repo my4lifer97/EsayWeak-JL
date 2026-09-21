@@ -69,8 +69,15 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
             if (!exists)
             {
                 var dateStr = d.ToString("yyyy-MM-dd");
-                var slots = await availability.GetAvailableSlots(s.BusinessId, dateStr, s.Item.DurationMinutes.Value);
-                if (slots.Any(sl => sl.Start == s.StartTime))
+                var endTime = AvailabilityService.AddMinutes(s.StartTime, s.Item.DurationMinutes.Value);
+                // Force mirrors CreateAdminAppointmentRequest.Force's one-off semantics: skip the
+                // working-hours/breaks/blocked-slot check entirely and only still hard-block on an
+                // exact conflicting-appointment overlap. Checked on every occurrence, not just the
+                // first, since this loop re-evaluates availability for every future week too.
+                var slotOk = s.Force
+                    ? !await availability.HasConflictingAppointment(s.BusinessId, dateStr, s.StartTime, endTime)
+                    : (await availability.GetAvailableSlots(s.BusinessId, dateStr, s.Item.DurationMinutes.Value)).Any(sl => sl.Start == s.StartTime);
+                if (slotOk)
                 {
                     db.Appointments.Add(new Appointment
                     {
@@ -79,7 +86,7 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
                         ItemId = s.ItemId,
                         Date = d,
                         StartTime = s.StartTime,
-                        EndTime = AvailabilityService.AddMinutes(s.StartTime, s.Item.DurationMinutes.Value),
+                        EndTime = endTime,
                         Notes = s.Notes,
                         Status = AppointmentStatus.CONFIRMED,
                         RecurringSeriesId = s.Id,

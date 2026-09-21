@@ -102,6 +102,66 @@ public class RecurringAppointmentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Force_CreatesOccurrence_EvenWithNoWorkingHoursConfiguredForThatDay()
+    {
+        using var db = NewDb();
+        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        // Deliberately no WorkingHours row for this day (not calling SeedBusinessServiceCustomer,
+        // which always adds one) -- Force must bypass that gate entirely, the same problem the
+        // "New Recurring Series" form's day-of-week grid otherwise gets permanently stuck on.
+        var business = new Business { Name = "Test Business", Email = $"{Guid.NewGuid():N}@example.com", Slug = $"business-{Guid.NewGuid():N}" };
+        var item = new Item { BusinessId = business.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 30, Price = 20, IsActive = true };
+        var customer = new Customer { BusinessId = business.Id, Name = "Mohamed", Phone = "+15551110000" };
+        db.Businesses.Add(business);
+        db.Items.Add(item);
+        db.Customers.Add(customer);
+        var series = new RecurringSeries
+        {
+            BusinessId = business.Id, CustomerId = customer.Id, ItemId = item.Id,
+            DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target, EndDate = target, IsActive = true,
+            Force = true,
+        };
+        db.RecurringSeries.Add(series);
+        await db.SaveChangesAsync();
+
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+
+        Assert.Equal(1, result.Created);
+        Assert.Equal(0, result.Skipped);
+        var appt = Assert.Single(db.Appointments.Where(a => a.RecurringSeriesId == series.Id));
+        Assert.Equal("13:00", appt.StartTime);
+    }
+
+    [Fact]
+    public async Task Force_StillBlocksOnExactConflictingAppointment()
+    {
+        using var db = NewDb();
+        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
+        var otherCustomer = new Customer { BusinessId = business.Id, Name = "Other", Phone = "+15551110001" };
+        db.Customers.Add(otherCustomer);
+        db.Appointments.Add(new Appointment
+        {
+            BusinessId = business.Id, CustomerId = otherCustomer.Id, ItemId = item.Id,
+            Date = target, StartTime = "13:00", EndTime = "13:30", Status = AppointmentStatus.CONFIRMED,
+        });
+        var series = new RecurringSeries
+        {
+            BusinessId = business.Id, CustomerId = customer.Id, ItemId = item.Id,
+            DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target, EndDate = target, IsActive = true,
+            Force = true,
+        };
+        db.RecurringSeries.Add(series);
+        await db.SaveChangesAsync();
+
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+
+        Assert.Equal(0, result.Created);
+        Assert.Equal(1, result.Skipped);
+        Assert.Empty(db.Appointments.Where(a => a.RecurringSeriesId == series.Id));
+    }
+
+    [Fact]
     public async Task SecondRun_DoesNotDuplicateAlreadyGeneratedOccurrence()
     {
         using var db = NewDb();

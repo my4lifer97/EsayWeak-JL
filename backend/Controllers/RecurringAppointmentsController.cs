@@ -121,6 +121,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             Notes = req.Notes,
             StartDate = startDate,
             EndDate = endDate,
+            Force = req.Force,
         };
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();

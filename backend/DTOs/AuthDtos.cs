@@ -75,7 +75,8 @@ public record RecurringSeriesDto(
 public record CreateRecurringSeriesRequest(
     string? CustomerId, string? CustomerName, string? CustomerPhone,
     string ItemId, int DayOfWeek, string StartTime, string? Notes,
-    string? StartDate = null, string? EndDate = null, string? CustomerFamilyName = null);
+    string? StartDate = null, string? EndDate = null, string? CustomerFamilyName = null,
+    bool Force = false);
 
 public record TimeSlot(string Start, string End);
 

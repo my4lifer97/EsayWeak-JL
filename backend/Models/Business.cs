@@ -290,6 +290,11 @@ public class RecurringSeries
     // Rolling cursor: last calendar date the generator has evaluated (created OR skipped) for this rule.
     public DateTime? LastGeneratedThrough { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // Same semantics as CreateAdminAppointmentRequest.Force for a one-off appointment, but
+    // persisted -- RecurringAppointmentService.GenerateForSeries re-checks availability for every
+    // future occurrence, forever, not just at creation, so the bypass has to live on the series
+    // itself rather than being a one-time flag on the creation request.
+    public bool Force { get; set; } = false;
 
     public Business Business { get; set; } = null!;
     public Customer Customer { get; set; } = null!;

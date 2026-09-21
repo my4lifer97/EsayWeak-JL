@@ -581,6 +581,15 @@ Two ways for the business to book without the customer using the self-service fl
   - **Deleting a series** (`DELETE /api/admin/recurring/{id}`) cancels every not-yet-completed appointment it generated (`Status = CANCELLED`, freeing the slot) before removing the series row; already-completed history is left untouched (its stored `Status` is always `CONFIRMED` — see [Appointment status](#appointment-status-no-manual-complete) — so the cancel loop checks `AppointmentStatusHelper.EffectiveStatus` per row, not the raw column).
   - **No pause/resume** — deliberately removed; deleting is the only lifecycle action exposed to the owner besides creating. `IsActive` still exists on the model purely for the auto-deactivation cases above.
   - **Creating a series** (`pages/admin/RecurringAppointmentsPage.tsx`): the owner picks an item, a customer (`CustomerPicker`), then a **day-of-week button** (Sun–Sat, not a raw date picker), then a **time slot from the real availability grid** for the nearest upcoming date on that weekday (same `GET /api/admin/appointments/availability` endpoint the one-off modal uses) — never a free-typed time. That computed date becomes the series' `StartDate`.
+  - **`RecurringSeries.Force`** — the recurring equivalent of the one-off `force` flag above, surfaced
+    via the same "Enter custom time" toggle + checkbox UI. Unlike the one-off flag (a per-request
+    parameter), this has to be a *persisted* column: `GenerateForSeries` re-checks availability for
+    every future occurrence, forever, not just at creation, so a day-of-week with no active
+    `WorkingHours` row would otherwise silently produce a `RecurringSkip("slot_unavailable")` every
+    single week even if the initial creation were somehow force-allowed. When `Force` is set, the
+    generation loop skips `GetAvailableSlots` entirely and only still blocks on an exact conflicting
+    appointment via `HasConflictingAppointment` — same semantics as the one-off path, just evaluated
+    on every occurrence instead of once.
   - `GET /api/cron/generate-recurring` (`CronController`) is the production trigger — same `CronSecret` bearer-auth pattern as `/api/cron/reminders` — triggered once daily by `.github/workflows/cron-generate-recurring.yml`.
 
 ### Database
