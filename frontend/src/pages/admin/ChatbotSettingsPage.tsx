@@ -24,6 +24,40 @@ type ChatbotSettings = {
   inquiryEmail: string | null
 }
 
+type MessageFieldKey =
+  | 'chatbotWelcomeMessageEn' | 'chatbotWelcomeMessageAr' | 'chatbotWelcomeMessageHe'
+  | 'chatbotConfirmationMessageEn' | 'chatbotConfirmationMessageAr' | 'chatbotConfirmationMessageHe'
+  | 'chatbotFinalMessageEn' | 'chatbotFinalMessageAr' | 'chatbotFinalMessageHe'
+
+type ChatbotForm = {
+  chatbotWelcomeMessageEn: string; chatbotWelcomeMessageAr: string; chatbotWelcomeMessageHe: string
+  chatbotConfirmationMessageEn: string; chatbotConfirmationMessageAr: string; chatbotConfirmationMessageHe: string
+  chatbotFinalMessageEn: string; chatbotFinalMessageAr: string; chatbotFinalMessageHe: string
+  inquiryWhatsAppNumber: string; inquiryEmail: string
+}
+
+type MessageTypeId = 'welcome' | 'confirmation' | 'final'
+
+const MESSAGE_TYPES: {
+  id: MessageTypeId
+  labelKey: 'chatbotWelcomeMessage' | 'chatbotConfirmationMessage' | 'chatbotFinalMessage'
+  hintKey: 'chatbotWelcomeMessageHint' | 'chatbotConfirmationMessageHint' | 'chatbotFinalMessageHint'
+  fields: [string, MessageFieldKey][]
+}[] = [
+  {
+    id: 'welcome', labelKey: 'chatbotWelcomeMessage', hintKey: 'chatbotWelcomeMessageHint',
+    fields: [['Welcome Message (English)', 'chatbotWelcomeMessageEn'], ['Welcome Message (Arabic)', 'chatbotWelcomeMessageAr'], ['Welcome Message (Hebrew)', 'chatbotWelcomeMessageHe']],
+  },
+  {
+    id: 'confirmation', labelKey: 'chatbotConfirmationMessage', hintKey: 'chatbotConfirmationMessageHint',
+    fields: [['Confirmation Message (English)', 'chatbotConfirmationMessageEn'], ['Confirmation Message (Arabic)', 'chatbotConfirmationMessageAr'], ['Confirmation Message (Hebrew)', 'chatbotConfirmationMessageHe']],
+  },
+  {
+    id: 'final', labelKey: 'chatbotFinalMessage', hintKey: 'chatbotFinalMessageHint',
+    fields: [['Final Message (English)', 'chatbotFinalMessageEn'], ['Final Message (Arabic)', 'chatbotFinalMessageAr'], ['Final Message (Hebrew)', 'chatbotFinalMessageHe']],
+  },
+]
+
 export default function ChatbotSettingsPage() {
   const queryClient = useQueryClient()
   const { language: lang } = useAuth()
@@ -31,8 +65,9 @@ export default function ChatbotSettingsPage() {
     queryKey: ['settings'],
     queryFn: () => api.get('/admin/settings').then((r) => r.data),
   })
+  const [openMessageModal, setOpenMessageModal] = useState<MessageTypeId | null>(null)
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<ChatbotForm>({
     chatbotWelcomeMessageEn: '', chatbotWelcomeMessageAr: '', chatbotWelcomeMessageHe: '',
     chatbotConfirmationMessageEn: '', chatbotConfirmationMessageAr: '', chatbotConfirmationMessageHe: '',
     chatbotFinalMessageEn: '', chatbotFinalMessageAr: '', chatbotFinalMessageHe: '',
@@ -121,46 +156,22 @@ export default function ChatbotSettingsPage() {
             </span>
           </label>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-ink">{t(lang, 'chatbotWelcomeMessage')}</label>
-            <p className="text-muted text-xs">{t(lang, 'chatbotWelcomeMessageHint')}</p>
-            {([['Welcome Message (English)', 'chatbotWelcomeMessageEn'], ['Welcome Message (Arabic)', 'chatbotWelcomeMessageAr'], ['Welcome Message (Hebrew)', 'chatbotWelcomeMessageHe']] as const).map(([label, key]) => (
-              <div key={key}>
-                <label className="block text-xs text-muted mb-1">{label}</label>
-                <textarea value={form[key]} rows={2}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-2 border-t border-line pt-4">
-            <label className="block text-sm font-medium text-ink">{t(lang, 'chatbotConfirmationMessage')}</label>
-            <p className="text-muted text-xs">{t(lang, 'chatbotConfirmationMessageHint')}</p>
-            {([['Confirmation Message (English)', 'chatbotConfirmationMessageEn'], ['Confirmation Message (Arabic)', 'chatbotConfirmationMessageAr'], ['Confirmation Message (Hebrew)', 'chatbotConfirmationMessageHe']] as const).map(([label, key]) => (
-              <div key={key}>
-                <label className="block text-xs text-muted mb-1">{label}</label>
-                <textarea value={form[key]} rows={2}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-2 border-t border-line pt-4">
-            <label className="block text-sm font-medium text-ink">{t(lang, 'chatbotFinalMessage')}</label>
-            <p className="text-muted text-xs">{t(lang, 'chatbotFinalMessageHint')}</p>
-            {([['Final Message (English)', 'chatbotFinalMessageEn'], ['Final Message (Arabic)', 'chatbotFinalMessageAr'], ['Final Message (Hebrew)', 'chatbotFinalMessageHe']] as const).map(([label, key]) => (
-              <div key={key}>
-                <label className="block text-xs text-muted mb-1">{label}</label>
-                <textarea value={form[key]} rows={2}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                  placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
-                  className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
-              </div>
-            ))}
+          <div className="space-y-2 border-t border-line pt-4 first:border-t-0 first:pt-0">
+            {MESSAGE_TYPES.map((mt) => {
+              const filledCount = mt.fields.filter(([, key]) => form[key].trim() !== '').length
+              return (
+                <button key={mt.id} type="button" onClick={() => setOpenMessageModal(mt.id)}
+                  className="w-full flex items-center justify-between gap-3 bg-cream hover:bg-cream/70 rounded-lg px-4 py-3 text-start transition-colors">
+                  <span>
+                    <span className="block text-sm font-medium text-ink">{t(lang, mt.labelKey)}</span>
+                    <span className="block text-muted text-xs mt-0.5">{t(lang, mt.hintKey)}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted">
+                    {filledCount > 0 ? `${filledCount}/3` : t(lang, 'chatbotDefaultTextPlaceholder')}
+                  </span>
+                </button>
+              )
+            })}
           </div>
 
           <div>
@@ -229,6 +240,59 @@ export default function ChatbotSettingsPage() {
           {saved ? t(lang, 'saved') : saving ? t(lang, 'saving') : t(lang, 'saveChanges')}
         </button>
       </form>
+
+      {openMessageModal && (
+        <MessageEditorModal
+          lang={lang}
+          messageType={MESSAGE_TYPES.find((mt) => mt.id === openMessageModal)!}
+          form={form}
+          setForm={setForm}
+          onClose={() => setOpenMessageModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function MessageEditorModal({
+  lang, messageType, form, setForm, onClose,
+}: {
+  lang: string
+  messageType: (typeof MESSAGE_TYPES)[number]
+  form: ChatbotForm
+  setForm: React.Dispatch<React.SetStateAction<ChatbotForm>>
+  onClose: () => void
+}) {
+  return (
+    <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-lg border border-line max-h-[90vh] overflow-y-auto">
+        <div className="relative mb-4">
+          <div className="px-11">
+            <h2 className="text-ink font-semibold text-lg">{t(lang, messageType.labelKey)}</h2>
+            <p className="text-muted text-xs mt-0.5">{t(lang, messageType.hintKey)}</p>
+          </div>
+          <button onClick={onClose}
+            className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream text-2xl leading-none transition-colors"
+            aria-label="Close">✕</button>
+        </div>
+
+        <div className="space-y-4">
+          {messageType.fields.map(([label, key]) => (
+            <div key={key}>
+              <label className="block text-xs text-muted mb-1">{label}</label>
+              <textarea value={form[key]} rows={3}
+                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
+                className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
+            </div>
+          ))}
+        </div>
+
+        <button onClick={onClose}
+          className="w-full mt-6 bg-coral hover:bg-coral-dark text-white font-semibold py-2.5 rounded-lg transition-colors">
+          {t(lang, 'close')}
+        </button>
+      </div>
     </div>
   )
 }

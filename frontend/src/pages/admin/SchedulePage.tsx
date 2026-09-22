@@ -19,12 +19,20 @@ export default function SchedulePage() {
       lang === 'AR' ? 'ar-SA' : lang === 'HE' ? 'he-IL' : 'en-US',
       { weekday: 'long' }
     )
-  const nextDateForDay = (dayOfWeek: number) => {
+  // Anchored to the upcoming Sunday (always the *next* one, even if today is a Sunday) so the
+  // seven rows below read as one consecutive Sun-Sat week -- computing each row's date
+  // independently as "the next occurrence of this weekday" broke that ordering, since today's
+  // own weekday resolves to today (not next week) while every other row resolves into next week.
+  const nextSunday = (() => {
     const today = new Date()
-    let diff = dayOfWeek - today.getDay()
-    if (diff < 0) diff += 7
+    const daysUntilSunday = (7 - today.getDay()) % 7 || 7
     const d = new Date(today)
-    d.setDate(today.getDate() + diff)
+    d.setDate(today.getDate() + daysUntilSunday)
+    return d
+  })()
+  const nextDateForDay = (dayOfWeek: number) => {
+    const d = new Date(nextSunday)
+    d.setDate(nextSunday.getDate() + dayOfWeek)
     return d.toLocaleDateString(
       lang === 'AR' ? 'ar-SA' : lang === 'HE' ? 'he-IL' : 'en-US',
       { day: 'numeric', month: 'short' }

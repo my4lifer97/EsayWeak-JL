@@ -6,9 +6,9 @@ import ThemeToggle from '../ThemeToggle'
 
 const NAV: { to: string; key: TKey; icon: string }[] = [
   { to: '/admin/dashboard', key: 'dashboard', icon: '📅' },
+  { to: '/admin/schedule', key: 'schedule', icon: '🕐' },
   { to: '/admin/appointments', key: 'appointments', icon: '📋' },
   { to: '/admin/recurring', key: 'recurringAppointments', icon: '🔁' },
-  { to: '/admin/schedule', key: 'schedule', icon: '🕐' },
   { to: '/admin/services', key: 'services', icon: '✂️' },
   { to: '/admin/reviews', key: 'navReviews', icon: '★' },
   { to: '/admin/chatbot', key: 'chatbotSettings', icon: '🤖' },

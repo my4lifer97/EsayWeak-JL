@@ -86,7 +86,13 @@ export default function WeeklyCalendar({
           scrolls horizontally within its own box instead of shrinking illegibly -- avoids
           forcing the owner to rotate the phone to landscape just to read the board. */}
       <div className="bg-surface rounded-2xl border border-line overflow-x-auto">
-        <div className="min-w-[640px]">
+        {/* Forced ltr: the hour-labels column is first in DOM/grid-track order, and a CSS grid
+            places its first track at the inline-start edge -- in an rtl document that's the
+            right side, pushing the time axis to the right instead of the left. Locking this
+            subtree to ltr keeps track 1 (hours) pinned left regardless of app language; the
+            Hebrew/Arabic day names inside still render correctly since per-character bidi
+            shaping is independent of the container's `dir`. */}
+        <div className="min-w-[640px]" dir="ltr">
           <div className="grid grid-cols-8 border-b border-line">
             <div className="p-3" />
             {days.map((d) => (
