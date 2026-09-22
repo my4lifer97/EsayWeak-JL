@@ -304,11 +304,30 @@ public class WaitlistTests : IntegrationTestBase
         // unique-violation is reliably caught and turned into a 409 (see AvailabilityService.
         // TrySaveOrDetectConflict). What matters here, and what SQLite still proves, is that the
         // index itself prevents two CONFIRMED rows from ever coexisting for this slot.
-        var results = await Task.WhenAll(
-            BookAs(raceToken1, "wl-race-shop", itemId, dateStr, "09:00"),
-            BookAs(raceToken2, "wl-race-shop", itemId, dateStr, "09:00"));
+        // The losing request can occasionally blow up mid-response-stream instead of cleanly
+        // returning a status code -- e.g. ActivityLogFilter's own post-response SaveChangesAsync
+        // hitting the shared connection's pending transaction from the other concurrent request
+        // (a test-harness-only artifact of the single shared SQLite connection, per the comment
+        // above; Postgres doesn't share connections this way). That crashes the HttpClient call
+        // with an HttpRequestException rather than yielding a response the test could inspect --
+        // tolerated here as "this one didn't win", since the real invariant under test is the DB
+        // state asserted below, not which HTTP status the loser happened to surface.
+        async Task<HttpStatusCode> SafeBook(string customerToken)
+        {
+            try
+            {
+                var r = await BookAs(customerToken, "wl-race-shop", itemId, dateStr, "09:00");
+                return r.StatusCode;
+            }
+            catch (HttpRequestException)
+            {
+                return HttpStatusCode.InternalServerError;
+            }
+        }
 
-        Assert.Single(results, r => r.StatusCode == HttpStatusCode.Created);
+        var results = await Task.WhenAll(SafeBook(raceToken1), SafeBook(raceToken2));
+
+        Assert.Single(results, r => r == HttpStatusCode.Created);
 
         using var db = Db();
         var confirmedAtSlot = db.Appointments.Where(a =>
