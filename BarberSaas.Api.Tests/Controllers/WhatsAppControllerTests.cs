@@ -182,9 +182,10 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var thirdReply = await SendWhatsAppMessage(phone, "99"); // attempt 3 -- lockout warning
         Assert.Contains("$", thirdReply);
 
-        // Locked out now -- even a cancel keyword gets no automated reply at all.
+        // Locked out now -- even a cancel keyword gets the unlock reminder re-sent, not silence,
+        // so a customer who missed the first lockout warning still knows how to recover.
         var lockedReply = await SendWhatsAppMessage(phone, "cancel");
-        Assert.DoesNotContain("<Message>", lockedReply);
+        Assert.Contains("$", lockedReply);
 
         using var db = Db();
         Assert.Equal(3, await db.WhatsAppConversationStates.Where(s => s.BusinessId == businessId && s.Phone == phone).Select(s => s.InvalidAttempts).FirstAsync());

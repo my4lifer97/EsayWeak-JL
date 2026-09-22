@@ -114,7 +114,10 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         var fourthResp = await PostInbound(businessId, phone, "hello?");
         var fourthBody = await fourthResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Null(fourthBody!.Reply); // silently ignored -- not the literal "$"
+        // Re-sent, not silently ignored -- not the literal "$" -- so a customer who missed the
+        // first lockout message still gets told how to unlock, instead of the bot going quiet.
+        Assert.Contains("$", fourthBody!.Reply);
+        Assert.DoesNotContain("9-6", fourthBody.Reply);
 
         var unlockResp = await PostInbound(businessId, phone, "$");
         var unlockBody = await unlockResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
