@@ -249,11 +249,17 @@ public class AvailabilityServiceTests : IDisposable
         var yesterday = DateTime.Now.AddDays(-1);
         // Give "yesterday"'s day-of-week real working hours too, so an empty result here is
         // actually the past-date guard and not just "no hours configured for that weekday".
-        db.WorkingHours.Add(new WorkingHours
+        // Skipped when yesterday happens to land on MondayDayOfWeek -- SeedBusiness already
+        // seeded that exact (BusinessId, DayOfWeek) row above, and the DB's real unique
+        // constraint on that pair rejects a second insert for it.
+        if ((int)yesterday.DayOfWeek != MondayDayOfWeek)
         {
-            BusinessId = business.Id, DayOfWeek = (int)yesterday.DayOfWeek,
-            StartTime = "09:00", EndTime = "12:00", IsActive = true,
-        });
+            db.WorkingHours.Add(new WorkingHours
+            {
+                BusinessId = business.Id, DayOfWeek = (int)yesterday.DayOfWeek,
+                StartTime = "09:00", EndTime = "12:00", IsActive = true,
+            });
+        }
         await db.SaveChangesAsync();
 
         var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, yesterday.ToString("yyyy-MM-dd"), 30);
