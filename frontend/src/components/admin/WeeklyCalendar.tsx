@@ -106,7 +106,7 @@ export default function WeeklyCalendar({
           </div>
 
           <div className="grid grid-cols-8 relative" style={{ height: `${totalMinutes * 1.2}px` }}>
-            <div className="border-e border-line">
+            <div className="relative border-e border-line">
               {HOURS.map((h) => (
                 <div key={h} className="text-xs text-muted text-end pe-2 absolute w-full"
                   style={{ top: `${(h * 60 - startMinute) * 1.2}px` }}>
