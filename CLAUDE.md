@@ -675,10 +675,14 @@ to WhatsApp).
   earlier in this doc for why this isn't a GitHub Actions workflow.
 - **Lockout after repeated invalid replies** (rule-based path only): 3 consecutive non-numeric/
   out-of-range replies to a "which service?" prompt (`WhatsAppConversationState.InvalidAttempts`,
-  `WhatsAppController.MaxInvalidAttempts`) stops the bot replying to anything at all -- including
+  `WhatsAppController.MaxInvalidAttempts`) stops the bot dispatching to anything else -- including
   cancel/reschedule keywords -- until the customer sends the literal unlock keyword (`"$"`,
   `WhatsAppController.UnlockKeyword`), which restarts the conversation from the opening prompt.
-  Prevents the bot replying forever to someone sending random text.
+  Every message the customer sends while locked out (other than `"$"` itself) gets the
+  `whatsapp.tooManyInvalidReplies` reminder re-sent, not silence (fixed 2026-09-22 — going quiet
+  after the first reminder read as the bot being broken/spammed, since a customer who missed or
+  forgot that one message had no way to know the conversation could still be recovered). Prevents
+  the bot replying forever to someone sending random text, while still telling them how to unlock it.
 - **Quiet while a booking link is pending** (rule-based path only): once a booking link is issued
   (`WhatsAppController.IssueBookingLink`), the conversation-state row is kept alive (not removed)
   with `AwaitingBookingCompletion = true` instead, valid for the same 24h the link itself is --
@@ -718,7 +722,8 @@ closure passed to `IOpenAiChatClient.GetReplyAsync`), so a customer chatting wit
 a booking/cancellation doesn't keep burning paid OpenAI calls indefinitely. A successful tool call
 resets the counter to 0. On the 3rd non-completing reply in a row, the AI's own reply text is
 replaced with the `whatsapp.tooManyInvalidReplies` message (same as rule-based); every message after
-that is silently ignored (`return null`) until the customer sends the literal `"$"`, which clears the
+that gets the same reminder re-sent (fixed 2026-09-22, mirroring the rule-based path — see above)
+instead of the AI being called at all, until the customer sends the literal `"$"`, which clears the
 conversation state entirely and replies with `whatsapp.aiConversationRestarted` — a fresh state row
 only gets created once the customer sends a real next message, same as the rule-based unlock.
 

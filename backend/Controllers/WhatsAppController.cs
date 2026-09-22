@@ -348,10 +348,13 @@ public class WhatsAppController(
             // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
             // automated replies entirely -- including cancel/reschedule keywords -- until they send
             // the literal unlock keyword, which restarts the conversation from the opening prompt.
-            // Prevents the bot replying indefinitely to someone just sending random text.
+            // Every message they send while locked out re-sends the "$"-unlock reminder (rather than
+            // going silent) so a customer who missed/forgot the first one doesn't just keep texting
+            // into a bot that looks broken -- see the AI path's identical mirror below.
             if (conversationState.InvalidAttempts >= MaxInvalidAttempts)
             {
-                if (incomingMsg.Trim() != UnlockKeyword) return null;
+                if (incomingMsg.Trim() != UnlockKeyword)
+                    return I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword });
                 db.WhatsAppConversationStates.Remove(conversationState);
                 await db.SaveChangesAsync();
                 return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
@@ -395,7 +398,8 @@ public class WhatsAppController(
         // calls indefinitely.
         if (state is not null && state.InvalidAttempts >= MaxInvalidAttempts)
         {
-            if (incomingMsg.Trim() != UnlockKeyword) return null;
+            if (incomingMsg.Trim() != UnlockKeyword)
+                return I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword });
             await ClearConversationState(business.Id, fromPhone);
             return I18nService.T(lang, "whatsapp.aiConversationRestarted");
         }
