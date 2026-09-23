@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { format, addDays, parseISO } from 'date-fns'
+import { useState, type CSSProperties } from 'react'
+import { Link } from 'react-router-dom'
+import { format, addDays, parseISO, type Locale } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -17,6 +18,38 @@ type Appointment = {
   photoUrl: string | null
   recurringSeriesId: string | null
   pendingCancellationApproval: boolean
+}
+
+type WorkingHour = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
+type Break = { id: string; dayOfWeek: number; startTime: string; endTime: string }
+type BlockedSlot = { id: string; date: string; startTime: string | null; endTime: string | null; reason: string | null }
+type Schedule = { workingHours: WorkingHour[]; breaks: Break[]; blockedSlots: BlockedSlot[] }
+
+// What the owner clicked on when it isn't an appointment -- drives the info popup.
+type ScheduleSelection =
+  | { kind: 'closed'; date: Date }
+  | { kind: 'break'; date: Date; startTime: string; endTime: string }
+  | { kind: 'blocked'; slot: BlockedSlot; rangeStart: Date; rangeEnd: Date }
+
+// Diagonal stripes mark time customers can't book (closed / blocked), so it reads as
+// "unavailable" at a glance and never gets mistaken for a solid appointment block.
+const hatch = (rgba: string) => ({
+  backgroundImage: `repeating-linear-gradient(135deg, ${rgba} 0 6px, transparent 6px 12px)`,
+})
+const CLOSED_STYLE = { className: 'bg-stone-400/15 text-muted', style: hatch('rgba(120,113,108,0.18)') }
+const BLOCKED_STYLE = { className: 'bg-rose-500/10 border border-rose-400/60 text-rose-700 dark:text-rose-300', style: hatch('rgba(244,63,94,0.14)') }
+const BREAK_CLASS = 'bg-teal/15 border border-teal/50 text-teal'
+
+// A blocked range is stored as one BlockedSlot per day, so rebuild the range the clicked day
+// belongs to: consecutive days sharing the same times and reason.
+function blockedRange(slot: BlockedSlot, all: BlockedSlot[]) {
+  const key = (b: BlockedSlot) => `${b.startTime}|${b.endTime}|${b.reason ?? ''}`
+  const dates = new Set(all.filter((b) => key(b) === key(slot)).map((b) => b.date.slice(0, 10)))
+  let start = parseISO(slot.date.slice(0, 10))
+  let end = start
+  while (dates.has(format(addDays(start, -1), 'yyyy-MM-dd'))) start = addDays(start, -1)
+  while (dates.has(format(addDays(end, 1), 'yyyy-MM-dd'))) end = addDays(end, 1)
+  return { rangeStart: start, rangeEnd: end }
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -39,6 +72,7 @@ export default function WeeklyCalendar({
   onWeekChange: (offset: number) => void; lang: string
 }) {
   const [selected, setSelected] = useState<Appointment | null>(null)
+  const [scheduleSel, setScheduleSel] = useState<ScheduleSelection | null>(null)
   const [showCancelOptions, setShowCancelOptions] = useState(false)
   const [showReschedule, setShowReschedule] = useState(false)
   const queryClient = useQueryClient()
@@ -48,11 +82,42 @@ export default function WeeklyCalendar({
     queryFn: () => api.get('/admin/settings').then((r) => r.data),
   })
 
+  // Same query key as the Schedule page, so its data is shared and refetched on every visit.
+  const { data: schedule } = useQuery<Schedule>({
+    queryKey: ['schedule'],
+    queryFn: () => api.get('/admin/schedule').then((r) => r.data),
+  })
+
   const weekStartDate = parseISO(weekStart)
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStartDate, i))
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
   const startMinute = 7 * 60
   const totalMinutes = 14 * 60
+  const endMinute = startMinute + totalMinutes
+
+  // Clamps a time range to the visible 07:00-21:00 window; null if it falls entirely outside.
+  function span(start: string, end: string) {
+    const s = Math.max(timeToMinutes(start), startMinute)
+    const e = Math.min(timeToMinutes(end), endMinute)
+    return e <= s ? null : { top: (s - startMinute) * 1.2, height: (e - s) * 1.2 }
+  }
+
+  function dayInfo(day: Date) {
+    const dayStr = format(day, 'yyyy-MM-dd')
+    const hours = schedule?.workingHours.find((h) => h.dayOfWeek === day.getDay())
+    // Only call a day closed once the schedule has loaded and has hours configured --
+    // otherwise every column would flash grey while the request is in flight.
+    const closed = !!schedule && schedule.workingHours.length > 0 && (!hours || !hours.isActive)
+    const blockedToday = schedule?.blockedSlots.filter((b) => b.date.slice(0, 10) === dayStr) ?? []
+    const fullDayBlock = blockedToday.find((b) => !b.startTime)
+    const partialBlocks = blockedToday.filter((b) => b.startTime && b.endTime)
+    const breaks = schedule?.breaks.filter((b) => b.dayOfWeek === day.getDay()) ?? []
+    return { dayStr, hours, closed, fullDayBlock, partialBlocks, breaks }
+  }
+
+  function selectBlocked(slot: BlockedSlot) {
+    setScheduleSel({ kind: 'blocked', slot, ...blockedRange(slot, schedule?.blockedSlots ?? []) })
+  }
 
   function onCancelFlowDone() {
     setShowCancelOptions(false)
@@ -95,14 +160,23 @@ export default function WeeklyCalendar({
         <div className="min-w-[640px]" dir="ltr">
           <div className="grid grid-cols-8 border-b border-line">
             <div className="p-3" />
-            {days.map((d) => (
-              <div key={d.toISOString()} className="p-3 text-center border-s border-line">
-                <div className="text-xs text-muted uppercase">{format(d, 'EEE', { locale: dateLocale })}</div>
-                <div className={`text-lg font-semibold mt-0.5 ${
-                  format(d, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-coral-dark' : 'text-ink'
-                }`}>{format(d, 'd')}</div>
-              </div>
-            ))}
+            {days.map((d) => {
+              const { closed, fullDayBlock } = dayInfo(d)
+              const off = closed || !!fullDayBlock
+              return (
+                <div key={d.toISOString()} className={`p-3 text-center border-s border-line ${off ? 'bg-stone-400/10' : ''}`}>
+                  <div className="text-xs text-muted uppercase">{format(d, 'EEE', { locale: dateLocale })}</div>
+                  <div className={`text-lg font-semibold mt-0.5 ${
+                    format(d, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'text-coral-dark' : off ? 'text-muted' : 'text-ink'
+                  }`}>{format(d, 'd')}</div>
+                  {fullDayBlock ? (
+                    <div className="text-[10px] font-medium text-rose-600 dark:text-rose-400 truncate">{t(lang, 'calBlocked')}</div>
+                  ) : closed ? (
+                    <div className="text-[10px] font-medium text-muted truncate">{t(lang, 'dayClosedLabel')}</div>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
 
           <div className="grid grid-cols-8 relative" style={{ height: `${totalMinutes * 1.2}px` }}>
@@ -115,14 +189,58 @@ export default function WeeklyCalendar({
               ))}
             </div>
             {days.map((day) => {
-              const dayStr = format(day, 'yyyy-MM-dd')
+              const { dayStr, hours, closed, fullDayBlock, partialBlocks, breaks } = dayInfo(day)
               const dayAppts = appointments.filter((a) => a.date.slice(0, 10) === dayStr)
+              const open = hours && !closed && !fullDayBlock
+              const beforeOpen = open ? span('00:00', hours.startTime) : null
+              const afterClose = open ? span(hours.endTime, '23:59') : null
               return (
                 <div key={dayStr} className="relative border-s border-line">
                   {HOURS.map((h) => (
                     <div key={h} className="absolute w-full border-t border-line/60"
                       style={{ top: `${(h * 60 - startMinute) * 1.2}px`, height: `${60 * 1.2}px` }} />
                   ))}
+                  {/* Schedule layers sit under the appointments (z-10), so an appointment booked
+                      before a day got closed/blocked is still visible and clickable. */}
+                  {beforeOpen && <div className="absolute inset-x-0 bg-stone-400/10" style={beforeOpen} title={t(lang, 'calOutsideHours')} />}
+                  {afterClose && <div className="absolute inset-x-0 bg-stone-400/10" style={afterClose} title={t(lang, 'calOutsideHours')} />}
+                  {fullDayBlock ? (
+                    <button onClick={() => selectBlocked(fullDayBlock)}
+                      className={`absolute inset-0.5 rounded-md p-1.5 text-start hover:opacity-80 transition-opacity ${BLOCKED_STYLE.className}`}
+                      style={BLOCKED_STYLE.style}>
+                      <div className="text-xs font-semibold truncate">⛔ {t(lang, 'calBlocked')}</div>
+                      {fullDayBlock.reason && <div className="text-[11px] truncate">{fullDayBlock.reason}</div>}
+                    </button>
+                  ) : closed ? (
+                    <button onClick={() => setScheduleSel({ kind: 'closed', date: day })}
+                      className={`absolute inset-0.5 rounded-md p-1.5 text-start hover:opacity-80 transition-opacity ${CLOSED_STYLE.className}`}
+                      style={CLOSED_STYLE.style}>
+                      <div className="text-xs font-semibold truncate">🔒 {t(lang, 'dayClosedLabel')}</div>
+                    </button>
+                  ) : (
+                    <>
+                      {breaks.map((br) => {
+                        const pos = span(br.startTime, br.endTime)
+                        return pos && (
+                          <button key={br.id} onClick={() => setScheduleSel({ kind: 'break', date: day, startTime: br.startTime, endTime: br.endTime })}
+                            className={`absolute inset-x-0.5 rounded-md px-1.5 py-0.5 text-start overflow-hidden hover:opacity-80 transition-opacity ${BREAK_CLASS}`}
+                            style={{ top: pos.top, height: Math.max(pos.height, 20) }}>
+                            <div className="text-xs font-medium truncate">☕ {t(lang, 'calBreak')}</div>
+                          </button>
+                        )
+                      })}
+                      {partialBlocks.map((b) => {
+                        const pos = span(b.startTime!, b.endTime!)
+                        return pos && (
+                          <button key={b.id} onClick={() => selectBlocked(b)}
+                            className={`absolute inset-x-0.5 rounded-md px-1.5 py-0.5 text-start overflow-hidden hover:opacity-80 transition-opacity ${BLOCKED_STYLE.className}`}
+                            style={{ ...BLOCKED_STYLE.style, top: pos.top, height: Math.max(pos.height, 20) }}>
+                            <div className="text-xs font-medium truncate">⛔ {b.reason || t(lang, 'calBlocked')}</div>
+                          </button>
+                        )
+                      })}
+                    </>
+                  )}
                   {dayAppts.map((appt) => {
                     const top = (timeToMinutes(appt.startTime) - startMinute) * 1.2
                     const height = (timeToMinutes(appt.endTime) - timeToMinutes(appt.startTime)) * 1.2
@@ -139,7 +257,7 @@ export default function WeeklyCalendar({
                     return (
                       <button key={appt.id} onClick={() => setSelected(appt)}
                         title={appt.pendingCancellationApproval ? t(lang, 'cancellationRequestedBadge') : appt.recurringSeriesId ? t(lang, 'partOfSeries') : undefined}
-                        className={`absolute inset-x-0.5 rounded-md px-1.5 py-1 text-left overflow-hidden ${color} hover:opacity-80 transition-opacity`}
+                        className={`absolute inset-x-0.5 z-10 rounded-md px-1.5 py-1 text-left overflow-hidden ${color} hover:opacity-80 transition-opacity`}
                         style={{ top, height: Math.max(height, 24) }}>
                         {/* One line, not two — a short appointment's block (min 24px) only has
                             room for a single text-xs line; a second stacked line gets silently
@@ -156,6 +274,20 @@ export default function WeeklyCalendar({
           </div>
         </div>
       </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-xs text-muted">
+        <LegendSwatch className="bg-blue-600" label={t(lang, 'calLegendAppointment')} />
+        <LegendSwatch className="bg-purple-600" label={t(lang, 'calLegendRecurring')} />
+        <LegendSwatch className="bg-amber-500" label={t(lang, 'calLegendCancelRequest')} />
+        <LegendSwatch className="bg-green-700" label={t(lang, 'calLegendCompleted')} />
+        <LegendSwatch className={BREAK_CLASS} label={t(lang, 'calBreak')} />
+        <LegendSwatch className={BLOCKED_STYLE.className} style={BLOCKED_STYLE.style} label={t(lang, 'calBlocked')} />
+        <LegendSwatch className={CLOSED_STYLE.className} style={CLOSED_STYLE.style} label={t(lang, 'dayClosedLabel')} />
+      </div>
+
+      {scheduleSel && (
+        <ScheduleInfoModal sel={scheduleSel} lang={lang} dateLocale={dateLocale} onClose={() => setScheduleSel(null)} />
+      )}
 
       {selected && (
         <div onClick={() => setSelected(null)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -231,6 +363,62 @@ export default function WeeklyCalendar({
           onDone={onRescheduleDone}
         />
       )}
+    </div>
+  )
+}
+
+function LegendSwatch({ className, style, label }: { className: string; style?: CSSProperties; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className={`inline-block w-3.5 h-3.5 rounded ${className}`} style={style} />
+      {label}
+    </span>
+  )
+}
+
+function ScheduleInfoModal({ sel, lang, dateLocale, onClose }: {
+  sel: ScheduleSelection; lang: string; dateLocale: Locale; onClose: () => void
+}) {
+  const fmt = (d: Date) => format(d, 'EEEE, MMM d', { locale: dateLocale })
+  const view = sel.kind === 'closed'
+    ? { icon: '🔒', title: t(lang, 'calClosedTitle'), accent: 'text-muted', body: t(lang, 'calClosedBody') }
+    : sel.kind === 'break'
+    ? { icon: '☕', title: t(lang, 'calBreak'), accent: 'text-teal', body: t(lang, 'calBreakBody') }
+    : { icon: '⛔', title: t(lang, 'calBlocked'), accent: 'text-rose-600 dark:text-rose-400', body: t(lang, 'calBlockedBody') }
+
+  return (
+    <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-line">
+        <div className="relative mb-4">
+          <div className="text-center px-11">
+            <h2 className={`font-semibold text-lg ${view.accent}`}>{view.icon} {view.title}</h2>
+          </div>
+          <button onClick={onClose}
+            className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream text-2xl leading-none transition-colors"
+            aria-label="Close">✕</button>
+        </div>
+        <div className="space-y-2 text-sm mb-4">
+          {sel.kind === 'blocked' ? (
+            <>
+              <Row label={t(lang, 'date')} value={sel.rangeStart.getTime() === sel.rangeEnd.getTime()
+                ? fmt(sel.rangeStart)
+                : `${fmt(sel.rangeStart)} ${t(lang, 'throughDate')} ${fmt(sel.rangeEnd)}`} />
+              <Row label={t(lang, 'time')} value={sel.slot.startTime ? `${sel.slot.startTime} – ${sel.slot.endTime}` : t(lang, 'fullDay')} />
+              {sel.slot.reason && <Row label={t(lang, 'calReason')} value={sel.slot.reason} />}
+            </>
+          ) : (
+            <>
+              <Row label={t(lang, 'date')} value={fmt(sel.date)} />
+              {sel.kind === 'break' && <Row label={t(lang, 'time')} value={`${sel.startTime} – ${sel.endTime}`} />}
+            </>
+          )}
+        </div>
+        <p className="text-muted text-sm mb-6">{view.body}</p>
+        <Link to="/admin/schedule"
+          className="block w-full text-center border border-line text-ink hover:bg-cream text-sm font-medium py-2 rounded-lg transition-colors">
+          {t(lang, 'calEditInSchedule')}
+        </Link>
+      </div>
     </div>
   )
 }
