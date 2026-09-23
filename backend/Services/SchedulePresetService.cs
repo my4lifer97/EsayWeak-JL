@@ -136,6 +136,51 @@ public class SchedulePresetService(AppDbContext db)
         return schedule;
     }
 
+    // "Use it from now on": makes `presetId` the business's standing schedule. Its days and breaks
+    // are copied into the Default preset (the baseline every date range reverts to) as well as
+    // applied live -- otherwise the old Default would silently come back the next time anything
+    // reverts to it (saving Default, cancelling or finishing a date range). A date range that's
+    // currently running is ended outright, since the owner just replaced the schedule it was
+    // overriding; a pending (not-yet-started) range is left alone and still reverts to the new Default.
+    public async Task ApplyPresetPermanently(string businessId, string presetId)
+    {
+        var preset = await db.SchedulePresets.Include(p => p.Days).Include(p => p.Breaks)
+            .FirstAsync(p => p.Id == presetId && p.BusinessId == businessId);
+
+        if (!preset.IsDefault)
+        {
+            var defaultPresetId = (await GetOrCreateDefaultPreset(businessId)).Id;
+            var defaultPreset = await db.SchedulePresets.Include(p => p.Days).Include(p => p.Breaks)
+                .FirstAsync(p => p.Id == defaultPresetId);
+            foreach (var d in preset.Days)
+            {
+                var target = defaultPreset.Days.FirstOrDefault(x => x.DayOfWeek == d.DayOfWeek);
+                if (target is null)
+                {
+                    defaultPreset.Days.Add(new SchedulePresetDay
+                    {
+                        SchedulePresetId = defaultPreset.Id, DayOfWeek = d.DayOfWeek, StartTime = d.StartTime, EndTime = d.EndTime, IsActive = d.IsActive,
+                    });
+                    continue;
+                }
+                target.StartTime = d.StartTime;
+                target.EndTime = d.EndTime;
+                target.IsActive = d.IsActive;
+            }
+            db.SchedulePresetBreaks.RemoveRange(defaultPreset.Breaks);
+            defaultPreset.Breaks = preset.Breaks.Select(b => new SchedulePresetBreak
+            {
+                SchedulePresetId = defaultPreset.Id, DayOfWeek = b.DayOfWeek, StartTime = b.StartTime, EndTime = b.EndTime,
+            }).ToList();
+        }
+
+        var running = await db.PresetSchedules.Where(s => s.BusinessId == businessId && s.Applied && !s.Reverted).ToListAsync();
+        db.PresetSchedules.RemoveRange(running);
+        await db.SaveChangesAsync();
+
+        await ApplyPresetToWorkingHours(presetId);
+    }
+
     // "Close" a pending or active scheduled change. Pending (not yet Applied) just removes the
     // row; active (Applied, not yet Reverted) reverts the weekly template back to the backup first.
     public async Task CancelPresetSchedule(string businessId, string presetScheduleId)

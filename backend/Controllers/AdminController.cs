@@ -661,8 +661,8 @@ public class AdminController(
         var preset = await db.SchedulePresets.FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
         if (preset is null) return NotFound();
 
-        await schedulePresets.ApplyPresetToWorkingHours(id);
-        this.SetActivityDetail($"Applied schedule preset \"{preset.Name}\" (overwrote weekly working hours)");
+        await schedulePresets.ApplyPresetPermanently(BusinessId, id);
+        this.SetActivityDetail($"Applied schedule preset \"{preset.Name}\" (overwrote weekly working hours and the Default preset)");
 
         return Ok(new { ok = true });
     }

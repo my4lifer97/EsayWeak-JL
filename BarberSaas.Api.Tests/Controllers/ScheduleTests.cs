@@ -125,6 +125,64 @@ public class ScheduleTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ApplyingAPreset_AlsoBecomesTheDefault_SoItSurvivesARevert()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-permanent-1@example.com", "schedule-preset-permanent-1");
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/schedule/breaks", new CreateBreakRequest(1, "12:00", "13:00"));
+        var summerResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets",
+            new SaveSchedulePresetRequest("Summer Hours", PresetDays(3, "10:00", "14:00"), [new SchedulePresetBreakDto(3, "11:00", "11:30")]));
+        var summer = await summerResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        var applyResp = await Client.PostAsync($"/api/admin/schedule/presets/{summer!.Id}/apply", null);
+        Assert.Equal(HttpStatusCode.OK, applyResp.StatusCode);
+
+        var presets = await Client.GetFromJsonAsync<List<SchedulePresetDto>>("/api/admin/schedule/presets");
+        var defaultPreset = presets!.Single(p => p.IsDefault);
+        Assert.Equal("Default", defaultPreset.Name);
+        var wednesday = defaultPreset.Days.Single(d => d.DayOfWeek == 3);
+        Assert.True(wednesday.IsActive);
+        Assert.Equal("10:00", wednesday.StartTime);
+        Assert.Equal("14:00", wednesday.EndTime);
+        Assert.Equal(3, defaultPreset.Breaks.Single().DayOfWeek); // old Monday lunch break replaced
+
+        // A later date range reverts to Default -- which must now be the applied hours, not the old ones.
+        var tempResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(5, "08:00", "09:00")));
+        var temp = await tempResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{temp!.Id}/schedule", new SchedulePresetRangeRequest(today, today));
+        var scheduled = await scheduleResp.Content.ReadFromJsonAsync<PresetScheduleDto>();
+        await Client.DeleteAsync($"/api/admin/schedule/preset-schedule/{scheduled!.Id}");
+
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.True(schedule!.WorkingHours.Single(h => h.DayOfWeek == 3).IsActive);
+        Assert.False(schedule.WorkingHours.Single(h => h.DayOfWeek == 5).IsActive);
+    }
+
+    [Fact]
+    public async Task ApplyingAPreset_WhileADateRangeIsRunning_EndsThatRange()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-permanent-2@example.com", "schedule-preset-permanent-2");
+        Authorize(Client, token);
+        var holidayResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(5, "08:00", "09:00")));
+        var holiday = await holidayResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{holiday!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
+        var summerResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Summer Hours", PresetDays(3, "10:00", "14:00")));
+        var summer = await summerResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        var applyResp = await Client.PostAsync($"/api/admin/schedule/presets/{summer!.Id}/apply", null);
+
+        Assert.Equal(HttpStatusCode.OK, applyResp.StatusCode);
+        var current = await Client.GetFromJsonAsync<PresetScheduleResponse>("/api/admin/schedule/preset-schedule");
+        Assert.Null(current!.Schedule);
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.True(schedule!.WorkingHours.Single(h => h.DayOfWeek == 3).IsActive);
+        Assert.False(schedule.WorkingHours.Single(h => h.DayOfWeek == 5).IsActive);
+    }
+
+    [Fact]
     public async Task SchedulePreset_Delete_RemovesItWithoutTouchingWorkingHours()
     {
         var token = await RegisterAndLoginBusiness("schedule-preset-2@example.com", "schedule-preset-2");
