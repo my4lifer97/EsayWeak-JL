@@ -3,12 +3,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
-import PresetEditorModal, { type PresetChange, type SchedulePreset } from '../../components/admin/PresetEditorModal'
+import PresetEditorModal, { type PresetChange, type PresetSchedule, type SchedulePreset } from '../../components/admin/PresetEditorModal'
 
 type WorkingHour = { id?: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
 type Break = { id: string; dayOfWeek: number; startTime: string; endTime: string }
 type BlockedSlot = { id: string; date: string; startTime: string | null; endTime: string | null; reason: string | null }
-type PresetSchedule = { id: string; presetId: string; presetName: string; startDate: string; endDate: string; applied: boolean }
 
 export default function SchedulePage() {
   const queryClient = useQueryClient()
@@ -191,6 +190,11 @@ export default function SchedulePage() {
                         {t(lang, 'defaultPresetBadge')}
                       </span>
                     )}
+                    {scheduledChange?.presetId === p.id && (
+                      <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                        {scheduledChange.startDate} – {scheduledChange.endDate}
+                      </span>
+                    )}
                   </span>
                   <span className="text-coral-dark text-xs font-medium">{t(lang, 'edit')}</span>
                 </button>
@@ -207,7 +211,7 @@ export default function SchedulePage() {
             initialDays={hours.map((h) => ({ dayOfWeek: h.dayOfWeek, startTime: h.startTime, endTime: h.endTime, isActive: h.isActive }))}
             initialBreaks={breaks.map((b) => ({ dayOfWeek: b.dayOfWeek, startTime: b.startTime, endTime: b.endTime }))}
             allPresets={presets}
-            hasActiveRange={!!scheduledChange?.applied}
+            scheduledChange={scheduledChange ?? null}
             onClose={() => setModalPreset(null)} onSaved={refreshAfterPresetChange} />
         )}
 

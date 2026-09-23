@@ -255,19 +255,67 @@ public class ScheduleTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task SchedulePresetRange_OnlyOneActiveAtATime()
+    public async Task SchedulePresetRange_SchedulingAgain_ReplacesTheExistingRange()
     {
         var token = await RegisterAndLoginBusiness("schedule-preset-range-2@example.com", "schedule-preset-range-2");
         Authorize(Client, token);
         var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("A", PresetDays(0, "09:00", "18:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var start = DateTime.Now.Date.AddDays(10).ToString("yyyy-MM-dd");
+        var end = DateTime.Now.Date.AddDays(17).ToString("yyyy-MM-dd");
+        var newEnd = DateTime.Now.Date.AddDays(40).ToString("yyyy-MM-dd");
+        await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(start, end));
+
+        var secondResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}/schedule", new SchedulePresetRangeRequest(start, newEnd));
+
+        Assert.Equal(HttpStatusCode.Created, secondResp.StatusCode);
+        var current = await Client.GetFromJsonAsync<PresetScheduleResponse>("/api/admin/schedule/preset-schedule");
+        Assert.Equal(newEnd, current!.Schedule!.EndDate);
+        using var db = Db();
+        Assert.Equal(1, await db.PresetSchedules.CountAsync());
+    }
+
+    [Fact]
+    public async Task SchedulePresetRange_ReplacingARunningRangeWithAFutureOne_RevertsToDefaultMeanwhile()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-range-5@example.com", "schedule-preset-range-5");
+        Authorize(Client, token);
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(3, "10:00", "14:00")));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
+        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, today));
+
+        var laterStart = DateTime.Now.Date.AddDays(10).ToString("yyyy-MM-dd");
+        var laterEnd = DateTime.Now.Date.AddDays(12).ToString("yyyy-MM-dd");
+        var resp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}/schedule", new SchedulePresetRangeRequest(laterStart, laterEnd));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var scheduled = await resp.Content.ReadFromJsonAsync<PresetScheduleDto>();
+        Assert.False(scheduled!.Applied);
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.True(schedule!.WorkingHours.Single(h => h.DayOfWeek == 0).IsActive); // back on Default until the new range starts
+        Assert.False(schedule.WorkingHours.Single(h => h.DayOfWeek == 3).IsActive);
+    }
+
+    [Fact]
+    public async Task EditingAPresetWhoseRangeIsRunning_UpdatesLiveHours()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-preset-range-6@example.com", "schedule-preset-range-6");
+        Authorize(Client, token);
+        var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(3, "10:00", "14:00")));
+        var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
         var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
         var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
         await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
 
-        var secondResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}/schedule", new SchedulePresetRangeRequest(today, future));
+        var updateResp = await Client.PutAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}",
+            new UpdateSchedulePresetRequest("Holiday", PresetDays(3, "11:00", "20:00")));
 
-        Assert.Equal(HttpStatusCode.BadRequest, secondResp.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, updateResp.StatusCode);
+        var schedule = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.Equal("20:00", schedule!.WorkingHours.Single(h => h.DayOfWeek == 3).EndTime);
     }
 
     [Fact]

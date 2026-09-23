@@ -99,7 +99,9 @@ public class SchedulePresetService(AppDbContext db)
 
     // "Schedule for a date range": the weekly template switches to `preset`'s hours on StartDate
     // and automatically reverts to the business's Default preset after EndDate. Only one
-    // un-reverted PresetSchedule per business is allowed at a time. The Default preset itself can't
+    // un-reverted PresetSchedule per business exists at a time -- scheduling again *replaces* the
+    // existing one (same preset with new dates, or a different preset) rather than being refused,
+    // so the owner can move a range without cancelling it first. The Default preset itself can't
     // be scheduled this way -- it's already the baseline everything reverts to.
     public async Task<PresetSchedule> ScheduleForRange(string businessId, string presetId, DateTime startDate, DateTime endDate)
     {
@@ -108,11 +110,15 @@ public class SchedulePresetService(AppDbContext db)
         if (preset.IsDefault)
             throw new InvalidOperationException("The default schedule is always the baseline -- it can't be scheduled for a date range.");
 
-        var alreadyScheduled = await db.PresetSchedules.AnyAsync(s => s.BusinessId == businessId && !s.Reverted);
-        if (alreadyScheduled)
-            throw new InvalidOperationException("A scheduled preset change is already pending or active for this business");
-
         var defaultPreset = await GetOrCreateDefaultPreset(businessId);
+        var startsNow = startDate <= DateTime.Now.Date;
+
+        var existing = await db.PresetSchedules.Where(s => s.BusinessId == businessId && !s.Reverted).ToListAsync();
+        // A replaced range that's already running must hand the live hours back to Default -- unless
+        // the new range starts now, in which case it overwrites them immediately below anyway.
+        if (existing.Any(s => s.Applied) && !startsNow)
+            await ApplyPresetToWorkingHours(defaultPreset.Id);
+        db.PresetSchedules.RemoveRange(existing);
 
         var schedule = new PresetSchedule
         {
@@ -126,7 +132,7 @@ public class SchedulePresetService(AppDbContext db)
 
         // A range starting today or in the past takes effect immediately rather than waiting for
         // tomorrow's cron sweep.
-        if (startDate <= DateTime.Now.Date)
+        if (startsNow)
         {
             await ApplyPresetToWorkingHours(presetId);
             schedule.Applied = true;

@@ -6,6 +6,7 @@ export type DayHours = { dayOfWeek: number; startTime: string; endTime: string; 
 export type PresetBreak = { dayOfWeek: number; startTime: string; endTime: string }
 export type SchedulePreset = { id: string; name: string; createdAt: string; isDefault: boolean; days: DayHours[]; breaks: PresetBreak[] }
 export type PresetChange = 'saved' | 'applied' | 'scheduled' | 'deleted'
+export type PresetSchedule = { id: string; presetId: string; presetName: string; startDate: string; endDate: string; applied: boolean }
 
 type Action = 'save' | 'apply' | 'range'
 
@@ -124,18 +125,22 @@ export function WeekHoursEditor({ lang, days, onChange, breaks, onBreaksChange }
 }
 
 export default function PresetEditorModal({
-  lang, preset, initialDays, initialBreaks, allPresets, hasActiveRange, onClose, onSaved,
+  lang, preset, initialDays, initialBreaks, allPresets, scheduledChange, onClose, onSaved,
 }: {
   lang: string
   preset: SchedulePreset | null // null = creating a brand-new preset
   initialDays: DayHours[] // used only when preset is null, pre-filled from the current live hours
   initialBreaks: PresetBreak[] // used only when preset is null, pre-filled from the current live breaks
   allPresets: SchedulePreset[] // full preset list, for "copy breaks from" -- excludes itself when editing
-  hasActiveRange: boolean // a scheduled date-range preset is currently overriding the weekly hours
+  scheduledChange: PresetSchedule | null // the business's one pending/running date-range schedule, if any
   onClose: () => void
   onSaved: (change: PresetChange) => Promise<void> // parent refetches presets + the live schedule
 }) {
   const isDefault = preset?.isDefault ?? false
+  const hasActiveRange = !!scheduledChange?.applied
+  // This preset already has dates booked -- open straight onto them so they can be moved.
+  const scheduledHere = !!preset && scheduledChange?.presetId === preset.id ? scheduledChange : null
+  const scheduledElsewhere = scheduledChange && !scheduledHere ? scheduledChange : null
   const initial = useMemo(() => ({
     name: preset?.name ?? '',
     days: [...(preset?.days ?? initialDays)].sort((a, b) => a.dayOfWeek - b.dayOfWeek),
@@ -145,9 +150,9 @@ export default function PresetEditorModal({
   const [name, setName] = useState(initial.name)
   const [days, setDays] = useState<DayHours[]>(initial.days)
   const [breaks, setBreaks] = useState<PresetBreak[]>(initial.breaks)
-  const [action, setAction] = useState<Action>('save')
-  const [rangeStart, setRangeStart] = useState('')
-  const [rangeEnd, setRangeEnd] = useState('')
+  const [action, setAction] = useState<Action>(scheduledHere ? 'range' : 'save')
+  const [rangeStart, setRangeStart] = useState(scheduledHere?.startDate ?? '')
+  const [rangeEnd, setRangeEnd] = useState(scheduledHere?.endDate ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   // Id of the preset once it exists server-side -- set after the first successful create, so a
@@ -233,11 +238,11 @@ export default function PresetEditorModal({
   const submitLabel = busy ? t(lang, 'saving')
     : isDefault ? t(lang, 'saveAndUpdateSchedule')
     : action === 'apply' ? t(lang, 'saveAndApplyNow')
-    : action === 'range' ? t(lang, 'saveAndSchedule')
+    : action === 'range' ? t(lang, scheduledHere ? 'saveAndUpdateDates' : 'saveAndSchedule')
     : t(lang, 'saveChanges')
 
   const actionOptions: { value: Action; title: string; hint: string }[] = [
-    { value: 'save', title: t(lang, 'presetActionSaveOnly'), hint: t(lang, 'presetActionSaveOnlyHint') },
+    { value: 'save', title: t(lang, 'presetActionSaveOnly'), hint: t(lang, scheduledHere ? 'presetActionSaveOnlyScheduledHint' : 'presetActionSaveOnlyHint') },
     { value: 'apply', title: t(lang, 'presetActionApplyNow'), hint: t(lang, 'applyPresetNowHint') },
     { value: 'range', title: t(lang, 'presetActionRange'), hint: t(lang, 'scheduleRangeHint') },
   ]
@@ -304,6 +309,16 @@ export default function PresetEditorModal({
                         <span className="block text-xs text-muted mt-0.5">{opt.hint}</span>
                         {opt.value === 'apply' && action === 'apply' && hasActiveRange && (
                           <span className="block text-xs text-amber-700 dark:text-amber-400 mt-1">{t(lang, 'activeRangeApplyHint')}</span>
+                        )}
+                        {opt.value === 'range' && scheduledHere && (
+                          <span className="block text-xs text-coral-dark font-medium mt-1">
+                            {t(lang, scheduledHere.applied ? 'rangeRunningNow' : 'rangeBookedFor')} {scheduledHere.startDate} – {scheduledHere.endDate}
+                          </span>
+                        )}
+                        {opt.value === 'range' && action === 'range' && scheduledElsewhere && (
+                          <span className="block text-xs text-amber-700 dark:text-amber-400 mt-1">
+                            {t(lang, 'replacesOtherRange')} "{scheduledElsewhere.presetName}" ({scheduledElsewhere.startDate} – {scheduledElsewhere.endDate})
+                          </span>
                         )}
                         {opt.value === 'range' && action === 'range' && (
                           <div className="flex flex-wrap items-center gap-2 mt-2.5">

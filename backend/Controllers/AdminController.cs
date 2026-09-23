@@ -649,6 +649,10 @@ public class AdminController(
         // effect once that range reverts back to Default).
         if (preset.IsDefault && !await schedulePresets.HasActiveSchedule(BusinessId))
             await schedulePresets.ApplyPresetToWorkingHours(preset.Id);
+        // Likewise, a preset whose date range is running right now IS the live schedule -- push the
+        // edit through so it doesn't sit unused until the next time the range is (re)applied.
+        else if (!preset.IsDefault && await db.PresetSchedules.AnyAsync(s => s.BusinessId == BusinessId && s.PresetId == preset.Id && s.Applied && !s.Reverted))
+            await schedulePresets.ApplyPresetToWorkingHours(preset.Id);
 
         this.SetActivityDetail($"Updated schedule preset \"{preset.Name}\"");
 
