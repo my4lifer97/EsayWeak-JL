@@ -130,7 +130,9 @@ export default function WeeklyCalendar({
     const breaks: Break[] = match
       ? match.preset.breaks.filter((b) => b.dayOfWeek === day.getDay()).map((b, i) => ({ ...b, id: `${match.preset.id}-${i}` }))
       : schedule?.breaks.filter((b) => b.dayOfWeek === day.getDay()) ?? []
-    return { dayStr, hours, closed, fullDayBlock, partialBlocks, breaks }
+    // Name of the scheduled preset covering this date (not the Default it reverts to afterward).
+    const presetName = match?.inRange ? match.preset.name : null
+    return { dayStr, hours, closed, fullDayBlock, partialBlocks, breaks, presetName }
   }
 
   function selectBlocked(slot: BlockedSlot) {
@@ -179,7 +181,7 @@ export default function WeeklyCalendar({
           <div className="grid grid-cols-8 border-b border-line">
             <div className="p-3" />
             {days.map((d) => {
-              const { closed, fullDayBlock } = dayInfo(d)
+              const { closed, fullDayBlock, presetName } = dayInfo(d)
               const off = closed || !!fullDayBlock
               return (
                 <div key={d.toISOString()} className={`p-3 text-center border-s border-line ${off ? 'bg-stone-400/10' : ''}`}>
@@ -192,6 +194,11 @@ export default function WeeklyCalendar({
                   ) : closed ? (
                     <div className="text-[10px] font-medium text-muted truncate">{t(lang, 'dayClosedLabel')}</div>
                   ) : null}
+                  {presetName && (
+                    <div className="mt-1 inline-block max-w-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 px-1.5 py-0.5 rounded truncate" title={presetName}>
+                      {presetName}
+                    </div>
+                  )}
                 </div>
               )
             })}
