@@ -32,11 +32,15 @@ export default function SchedulePage() {
   const nextDateForDay = (dayOfWeek: number) => {
     const d = new Date(nextSunday)
     d.setDate(nextSunday.getDate() + dayOfWeek)
-    return d.toLocaleDateString(
+    return d
+  }
+  const formatRowDate = (d: Date) =>
+    d.toLocaleDateString(
       lang === 'AR' ? 'ar-SA' : lang === 'HE' ? 'he-IL' : 'en-US',
       { day: 'numeric', month: 'short' }
     )
-  }
+  const isoDate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
   const [blockRangeMode, setBlockRangeMode] = useState(false)
@@ -131,6 +135,23 @@ export default function SchedulePage() {
       : change === 'deleted' ? 'toastPresetDeleted' : 'toastPresetSaved'))
   }
 
+  // The live `hours` are one weekly template, but each row shows a concrete date -- a row whose
+  // date falls inside a scheduled range shows that preset's hours for the day, and a row past the
+  // end of an already-running range shows the Default preset it will revert to.
+  function hoursForRow(h: WorkingHour): { hours: WorkingHour; presetName: string | null } {
+    if (!scheduledChange) return { hours: h, presetName: null }
+    const date = isoDate(nextDateForDay(h.dayOfWeek))
+    const start = scheduledChange.startDate.slice(0, 10)
+    const end = scheduledChange.endDate.slice(0, 10)
+    const inRange = date >= start && date <= end
+    const source = inRange
+      ? presets.find((p) => p.id === scheduledChange.presetId)
+      : scheduledChange.applied && date > end ? presets.find((p) => p.isDefault) : undefined
+    const day = source?.days.find((d) => d.dayOfWeek === h.dayOfWeek)
+    if (!source || !day) return { hours: h, presetName: null }
+    return { hours: { ...h, ...day }, presetName: inRange ? source.name : null }
+  }
+
   async function cancelScheduledChange(id: string) {
     if (!confirm(t(lang, 'cancelScheduledChangeConfirm'))) return
     await api.delete(`/admin/schedule/preset-schedule/${id}`)
@@ -162,16 +183,24 @@ export default function SchedulePage() {
             </div>
           )}
           <div className="space-y-2">
-            {hours.map((h) => (
-              <div key={h.dayOfWeek} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2.5">
-                <span className="text-ink text-sm font-medium">
-                  {dayName(h.dayOfWeek)} <span className="text-muted font-normal">· {nextDateForDay(h.dayOfWeek)}</span>
-                </span>
-                <span className={h.isActive ? 'text-ink text-sm' : 'text-muted text-sm'}>
-                  {h.isActive ? `${h.startTime} – ${h.endTime}` : t(lang, 'dayClosedLabel')}
-                </span>
-              </div>
-            ))}
+            {hours.map((live) => {
+              const { hours: h, presetName } = hoursForRow(live)
+              return (
+                <div key={h.dayOfWeek} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2.5">
+                  <span className="text-ink text-sm font-medium flex items-center gap-2">
+                    <span>{dayName(h.dayOfWeek)} <span className="text-muted font-normal">· {formatRowDate(nextDateForDay(h.dayOfWeek))}</span></span>
+                    {presetName && (
+                      <span className="text-[10px] font-normal bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                        {presetName}
+                      </span>
+                    )}
+                  </span>
+                  <span className={h.isActive ? 'text-ink text-sm' : 'text-muted text-sm'}>
+                    {h.isActive ? `${h.startTime} – ${h.endTime}` : t(lang, 'dayClosedLabel')}
+                  </span>
+                </div>
+              )
+            })}
           </div>
 
           <div className="border-t border-line my-6" />
