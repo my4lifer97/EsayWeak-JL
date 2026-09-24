@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
+import { presetForDate } from '../../lib/effectiveSchedule'
 import PresetEditorModal, { type PresetChange, type PresetSchedule, type SchedulePreset } from '../../components/admin/PresetEditorModal'
 
 type WorkingHour = { id?: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
@@ -139,18 +140,18 @@ export default function SchedulePage() {
   // date falls inside a scheduled range shows that preset's hours for the day, and a row past the
   // end of an already-running range shows the Default preset it will revert to.
   function hoursForRow(h: WorkingHour): { hours: WorkingHour; presetName: string | null } {
-    if (!scheduledChange) return { hours: h, presetName: null }
-    const date = isoDate(nextDateForDay(h.dayOfWeek))
-    const start = scheduledChange.startDate.slice(0, 10)
-    const end = scheduledChange.endDate.slice(0, 10)
-    const inRange = date >= start && date <= end
-    const source = inRange
-      ? presets.find((p) => p.id === scheduledChange.presetId)
-      : scheduledChange.applied && date > end ? presets.find((p) => p.isDefault) : undefined
-    const day = source?.days.find((d) => d.dayOfWeek === h.dayOfWeek)
-    if (!source || !day) return { hours: h, presetName: null }
-    return { hours: { ...h, ...day }, presetName: inRange ? source.name : null }
+    const match = presetForDate(isoDate(nextDateForDay(h.dayOfWeek)), scheduledChange, presets)
+    const day = match?.preset.days.find((d) => d.dayOfWeek === h.dayOfWeek)
+    if (!match || !day) return { hours: h, presetName: null }
+    return { hours: { ...h, ...day }, presetName: match.inRange ? match.preset.name : null }
   }
+  // Same per-date resolution for the Recurring Breaks list, keyed to the same row dates.
+  const shownBreaks: (Omit<Break, 'id'> & { id: string })[] = Array.from({ length: 7 }, (_, dow) => {
+    const match = presetForDate(isoDate(nextDateForDay(dow)), scheduledChange, presets)
+    return match
+      ? match.preset.breaks.filter((b) => b.dayOfWeek === dow).map((b, i) => ({ ...b, id: `${match.preset.id}-${dow}-${i}` }))
+      : breaks.filter((b) => b.dayOfWeek === dow)
+  }).flat()
 
   async function cancelScheduledChange(id: string) {
     if (!confirm(t(lang, 'cancelScheduledChangeConfirm'))) return
@@ -247,9 +248,9 @@ export default function SchedulePage() {
         <section className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold text-lg mb-1">{t(lang, 'recurringBreaks')}</h2>
           <p className="text-muted text-sm mb-5">{t(lang, 'recurringBreaksReadOnlyHint')}</p>
-          {breaks.length > 0 && (
+          {shownBreaks.length > 0 && (
             <div className="space-y-2">
-              {breaks.map((br) => (
+              {shownBreaks.map((br) => (
                 <div key={br.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
                   <span className="text-ink text-sm">{dayName(br.dayOfWeek)} · {br.startTime}–{br.endTime}</span>
                 </div>

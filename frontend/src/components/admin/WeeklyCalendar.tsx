@@ -6,6 +6,8 @@ import { api } from '../../lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
+import { presetForDate } from '../../lib/effectiveSchedule'
+import type { PresetSchedule, SchedulePreset } from './PresetEditorModal'
 import CancelOptionsModal from './CancelOptionsModal'
 import RescheduleModal from './RescheduleModal'
 
@@ -88,6 +90,17 @@ export default function WeeklyCalendar({
     queryFn: () => api.get('/admin/schedule').then((r) => r.data),
   })
 
+  // Same query keys as the Schedule page -- lets each column use the hours of whatever preset
+  // actually applies on that date (a scheduled range), not just the live weekly template.
+  const { data: presets = [] } = useQuery<SchedulePreset[]>({
+    queryKey: ['schedule-presets'],
+    queryFn: () => api.get('/admin/schedule/presets').then((r) => r.data),
+  })
+  const { data: scheduledChange } = useQuery<PresetSchedule | null>({
+    queryKey: ['preset-schedule'],
+    queryFn: () => api.get('/admin/schedule/preset-schedule').then((r) => r.data.schedule),
+  })
+
   const weekStartDate = parseISO(weekStart)
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStartDate, i))
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
@@ -104,14 +117,19 @@ export default function WeeklyCalendar({
 
   function dayInfo(day: Date) {
     const dayStr = format(day, 'yyyy-MM-dd')
-    const hours = schedule?.workingHours.find((h) => h.dayOfWeek === day.getDay())
+    const match = presetForDate(dayStr, scheduledChange, presets)
+    const hours = match
+      ? match.preset.days.find((h) => h.dayOfWeek === day.getDay())
+      : schedule?.workingHours.find((h) => h.dayOfWeek === day.getDay())
     // Only call a day closed once the schedule has loaded and has hours configured --
     // otherwise every column would flash grey while the request is in flight.
     const closed = !!schedule && schedule.workingHours.length > 0 && (!hours || !hours.isActive)
     const blockedToday = schedule?.blockedSlots.filter((b) => b.date.slice(0, 10) === dayStr) ?? []
     const fullDayBlock = blockedToday.find((b) => !b.startTime)
     const partialBlocks = blockedToday.filter((b) => b.startTime && b.endTime)
-    const breaks = schedule?.breaks.filter((b) => b.dayOfWeek === day.getDay()) ?? []
+    const breaks: Break[] = match
+      ? match.preset.breaks.filter((b) => b.dayOfWeek === day.getDay()).map((b, i) => ({ ...b, id: `${match.preset.id}-${i}` }))
+      : schedule?.breaks.filter((b) => b.dayOfWeek === day.getDay()) ?? []
     return { dayStr, hours, closed, fullDayBlock, partialBlocks, breaks }
   }
 

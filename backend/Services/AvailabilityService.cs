@@ -26,17 +26,11 @@ public class AvailabilityService(AppDbContext db)
         if (DateTime.Parse(dateStr).Date < DateTime.Now.Date) return [];
 
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
-        var dayOfWeek = (int)DateTime.Parse(dateStr).DayOfWeek;
-
-        var workingHours = await db.WorkingHours
-            .FirstOrDefaultAsync(w => w.BusinessId == businessId && w.DayOfWeek == dayOfWeek && w.IsActive);
-        if (workingHours is null) return [];
-        var startTime = workingHours.StartTime;
-        var endTime = workingHours.EndTime;
-
-        var breaks = await db.Breaks
-            .Where(b => b.BusinessId == businessId && b.DayOfWeek == dayOfWeek)
-            .ToListAsync();
+        var day = await GetEffectiveDay(businessId, DateTime.Parse(dateStr).Date);
+        if (!day.IsActive) return [];
+        var startTime = day.StartTime;
+        var endTime = day.EndTime;
+        var breaks = day.Breaks;
 
         var blockedSlots = await db.BlockedSlots
             .Where(b => b.BusinessId == businessId && b.Date == date)
@@ -49,7 +43,6 @@ public class AvailabilityService(AppDbContext db)
         if (blockedSlots.Any(b => b.StartTime is null)) return [];
 
         var blockedPeriods = breaks
-            .Select(b => new TimeSlot(b.StartTime, b.EndTime))
             .Concat(blockedSlots
                 .Where(b => b.StartTime is not null)
                 .Select(b => new TimeSlot(b.StartTime!, b.EndTime!)))
@@ -85,6 +78,70 @@ public class AvailabilityService(AppDbContext db)
                 return new SlotWithBookingInfoDto(slot.Start, slot.End, booking is null, booking?.Id);
             })
             .ToList();
+    }
+
+    // The hours and breaks that actually apply on `date`. Live WorkingHours/Breaks are a single
+    // weekly template that a PresetSchedule only overwrites once its StartDate arrives (and only
+    // puts back after EndDate), so on their own they're right for "this week" but wrong for any
+    // date on the other side of a range boundary -- e.g. a customer booking a date inside a
+    // not-yet-started holiday range, or a date after a running range ends. Resolve those from the
+    // presets directly: inside the range -> the scheduled preset; outside a running range -> the
+    // preset it reverts to (Default); otherwise the live template.
+    public async Task<EffectiveDay> GetEffectiveDay(string businessId, DateTime date) =>
+        (await LoadScheduleContext(businessId)).Resolve(date);
+
+    // Which of the next `days` dates (starting today) the business is open on at all, per
+    // GetEffectiveDay -- backs the public booking calendar, which used to filter by weekday alone.
+    public async Task<List<string>> GetOpenDates(string businessId, int days)
+    {
+        var ctx = await LoadScheduleContext(businessId);
+        var today = DateTime.Now.Date;
+        return Enumerable.Range(0, days)
+            .Select(i => today.AddDays(i))
+            .Where(d => ctx.Resolve(d).IsActive)
+            .Select(d => d.ToString("yyyy-MM-dd"))
+            .ToList();
+    }
+
+    // Everything GetEffectiveDay needs, loaded once so resolving many dates costs no extra queries.
+    private async Task<ScheduleContext> LoadScheduleContext(string businessId)
+    {
+        var schedule = await db.PresetSchedules.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.BusinessId == businessId && !s.Reverted);
+        var presetIds = schedule is null ? [] : new[] { schedule.PresetId, schedule.RevertToPresetId };
+        var presets = await db.SchedulePresets.AsNoTracking().Include(p => p.Days).Include(p => p.Breaks)
+            .Where(p => presetIds.Contains(p.Id)).ToListAsync();
+        var hours = await db.WorkingHours.AsNoTracking().Where(w => w.BusinessId == businessId).ToListAsync();
+        var breaks = await db.Breaks.AsNoTracking().Where(b => b.BusinessId == businessId).ToListAsync();
+        return new ScheduleContext(schedule, presets, hours, breaks);
+    }
+
+    private record ScheduleContext(PresetSchedule? Schedule, List<SchedulePreset> Presets, List<WorkingHours> Hours, List<Break> Breaks)
+    {
+        public EffectiveDay Resolve(DateTime date)
+        {
+            date = date.Date;
+            var dayOfWeek = (int)date.DayOfWeek;
+
+            string? presetId = null;
+            if (Schedule is not null)
+            {
+                if (date >= Schedule.StartDate.Date && date <= Schedule.EndDate.Date) presetId = Schedule.PresetId;
+                else if (Schedule.Applied) presetId = Schedule.RevertToPresetId;
+            }
+
+            var preset = presetId is null ? null : Presets.FirstOrDefault(p => p.Id == presetId);
+            if (preset is not null)
+            {
+                var pd = preset.Days.FirstOrDefault(d => d.DayOfWeek == dayOfWeek);
+                return new EffectiveDay(pd?.IsActive ?? false, pd?.StartTime ?? "", pd?.EndTime ?? "",
+                    preset.Breaks.Where(b => b.DayOfWeek == dayOfWeek).Select(b => new TimeSlot(b.StartTime, b.EndTime)).ToList());
+            }
+
+            var wh = Hours.FirstOrDefault(w => w.DayOfWeek == dayOfWeek);
+            return new EffectiveDay(wh?.IsActive ?? false, wh?.StartTime ?? "", wh?.EndTime ?? "",
+                Breaks.Where(b => b.DayOfWeek == dayOfWeek).Select(b => new TimeSlot(b.StartTime, b.EndTime)).ToList());
+        }
     }
 
     // Lets the customer-facing booking flow explain WHY a date has no slots, instead of a bare

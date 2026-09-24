@@ -266,4 +266,68 @@ public class AvailabilityServiceTests : IDisposable
 
         Assert.Empty(slots);
     }
+
+    // A scheduled range that hasn't started yet (Applied = false) hasn't touched live WorkingHours,
+    // but a customer booking a date inside it must already see that preset's hours -- here it opens
+    // a Tuesday the live template has closed.
+    [Fact]
+    public async Task PendingScheduledPreset_OpensDateInsideRange()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var monday = DateTime.Parse(TestDate);
+        var tuesday = monday.AddDays(1);
+        var (holiday, defaultPreset) = SeedPresets(db, business.Id, holidayDayOfWeek: 2);
+        db.PresetSchedules.Add(new PresetSchedule
+        {
+            BusinessId = business.Id, PresetId = holiday.Id, RevertToPresetId = defaultPreset.Id,
+            StartDate = tuesday, EndDate = tuesday, Applied = false,
+        });
+        await db.SaveChangesAsync();
+
+        var service = new AvailabilityService(db);
+        Assert.NotEmpty(await service.GetAvailableSlots(business.Id, tuesday.ToString("yyyy-MM-dd"), 30));
+        // Outside a not-yet-running range, the live template still applies.
+        Assert.NotEmpty(await service.GetAvailableSlots(business.Id, TestDate, 30));
+        Assert.Contains(tuesday.ToString("yyyy-MM-dd"), await service.GetOpenDates(business.Id, 14));
+    }
+
+    // Once a range is running, live WorkingHours hold the scheduled preset -- dates after it ends
+    // must resolve to the Default preset instead.
+    [Fact]
+    public async Task RunningScheduledPreset_DatesAfterRangeUseDefault()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var monday = DateTime.Parse(TestDate);
+        var (holiday, defaultPreset) = SeedPresets(db, business.Id, holidayDayOfWeek: 2);
+        // Live template currently mirrors the holiday preset: Monday closed.
+        db.WorkingHours.Single(w => w.BusinessId == business.Id && w.DayOfWeek == MondayDayOfWeek).IsActive = false;
+        db.PresetSchedules.Add(new PresetSchedule
+        {
+            BusinessId = business.Id, PresetId = holiday.Id, RevertToPresetId = defaultPreset.Id,
+            StartDate = DateTime.Now.Date, EndDate = monday.AddDays(-1), Applied = true,
+        });
+        await db.SaveChangesAsync();
+
+        Assert.NotEmpty(await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 30));
+    }
+
+    // Default: Monday 09:00-12:00 only. Holiday: only `holidayDayOfWeek` open.
+    private static (SchedulePreset Holiday, SchedulePreset Default) SeedPresets(AppDbContext db, string businessId, int holidayDayOfWeek)
+    {
+        SchedulePreset Make(string name, bool isDefault, int openDay) => new()
+        {
+            BusinessId = businessId, Name = name, IsDefault = isDefault,
+            Days = Enumerable.Range(0, 7).Select(d => new SchedulePresetDay
+            {
+                DayOfWeek = d, StartTime = "09:00", EndTime = "12:00", IsActive = d == openDay,
+            }).ToList(),
+        };
+        var holiday = Make("eid", false, holidayDayOfWeek);
+        var def = Make("Default", true, MondayDayOfWeek);
+        db.SchedulePresets.AddRange(holiday, def);
+        db.SaveChanges();
+        return (holiday, def);
+    }
 }

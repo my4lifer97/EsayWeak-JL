@@ -14,7 +14,7 @@ import StarRating from '../../components/customer/StarRating'
 
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
-  language: string; isRTL: boolean; activeDays: number[]
+  language: string; isRTL: boolean; activeDays: number[]; openDates?: string[]
   items: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null; price: number | null; isBookable: boolean }[]
   isFollowed: boolean
   city: string | null; addressLine: string | null; mapUrl: string | null

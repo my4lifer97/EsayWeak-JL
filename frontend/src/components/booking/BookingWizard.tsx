@@ -18,7 +18,7 @@ type Item = {
   photoMode: 'None' | 'OwnerGallery' | 'CustomerUpload' | 'Both'; isBookable: boolean; galleryPhotos: GalleryPhoto[]
 }
 type BusinessInfo = {
-  slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; items: Item[]
+  slug: string; name: string; language: string; isRTL: boolean; activeDays: number[]; openDates?: string[]; items: Item[]
   waitlistEnabled: boolean
 }
 type Slot = { start: string; end: string; available: boolean; appointmentId?: string }
@@ -184,7 +184,11 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
   const today = new Date()
   const calDays = Array.from({ length: 60 }, (_, i) => addDays(today, i))
-  const availableDays = calDays.filter((d) => business.activeDays.includes(d.getDay()))
+  // openDates already accounts for scheduled preset ranges (e.g. a holiday schedule opening a
+  // normally-closed weekday); activeDays is the weekday-only fallback for an older API response.
+  const availableDays = calDays.filter((d) => business.openDates
+    ? business.openDates.includes(format(d, 'yyyy-MM-dd'))
+    : business.activeDays.includes(d.getDay()))
 
   return (
     <div className="min-h-screen bg-cream text-ink" dir={dir}>

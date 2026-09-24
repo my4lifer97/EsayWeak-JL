@@ -52,7 +52,8 @@ public class BookingController(
             business.Slug, business.Name, business.Description, business.Logo,
             business.Language.ToString(), isRTL, activeDays, items, isFollowed, business.WaitlistEnabled,
             business.City, business.AddressLine, business.MapUrl,
-            business.RatingCount, business.RatingAverage));
+            business.RatingCount, business.RatingAverage,
+            await availability.GetOpenDates(business.Id, 60)));
     }
 
     [HttpGet("availability")]

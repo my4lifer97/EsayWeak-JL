@@ -92,6 +92,7 @@ public record CreateRecurringSeriesRequest(
 
 public record TimeSlot(string Start, string End);
 public record BlockedDayInfo(string? Reason);
+public record EffectiveDay(bool IsActive, string StartTime, string EndTime, List<TimeSlot> Breaks);
 
 public record AvailabilityResponse(List<TimeSlot> Slots);
 
@@ -130,7 +131,8 @@ public record PublicBusinessDto(
     string Slug, string Name, string? Description, string? Logo,
     string Language, bool IsRTL, int[] ActiveDays, List<ItemDto> Items, bool IsFollowed,
     bool WaitlistEnabled,
-    string? City, string? AddressLine, string? MapUrl, int RatingCount, double RatingAverage);
+    string? City, string? AddressLine, string? MapUrl, int RatingCount, double RatingAverage,
+    List<string> OpenDates);
 
 // Shared by BusinessesController.Search (the public directory) and .GetFollowed (the customer's
 // followed list). BusinessTypeKey/City/rating/follower fields back the discovery result cards.
