@@ -186,6 +186,11 @@ export default function SchedulePage() {
           <div className="space-y-2">
             {hours.map((live) => {
               const { hours: h, presetName } = hoursForRow(live)
+              // Blocked dates are per-date too -- reads the local `blocked` list so adding/removing
+              // one below updates the row immediately.
+              const rowBlocks = blocked.filter((b) => b.date.slice(0, 10) === isoDate(nextDateForDay(h.dayOfWeek)))
+              const fullDayBlock = rowBlocks.find((b) => !b.startTime)
+              const partialBlocks = rowBlocks.filter((b) => b.startTime && b.endTime)
               return (
                 <div key={h.dayOfWeek} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2.5">
                   <span className="text-ink text-sm font-medium flex items-center gap-2">
@@ -196,9 +201,22 @@ export default function SchedulePage() {
                       </span>
                     )}
                   </span>
-                  <span className={h.isActive ? 'text-ink text-sm' : 'text-muted text-sm'}>
-                    {h.isActive ? `${h.startTime} – ${h.endTime}` : t(lang, 'dayClosedLabel')}
-                  </span>
+                  {fullDayBlock ? (
+                    <span className="text-rose-600 dark:text-rose-400 text-sm font-medium" title={fullDayBlock.reason ?? undefined}>
+                      {t(lang, 'calBlocked')}
+                    </span>
+                  ) : (
+                    <span className="text-end">
+                      <span className={h.isActive ? 'text-ink text-sm' : 'text-muted text-sm'}>
+                        {h.isActive ? `${h.startTime} – ${h.endTime}` : t(lang, 'dayClosedLabel')}
+                      </span>
+                      {h.isActive && partialBlocks.map((b) => (
+                        <span key={b.id} className="block text-[11px] text-rose-600 dark:text-rose-400" title={b.reason ?? undefined}>
+                          {t(lang, 'calBlocked')} {b.startTime}–{b.endTime}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
               )
             })}
