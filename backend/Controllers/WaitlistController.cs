@@ -22,8 +22,13 @@ public class WaitlistController(AppDbContext db) : ControllerBase
         if (business is null) return NotFound(new { error = "Not found" });
         if (!business.WaitlistEnabled) return BadRequest(new { error = "Waitlist is not enabled for this business" });
 
-        var appointment = await db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == business.Id);
+        var appointment = await db.Appointments.Include(a => a.Customer)
+            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == business.Id);
         if (appointment is null) return NotFound(new { error = "Appointment not found" });
+        // Waiting for your own slot makes no sense -- the booking page offers the customer their
+        // own appointment (add a note / change the time) instead.
+        if (appointment.Customer.CustomerAccountId == CustomerAccountId)
+            return BadRequest(new { error = "This is your own appointment" });
         if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment is not currently booked" });
 

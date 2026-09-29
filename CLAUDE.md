@@ -581,11 +581,19 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   in-process `BackgroundService` polling `WaitlistService.AdvanceQueues` every
   `Waitlist:WorkerPollSeconds` (default 30) — the 15-minute external cron is too coarse for a
   5-minute gap. Disabled in tests via `Waitlist__WorkerEnabled=false`. A slot whose start time
-  already passed is never offered. Each message is written in the language of that customer's
-  **last WhatsApp message** (`CustomerAccount.LastMessageLanguage`, set by
-  `WhatsAppController.RememberCustomerLanguage` on every inbound message with a Hebrew/Arabic/Latin
-  signal, even when the business's chatbot is off), falling back to the business's
-  `ChatbotDefaultLanguage ?? Language`.
+  already passed is never offered. Each message is written in the language the WhatsApp
+  **chatbot last replied to that customer in** (`CustomerAccount.LastMessageLanguage`, set by
+  `WhatsAppController.RememberCustomerLanguage` from the resolved reply language on every inbound
+  message the chatbot answers), falling back to the business's `ChatbotDefaultLanguage ?? Language`.
+  - **Rescheduling frees the old slot for the waitlist** (all three paths: customer
+    `PATCH /api/customer/appointments/{id}/reschedule`, magic-link `PATCH /api/{slug}/appointments/{id}`,
+    owner `PATCH /api/admin/appointments/{id}/reschedule`). The appointment row itself moves (keeps
+    its Id/CancelToken so the customer's links still work); if anyone is waiting on it,
+    `WaitlistService.DetachForReschedule` leaves a `CANCELLED` copy at the old date/time, re-points
+    the waiting entries to it, and the queue starts after the save succeeds.
+  - A customer can't join the waitlist for **their own** appointment (400). On the booking page
+    (`BookingWizard`) their own booked slot shows as "Your appointment" and opens their
+    `AppointmentCard` (note / reschedule / cancel) instead of the waitlist modal.
 - **`RequireApprovalOnCustomerCancel`** — changes what happens when a *customer* cancels (magic-link,
   logged-in "My Bookings", or the WhatsApp `cancel` keyword — all three now route through
   `AppointmentCancellationService.CancelFromCustomerAsync` instead of flipping status directly).

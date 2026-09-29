@@ -94,6 +94,8 @@ public class CustomerAppointmentsController(
         var oldDate = appt.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appt.StartTime;
 
+        var freedSlot = await waitlist.DetachForReschedule(appt);
+
         appt.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         appt.StartTime = req.StartTime;
         appt.EndTime = AvailabilityService.AddMinutes(req.StartTime, appt.Item.DurationMinutes.Value);
@@ -102,6 +104,11 @@ public class CustomerAppointmentsController(
         await waitlist.ResolveForRebooking(appt.BusinessId, appt.Date, req.StartTime);
         if (!await availability.TrySaveOrDetectConflict(appt.BusinessId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
+        if (freedSlot is not null)
+        {
+            await waitlist.NotifyForCancellation(freedSlot);
+            await db.SaveChangesAsync();
+        }
 
         this.SetActivityDetail(
             $"Rescheduled appointment: {appt.Item.NameEn} with {appt.Business.Name} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");

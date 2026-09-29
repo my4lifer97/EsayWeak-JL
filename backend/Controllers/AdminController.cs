@@ -946,6 +946,8 @@ public class AdminController(
         var oldDate = appt.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appt.StartTime;
 
+        var freedSlot = await waitlist.DetachForReschedule(appt);
+
         appt.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         appt.StartTime = req.StartTime;
         appt.EndTime = AvailabilityService.AddMinutes(req.StartTime, appt.Item.DurationMinutes.Value);
@@ -954,6 +956,11 @@ public class AdminController(
         await waitlist.ResolveForRebooking(BusinessId, appt.Date, req.StartTime);
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
+        if (freedSlot is not null)
+        {
+            await waitlist.NotifyForCancellation(freedSlot);
+            await db.SaveChangesAsync();
+        }
 
         this.SetActivityDetail(
             $"Rescheduled appointment: {appt.Item.NameEn} for {ActivityDetailExtensions.FullName(appt.Customer.Name, appt.Customer.FamilyName)} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");

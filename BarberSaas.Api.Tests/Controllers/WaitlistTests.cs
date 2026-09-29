@@ -283,9 +283,9 @@ public class WaitlistTests : IntegrationTestBase
         return Client.SendAsync(req);
     }
 
-    // Each waiter gets the slot-opened message in the language of the last WhatsApp message they
-    // sent (a bare "1" carries no language and doesn't change it); one who never wrote gets the
-    // business's language (English here).
+    // Each waiter gets the slot-opened message in the language the chatbot last replied to them
+    // in (a bare "1" keeps the conversation's language); one who never wrote gets the business's
+    // language (English here).
     [Fact]
     public async Task WaitlistMessage_UsesLanguageOfCustomersLastWhatsAppMessage()
     {
@@ -322,6 +322,66 @@ public class WaitlistTests : IntegrationTestBase
         Assert.Contains("أصبح هناك موعد متاح", SlotMessageTo(arabicPhone));
         Assert.Contains("התפנה תור", SlotMessageTo(hebrewPhone));
         Assert.Contains("just opened up", SlotMessageTo(silentPhone));
+    }
+
+    [Fact]
+    public async Task Join_OwnAppointment_ReturnsBadRequest()
+    {
+        var token = await RegisterAndLoginBusiness("wl-own@example.com", "wl-own-shop");
+        var (_, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-own-shop");
+        var customerToken = await GetCustomerToken("+15555000001");
+        var booked = await BookAs(customerToken, "wl-own-shop", itemId, date.ToString("yyyy-MM-dd"), "09:00");
+        var appt = (await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+
+        var resp = await JoinWaitlistAs(customerToken, "wl-own-shop", appt.AppointmentId);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        using var db = Db();
+        Assert.Empty(db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId));
+    }
+
+    // Moving an appointment to another time frees the old slot, so its waitlist is messaged just
+    // like on a cancel -- while the moved appointment keeps its Id (the customer's links still work).
+    [Fact]
+    public async Task CustomerReschedules_WaitlistForOldSlotIsNotified()
+    {
+        var token = await RegisterAndLoginBusiness("wl-resched@example.com", "wl-resched-shop");
+        var (businessId, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-resched-shop");
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        var bookerToken = await GetCustomerToken("+15555000002");
+        var booked = await BookAs(bookerToken, "wl-resched-shop", itemId, dateStr, "10:00");
+        var appt = (await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+
+        var waiterPhone = "+15555000003";
+        var waiterToken = await GetCustomerToken(waiterPhone);
+        Assert.Equal(HttpStatusCode.OK, (await JoinWaitlistAs(waiterToken, "wl-resched-shop", appt.AppointmentId)).StatusCode);
+
+        var req = new HttpRequestMessage(HttpMethod.Patch, $"/api/customer/appointments/{appt.AppointmentId}/reschedule")
+        {
+            Content = JsonContent.Create(new { date = dateStr, startTime = "15:00" }),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bookerToken);
+        Assert.Equal(HttpStatusCode.OK, (await Client.SendAsync(req)).StatusCode);
+
+        var slotMessages = Factory.WhatsAppSender.Sent
+            .Where(m => m.BusinessId == businessId && m.Phone == waiterPhone && m.Message.Contains("time=10:00")).ToList();
+        Assert.Single(slotMessages);
+
+        using var db = Db();
+        var moved = db.Appointments.Single(a => a.Id == appt.AppointmentId);
+        Assert.Equal("15:00", moved.StartTime);
+        Assert.Equal(AppointmentStatus.CONFIRMED, moved.Status);
+
+        var entry = db.WaitlistEntries.Single(w => w.CustomerAccount.Phone == waiterPhone);
+        Assert.Equal(WaitlistEntryStatus.NOTIFIED, entry.Status);
+        var oldSlot = db.Appointments.Single(a => a.Id == entry.AppointmentId);
+        Assert.Equal(AppointmentStatus.CANCELLED, oldSlot.Status);
+        Assert.Equal("10:00", oldSlot.StartTime);
+
+        // 10:00 is bookable again.
+        var rebook = await BookAs(waiterToken, "wl-resched-shop", itemId, dateStr, "10:00");
+        Assert.Equal(HttpStatusCode.Created, rebook.StatusCode);
     }
 
     [Fact]

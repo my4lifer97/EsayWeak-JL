@@ -125,6 +125,40 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
         return (totalSent + totalFailed, totalSent, totalFailed);
     }
 
+    // Rescheduling moves the appointment row itself (keeping its Id + CancelToken, so the links
+    // the customer already has keep working), but for the waitlist it's a cancellation of the old
+    // slot. Call this BEFORE changing the appointment's date/time: if anyone is waiting on it,
+    // it leaves a CANCELLED copy behind at the old date/time and moves the waiting entries onto
+    // it. Returns that copy (null when nobody was waiting) -- after the caller's save succeeds it
+    // passes it to NotifyForCancellation and saves again, so no message goes out for a
+    // reschedule that then failed on a slot conflict.
+    public async Task<Appointment?> DetachForReschedule(Appointment appointment)
+    {
+        var entries = await db.WaitlistEntries
+            .Where(w => w.AppointmentId == appointment.Id && w.Status != WaitlistEntryStatus.RESOLVED)
+            .ToListAsync();
+        if (entries.Count == 0) return null;
+
+        var oldSlot = new Appointment
+        {
+            BusinessId = appointment.BusinessId,
+            CustomerId = appointment.CustomerId,
+            ItemId = appointment.ItemId,
+            Date = appointment.Date,
+            StartTime = appointment.StartTime,
+            EndTime = appointment.EndTime,
+            Notes = appointment.Notes,
+            PhotoUrl = appointment.PhotoUrl,
+            Status = AppointmentStatus.CANCELLED,
+            ReminderSent = true,
+            ReminderSentSoon = true,
+        };
+        db.Appointments.Add(oldSlot);
+        foreach (var entry in entries)
+            entry.AppointmentId = oldSlot.Id;
+        return oldSlot;
+    }
+
     // Flips any outstanding waitlist entry for a slot that just got (re)booked to RESOLVED, so
     // stale entries don't linger or trigger a future notification for a slot that's taken again.
     // Cheap no-op in the common case (a slot nobody was ever waitlisted for) -- safe to call

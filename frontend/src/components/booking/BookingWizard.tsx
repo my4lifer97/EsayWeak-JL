@@ -11,6 +11,7 @@ import LanguageSwitcher from '../customer/LanguageSwitcher'
 import ThemeToggle from '../ThemeToggle'
 import SlotBookedModal from './SlotBookedModal'
 import BookingSuccessModal from './BookingSuccessModal'
+import AppointmentCard, { type Appointment } from '../customer/AppointmentCard'
 
 type GalleryPhoto = { id: string; url: string }
 type Item = {
@@ -72,6 +73,10 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const [joinedWaitlist, setJoinedWaitlist] = useState(false)
   const [blockedReason, setBlockedReason] = useState<string | null>(null)
   const [isBlocked, setIsBlocked] = useState(false)
+  // The customer's own upcoming bookings here -- a booked slot that's theirs opens their
+  // appointment (note / change time / cancel) instead of the waitlist modal.
+  const [myAppointments, setMyAppointments] = useState<Appointment[]>([])
+  const [myOpenAppointment, setMyOpenAppointment] = useState<Appointment | null>(null)
 
   // The customer's own language choice drives the UI everywhere, overriding this specific
   // business's configured storefront language.
@@ -80,7 +85,15 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
   async function fetchSlots(d: string, it: Item) {
     setSlotsLoading(true); setSlots([]); setIsBlocked(false); setBlockedReason(null)
-    const { data } = await customerApi.get(`/${business.slug}/availability/full?date=${d}&itemId=${it.id}`)
+    const [{ data }, mine] = await Promise.all([
+      customerApi.get(`/${business.slug}/availability/full?date=${d}&itemId=${it.id}`),
+      isAuthenticated
+        ? customerApi.get(`/customer/appointments?filter=upcoming&businessSlug=${business.slug}`)
+          .then((r) => (Array.isArray(r.data) ? r.data as Appointment[] : []))
+          .catch(() => [] as Appointment[])
+        : Promise.resolve([] as Appointment[]),
+    ])
+    setMyAppointments(mine.filter((a) => a.status === 'CONFIRMED'))
     setSlots(data.slots ?? [])
     setIsBlocked(!!data.isBlocked)
     setBlockedReason(data.blockedReason ?? null)
@@ -93,8 +106,14 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     setStep(3)
   }
 
+  function myAppointmentAt(s: Slot) {
+    return s.available || !s.appointmentId ? undefined : myAppointments.find((a) => a.id === s.appointmentId)
+  }
+
   function pickSlot(s: Slot) {
     if (s.available) { setSlot(s); setStep(4); return }
+    const mine = myAppointmentAt(s)
+    if (mine) { setMyOpenAppointment(mine); return }
     setJoinedWaitlist(false)
     setBookedSlot(s)
   }
@@ -280,17 +299,26 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
               </div>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {slots.map((s) => (
-                  <button key={s.start} onClick={() => pickSlot(s)}
-                    className={`rounded-xl py-3 text-center text-sm font-medium transition-colors border ${
-                      s.available
-                        ? `bg-surface hover:bg-coral hover:text-white border-line hover:border-coral-dark ${slot?.start === s.start ? 'bg-coral text-white border-coral-dark' : ''}`
-                        : 'bg-cream border-line text-muted'
-                    }`}>
-                    {s.start}
-                    {!s.available && <div className="text-[10px] uppercase tracking-wide text-muted mt-0.5">{t(lang, 'booked')}</div>}
-                  </button>
-                ))}
+                {slots.map((s) => {
+                  const mine = !!myAppointmentAt(s)
+                  return (
+                    <button key={s.start} onClick={() => pickSlot(s)}
+                      className={`rounded-xl py-3 text-center text-sm font-medium transition-colors border ${
+                        s.available
+                          ? `bg-surface hover:bg-coral hover:text-white border-line hover:border-coral-dark ${slot?.start === s.start ? 'bg-coral text-white border-coral-dark' : ''}`
+                          : mine
+                            ? 'bg-teal-tint border-teal text-ink'
+                            : 'bg-cream border-line text-muted'
+                      }`}>
+                      {s.start}
+                      {!s.available && (
+                        <div className={`text-[10px] uppercase tracking-wide mt-0.5 ${mine ? 'text-teal font-semibold' : 'text-muted'}`}>
+                          {t(lang, mine ? 'mySlot' : 'booked')}
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -389,6 +417,21 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           onJoinWaitlist={joinWaitlist}
           onClose={() => setBookedSlot(null)}
         />
+      )}
+
+      {myOpenAppointment && (
+        <div onClick={() => setMyOpenAppointment(null)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" dir={dir}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-5 max-w-md w-full border border-line space-y-3">
+            <h2 className="text-ink font-semibold text-lg">{t(lang, 'mySlot')}</h2>
+            <p className="text-muted text-sm">{t(lang, 'mySlotHint')}</p>
+            <AppointmentCard appt={myOpenAppointment} lang={lang} showBusinessName={false}
+              onChanged={() => { setMyOpenAppointment(null); if (item) fetchSlots(date, item) }} />
+            <button type="button" onClick={() => setMyOpenAppointment(null)}
+              className="w-full bg-teal-tint hover:bg-teal-tint/70 text-ink font-semibold py-2.5 rounded-xl transition-colors">
+              {t(lang, 'close')}
+            </button>
+          </div>
+        </div>
       )}
 
       {bookingSuccess && (

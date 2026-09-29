@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BookingWizard from './BookingWizard'
 import { customerApi } from '../../lib/customerApi'
 import { useCustomerAuth } from '../../lib/customerAuth'
@@ -347,6 +348,45 @@ describe('BookingWizard', () => {
 
     await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/waitlist/appt-booked'))
     await waitFor(() => expect(screen.getByText(/You're on the waitlist/)).toBeInTheDocument())
+  })
+
+  it("shows the customer's own booked slot as theirs and opens their appointment instead of the waitlist", async () => {
+    vi.mocked(useCustomerAuth).mockReturnValue({
+      user: { id: '1', name: 'Jane', familyName: 'Doe', phone: '+15559998888' },
+      isAuthenticated: true, language: 'EN', setLang: vi.fn(),
+      loginWithWhatsAppToken: vi.fn(), requestOtp: vi.fn(), verifyOtp: vi.fn(), logout: vi.fn(),
+    } as ReturnType<typeof useCustomerAuth>)
+    const myAppointment = {
+      id: 'appt-mine', businessSlug: 'test-business', businessName: 'Test Business',
+      date: '2030-01-01', startTime: '09:00', endTime: '09:30', notes: null, status: 'CONFIRMED', cancelToken: 't',
+      item: { id: 'svc-1', nameEn: 'Haircut', nameAr: '', nameHe: '', durationMinutes: 30, price: 50 }, photoUrl: null,
+    }
+    vi.mocked(customerApi.get).mockImplementation((url: string) => Promise.resolve({
+      data: url.startsWith('/customer/appointments')
+        ? [myAppointment]
+        : { slots: [
+          { start: '09:00', end: '09:30', available: false, appointmentId: 'appt-mine' },
+          { start: '09:30', end: '10:00', available: false, appointmentId: 'appt-other' },
+        ] },
+    }) as never)
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={[`/${business.slug}/book`]}>
+          <Routes><Route path="/:slug/book" element={<BookingWizard business={business} />} /></Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    await userEvent.click(screen.getByText('Haircut'))
+    await userEvent.click(findDateButtons()[0])
+
+    await waitFor(() => expect(screen.getAllByText('Your appointment')).toHaveLength(1))
+    expect(screen.getByText('Booked')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('09:00'))
+    expect(screen.queryByText('Join Waitlist')).not.toBeInTheDocument()
+    expect(screen.getByText('Reschedule')).toBeInTheDocument()
+    expect(screen.getByText('Add Note')).toBeInTheDocument()
   })
 
   it('deep-links from a waitlist notification straight to the confirm step when the slot is still open', async () => {
