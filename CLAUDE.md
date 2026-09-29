@@ -139,7 +139,8 @@ barber-saas/
 │   │   ├── ReviewService.cs            # HasCompletedAppointment / MostRecentCompletedAppointment / RecomputeAggregate (denormalized Business.RatingCount/RatingAverage from non-hidden rows)
 │   │   ├── RecurringAppointmentService.cs  # Generates real Appointment rows for active RecurringSeries (rolling horizon)
 │   │   ├── AppointmentCancellationService.cs # Shared funnel for every cancel path — branches on Business.RequireApprovalOnCustomerCancel, triggers waitlist notify
-│   │   ├── WaitlistService.cs          # Notifies waiting customers when a cancellation frees a slot
+│   │   ├── WaitlistService.cs          # Notifies waiting customers one at a time (5 min apart) when a cancellation frees a slot
+│   │   ├── WaitlistQueueWorker.cs      # BackgroundService advancing the waitlist queues every 30s
 │   │   ├── FollowService.cs            # Idempotent follow/unfollow (EnsureFollowed etc.)
 │   │   ├── AppointmentStatusHelper.cs  # Computes effective COMPLETED status without touching the DB row
 │   │   ├── I18nService.cs              # Server-side translations (EN/AR/HE) for WhatsApp messages
@@ -300,7 +301,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/cron/generate-recurring` — extends every active `RecurringSeries`' generated `Appointment` rows to the rolling horizon (default 8 weeks, `RecurringGeneration:HorizonWeeks` config); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, created, skipped }`; triggered once daily by `.github/workflows/cron-generate-recurring.yml` — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
 - `GET /api/cron/apply-scheduled-presets` — `SchedulePresetService.ApplyDueScheduledPresets()`: applies any `PresetSchedule` whose `StartDate` has arrived and reverts (then deletes) any applied one whose `EndDate` has passed; same `Authorization: Bearer <CronSecret>` gate, response shape `{ applied, reverted }`; triggered once daily by `.github/workflows/cron-apply-scheduled-presets.yml` — see the Schedule presets entry above
 - `GET /api/cron/charge-subscriptions` — charges every `ACTIVE` business with a stored `CardcomToken` whose `CardcomNextChargeAt` has passed, via Cardcom's token-charge API; same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, charged, failed }`; a successful charge bumps `CardcomNextChargeAt` by 1 month, a failed one sets `SubscriptionStatus = EXPIRED`; triggered once daily by `.github/workflows/cron-charge-subscriptions.yml` — see [Billing (Cardcom)](#billing-cardcom)
-- `GET /api/cron/retry-waitlist-notifications` — re-attempts `WaitlistService.NotifyForCancellation` for every still-`WAITING` entry whose appointment is `CANCELLED` (i.e. the first attempt never went out or failed); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, sent, failed }`; triggered every 15 minutes by an external cron-job.org job, not GitHub Actions — see the cron scheduling note below
+- `GET /api/cron/retry-waitlist-notifications` — calls `WaitlistService.AdvanceQueues` (same as the in-process `WaitlistQueueWorker`, kept as a backstop): for every cancelled appointment with still-`WAITING` entries, messages the next one in line if nobody was reached yet or the last message is at least 5 minutes old; same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, sent, failed }`; triggered every 15 minutes by an external cron-job.org job, not GitHub Actions — see the cron scheduling note below
 
 **Cron scheduling**: `generate-recurring` and `charge-subscriptions` only need to run once a day, so
 `.github/workflows/cron-generate-recurring.yml`/`cron-charge-subscriptions.yml` (GitHub Actions
@@ -573,7 +574,14 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   waitlist for a slot that's currently booked (`WaitlistEntry`, idempotent per customer+appointment).
   `WaitlistService` notifies waiting customers (by their configured status, `WAITING` →
   `NOTIFIED`/`RESOLVED`) when `AppointmentCancellationService.CancelAsync(notifyWaitlist: true)`
-  frees that slot.
+  frees that slot — **one at a time, in join order** (`CreatedAt`): the first is messaged right
+  away, and each `Waitlist:NotifyIntervalMinutes` (default 5) that the slot stays free, the next
+  one is. Rebooking the slot (`ResolveForRebooking`) flips every remaining entry to `RESOLVED`,
+  which ends the queue. The follow-up sends come from `Services/WaitlistQueueWorker.cs`, an
+  in-process `BackgroundService` polling `WaitlistService.AdvanceQueues` every
+  `Waitlist:WorkerPollSeconds` (default 30) — the 15-minute external cron is too coarse for a
+  5-minute gap. Disabled in tests via `Waitlist__WorkerEnabled=false`. A slot whose start time
+  already passed is never offered.
 - **`RequireApprovalOnCustomerCancel`** — changes what happens when a *customer* cancels (magic-link,
   logged-in "My Bookings", or the WhatsApp `cancel` keyword — all three now route through
   `AppointmentCancellationService.CancelFromCustomerAsync` instead of flipping status directly).

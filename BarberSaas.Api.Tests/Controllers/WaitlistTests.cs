@@ -171,20 +171,12 @@ public class WaitlistTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
         Client.DefaultRequestHeaders.Authorization = null;
 
+        // Queue order: only the first to join is messaged right away -- the second waits their turn.
         // Filtered to the two waiters specifically -- booking the original appointment above also
-        // sent its own "you're booked" confirmation to the booker's phone (business.WhatsAppNumber
-        // is set for this test), which isn't part of what this assertion is checking.
+        // sent its own "you're booked" confirmation to the booker's phone.
         var sent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId && (s.Phone == waiter1Phone || s.Phone == waiter2Phone)).ToList();
-        Assert.Equal(2, sent.Count);
-        Assert.Contains(sent, s => s.Phone == waiter1Phone);
-        Assert.Contains(sent, s => s.Phone == waiter2Phone);
-
-        using (var db = Db())
-        {
-            var entries = db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId).ToList();
-            Assert.Equal(2, entries.Count);
-            Assert.All(entries, e => Assert.Equal(WaitlistEntryStatus.NOTIFIED, e.Status));
-        }
+        Assert.Single(sent);
+        Assert.Equal(waiter1Phone, sent[0].Phone);
 
         var rebook = await BookAs(waiter1Token, "wl-lifecycle-shop", itemId, dateStr, "09:00", "First Waiter");
         Assert.Equal(HttpStatusCode.Created, rebook.StatusCode);
@@ -194,6 +186,91 @@ public class WaitlistTests : IntegrationTestBase
             var entries = db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId).ToList();
             Assert.All(entries, e => Assert.Equal(WaitlistEntryStatus.RESOLVED, e.Status));
         }
+    }
+
+    private async Task<HttpResponseMessage> AdvanceQueues()
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, "/api/cron/retry-waitlist-notifications");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+        return await Client.SendAsync(req);
+    }
+
+    // Pretends the queue's last notification went out `minutes` ago, instead of the test waiting.
+    private void BackdateNotifications(string appointmentId, int minutes)
+    {
+        using var db = Db();
+        foreach (var e in db.WaitlistEntries.Where(w => w.AppointmentId == appointmentId && w.NotifiedAt != null))
+            e.NotifiedAt = e.NotifiedAt!.Value.AddMinutes(-minutes);
+        db.SaveChanges();
+    }
+
+    // The real-life scenario: every slot of the day is booked, three customers join the
+    // waitlist for the 12:00 appointment in order, and its customer cancels. The first to
+    // join gets the message immediately, the next one only after 5 minutes pass with the slot
+    // still free, and once someone rebooks nobody else is messaged.
+    [Fact]
+    public async Task FullyBookedDay_CustomerCancels_WaitlistIsMessagedOneAtATimeInJoinOrder()
+    {
+        var token = await RegisterAndLoginBusiness("wl-queue@example.com", "wl-queue-shop");
+        var (businessId, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-queue-shop");
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        // Book the whole day 09:00-18:00 (18 half-hour slots), one customer per slot.
+        var appointmentsByTime = new Dictionary<string, BookAppointmentResponse>();
+        for (var t = TimeSpan.FromHours(9); t < TimeSpan.FromHours(18); t += TimeSpan.FromMinutes(30))
+        {
+            var time = t.ToString(@"hh\:mm");
+            var bookerToken = await GetCustomerToken($"+1555200{(int)t.TotalMinutes:0000}", "Booker", time);
+            var resp = await BookAs(bookerToken, "wl-queue-shop", itemId, dateStr, time, $"Booker {time}");
+            Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+            appointmentsByTime[time] = (await resp.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+        }
+        var availability = await Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"/api/wl-queue-shop/availability?itemId={itemId}&date={dateStr}");
+        Assert.Equal(0, availability.GetProperty("slots").GetArrayLength());
+
+        var target = appointmentsByTime["12:00"];
+        string[] waiterPhones = ["+15553000001", "+15553000002", "+15553000003"];
+        var waiterTokens = new List<string>();
+        foreach (var (phone, i) in waiterPhones.Select((p, i) => (p, i)))
+        {
+            var waiterToken = await GetCustomerToken(phone, $"Waiter{i + 1}", "Queue");
+            waiterTokens.Add(waiterToken);
+            Assert.Equal(HttpStatusCode.OK, (await JoinWaitlistAs(waiterToken, "wl-queue-shop", target.AppointmentId)).StatusCode);
+            await Task.Delay(20); // distinct CreatedAt per join
+        }
+
+        // Only the "slot opened up" messages -- rebooking below also sends that waiter a normal
+        // booking confirmation.
+        List<string> WaiterMessages() => Factory.WhatsAppSender.Sent
+            .Where(s => s.BusinessId == businessId && waiterPhones.Contains(s.Phone) && s.Message.Contains("just opened up"))
+            .Select(s => s.Phone).ToList();
+
+        // The 12:00 customer cancels via their magic link.
+        var cancel = await Client.DeleteAsync($"/api/wl-queue-shop/appointments/{target.AppointmentId}?token={target.CancelToken}");
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        Assert.Equal([waiterPhones[0]], WaiterMessages());
+
+        // Before 5 minutes pass, the queue doesn't move.
+        BackdateNotifications(target.AppointmentId, 4);
+        Assert.Equal(HttpStatusCode.OK, (await AdvanceQueues()).StatusCode);
+        Assert.Equal([waiterPhones[0]], WaiterMessages());
+
+        // 5 minutes later and the slot is still free -> the second in line is messaged.
+        BackdateNotifications(target.AppointmentId, 1);
+        await AdvanceQueues();
+        Assert.Equal(waiterPhones[0..2], WaiterMessages().Order());
+
+        // The second waiter books it -> the third is never messaged, and every entry is closed.
+        var rebook = await BookAs(waiterTokens[1], "wl-queue-shop", itemId, dateStr, "12:00", "Waiter2 Queue");
+        Assert.Equal(HttpStatusCode.Created, rebook.StatusCode);
+        BackdateNotifications(target.AppointmentId, 10);
+        await AdvanceQueues();
+        Assert.Equal(2, WaiterMessages().Count);
+        Assert.DoesNotContain(waiterPhones[2], WaiterMessages());
+
+        using var db = Db();
+        Assert.All(db.WaitlistEntries.Where(w => w.AppointmentId == target.AppointmentId),
+            e => Assert.Equal(WaitlistEntryStatus.RESOLVED, e.Status));
     }
 
     [Fact]

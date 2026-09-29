@@ -33,7 +33,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
             return Unauthorized(new { error = "Unauthorized" });
 
-        var (total, sent, failed) = await waitlist.RetryFailedNotifications();
+        var (total, sent, failed) = await waitlist.AdvanceQueues();
         await db.SaveChangesAsync();
 
         return Ok(new { total, sent, failed });

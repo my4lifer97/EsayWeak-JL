@@ -72,6 +72,10 @@ if (!string.IsNullOrEmpty(builder.Configuration["Twilio:FromNumber"]))
 else
     builder.Services.AddScoped<IOtpSender, DevOtpSender>();
 builder.Services.AddScoped<WaitlistService>();
+// Off in the integration tests (TestWebApplicationFactory) so a timer tick can't send on its own
+// mid-test; they call WaitlistService.AdvanceQueues through the cron endpoint instead.
+if (builder.Configuration.GetValue("Waitlist:WorkerEnabled", true))
+    builder.Services.AddHostedService<WaitlistQueueWorker>();
 builder.Services.AddScoped<AppointmentCancellationService>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
 builder.Services.AddScoped<WhatsAppLinkingService>();

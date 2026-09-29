@@ -70,6 +70,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("WhatsAppBridge__Secret", BridgeSecret);
         Environment.SetEnvironmentVariable("AllowedOrigin", "http://localhost:5173");
         Environment.SetEnvironmentVariable("AppUrl", "http://localhost:5173");
+        // No background WaitlistQueueWorker in tests -- see Program.cs.
+        Environment.SetEnvironmentVariable("Waitlist__WorkerEnabled", "false");
 
         // Force DevEmailSender regardless of the developer's local `dotnet user-secrets` store —
         // Development-environment user secrets share the same UserSecretsId as the real backend
