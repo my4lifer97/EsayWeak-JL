@@ -426,7 +426,9 @@ silently blocks `window.confirm()`/`alert()` (confirm returns false, so the acti
 nothing). Customer-facing confirmations use `components/customer/InlineConfirm.tsx` (on-page
 Yes/No) instead — cancelling an appointment (`AppointmentCard`, `AppointmentPage`) and deleting a
 review (`BusinessReviews`) — and surface the server's error text on failure rather than failing
-silently. Admin pages still use `confirm()` (owners use a regular browser).
+silently. Admin pages use the same idea as a dialog: `components/ConfirmDialog.tsx`'s
+`useConfirmDialog(lang)` returns an async `ask(message, { yesLabel, noLabel })` plus the element to
+render — no `window.confirm()` anywhere in the frontend.
 
 ### Reviews
 `Models/Review.cs` (own file) — `Business` + `CustomerAccount` + `Appointment` FKs, `Rating` 1–5,

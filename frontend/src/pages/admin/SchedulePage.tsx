@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useConfirmDialog } from '../../components/ConfirmDialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
@@ -13,6 +14,7 @@ type BlockedSlot = { id: string; date: string; startTime: string | null; endTime
 export default function SchedulePage() {
   const queryClient = useQueryClient()
   const { language: lang } = useAuth()
+  const [ask, confirmDialog] = useConfirmDialog(lang)
 
   const dayName = (i: number) =>
     new Date(2024, 0, 7 + i).toLocaleDateString(
@@ -154,13 +156,14 @@ export default function SchedulePage() {
   }).flat()
 
   async function cancelScheduledChange(id: string) {
-    if (!confirm(t(lang, 'cancelScheduledChangeConfirm'))) return
+    if (!(await ask(t(lang, 'cancelScheduledChangeConfirm'), { yesLabel: t(lang, 'confirmCancelYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
     await api.delete(`/admin/schedule/preset-schedule/${id}`)
     await refreshAfterPresetChange()
   }
 
   return (
     <div>
+      {confirmDialog}
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'schedule')}</h1>
       {notice && (
         <div role="status" className="fixed bottom-6 inset-x-4 sm:inset-x-auto sm:end-6 z-50 bg-emerald-600 text-white text-sm font-medium rounded-lg px-4 py-3 shadow-lg">

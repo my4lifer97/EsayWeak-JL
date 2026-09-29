@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useConfirmDialog } from '../ConfirmDialog'
 import { api } from '../../lib/api'
 import { t } from '../../lib/i18n'
 
@@ -166,9 +167,13 @@ export default function PresetEditorModal({
     days.some((d) => d.isActive && d.endTime <= d.startTime) ||
     breaks.some((b) => days.find((d) => d.dayOfWeek === b.dayOfWeek)?.isActive && b.endTime <= b.startTime)
 
-  function requestClose() {
-    if (busy) return
-    if (isDirty && !confirm(t(lang, 'discardChangesConfirm'))) return
+  const [ask, confirmDialog, confirmOpen] = useConfirmDialog(lang)
+
+  async function requestClose() {
+    if (busy || confirmOpen) return
+    if (isDirty && !(await ask(t(lang, 'discardChangesConfirm'), {
+      yesLabel: t(lang, 'discardChangesYes'), noLabel: t(lang, 'keepEditing'),
+    }))) return
     onClose()
   }
 
@@ -224,7 +229,9 @@ export default function PresetEditorModal({
   }
 
   async function handleDelete() {
-    if (!savedId || !confirm(t(lang, 'deletePresetConfirm'))) return
+    if (!savedId || !(await ask(t(lang, 'deletePresetConfirm'), {
+      yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo'),
+    }))) return
     setBusy(true); setError('')
     try {
       await api.delete(`/admin/schedule/presets/${savedId}`)
@@ -363,6 +370,7 @@ export default function PresetEditorModal({
           </div>
         </div>
       </div>
+      {confirmDialog}
     </div>
   )
 }

@@ -29,7 +29,6 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useAuth).mockReturnValue({ language: 'EN' } as ReturnType<typeof useAuth>)
-  vi.stubGlobal('confirm', vi.fn(() => true))
 })
 
 describe('ServicesPage', () => {
@@ -90,19 +89,22 @@ describe('ServicesPage', () => {
     renderPage()
     await screen.findByText('Haircut')
 
+    const confirmSpy = vi.spyOn(window, 'confirm')
     await userEvent.click(screen.getByText('Delete'))
+    expect(api.delete).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByText('Yes, delete'))
 
-    expect(confirm).toHaveBeenCalled()
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/admin/items/svc-1'))
+    expect(confirmSpy).not.toHaveBeenCalled()
   })
 
   it('does not delete when the confirmation is declined', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false))
     vi.mocked(api.get).mockResolvedValue({ data: services })
     renderPage()
     await screen.findByText('Haircut')
 
     await userEvent.click(screen.getByText('Delete'))
+    await userEvent.click(screen.getByText('No, keep it'))
 
     expect(api.delete).not.toHaveBeenCalled()
   })

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmDialog } from '../../components/ConfirmDialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
@@ -16,6 +17,7 @@ const EMPTY = { nameEn: '', nameAr: '', nameHe: '', durationMinutes: 30, price: 
 export default function ServicesPage() {
   const queryClient = useQueryClient()
   const { language: lang } = useAuth()
+  const [ask, confirmDialog] = useConfirmDialog(lang)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Item | null>(null)
   const [form, setForm] = useState(EMPTY)
@@ -71,7 +73,7 @@ export default function ServicesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm(t(lang, 'deleteConfirm'))) return
+    if (!(await ask(t(lang, 'deleteConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
     await api.delete(`/admin/items/${id}`)
     queryClient.invalidateQueries({ queryKey: ['services'] })
   }
@@ -92,13 +94,14 @@ export default function ServicesPage() {
   }
 
   async function handleGalleryDelete(photoId: string) {
-    if (!editing || !confirm(t(lang, 'deletePhotoConfirm'))) return
+    if (!editing || !(await ask(t(lang, 'deletePhotoConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
     await api.delete(`/admin/items/${editing.id}/gallery/${photoId}`)
     queryClient.invalidateQueries({ queryKey: ['services'] })
   }
 
   return (
     <div>
+      {confirmDialog}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-ink">{t(lang, 'services')}</h1>
         <button onClick={openCreate} className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">

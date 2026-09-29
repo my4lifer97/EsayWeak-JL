@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useConfirmDialog } from '../../components/ConfirmDialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format } from 'date-fns'
 import { api } from '../../lib/api'
@@ -31,6 +32,7 @@ function nextDateForWeekday(dayOfWeek: number): string {
 
 export default function RecurringAppointmentsPage() {
   const { language: lang } = useAuth()
+  const [ask, confirmDialog] = useConfirmDialog(lang)
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [serviceId, setServiceId] = useState('')
@@ -98,7 +100,7 @@ export default function RecurringAppointmentsPage() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   async function handleDelete(id: string) {
-    if (!confirm(t(lang, 'deleteSeriesConfirm'))) return
+    if (!(await ask(t(lang, 'deleteSeriesConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
     setActionLoadingId(id); setActionError('')
     try {
       await api.delete(`/admin/recurring/${id}`)
@@ -263,6 +265,7 @@ export default function RecurringAppointmentsPage() {
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   )
 }
