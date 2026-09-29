@@ -604,7 +604,7 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   asked and resolves it manually (offer to waitlist / cancel silently / replace customer) from the
   dashboard. The owner picks the channel(s) in Settings — `CancelApprovalNotifyViaWhatsApp`
   (default on) + `CancelApprovalWhatsAppNumber` and/or `CancelApprovalNotifyViaEmail` +
-  `CancelApprovalEmail` (sent through the system `IEmailSender` chain); a blank contact falls back
+  `CancelApprovalEmail` (sent through the platform's Gmail via `IOwnerEmailSender`, the same sender as the platform-admin owner-credentials email — not the Brevo system chain); a blank contact falls back
   to `Business.Phone`/`Business.Email`, and the message is in `Business.Language`. Falls back to
   immediate-cancel automatically if no enabled channel can reach the owner (WhatsApp also needs the
   business's linked `WhatsAppNumber` to send from). `AppointmentStatusHelper` computes a

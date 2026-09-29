@@ -8,7 +8,7 @@ namespace BarberSaas.Api.Services;
 // hook is written once instead of duplicated at every call site. Caller still owns
 // SaveChangesAsync -- keeps this composable with bulk-cancel loops (e.g. deleting a recurring
 // series cancels every future occurrence in one save after the loop).
-public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, IWhatsAppSender whatsAppSender, IEmailSender emailSender, IConfiguration config, ILogger<AppointmentCancellationService> logger)
+public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, IWhatsAppSender whatsAppSender, IOwnerEmailSender ownerEmailSender, IConfiguration config, ILogger<AppointmentCancellationService> logger)
 {
     public async Task CancelAsync(Appointment appointment, bool notifyWaitlist)
     {
@@ -89,12 +89,14 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             }
         }
 
+        // Through the platform's own Gmail (IOwnerEmailSender) -- the same sender as the owner
+        // credentials email from the platform-admin panel, not the Brevo system-mail chain.
         if (viaEmail)
         {
             try
             {
                 var subject = I18nService.T(lang, "email.ownerCancellationApprovalSubject", new() { ["businessName"] = business.Name });
-                await emailSender.SendAsync(ownerEmail!, subject, message);
+                await ownerEmailSender.SendAsync(ownerEmail!, subject, message);
             }
             catch (Exception ex)
             {

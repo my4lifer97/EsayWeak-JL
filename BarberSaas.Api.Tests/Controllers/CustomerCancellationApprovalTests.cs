@@ -248,7 +248,7 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
 
         var whatsApp = Factory.WhatsAppSender.Sent.Single(s => s.BusinessId == businessId && s.Phone == "+15559990077");
         Assert.Contains("ביטל את התור", whatsApp.Message);
-        var email = Factory.Email.Sent.Single(e => e.Email == "boss@example.com");
+        var email = Factory.OwnerEmail.Sent.Single(e => e.Email == "boss@example.com");
         Assert.Contains("ביטול ממתין להחלטתך", email.Subject);
         Assert.Contains("ביטל את התור", email.Body);
         // Not also to the business phone -- the dedicated number replaces it.
@@ -270,7 +270,7 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         var (appointmentId, status) = await BookAndCustomerCancel("approval-email-shop", itemId, date, "+15551110102");
         Assert.Equal(HttpStatusCode.OK, status);
 
-        Assert.Single(Factory.Email.Sent, e => e.Email == "approval-email@example.com" && e.Subject.Contains("waiting for your decision"));
+        Assert.Single(Factory.OwnerEmail.Sent, e => e.Email == "approval-email@example.com" && e.Subject.Contains("waiting for your decision"));
         Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == "+15559990000");
 
         using var db = Db();
