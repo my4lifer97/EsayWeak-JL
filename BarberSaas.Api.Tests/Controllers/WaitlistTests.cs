@@ -273,6 +273,57 @@ public class WaitlistTests : IntegrationTestBase
             e => Assert.Equal(WaitlistEntryStatus.RESOLVED, e.Status));
     }
 
+    private Task<HttpResponseMessage> SendWhatsAppAs(string businessId, string fromPhone, string message)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/whatsapp/bridge/inbound")
+        {
+            Content = JsonContent.Create(new WhatsAppController.BridgeInboundRequest(businessId, fromPhone, null, message)),
+        };
+        req.Headers.Add("X-Bridge-Secret", TestWebApplicationFactory.BridgeSecret);
+        return Client.SendAsync(req);
+    }
+
+    // Each waiter gets the slot-opened message in the language of the last WhatsApp message they
+    // sent (a bare "1" carries no language and doesn't change it); one who never wrote gets the
+    // business's language (English here).
+    [Fact]
+    public async Task WaitlistMessage_UsesLanguageOfCustomersLastWhatsAppMessage()
+    {
+        var token = await RegisterAndLoginBusiness("wl-lang@example.com", "wl-lang-shop");
+        var (businessId, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-lang-shop");
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        var bookerToken = await GetCustomerToken("+15554000001");
+        var booked = await BookAs(bookerToken, "wl-lang-shop", itemId, dateStr, "09:00");
+        var appt = (await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+
+        string arabicPhone = "+15554000002", hebrewPhone = "+15554000003", silentPhone = "+15554000004";
+        foreach (var phone in new[] { arabicPhone, hebrewPhone, silentPhone })
+        {
+            await JoinWaitlistAs(await GetCustomerToken(phone), "wl-lang-shop", appt.AppointmentId);
+            await Task.Delay(20);
+        }
+
+        await SendWhatsAppAs(businessId, hebrewPhone, "hello");
+        await SendWhatsAppAs(businessId, arabicPhone, "مرحبا");
+        await SendWhatsAppAs(businessId, arabicPhone, "1");
+        await SendWhatsAppAs(businessId, hebrewPhone, "שלום");
+
+        var cancel = await Client.DeleteAsync($"/api/wl-lang-shop/appointments/{appt.AppointmentId}?token={appt.CancelToken}");
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        BackdateNotifications(appt.AppointmentId, 5);
+        await AdvanceQueues();
+        BackdateNotifications(appt.AppointmentId, 5);
+        await AdvanceQueues();
+
+        string SlotMessageTo(string phone) => Factory.WhatsAppSender.Sent
+            .Single(m => m.BusinessId == businessId && m.Phone == phone && m.Message.Contains("/wl-lang-shop/book?")).Message;
+
+        Assert.Contains("أصبح هناك موعد متاح", SlotMessageTo(arabicPhone));
+        Assert.Contains("התפנה תור", SlotMessageTo(hebrewPhone));
+        Assert.Contains("just opened up", SlotMessageTo(silentPhone));
+    }
+
     [Fact]
     public async Task OwnerCancelsSilently_SendsNoNotification()
     {

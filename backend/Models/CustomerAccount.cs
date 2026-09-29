@@ -9,6 +9,11 @@ public class CustomerAccount
     public string Name { get; set; } = "";
     public string FamilyName { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // "HE"/"AR"/"EN", detected from the last WhatsApp message this phone sent to any business
+    // (WhatsAppController.DetectLanguage) -- outbound messages we send on our own initiative, like
+    // the waitlist "slot opened up" one, go out in it. Null until they've written something with
+    // a language signal; callers then fall back to the business's language.
+    public string? LastMessageLanguage { get; set; }
 
     public ICollection<Customer> Profiles { get; set; } = [];
     public ICollection<Follow> Follows { get; set; } = [];

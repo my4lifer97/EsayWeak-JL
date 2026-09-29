@@ -39,13 +39,6 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
         if (entries.Count == 0) return (0, 0);
 
         var item = await db.Items.FindAsync(cancelledAppointment.ItemId);
-        var lang = business.Language.ToString();
-        var itemName = lang switch
-        {
-            "AR" => item?.NameAr,
-            "HE" => item?.NameHe,
-            _ => item?.NameEn,
-        };
 
         var appUrl = config["AppUrl"] ?? "";
         var dateStr = cancelledAppointment.Date.ToString("yyyy-MM-dd");
@@ -56,6 +49,17 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
         {
             try
             {
+                // In the language of the customer's last WhatsApp message, else the business's
+                // chatbot/storefront language.
+                var lang = entry.CustomerAccount.LastMessageLanguage
+                    ?? (business.ChatbotDefaultLanguage ?? business.Language).ToString();
+                var itemName = lang switch
+                {
+                    "AR" => item?.NameAr,
+                    "HE" => item?.NameHe,
+                    _ => item?.NameEn,
+                };
+                if (string.IsNullOrWhiteSpace(itemName)) itemName = item?.NameEn;
                 var message = I18nService.T(lang, "whatsapp.waitlistSlotOpen", new()
                 {
                     ["customerName"] = entry.CustomerAccount.Name,

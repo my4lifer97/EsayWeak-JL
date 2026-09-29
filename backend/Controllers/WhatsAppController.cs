@@ -127,6 +127,10 @@ public class WhatsAppController(
     // the old empty-TwiML-response behavior.
     private async Task<string?> ProcessMessageAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
+        // Before the ChatbotEnabled check -- the customer's language matters for our own later
+        // messages (waitlist) even when this business answers by hand.
+        await RememberCustomerLanguage(fromPhone, incomingMsg);
+
         // The business wants to reply themselves instead of the automated flow -- send no message
         // at all, rather than a fixed "not available" reply.
         if (!business.ChatbotEnabled)
@@ -566,6 +570,21 @@ public class WhatsAppController(
             _ => c,
         }).ToArray();
         return new string(chars);
+    }
+
+    // Only a message with a real language signal updates it -- a bare "1" keeps whatever the
+    // customer last wrote in.
+    private async Task RememberCustomerLanguage(string fromPhone, string incomingMsg)
+    {
+        var detected = DetectLanguage(incomingMsg);
+        if (detected is null) return;
+
+        var phone = PhoneNormalizer.Normalize(fromPhone);
+        var account = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == phone);
+        if (account is null || account.LastMessageLanguage == detected) return;
+
+        account.LastMessageLanguage = detected;
+        await db.SaveChangesAsync();
     }
 
     private async Task<string> ResolveLanguage(string businessId, string phone, string incomingMsg, string businessDefault)

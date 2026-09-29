@@ -581,7 +581,11 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   in-process `BackgroundService` polling `WaitlistService.AdvanceQueues` every
   `Waitlist:WorkerPollSeconds` (default 30) — the 15-minute external cron is too coarse for a
   5-minute gap. Disabled in tests via `Waitlist__WorkerEnabled=false`. A slot whose start time
-  already passed is never offered.
+  already passed is never offered. Each message is written in the language of that customer's
+  **last WhatsApp message** (`CustomerAccount.LastMessageLanguage`, set by
+  `WhatsAppController.RememberCustomerLanguage` on every inbound message with a Hebrew/Arabic/Latin
+  signal, even when the business's chatbot is off), falling back to the business's
+  `ChatbotDefaultLanguage ?? Language`.
 - **`RequireApprovalOnCustomerCancel`** — changes what happens when a *customer* cancels (magic-link,
   logged-in "My Bookings", or the WhatsApp `cancel` keyword — all three now route through
   `AppointmentCancellationService.CancelFromCustomerAsync` instead of flipping status directly).
