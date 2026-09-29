@@ -53,9 +53,18 @@ public class Business
 
     public bool WaitlistEnabled { get; set; } = false;
     // When true, a customer cancelling doesn't finalize the cancellation immediately -- the slot
-    // is frozen (Appointment.PendingCancellationApproval) and the owner gets a WhatsApp message
-    // to decide (offer to waitlist / cancel silently / replace customer) via the dashboard.
+    // is frozen (Appointment.PendingCancellationApproval) and the owner is asked (WhatsApp and/or
+    // email, below) to decide (offer to waitlist / cancel silently / replace customer) via the
+    // dashboard.
     public bool RequireApprovalOnCustomerCancel { get; set; } = false;
+    // How the owner is asked -- either channel or both, in the business's Language. A blank
+    // number/address falls back to the business's own Phone/Email. WhatsApp is on by default
+    // (the original, only behavior). If no enabled channel can actually reach the owner, the
+    // cancellation just goes through immediately (AppointmentCancellationService).
+    public bool CancelApprovalNotifyViaWhatsApp { get; set; } = true;
+    public string? CancelApprovalWhatsAppNumber { get; set; }
+    public bool CancelApprovalNotifyViaEmail { get; set; } = false;
+    public string? CancelApprovalEmail { get; set; }
 
     // WhatsApp chatbot customization ("Simple Mode" per the product spec). When ChatbotEnabled is
     // false, WhatsAppController sends no automated reply at all -- the business wants to answer

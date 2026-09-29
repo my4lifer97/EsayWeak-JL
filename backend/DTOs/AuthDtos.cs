@@ -45,7 +45,9 @@ public record SettingsDto(
     string? ChatbotDefaultLanguage,
     bool ChatbotInquiryEnabled, bool InquiryNotifyViaWhatsApp, string? InquiryWhatsAppNumber,
     bool InquiryNotifyViaEmail, string? InquiryEmail,
-    string? City, string? AddressLine, string? MapUrl, bool IsListed);
+    string? City, string? AddressLine, string? MapUrl, bool IsListed,
+    bool CancelApprovalNotifyViaWhatsApp, string? CancelApprovalWhatsAppNumber,
+    bool CancelApprovalNotifyViaEmail, string? CancelApprovalEmail, string OwnerEmail);
 
 public record UpdateSettingsRequest(
     string? Name, string? Phone, string? Description, string? Language,
@@ -61,7 +63,9 @@ public record UpdateSettingsRequest(
     // The settings form always submits every field, so (like WaitlistEnabled) these are assigned
     // unconditionally rather than treated as "omitted when null". IsListed defaults true to match
     // Business.IsListed's default.
-    string? City = null, string? AddressLine = null, string? MapUrl = null, bool IsListed = true);
+    string? City = null, string? AddressLine = null, string? MapUrl = null, bool IsListed = true,
+    bool CancelApprovalNotifyViaWhatsApp = true, string? CancelApprovalWhatsAppNumber = null,
+    bool CancelApprovalNotifyViaEmail = false, string? CancelApprovalEmail = null);
 
 public record ChatbotInquiryDto(string Id, string CustomerPhone, string? CustomerName, string Message, bool IsRead, DateTime CreatedAt);
 

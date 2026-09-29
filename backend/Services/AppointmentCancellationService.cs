@@ -8,7 +8,7 @@ namespace BarberSaas.Api.Services;
 // hook is written once instead of duplicated at every call site. Caller still owns
 // SaveChangesAsync -- keeps this composable with bulk-cancel loops (e.g. deleting a recurring
 // series cancels every future occurrence in one save after the loop).
-public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, IWhatsAppSender whatsAppSender, IConfiguration config, ILogger<AppointmentCancellationService> logger)
+public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, IWhatsAppSender whatsAppSender, IEmailSender emailSender, IConfiguration config, ILogger<AppointmentCancellationService> logger)
 {
     public async Task CancelAsync(Appointment appointment, bool notifyWaitlist)
     {
@@ -26,11 +26,24 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
     public async Task CancelFromCustomerAsync(Appointment appointment)
     {
         var business = await db.Businesses.FindAsync(appointment.BusinessId);
-        var canNotifyOwner = business is not null && business.RequireApprovalOnCustomerCancel
-            && business.WhatsAppNumber is not null
-            && !string.IsNullOrWhiteSpace(business.Phone);
+        if (business is null || !business.RequireApprovalOnCustomerCancel)
+        {
+            await CancelAsync(appointment, notifyWaitlist: true);
+            return;
+        }
 
-        if (!canNotifyOwner)
+        // Each channel the owner turned on, if it can actually reach them. WhatsApp also needs the
+        // business's own bot number to send from; a blank contact falls back to the business's
+        // own Phone/Email.
+        var ownerWhatsApp = business.CancelApprovalWhatsAppNumber ?? business.Phone;
+        var viaWhatsApp = business.CancelApprovalNotifyViaWhatsApp
+            && business.WhatsAppNumber is not null
+            && !string.IsNullOrWhiteSpace(ownerWhatsApp);
+        var ownerEmail = business.CancelApprovalEmail ?? business.Email;
+        var viaEmail = business.CancelApprovalNotifyViaEmail && !string.IsNullOrWhiteSpace(ownerEmail);
+
+        // Can't ask anyone -- don't freeze a slot the owner will never hear about.
+        if (!viaWhatsApp && !viaEmail)
         {
             await CancelAsync(appointment, notifyWaitlist: true);
             return;
@@ -40,7 +53,8 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
 
         var customer = await db.Customers.FindAsync(appointment.CustomerId);
         var item = await db.Items.FindAsync(appointment.ItemId);
-        var lang = business!.Language.ToString();
+        // The language the owner picked in Settings (also their dashboard's language).
+        var lang = business.Language.ToString();
         var itemName = lang switch
         {
             "AR" => item?.NameAr,
@@ -58,18 +72,35 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             ["url"] = $"{appUrl}/admin/appointments",
         });
 
-        // Best-effort, like every other WhatsApp send in this app -- the appointment must stay
-        // frozen (PendingCancellationApproval already set above) regardless of whether the owner
-        // could actually be reached, or a bridge outage/expired session would silently drop the
-        // customer's cancellation request entirely (500, nothing persisted).
-        try
+        // Best-effort on each channel, like every other notification in this app -- the
+        // appointment must stay frozen (PendingCancellationApproval already set above) regardless
+        // of whether the owner could actually be reached, or a bridge/email outage would silently
+        // drop the customer's cancellation request entirely (500, nothing persisted).
+        if (viaWhatsApp)
         {
-            await whatsAppSender.SendAsync(business, business.Phone!, message);
+            try
+            {
+                await whatsAppSender.SendAsync(business, ownerWhatsApp!, message);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to WhatsApp owner of business {BusinessId} about a pending cancellation approval for appointment {AppointmentId}",
+                    business.Id, appointment.Id);
+            }
         }
-        catch (Exception ex)
+
+        if (viaEmail)
         {
-            logger.LogError(ex, "Failed to notify owner of business {BusinessId} about a pending cancellation approval for appointment {AppointmentId}",
-                business.Id, appointment.Id);
+            try
+            {
+                var subject = I18nService.T(lang, "email.ownerCancellationApprovalSubject", new() { ["businessName"] = business.Name });
+                await emailSender.SendAsync(ownerEmail!, subject, message);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to email owner of business {BusinessId} about a pending cancellation approval for appointment {AppointmentId}",
+                    business.Id, appointment.Id);
+            }
         }
     }
 }

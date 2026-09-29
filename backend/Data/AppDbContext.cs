@@ -193,6 +193,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Business>()
             .Property(x => x.ChatbotEnabled)
             .HasDefaultValue(true);
+        // Same reasoning -- existing businesses were already asked via WhatsApp.
+        b.Entity<Business>()
+            .Property(x => x.CancelApprovalNotifyViaWhatsApp)
+            .HasDefaultValue(true);
         b.Entity<Business>()
             .Property(x => x.BusinessModel)
             .HasConversion<string>()

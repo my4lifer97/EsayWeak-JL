@@ -209,6 +209,92 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         Assert.Equal("Walk-in Replacement", stored.Customer.Name);
     }
 
+    private async Task SetApprovalChannels(string token, bool viaWhatsApp, string? whatsAppNumber, bool viaEmail, string? email, string? language = null)
+    {
+        Authorize(Client, token);
+        var resp = await Client.PatchAsJsonAsync("/api/admin/settings", new
+        {
+            language,
+            cancelApprovalNotifyViaWhatsApp = viaWhatsApp,
+            cancelApprovalWhatsAppNumber = whatsAppNumber,
+            cancelApprovalNotifyViaEmail = viaEmail,
+            cancelApprovalEmail = email,
+        });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Client.DefaultRequestHeaders.Authorization = null;
+    }
+
+    private async Task<(string AppointmentId, HttpStatusCode Status)> BookAndCustomerCancel(string slug, string itemId, DateTime date, string phone)
+    {
+        var customerToken = await GetCustomerToken(phone);
+        var booked = await BookAs(customerToken, slug, itemId, date.ToString("yyyy-MM-dd"), "09:00");
+        var appt = (await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+        var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt.AppointmentId}/cancel");
+        cancelReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        return (appt.AppointmentId, (await Client.SendAsync(cancelReq)).StatusCode);
+    }
+
+    // Both channels on, each with its own contact -- the owner is asked on both, in the language
+    // they picked in Settings (Hebrew here).
+    [Fact]
+    public async Task CustomerCancel_ApprovalViaWhatsAppAndEmail_AsksOwnerOnBothInTheirLanguage()
+    {
+        var token = await RegisterAndLoginBusiness("approval-both@example.com", "approval-both-shop");
+        var (businessId, itemId, date) = await SeedApprovalBusiness(token, "approval-both-shop");
+        await SetApprovalChannels(token, true, "+15559990077", true, "boss@example.com", language: "HE");
+
+        var (appointmentId, status) = await BookAndCustomerCancel("approval-both-shop", itemId, date, "+15551110101");
+        Assert.Equal(HttpStatusCode.OK, status);
+
+        var whatsApp = Factory.WhatsAppSender.Sent.Single(s => s.BusinessId == businessId && s.Phone == "+15559990077");
+        Assert.Contains("ביטל את התור", whatsApp.Message);
+        var email = Factory.Email.Sent.Single(e => e.Email == "boss@example.com");
+        Assert.Contains("ביטול ממתין להחלטתך", email.Subject);
+        Assert.Contains("ביטל את התור", email.Body);
+        // Not also to the business phone -- the dedicated number replaces it.
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == "+15559990000");
+
+        using var db = Db();
+        Assert.True(db.Appointments.Single(a => a.Id == appointmentId).PendingCancellationApproval);
+    }
+
+    // Email only works even with no WhatsApp bot number linked at all; a blank address falls back
+    // to the account email.
+    [Fact]
+    public async Task CustomerCancel_ApprovalViaEmailOnly_FreezesWithoutWhatsApp()
+    {
+        var token = await RegisterAndLoginBusiness("approval-email@example.com", "approval-email-shop");
+        var (businessId, itemId, date) = await SeedApprovalBusiness(token, "approval-email-shop", configureTwilio: false);
+        await SetApprovalChannels(token, false, null, true, null);
+
+        var (appointmentId, status) = await BookAndCustomerCancel("approval-email-shop", itemId, date, "+15551110102");
+        Assert.Equal(HttpStatusCode.OK, status);
+
+        Assert.Single(Factory.Email.Sent, e => e.Email == "approval-email@example.com" && e.Subject.Contains("waiting for your decision"));
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == "+15559990000");
+
+        using var db = Db();
+        var stored = db.Appointments.Single(a => a.Id == appointmentId);
+        Assert.Equal(AppointmentStatus.CONFIRMED, stored.Status);
+        Assert.True(stored.PendingCancellationApproval);
+    }
+
+    [Fact]
+    public async Task CustomerCancel_ApprovalWithBothChannelsOff_CancelsImmediately()
+    {
+        var token = await RegisterAndLoginBusiness("approval-none@example.com", "approval-none-shop");
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-none-shop");
+        await SetApprovalChannels(token, false, null, false, null);
+
+        var (appointmentId, status) = await BookAndCustomerCancel("approval-none-shop", itemId, date, "+15551110103");
+        Assert.Equal(HttpStatusCode.OK, status);
+
+        using var db = Db();
+        var stored = db.Appointments.Single(a => a.Id == appointmentId);
+        Assert.Equal(AppointmentStatus.CANCELLED, stored.Status);
+        Assert.False(stored.PendingCancellationApproval);
+    }
+
     [Fact]
     public async Task CustomerCancel_ApprovalRequiredButTwilioNotConfigured_FallsBackToImmediateCancel()
     {

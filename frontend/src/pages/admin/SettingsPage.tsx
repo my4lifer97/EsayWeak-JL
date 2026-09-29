@@ -16,6 +16,11 @@ type BusinessSettings = {
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
   waitlistEnabled: boolean
   requireApprovalOnCustomerCancel: boolean
+  cancelApprovalNotifyViaWhatsApp: boolean
+  cancelApprovalWhatsAppNumber: string | null
+  cancelApprovalNotifyViaEmail: boolean
+  cancelApprovalEmail: string | null
+  ownerEmail: string
   city: string | null
   addressLine: string | null
   mapUrl: string | null
@@ -41,6 +46,10 @@ export default function SettingsPage() {
   // would widen every one of those reads to `string | boolean`.
   const [waitlistEnabled, setWaitlistEnabled] = useState(false)
   const [requireApprovalOnCustomerCancel, setRequireApprovalOnCustomerCancel] = useState(false)
+  const [cancelApprovalNotifyViaWhatsApp, setCancelApprovalNotifyViaWhatsApp] = useState(true)
+  const [cancelApprovalNotifyViaEmail, setCancelApprovalNotifyViaEmail] = useState(false)
+  const [cancelApprovalWhatsAppNumber, setCancelApprovalWhatsAppNumber] = useState('')
+  const [cancelApprovalEmail, setCancelApprovalEmail] = useState('')
   const [isListed, setIsListed] = useState(true)
   const [initialized, setInitialized] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -83,6 +92,10 @@ export default function SettingsPage() {
     })
     setWaitlistEnabled(business.waitlistEnabled)
     setRequireApprovalOnCustomerCancel(business.requireApprovalOnCustomerCancel)
+    setCancelApprovalNotifyViaWhatsApp(business.cancelApprovalNotifyViaWhatsApp)
+    setCancelApprovalNotifyViaEmail(business.cancelApprovalNotifyViaEmail)
+    setCancelApprovalWhatsAppNumber(business.cancelApprovalWhatsAppNumber ?? '')
+    setCancelApprovalEmail(business.cancelApprovalEmail ?? '')
     setIsListed(business.isListed)
     setLang(business.language)
     setInitialized(true)
@@ -97,6 +110,10 @@ export default function SettingsPage() {
       maxBookingsPerWeek: form.maxBookingsPerWeek ? Number(form.maxBookingsPerWeek) : null,
       waitlistEnabled,
       requireApprovalOnCustomerCancel,
+      cancelApprovalNotifyViaWhatsApp,
+      cancelApprovalWhatsAppNumber: cancelApprovalWhatsAppNumber || null,
+      cancelApprovalNotifyViaEmail,
+      cancelApprovalEmail: cancelApprovalEmail || null,
       city: form.city || null,
       addressLine: form.addressLine || null,
       mapUrl: form.mapUrl || null,
@@ -333,6 +350,44 @@ export default function SettingsPage() {
                 <span className="block text-muted text-sm mt-0.5">{t(lang, 'customerCancelApprovalHint')}</span>
               </span>
             </label>
+            {requireApprovalOnCustomerCancel && (
+              <div className="ms-7 mt-3 space-y-2">
+                <p className="text-sm font-medium text-ink">{t(lang, 'cancelApprovalHowTitle')}</p>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={cancelApprovalNotifyViaWhatsApp}
+                    onChange={(e) => setCancelApprovalNotifyViaWhatsApp(e.target.checked)}
+                    className="w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
+                  <span className="text-sm text-ink">{t(lang, 'inquiryNotifyViaWhatsApp')}</span>
+                </label>
+                {cancelApprovalNotifyViaWhatsApp && (
+                  <>
+                    <input value={cancelApprovalWhatsAppNumber} type="tel" aria-label={t(lang, 'inquiryNotifyViaWhatsApp')}
+                      onChange={(e) => setCancelApprovalWhatsAppNumber(e.target.value)}
+                      placeholder={form.phone || t(lang, 'inquiryWhatsAppNumberPlaceholder')}
+                      className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
+                    {!business?.whatsAppNumber && (
+                      <p className="text-amber-700 dark:text-amber-400 text-xs">{t(lang, 'cancelApprovalNeedsBotNumber')}</p>
+                    )}
+                  </>
+                )}
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={cancelApprovalNotifyViaEmail}
+                    onChange={(e) => setCancelApprovalNotifyViaEmail(e.target.checked)}
+                    className="w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
+                  <span className="text-sm text-ink">{t(lang, 'inquiryNotifyViaEmail')}</span>
+                </label>
+                {cancelApprovalNotifyViaEmail && (
+                  <input value={cancelApprovalEmail} type="email" aria-label={t(lang, 'inquiryNotifyViaEmail')}
+                    onChange={(e) => setCancelApprovalEmail(e.target.value)}
+                    placeholder={business?.ownerEmail || t(lang, 'inquiryEmailPlaceholder')}
+                    className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
+                )}
+                <p className="text-muted text-xs">{t(lang, 'cancelApprovalContactHint')}</p>
+                {!cancelApprovalNotifyViaWhatsApp && !cancelApprovalNotifyViaEmail && (
+                  <p className="text-red-600 text-xs">{t(lang, 'cancelApprovalNoChannel')}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

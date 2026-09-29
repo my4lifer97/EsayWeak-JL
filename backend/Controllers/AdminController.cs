@@ -50,7 +50,9 @@ public class AdminController(
             b.ChatbotDefaultLanguage?.ToString(),
             b.ChatbotInquiryEnabled, b.InquiryNotifyViaWhatsApp, b.InquiryWhatsAppNumber,
             b.InquiryNotifyViaEmail, b.InquiryEmail,
-            b.City, b.AddressLine, b.MapUrl, b.IsListed));
+            b.City, b.AddressLine, b.MapUrl, b.IsListed,
+            b.CancelApprovalNotifyViaWhatsApp, b.CancelApprovalWhatsAppNumber,
+            b.CancelApprovalNotifyViaEmail, b.CancelApprovalEmail, b.Email));
     }
 
     [HttpPost("settings/logo")]
@@ -139,6 +141,10 @@ public class AdminController(
         var oldAddressLine = b.AddressLine;
         var oldMapUrl = b.MapUrl;
         var oldIsListed = b.IsListed;
+        var oldCancelApprovalNotifyViaWhatsApp = b.CancelApprovalNotifyViaWhatsApp;
+        var oldCancelApprovalWhatsAppNumber = b.CancelApprovalWhatsAppNumber;
+        var oldCancelApprovalNotifyViaEmail = b.CancelApprovalNotifyViaEmail;
+        var oldCancelApprovalEmail = b.CancelApprovalEmail;
 
         if (req.Name is not null) b.Name = req.Name;
         if (req.Phone is not null) b.Phone = req.Phone;
@@ -176,6 +182,10 @@ public class AdminController(
         if (Has("addressLine")) b.AddressLine = string.IsNullOrWhiteSpace(req.AddressLine) ? null : req.AddressLine.Trim();
         if (Has("mapUrl")) b.MapUrl = mapUrl;
         if (Has("isListed")) b.IsListed = req.IsListed;
+        if (Has("cancelApprovalNotifyViaWhatsApp")) b.CancelApprovalNotifyViaWhatsApp = req.CancelApprovalNotifyViaWhatsApp;
+        if (Has("cancelApprovalWhatsAppNumber")) b.CancelApprovalWhatsAppNumber = string.IsNullOrWhiteSpace(req.CancelApprovalWhatsAppNumber) ? null : req.CancelApprovalWhatsAppNumber.Trim();
+        if (Has("cancelApprovalNotifyViaEmail")) b.CancelApprovalNotifyViaEmail = req.CancelApprovalNotifyViaEmail;
+        if (Has("cancelApprovalEmail")) b.CancelApprovalEmail = string.IsNullOrWhiteSpace(req.CancelApprovalEmail) ? null : req.CancelApprovalEmail.Trim();
 
         await db.SaveChangesAsync();
 
@@ -209,6 +219,10 @@ public class AdminController(
         if (b.AddressLine != oldAddressLine) changes.Add("address");
         if (b.MapUrl != oldMapUrl) changes.Add("map link");
         if (b.IsListed != oldIsListed) changes.Add($"directory listing {(b.IsListed ? "on" : "off")}");
+        if (b.CancelApprovalNotifyViaWhatsApp != oldCancelApprovalNotifyViaWhatsApp) changes.Add($"cancel-approval WhatsApp notify {(b.CancelApprovalNotifyViaWhatsApp ? "on" : "off")}");
+        if (b.CancelApprovalWhatsAppNumber != oldCancelApprovalWhatsAppNumber) changes.Add("cancel-approval WhatsApp number");
+        if (b.CancelApprovalNotifyViaEmail != oldCancelApprovalNotifyViaEmail) changes.Add($"cancel-approval email notify {(b.CancelApprovalNotifyViaEmail ? "on" : "off")}");
+        if (b.CancelApprovalEmail != oldCancelApprovalEmail) changes.Add("cancel-approval email address");
 
         this.SetActivityDetail(changes.Count > 0 ? $"Updated settings: {string.Join(", ", changes)}" : "Updated settings (no fields changed)");
 

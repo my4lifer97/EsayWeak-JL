@@ -601,9 +601,13 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   **On**: the cancellation doesn't finalize — `Appointment.PendingCancellationApproval` is set true
   and `Status` deliberately **stays `CONFIRMED`** (no new status enum value), so the slot keeps
   blocking availability with zero changes needed to `AvailabilityService`; the business is instead
-  sent a WhatsApp message and resolves it manually (offer to waitlist / cancel silently / replace
-  customer) from the dashboard. Falls back to immediate-cancel automatically if the business has no
-  Twilio number or phone configured (nobody to notify). `AppointmentStatusHelper` computes a
+  asked and resolves it manually (offer to waitlist / cancel silently / replace customer) from the
+  dashboard. The owner picks the channel(s) in Settings — `CancelApprovalNotifyViaWhatsApp`
+  (default on) + `CancelApprovalWhatsAppNumber` and/or `CancelApprovalNotifyViaEmail` +
+  `CancelApprovalEmail` (sent through the system `IEmailSender` chain); a blank contact falls back
+  to `Business.Phone`/`Business.Email`, and the message is in `Business.Language`. Falls back to
+  immediate-cancel automatically if no enabled channel can reach the owner (WhatsApp also needs the
+  business's linked `WhatsAppNumber` to send from). `AppointmentStatusHelper` computes a
   separate customer-facing status so a frozen appointment still reads as "CANCELLED" to the customer
   despite being `CONFIRMED` internally.
 
