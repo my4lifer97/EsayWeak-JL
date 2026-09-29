@@ -21,16 +21,7 @@ public class TwilioOtpSender(IConfiguration config) : IOtpSender
         TwilioClient.Init(accountSid, authToken);
         return MessageResource.CreateAsync(
             from: new Twilio.Types.PhoneNumber(fromNumber),
-            to: new Twilio.Types.PhoneNumber(ToE164(phone)),
+            to: new Twilio.Types.PhoneNumber(PhoneNormalizer.ToE164(phone)),
             body: $"Your EsayWeek verification code is {code}");
     }
-
-    // PhoneNormalizer.Normalize (used for every stored phone, so it can't change without
-    // breaking existing phone-matching everywhere else) keeps a "+" only if the customer typed
-    // one -- a bare local number like "0501234567" comes through with no country code. Twilio's
-    // "to" number must be E.164. The business is Israel-based (Hebrew/Arabic UI, ILS pricing,
-    // Cardcom), so a country-code-less number is assumed to be a local Israeli mobile number
-    // (leading 0 dropped in favor of +972).
-    private static string ToE164(string normalizedPhone) =>
-        normalizedPhone.StartsWith('+') ? normalizedPhone : $"+972{normalizedPhone.TrimStart('0')}";
 }

@@ -9,6 +9,9 @@ namespace BarberSaas.Api.Services;
 // approval ever happens later -- see the Twilio Trust Hub rejection note in project history.
 public class BridgeWhatsAppSender(IWhatsAppBridgeClient bridge) : IWhatsAppSender
 {
+    // E.164 always -- the bridge builds the WhatsApp id straight from the digits, and a local-format
+    // number (e.g. an owner's phone typed as "0551234567" in Settings) names no real account, which
+    // made the send hang until the HttpClient timeout instead of failing.
     public Task SendAsync(Business business, string toPhone, string message) =>
-        bridge.SendAsync(business.Id, toPhone, message);
+        bridge.SendAsync(business.Id, PhoneNormalizer.ToE164(toPhone), message);
 }

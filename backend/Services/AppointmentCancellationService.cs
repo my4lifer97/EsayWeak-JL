@@ -75,8 +75,9 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
         // Best-effort on each channel, like every other notification in this app -- the
         // appointment must stay frozen (PendingCancellationApproval already set above) regardless
         // of whether the owner could actually be reached, or a bridge/email outage would silently
-        // drop the customer's cancellation request entirely (500, nothing persisted).
-        if (viaWhatsApp)
+        // drop the customer's cancellation request entirely (500, nothing persisted). Both run at
+        // once so the customer waits for the slower one, not the sum.
+        async Task SendWhatsApp()
         {
             try
             {
@@ -91,7 +92,7 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
 
         // Through the platform's own Gmail (IOwnerEmailSender) -- the same sender as the owner
         // credentials email from the platform-admin panel, not the Brevo system-mail chain.
-        if (viaEmail)
+        async Task SendEmail()
         {
             try
             {
@@ -104,5 +105,7 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
                     business.Id, appointment.Id);
             }
         }
+
+        await Task.WhenAll(viaWhatsApp ? SendWhatsApp() : Task.CompletedTask, viaEmail ? SendEmail() : Task.CompletedTask);
     }
 }

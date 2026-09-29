@@ -58,6 +58,9 @@ builder.Services.AddHttpClient<IWhatsAppBridgeClient, WhatsAppBridgeClient>(clie
 {
     client.BaseAddress = new Uri(builder.Configuration["WhatsAppBridge:Url"] ?? "http://localhost:3001");
     client.DefaultRequestHeaders.Add("X-Bridge-Secret", builder.Configuration["WhatsAppBridge:Secret"] ?? "");
+    // Sends happen inside customer-facing requests (cancel, book) -- a hung bridge used to keep the
+    // customer's button spinning for the default 100s. A healthy send takes about a second.
+    client.Timeout = TimeSpan.FromSeconds(15);
 });
 builder.Services.AddScoped<IWhatsAppSender, BridgeWhatsAppSender>();
 // Optional LLM layer on top of the WhatsApp chatbot (see WhatsAppController.ProcessMessageAsync) --
