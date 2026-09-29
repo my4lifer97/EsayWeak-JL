@@ -6,6 +6,7 @@ import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
+import InlineConfirm from './InlineConfirm'
 
 type GalleryPhoto = { id: string; url: string }
 export type Appointment = {
@@ -44,6 +45,8 @@ export default function AppointmentCard({
   const [busy, setBusy] = useState(false)
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoError, setPhotoError] = useState('')
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const { data: slots = [], isFetching: loadingSlots } = useQuery<Slot[]>({
     queryKey: ['reschedule-slots', appt.id, rescheduleDate],
@@ -54,31 +57,41 @@ export default function AppointmentCard({
         .then((r) => r.data.slots),
   })
 
+  function errorText(err: unknown) {
+    return (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t(lang, 'somethingWentWrong')
+  }
+
   async function cancelAppointment() {
-    if (!confirm(t(lang, 'cancelConfirm'))) return
-    setBusy(true)
+    setBusy(true); setActionError('')
     try {
       await customerApi.post(`/customer/appointments/${appt.id}/cancel`)
+      setConfirmingCancel(false)
       onChanged()
+    } catch (err) {
+      setActionError(errorText(err))
     } finally { setBusy(false) }
   }
 
   async function confirmReschedule(startTime: string) {
-    setBusy(true)
+    setBusy(true); setActionError('')
     try {
       await customerApi.patch(`/customer/appointments/${appt.id}/reschedule`, { date: rescheduleDate, startTime })
       setExpandedReschedule(false)
       setRescheduleDate('')
       onChanged()
+    } catch (err) {
+      setActionError(errorText(err))
     } finally { setBusy(false) }
   }
 
   async function saveNote() {
-    setBusy(true)
+    setBusy(true); setActionError('')
     try {
       await customerApi.patch(`/customer/appointments/${appt.id}/notes`, { notes: noteDraft })
       setExpandedNotes(false)
       onChanged()
+    } catch (err) {
+      setActionError(errorText(err))
     } finally { setBusy(false) }
   }
 
@@ -153,12 +166,21 @@ export default function AppointmentCard({
           )}
           <button
             disabled={busy}
-            onClick={cancelAppointment}
+            onClick={() => { setConfirmingCancel(true); setActionError('') }}
             className="flex-1 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium py-2 rounded-xl transition-colors disabled:opacity-50">
             {t(lang, 'cancelAppointment')}
           </button>
         </div>
       )}
+
+      {confirmingCancel && appt.status === 'CONFIRMED' && (
+        <div className="mt-3">
+          <InlineConfirm lang={lang} question={t(lang, 'cancelConfirm')} busy={busy}
+            onYes={cancelAppointment} onNo={() => setConfirmingCancel(false)} />
+        </div>
+      )}
+
+      {actionError && <p className="mt-2 text-red-600 text-sm">{actionError}</p>}
 
       {appt.status === 'COMPLETED' && (
         <div className="mt-3">

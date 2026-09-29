@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { t, itemName } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
+import InlineConfirm from '../../components/customer/InlineConfirm'
 
 type AppointmentDetail = {
   id: string; date: string; startTime: string; endTime: string; status: string; notes: string | null; cancelToken: string
@@ -25,6 +26,8 @@ export default function AppointmentPage() {
   const [rescheduleError, setRescheduleError] = useState('')
   const [rescheduling, setRescheduling] = useState(false)
   const [justRescheduled, setJustRescheduled] = useState(false)
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const [cancelError, setCancelError] = useState('')
 
   const { data: appt, isLoading, refetch } = useQuery<AppointmentDetail>({
     queryKey: ['appointment', id],
@@ -46,12 +49,17 @@ export default function AppointmentPage() {
   const isCancelled = appt.status === 'CANCELLED' || cancelled
 
   async function cancelAppointment() {
-    const ok = confirm(t(lang, 'cancelConfirm'))
-    if (!ok) return
-    setLoading(true)
-    await api.delete(`/${slug}/appointments/${id}?token=${token}`)
-    setCancelled(true)
-    setLoading(false)
+    setLoading(true); setCancelError('')
+    try {
+      await api.delete(`/${slug}/appointments/${id}?token=${token}`)
+      setCancelled(true)
+      setConfirmingCancel(false)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setCancelError(msg ?? t(lang, 'somethingWentWrong'))
+    } finally {
+      setLoading(false)
+    }
   }
 
   function toggleReschedule() {
@@ -127,12 +135,20 @@ export default function AppointmentPage() {
                 {t(lang, 'editAppointment')}
               </button>
             )}
-            <button onClick={cancelAppointment} disabled={loading}
+            <button onClick={() => { setConfirmingCancel(true); setCancelError('') }} disabled={loading}
               className="flex-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:border-red-800/50 dark:text-red-400 font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
-              {loading ? '...' : t(lang, 'cancelAppointment')}
+              {t(lang, 'cancelAppointment')}
             </button>
           </div>
         )}
+
+        {confirmingCancel && !isCancelled && (
+          <div className="mt-3">
+            <InlineConfirm lang={lang} question={t(lang, 'cancelConfirm')} busy={loading}
+              onYes={cancelAppointment} onNo={() => setConfirmingCancel(false)} />
+          </div>
+        )}
+        {cancelError && <p className="mt-2 text-red-600 text-sm">{cancelError}</p>}
 
         {showReschedule && (
           <div className="mt-4 bg-surface border border-line rounded-2xl p-4 space-y-3">
