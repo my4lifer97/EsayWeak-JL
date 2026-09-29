@@ -274,7 +274,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         await PostInboundWithAuth(businessId, "+15550007", "a follow-up question");
 
         var waSent = Factory.WhatsAppSender.Sent.Where(s => s.BusinessId == businessId).ToList();
-        var emailSent = Factory.Email.Sent.Where(s => s.Email == "owner-inbox@example.com").ToList();
+        var emailSent = Factory.OwnerEmail.Sent.Where(s => s.Email == "owner-inbox@example.com").ToList();
         Assert.Single(waSent);
         Assert.Contains("first question", waSent[0].Message);
         Assert.Single(emailSent);

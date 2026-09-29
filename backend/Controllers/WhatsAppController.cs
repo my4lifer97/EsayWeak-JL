@@ -17,7 +17,7 @@ public class WhatsAppController(
     WhatsAppBookingTokenService bookingTokens,
     IOpenAiChatClient openAi,
     IWhatsAppSender whatsAppSender,
-    IEmailSender emailSender,
+    IOwnerEmailSender ownerEmailSender,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
     // Literal commands, not natural language -- deliberately simple so a business can explain them
@@ -298,7 +298,8 @@ public class WhatsAppController(
     // reply, and the inquiry itself is always saved to ChatbotInquiry regardless (the "in-app"
     // channel, which is always on). WhatsApp goes out from the business's own bot number to
     // whatever number the owner registered for inquiries -- a different recipient than the
-    // customer, not a reply in the same thread.
+    // customer, not a reply in the same thread. Email goes through the platform's own Gmail
+    // (IOwnerEmailSender), like every other email to a business owner -- not the Brevo chain.
     private async Task SendInquiryNotificationsAsync(Business business, string fromPhone, string profileName, string message)
     {
         var fromLabel = string.IsNullOrWhiteSpace(profileName) ? fromPhone : $"{profileName} ({fromPhone})";
@@ -320,7 +321,7 @@ public class WhatsAppController(
         {
             try
             {
-                await emailSender.SendAsync(business.InquiryEmail, $"New customer inquiry — {business.Name}",
+                await ownerEmailSender.SendAsync(business.InquiryEmail, $"New customer inquiry — {business.Name}",
                     $"From: {fromLabel}\n\nMessage:\n{message}");
             }
             catch (Exception ex)
