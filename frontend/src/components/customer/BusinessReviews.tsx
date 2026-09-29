@@ -5,6 +5,7 @@ import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { t } from '../../lib/i18n'
 import StarRating from './StarRating'
+import InlineConfirm from './InlineConfirm'
 
 type PublicReview = {
   id: string; rating: number; comment: string | null; reviewerName: string
@@ -49,6 +50,8 @@ export default function BusinessReviews({
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const pages = list.data?.pages ?? []
   const agg = pages[0]?.rating ?? { count: 0, average: 0 }
@@ -88,13 +91,18 @@ export default function BusinessReviews({
     } finally { setBusy(false) }
   }
 
+  // Asked on the page (InlineConfirm), not with window.confirm() -- WhatsApp's in-app browser
+  // silently blocks native dialogs, which made Delete do nothing there.
   async function remove() {
-    if (!own || !confirm(t(lang, 'reviewDeleteConfirm'))) return
-    setBusy(true)
+    if (!own) return
+    setBusy(true); setDeleteError('')
     try {
       await customerApi.delete(`/reviews/${own.id}`)
       setEditing(false)
+      setConfirmingDelete(false)
       refresh()
+    } catch (err) {
+      setDeleteError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t(lang, 'somethingWentWrong'))
     } finally { setBusy(false) }
   }
 
@@ -137,11 +145,19 @@ export default function BusinessReviews({
               className="border border-line text-ink hover:bg-cream text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
               {t(lang, 'editReview')}
             </button>
-            <button onClick={remove} disabled={busy}
+            <button onClick={() => { setConfirmingDelete(true); setDeleteError('') }} disabled={busy}
               className="border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800/50 dark:text-red-400 dark:hover:bg-red-950/40 text-sm font-medium py-1.5 px-3 rounded-xl transition-colors disabled:opacity-50">
               {t(lang, 'deleteReview')}
             </button>
           </div>
+          {confirmingDelete && (
+            <div className="mt-3">
+              <InlineConfirm lang={lang} question={t(lang, 'reviewDeleteConfirm')} busy={busy}
+                yesLabel={t(lang, 'confirmDeleteYes')}
+                onYes={remove} onNo={() => setConfirmingDelete(false)} />
+            </div>
+          )}
+          {deleteError && <p className="mt-2 text-red-600 dark:text-red-400 text-xs">{deleteError}</p>}
         </div>
       )}
 

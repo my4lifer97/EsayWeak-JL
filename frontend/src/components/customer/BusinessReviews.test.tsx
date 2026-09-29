@@ -84,6 +84,27 @@ describe('BusinessReviews', () => {
     expect(screen.getAllByText('Great cut').length).toBeGreaterThanOrEqual(1)
   })
 
+  // Native confirm() is silently blocked in WhatsApp's in-app browser -- deleting must ask on the page.
+  it('deletes the customer\'s own review after an on-page confirmation, without window.confirm', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm')
+    vi.mocked(customerApi.get).mockImplementation((url: string) => {
+      if (url.startsWith('/businesses/joe/reviews')) return Promise.resolve({ data: oneReview })
+      if (url.startsWith('/reviews/eligibility')) return Promise.resolve({ data: { canReview: true, alreadyReviewed: true, review: { id: 'r1', rating: 4, comment: 'Great cut', ownerReply: null, ownerRepliedAt: null } } })
+      return Promise.reject(new Error(`unexpected ${url}`))
+    })
+    vi.mocked(customerApi.delete).mockResolvedValue({ data: {} })
+
+    renderReviews()
+    await userEvent.click(await screen.findByText('Delete'))
+    expect(customerApi.delete).not.toHaveBeenCalled()
+    expect(screen.getByText('Delete your review?')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Yes, delete'))
+
+    await waitFor(() => expect(customerApi.delete).toHaveBeenCalledWith('/reviews/r1'))
+    expect(confirmSpy).not.toHaveBeenCalled()
+  })
+
   it('does not fetch eligibility for anonymous visitors', async () => {
     vi.mocked(customerApi.get).mockImplementation((url: string) => {
       if (url.startsWith('/businesses/joe/reviews')) return Promise.resolve({ data: emptyList })

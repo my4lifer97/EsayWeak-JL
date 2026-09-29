@@ -420,6 +420,14 @@ gallery photos live under `wwwroot/uploads/gallery/{itemId}/`, customer-uploaded
 photos under `wwwroot/uploads/appointment-photos/` — both served via the existing `/api/uploads`
 static file route.
 
+### No native dialogs on customer pages
+Customers mostly arrive through WhatsApp links, i.e. inside WhatsApp's in-app browser, which
+silently blocks `window.confirm()`/`alert()` (confirm returns false, so the action just does
+nothing). Customer-facing confirmations use `components/customer/InlineConfirm.tsx` (on-page
+Yes/No) instead — cancelling an appointment (`AppointmentCard`, `AppointmentPage`) and deleting a
+review (`BusinessReviews`) — and surface the server's error text on failure rather than failing
+silently. Admin pages still use `confirm()` (owners use a regular browser).
+
 ### Reviews
 `Models/Review.cs` (own file) — `Business` + `CustomerAccount` + `Appointment` FKs, `Rating` 1–5,
 `Comment?`, `OwnerReply?`/`OwnerRepliedAt?`, `IsHidden` (platform moderation). Unique index
@@ -889,9 +897,9 @@ on both channels, a failure on either never blocks the customer's own reply or t
 in-app log. Two independent settings, each needing its own contact value to actually fire:
 `InquiryNotifyViaWhatsApp` + `InquiryWhatsAppNumber` (sent from the business's own linked bot number
 to a *different* recipient — the owner's own number — via the existing `IWhatsAppSender`, not a
-reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (via the system
-`IEmailSender` chain — Brevo etc. — **not** `IOwnerEmailSender`, which is the platform admin's own
-personal Gmail for the unrelated owner-email composer feature).
+reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (via the platform's Gmail,
+`IOwnerEmailSender` — the same sender as the owner-email composer; moved off the Brevo
+`IEmailSender` chain 2026-09-29 so every email to a business owner comes from the same account).
 
 Admin API: `GET/POST /api/admin/chatbot-inquiries` (list, `?unreadOnly=true` filter) and
 `POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `pages/admin/ChatbotSettingsPage.tsx`, its
