@@ -267,6 +267,24 @@ public class AvailabilityServiceTests : IDisposable
         Assert.Empty(slots);
     }
 
+    // A day the owner closed entirely is left out of the date picker; a partly blocked day stays.
+    [Fact]
+    public async Task GetOpenDates_ExcludesFullDayBlocksButKeepsPartialOnes()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "18:00");
+        var monday = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime();
+        var nextMonday = monday.AddDays(7);
+        db.BlockedSlots.Add(new BlockedSlot { BusinessId = business.Id, Date = monday, StartTime = null, EndTime = null, Reason = "Day off" });
+        db.BlockedSlots.Add(new BlockedSlot { BusinessId = business.Id, Date = nextMonday, StartTime = "14:00", EndTime = "16:00" });
+        await db.SaveChangesAsync();
+
+        var open = await new AvailabilityService(db).GetOpenDates(business.Id, 30);
+
+        Assert.DoesNotContain(TestDate, open);
+        Assert.Contains(nextMonday.ToString("yyyy-MM-dd"), open);
+    }
+
     // A scheduled range that hasn't started yet (Applied = false) hasn't touched live WorkingHours,
     // but a customer booking a date inside it must already see that preset's hours -- here it opens
     // a Tuesday the live template has closed.

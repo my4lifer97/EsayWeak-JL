@@ -96,10 +96,25 @@ public class AvailabilityService(AppDbContext db)
     {
         var ctx = await LoadScheduleContext(businessId);
         var today = DateTime.Now.Date;
+
+        // A date the owner closed entirely (full-day BlockedSlot, StartTime null) isn't offered in
+        // the date picker at all -- the customer would only find "closed" after tapping it. A
+        // partial block (e.g. 14:00-16:00) leaves the day listed, since other times are still open.
+        // BlockedSlot.Date is stored as UTC midnight of the calendar date (see GetSlotsWithBookingInfo).
+        var from = DateTime.Parse(today.ToString("yyyy-MM-dd") + "T00:00:00Z").ToUniversalTime();
+        var to = from.AddDays(days);
+        var fullyBlocked = (await db.BlockedSlots.AsNoTracking()
+                .Where(b => b.BusinessId == businessId && b.StartTime == null && b.Date >= from && b.Date < to)
+                .Select(b => b.Date)
+                .ToListAsync())
+            .Select(d => d.ToString("yyyy-MM-dd"))
+            .ToHashSet();
+
         return Enumerable.Range(0, days)
             .Select(i => today.AddDays(i))
             .Where(d => ctx.Resolve(d).IsActive)
             .Select(d => d.ToString("yyyy-MM-dd"))
+            .Where(d => !fullyBlocked.Contains(d))
             .ToList();
     }
 
