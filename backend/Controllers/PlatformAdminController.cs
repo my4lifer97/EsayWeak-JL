@@ -46,7 +46,7 @@ public class PlatformAdminController(
 
         var admin = new PlatformAdmin
         {
-            Email = req.Email,
+            Email = req.Email.Trim().ToLower(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             Name = req.Name,
         };
@@ -60,7 +60,9 @@ public class PlatformAdminController(
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] PlatformAdminLoginRequest req)
     {
-        var admin = await db.PlatformAdmins.FirstOrDefaultAsync(a => a.Email == req.Email);
+        // Case/whitespace-insensitive: mobile keyboards auto-capitalize and append spaces.
+        var email = (req.Email ?? "").Trim().ToLower();
+        var admin = await db.PlatformAdmins.FirstOrDefaultAsync(a => a.Email.ToLower() == email);
         if (admin is null || !BCrypt.Net.BCrypt.Verify(req.Password, admin.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 
