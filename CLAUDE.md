@@ -248,7 +248,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/{slug}/availability?date=&serviceId=` — available 30-min slots
 - `POST /api/{slug}/appointments/photo` — upload a reference photo for a `CustomerUpload`-mode item (anonymous, guest booking allowed); returns `{ url }` to pass as `customerPhotoUrl` below
 - `POST /api/{slug}/appointments` — book appointment; returns `{ appointmentId, cancelToken }`; auto-follows the business if the caller is a logged-in customer; if the item's `photoMode` is `OwnerGallery`/`CustomerUpload`, `galleryPhotoId`/`customerPhotoUrl` respectively is required
-- `GET /api/{slug}/appointments/{id}` — view appointment details (used by the public magic-link page)
+- `GET /api/{slug}/appointments/{id}?token=` — view appointment details (used by the public magic-link page); requires the cancelToken like cancel/reschedule (404 without it — ids are public via `availability/full`, and this response includes the customer phone + token)
 - `DELETE /api/{slug}/appointments/{id}?token=` — cancel (validated by cancelToken) — routes through `AppointmentCancellationService.CancelFromCustomerAsync`, see [Waitlist & cancellation approval](#waitlist--cancellation-approval)
 - `PATCH /api/{slug}/appointments/{id}?token=` — reschedule (re-checks availability first)
 

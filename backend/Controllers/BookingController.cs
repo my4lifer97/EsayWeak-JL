@@ -295,7 +295,7 @@ public class BookingController(
     }
 
     [HttpGet("appointments/{id}")]
-    public async Task<IActionResult> GetAppointment(string slug, string id)
+    public async Task<IActionResult> GetAppointment(string slug, string id, [FromQuery] string? token)
     {
         var appointment = await db.Appointments
             .Include(a => a.Customer)
@@ -303,7 +303,12 @@ public class BookingController(
             .Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Business.Slug == slug);
 
-        if (appointment is null) return NotFound(new { error = "Not found" });
+        // The token is required here too, not just on cancel/reschedule: appointment ids are public
+        // (GET availability/full exposes them for the waitlist), and this response carries the
+        // customer's name/phone and the CancelToken itself. A wrong token gets the same 404 as a
+        // missing appointment so ids can't be probed.
+        if (appointment is null || string.IsNullOrEmpty(token) || appointment.CancelToken != token)
+            return NotFound(new { error = "Not found" });
 
         return Ok(new AppointmentDetailDto(
             appointment.Id, appointment.BusinessId, appointment.CustomerId, appointment.ItemId,

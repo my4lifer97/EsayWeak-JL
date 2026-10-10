@@ -31,7 +31,7 @@ export default function AppointmentPage() {
 
   const { data: appt, isLoading, refetch } = useQuery<AppointmentDetail>({
     queryKey: ['appointment', id],
-    queryFn: () => api.get(`/${slug}/appointments/${id}`).then((r) => r.data),
+    queryFn: () => api.get(`/${slug}/appointments/${id}?token=${token}`).then((r) => r.data),
   })
 
   const { data: slots = [], isFetching: loadingSlots } = useQuery<Slot[]>({

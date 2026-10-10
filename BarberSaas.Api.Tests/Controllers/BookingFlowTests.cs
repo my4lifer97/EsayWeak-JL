@@ -97,7 +97,7 @@ public class BookingFlowTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
-        var detail = await (await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}")).Content.ReadFromJsonAsync<AppointmentDetailDto>();
+        var detail = await (await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}")).Content.ReadFromJsonAsync<AppointmentDetailDto>();
         Assert.Equal("Jane", detail!.Customer.Name);
         Assert.Equal("Doe", detail.Customer.FamilyName);
     }
@@ -176,7 +176,7 @@ public class BookingFlowTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
-        var view = await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        var view = await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}");
         Assert.Equal(HttpStatusCode.OK, view.StatusCode);
         var detail = await view.Content.ReadFromJsonAsync<AppointmentDetailDto>();
         Assert.Equal("+15553330001", detail!.Customer.Phone);
@@ -186,6 +186,30 @@ public class BookingFlowTests : IntegrationTestBase
 
         var cancel = await Client.DeleteAsync($"/api/{slug}/appointments/{booked.AppointmentId}?token={booked.CancelToken}");
         Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+    }
+
+    // Appointment ids are public (availability/full exposes them for the waitlist), so the detail
+    // endpoint must not hand the customer's phone + CancelToken to anyone who only knows the id.
+    [Fact]
+    public async Task AppointmentDetail_WithoutValidToken_IsNotFound()
+    {
+        var (businessToken, slug) = await RegisterAndLoginBusiness("detail-token@example.com", "detail-token-shop");
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
+
+        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(itemId, TestDate, slot, "Victim Person", "+15553330009", null));
+        var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        var noToken = await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        Assert.Equal(HttpStatusCode.NotFound, noToken.StatusCode);
+        Assert.DoesNotContain(booked.CancelToken, await noToken.Content.ReadAsStringAsync());
+
+        var wrongToken = await Client.GetAsync($"/api/{slug}/appointments/{booked.AppointmentId}?token=wrong-token");
+        Assert.Equal(HttpStatusCode.NotFound, wrongToken.StatusCode);
+
+        var withToken = await Client.GetAsync($"/api/{slug}/appointments/{booked.AppointmentId}?token={booked.CancelToken}");
+        Assert.Equal(HttpStatusCode.OK, withToken.StatusCode);
     }
 
     [Fact]
@@ -206,7 +230,7 @@ public class BookingFlowTests : IntegrationTestBase
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
         Client.DefaultRequestHeaders.Authorization = null;
-        var detail = await (await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}")).Content.ReadFromJsonAsync<AppointmentDetailDto>();
+        var detail = await (await Client.GetAsync($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}")).Content.ReadFromJsonAsync<AppointmentDetailDto>();
         Assert.Equal(verifiedPhone, detail!.Customer.Phone);
 
         Authorize(Client, customerToken);

@@ -192,7 +192,7 @@ public class ServicePhotoTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
-        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}");
         Assert.Equal(photo.Url, detail!.PhotoUrl);
     }
 
@@ -243,7 +243,7 @@ public class ServicePhotoTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
-        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}");
         Assert.Equal(uploaded.Url, detail!.PhotoUrl);
     }
 
@@ -272,7 +272,7 @@ public class ServicePhotoTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
-        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}");
         Assert.Null(detail!.PhotoUrl);
     }
 
@@ -303,7 +303,7 @@ public class ServicePhotoTests : IntegrationTestBase
             new UpdateAppointmentPhotoRequest(secondPhoto!.Id, null));
         Assert.Equal(HttpStatusCode.OK, changeResp.StatusCode);
 
-        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}");
         Assert.Equal(secondPhoto.Url, detail!.PhotoUrl);
     }
 
@@ -358,7 +358,7 @@ public class ServicePhotoTests : IntegrationTestBase
             new UpdateAppointmentPhotoRequest(null, secondPhoto!.Url));
         Assert.Equal(HttpStatusCode.OK, changeResp.StatusCode);
 
-        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}");
+        var detail = await Client.GetFromJsonAsync<AppointmentDetailDto>($"/api/{slug}/appointments/{booked!.AppointmentId}?token={booked.CancelToken}");
         Assert.Equal(secondPhoto.Url, detail!.PhotoUrl);
     }
 
