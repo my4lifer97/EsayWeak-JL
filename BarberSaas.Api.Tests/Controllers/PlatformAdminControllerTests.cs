@@ -528,6 +528,92 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         Assert.Empty(Factory.OwnerEmail.Sent);
     }
 
+    // ─── Composer temp password: applied only once it's actually emailed ────────
+
+    private record TempPasswordResponse(string TempPassword);
+
+    private async Task<(string BusinessId, string TempPassword)> AdminWithGeneratedTempPassword(string email, string slug)
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, _) = await RegisterAndVerifyBusiness(email, slug);
+        Authorize(Client, adminToken);
+        var resp = await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/generate-temp-password", null);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        return (businessId, (await resp.Content.ReadFromJsonAsync<TempPasswordResponse>())!.TempPassword);
+    }
+
+    private bool PasswordIs(string businessId, string password)
+    {
+        using var db = Db();
+        return BCrypt.Net.BCrypt.Verify(password, db.Businesses.Single(b => b.Id == businessId).PasswordHash);
+    }
+
+    [Fact]
+    public async Task GenerateTempPassword_DoesNotTouchTheAccount()
+    {
+        var (businessId, temp) = await AdminWithGeneratedTempPassword("gen-only@example.com", "gen-only-shop");
+
+        Assert.True(PasswordIs(businessId, "password123"));
+        Assert.False(PasswordIs(businessId, temp));
+    }
+
+    [Fact]
+    public async Task EmailOwner_WithTempPassword_AppliesItOnlyAfterSending()
+    {
+        var (businessId, temp) = await AdminWithGeneratedTempPassword("gen-send@example.com", "gen-send-shop");
+
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/email",
+            new EmailOwnerRequest("Your account", $"Password: {temp}", temp));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Single(Factory.OwnerEmail.Sent);
+        Assert.True(PasswordIs(businessId, temp));
+        using var db = Db();
+        Assert.True(db.Businesses.Single(b => b.Id == businessId).MustChangePassword);
+    }
+
+    // The QA bug: Gmail failing used to leave the owner with a password nobody received.
+    [Fact]
+    public async Task EmailOwner_WithTempPassword_SendFails_KeepsTheOldPassword()
+    {
+        var (businessId, temp) = await AdminWithGeneratedTempPassword("gen-fail@example.com", "gen-fail-shop");
+        Factory.OwnerEmail.SendError = "invalid_grant";
+
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/email",
+            new EmailOwnerRequest("Your account", $"Password: {temp}", temp));
+
+        Assert.Equal(HttpStatusCode.BadGateway, resp.StatusCode);
+        Assert.Contains("NOT changed", await resp.Content.ReadAsStringAsync());
+        Assert.True(PasswordIs(businessId, "password123"));
+    }
+
+    [Fact]
+    public async Task EmailOwner_TempPasswordMissingFromBody_IsRejectedAndNothingSent()
+    {
+        var (businessId, temp) = await AdminWithGeneratedTempPassword("gen-missing@example.com", "gen-missing-shop");
+
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/email",
+            new EmailOwnerRequest("Your account", "Username only", temp));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Empty(Factory.OwnerEmail.Sent);
+        Assert.True(PasswordIs(businessId, "password123"));
+    }
+
+    // "Set password now" -- for copying it or reading it out on a call.
+    [Fact]
+    public async Task ResetPassword_TemporaryWithGivenPassword_SetsExactlyThatOne()
+    {
+        var (businessId, temp) = await AdminWithGeneratedTempPassword("gen-setnow@example.com", "gen-setnow-shop");
+
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/reset-password",
+            new PlatformAdminResetPasswordRequest(true, temp, Silent: true));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.True(PasswordIs(businessId, temp));
+        Assert.DoesNotContain(Factory.Email.Sent, e => e.Subject.Contains("password was reset"));
+    }
+
     [Fact]
     public async Task ResetPassword_ActivityLog_NeverContainsTheRawPassword()
     {

@@ -181,7 +181,11 @@ public class PlatformAdminController(
 
         if (req.Temporary)
         {
-            tempPassword = GenerateTempPassword();
+            // A caller-supplied value is the composer's "Set password now" for a password it
+            // already generated and showed (see GenerateTempPassword below).
+            if (req.NewPassword is not null && req.NewPassword.Length < 6)
+                return BadRequest(new { error = "Password must be at least 6 characters" });
+            tempPassword = req.NewPassword ?? GenerateTempPassword();
             b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword);
             b.MustChangePassword = true;
             // Silent: the owner-email composer just wants the generated value to include in its
@@ -316,6 +320,18 @@ public class PlatformAdminController(
     // this just sends whatever was composed -- no server-side templating, so the preview the admin
     // saw is exactly the email that goes out. Sent via the admin's own Gmail (IOwnerEmailSender),
     // not the system IEmailSender chain -- see IOwnerEmailSender for why.
+    // Only generates a value for the composer to show -- the account is untouched until the email
+    // carrying it is sent (EmailOwner's NewTempPassword) or the admin clicks "Set password now".
+    // Used to call reset-password directly, which changed the real password before anything was
+    // sent: a closed composer or a failed Gmail send left the owner locked out.
+    [HttpPost("businesses/{id}/generate-temp-password")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> GenerateTempPasswordForComposer(string id)
+    {
+        if (!await db.Businesses.AnyAsync(b => b.Id == id)) return NotFound();
+        return Ok(new { tempPassword = GenerateTempPassword() });
+    }
+
     [HttpPost("businesses/{id}/email")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> EmailOwner(string id, [FromBody] EmailOwnerRequest req)
@@ -329,6 +345,10 @@ public class PlatformAdminController(
         if (!gmailConfigured)
             return StatusCode(503, new { error = "Gmail isn't configured yet -- set Gmail:ClientId/ClientSecret/RefreshToken/FromEmail." });
 
+        // Only apply a password the owner will actually see in this email.
+        if (req.NewTempPassword is not null && (req.NewTempPassword.Length < 6 || !req.Body.Contains(req.NewTempPassword)))
+            return BadRequest(new { error = "The new password must appear in the email body" });
+
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
 
@@ -339,7 +359,30 @@ public class PlatformAdminController(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to email business owner {BusinessId}", id);
-            return StatusCode(502, new { error = "Could not send the email. Please try again shortly." });
+            return StatusCode(502, new
+            {
+                error = req.NewTempPassword is null
+                    ? "Could not send the email. Please try again shortly."
+                    : "Could not send the email. The owner's password was NOT changed.",
+            });
+        }
+
+        // Sent -- now the password in it becomes real.
+        if (req.NewTempPassword is not null)
+        {
+            b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewTempPassword);
+            b.MustChangePassword = true;
+            db.ActivityLogs.Add(new ActivityLog
+            {
+                BusinessId = b.Id,
+                ImpersonatedByPlatformAdminId = AdminId,
+                Action = $"{nameof(PlatformAdminController)}.{nameof(ResetBusinessPassword)}",
+                Description = "Password reset (temporary, emailed to owner)",
+                Method = "POST",
+                Path = Request.Path.ToString(),
+                StatusCode = 200,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            });
         }
 
         db.ActivityLogs.Add(new ActivityLog

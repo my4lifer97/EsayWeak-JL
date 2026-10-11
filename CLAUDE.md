@@ -597,14 +597,18 @@ again" button (`POST .../system-health/owner-email/check`). The worker is off in
 (`OwnerEmailHealth__WorkerEnabled=false`); not persisted, so status is "unknown" until the first probe
 after a restart.
 
-Both `POST .../whatsapp/link-token` (WhatsApp shareable link, see
-[WhatsApp chatbot](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)) and
-`POST .../reset-password` (with `{ temporary: true, silent: true }`) can be called from inside the
-composer purely to *generate* a value for the preview — `reset-password`'s `Silent` flag (default
-`false`, so every other caller of that endpoint is unaffected) skips its own automatic system email
-so it doesn't fire in parallel with whatever the composer ends up sending. `POST
-.../business-owner-requests/{id}/approve` has the same `Silent` flag for the same reason — the
-composer opens immediately after a successful approval, pre-filled with the new username and
+`POST .../whatsapp/link-token` (WhatsApp shareable link, see
+[WhatsApp chatbot](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)) is called from inside
+the composer to generate a value for the preview. **A temporary password is never applied just by
+generating it** (fixed 2026-10-11 — it used to call `reset-password`, so closing the composer or a
+failed Gmail send left the owner locked out with a password nobody received):
+`POST .../generate-temp-password` only returns a value; `POST .../email` takes it as
+`newTempPassword` (must appear in the body, else 400) and sets it + `MustChangePassword` only
+**after** the send succeeds (502 "password was NOT changed" otherwise). For copying it or reading it
+out on a call, the composer's "Set password now" calls `reset-password` with
+`{ temporary: true, newPassword, silent: true }`. `Silent` (default `false`) skips reset-password's
+own system email; `POST .../business-owner-requests/{id}/approve` has the same `Silent` flag — the
+composer opens right after approval, pre-filled with the new username and the (already applied)
 temp password.
 
 ### Waitlist & cancellation approval

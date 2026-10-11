@@ -161,7 +161,9 @@ public record PlatformAdminBusinessDetailDto(
 
 public record WhatsAppLinkStatusDto(string State, string? Qr, string? PhoneNumber);
 
-public record EmailOwnerRequest(string Subject, string Body);
+// NewTempPassword: a password from generate-temp-password that the body contains -- it's applied
+// only once the email is actually sent, so a failed send never leaves the owner locked out.
+public record EmailOwnerRequest(string Subject, string Body, string? NewTempPassword = null);
 
 public record PlatformAdminCustomerSummaryDto(string Id, string Name, string FamilyName, string Phone);
 public record PlatformAdminCustomerDetailDto(string Id, string Name, string FamilyName, string Phone, DateTime CreatedAt);

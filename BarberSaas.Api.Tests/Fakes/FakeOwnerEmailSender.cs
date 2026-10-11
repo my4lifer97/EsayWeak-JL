@@ -12,8 +12,12 @@ public class FakeOwnerEmailSender : IOwnerEmailSender
 
     public ConcurrentBag<SentEmail> Sent { get; } = [];
 
+    // Set to make SendAsync fail the way Gmail does with a dead token.
+    public string? SendError { get; set; }
+
     public Task SendAsync(string toEmail, string subject, string body)
     {
+        if (SendError is not null) return Task.FromException(new HttpRequestException(SendError));
         Sent.Add(new SentEmail(toEmail, subject, body));
         return Task.CompletedTask;
     }

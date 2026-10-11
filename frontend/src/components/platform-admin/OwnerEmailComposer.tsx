@@ -57,6 +57,11 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [includePassword, setIncludePassword] = useState(!!initialPassword)
   const [includeChatbotLink, setIncludeChatbotLink] = useState(false)
   const [password, setPassword] = useState(initialPassword ?? null)
+  // A password passed in (request approval) is already the account's real one. A generated one is
+  // only a proposal until this email is sent, or the admin clicks "Set password now" -- so closing
+  // the composer or a failed send never locks the owner out.
+  const [passwordApplied, setPasswordApplied] = useState(!!initialPassword)
+  const [applyingPassword, setApplyingPassword] = useState(false)
   const [chatbotLink, setChatbotLink] = useState<string | null>(null)
   const [generatingPassword, setGeneratingPassword] = useState(false)
   const [generatingLink, setGeneratingLink] = useState(false)
@@ -104,13 +109,27 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   async function generatePassword() {
     setGenError(''); setGeneratingPassword(true)
     try {
-      const { data } = await platformAdminApi.post(`/platform-admin/businesses/${businessId}/reset-password`, { temporary: true, silent: true })
+      const { data } = await platformAdminApi.post(`/platform-admin/businesses/${businessId}/generate-temp-password`)
       setPassword(data.tempPassword)
+      setPasswordApplied(false)
       setIncludePassword(true)
     } catch {
       setGenError('Could not generate a password')
     } finally {
       setGeneratingPassword(false)
+    }
+  }
+
+  async function applyPasswordNow() {
+    if (!password) return
+    setGenError(''); setApplyingPassword(true)
+    try {
+      await platformAdminApi.post(`/platform-admin/businesses/${businessId}/reset-password`, { temporary: true, newPassword: password, silent: true })
+      setPasswordApplied(true)
+    } catch {
+      setGenError('Could not set the password')
+    } finally {
+      setApplyingPassword(false)
     }
   }
 
@@ -130,7 +149,10 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   async function send() {
     setSendError(''); setSending(true)
     try {
-      await platformAdminApi.post(`/platform-admin/businesses/${businessId}/email`, { subject, body })
+      // The server applies the password only after the email actually goes out.
+      const newTempPassword = password && !passwordApplied && includePassword ? password : undefined
+      await platformAdminApi.post(`/platform-admin/businesses/${businessId}/email`, { subject, body, newTempPassword })
+      if (newTempPassword) setPasswordApplied(true)
       setSent(true)
     } catch (err: unknown) {
       const resp = (err as { response?: { data?: { error?: string } } })?.response
@@ -175,6 +197,19 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
               </button>
             )}
           </label>
+          {password && !passwordApplied && (
+            <div className="ms-6 text-xs text-muted">
+              Not active yet — it becomes the owner's password when you click Send Email.
+              Copying it or reading it out instead?{' '}
+              <button type="button" onClick={applyPasswordNow} disabled={applyingPassword}
+                className="text-coral-dark hover:underline disabled:opacity-50">
+                {applyingPassword ? 'Setting…' : 'Set password now'}
+              </button>
+            </div>
+          )}
+          {password && passwordApplied && !initialPassword && (
+            <div className="ms-6 text-xs text-green-700 dark:text-green-400">Active — this is now the owner's password.</div>
+          )}
 
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={includeChatbotLink} disabled={!chatbotLink} onChange={(e) => setIncludeChatbotLink(e.target.checked)} />
