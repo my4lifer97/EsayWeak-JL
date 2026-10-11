@@ -13,16 +13,63 @@ namespace BarberSaas.Api.Services;
 // for the feature this powers); a fresh short-lived access token is exchanged per send rather
 // than cached, since this is a low-volume, admin-triggered action, not worth the complexity of a
 // token cache.
-public class GmailApiEmailSender(HttpClient http, IConfiguration config) : IOwnerEmailSender
+//
+// Every send also reports into OwnerEmailHealth (platform-admin dashboard warning + alert email):
+// an auth/server failure marks the channel broken, a success marks it working. A 400 from the
+// send call is left out -- that's one bad recipient address, not a broken channel.
+public class GmailApiEmailSender(HttpClient http, IConfiguration config, OwnerEmailHealth health) : IOwnerEmailSender
 {
     private record TokenResponse([property: JsonPropertyName("access_token")] string AccessToken);
 
     public async Task SendAsync(string toEmail, string subject, string body)
     {
-        var clientId = config["Gmail:ClientId"]!;
-        var clientSecret = config["Gmail:ClientSecret"]!;
-        var refreshToken = config["Gmail:RefreshToken"]!;
         var fromEmail = config["Gmail:FromEmail"]!;
+        string accessToken;
+        try
+        {
+            accessToken = await GetAccessTokenAsync();
+        }
+        catch (Exception ex)
+        {
+            health.RecordFailure(ex.Message);
+            throw;
+        }
+
+        var raw = BuildRawMessage(fromEmail, toEmail, subject, body);
+
+        using var sendRequest = new HttpRequestMessage(HttpMethod.Post, "https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
+        sendRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        sendRequest.Content = JsonContent.Create(new { raw });
+
+        HttpResponseMessage sendResp;
+        try
+        {
+            sendResp = await http.SendAsync(sendRequest);
+        }
+        catch (Exception ex)
+        {
+            health.RecordFailure(ex.Message);
+            throw;
+        }
+        if (!sendResp.IsSuccessStatusCode)
+        {
+            var errorBody = await sendResp.Content.ReadAsStringAsync();
+            var message = $"Gmail API returned {(int)sendResp.StatusCode} {sendResp.StatusCode}: {errorBody}";
+            if (sendResp.StatusCode != System.Net.HttpStatusCode.BadRequest) health.RecordFailure(message);
+            throw new HttpRequestException(message);
+        }
+        health.RecordSuccess();
+    }
+
+    public async Task CheckAuthAsync() => await GetAccessTokenAsync();
+
+    private async Task<string> GetAccessTokenAsync()
+    {
+        var clientId = config["Gmail:ClientId"];
+        var clientSecret = config["Gmail:ClientSecret"];
+        var refreshToken = config["Gmail:RefreshToken"];
+        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret) || string.IsNullOrWhiteSpace(refreshToken))
+            throw new InvalidOperationException("Gmail is not configured (Gmail:ClientId/ClientSecret/RefreshToken missing)");
 
         var tokenResp = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
         {
@@ -36,20 +83,7 @@ public class GmailApiEmailSender(HttpClient http, IConfiguration config) : IOwne
             var errorBody = await tokenResp.Content.ReadAsStringAsync();
             throw new HttpRequestException($"Gmail token refresh returned {(int)tokenResp.StatusCode} {tokenResp.StatusCode}: {errorBody}");
         }
-        var accessToken = (await tokenResp.Content.ReadFromJsonAsync<TokenResponse>())!.AccessToken;
-
-        var raw = BuildRawMessage(fromEmail, toEmail, subject, body);
-
-        using var sendRequest = new HttpRequestMessage(HttpMethod.Post, "https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
-        sendRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        sendRequest.Content = JsonContent.Create(new { raw });
-
-        var sendResp = await http.SendAsync(sendRequest);
-        if (!sendResp.IsSuccessStatusCode)
-        {
-            var errorBody = await sendResp.Content.ReadAsStringAsync();
-            throw new HttpRequestException($"Gmail API returned {(int)sendResp.StatusCode} {sendResp.StatusCode}: {errorBody}");
-        }
+        return (await tokenResp.Content.ReadFromJsonAsync<TokenResponse>())!.AccessToken;
     }
 
     // RFC 2822 message, base64url-encoded per the Gmail API's `raw` field contract. The subject is

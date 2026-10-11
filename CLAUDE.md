@@ -577,6 +577,20 @@ WhatsApp via Baileys instead of a paid Business API) it sidesteps Railway's outb
 block instead of relying on a third-party relay (Brevo) the recipient has never heard of. See the
 `Gmail:*` config keys below for the one-time OAuth setup.
 
+**Gmail health alert** (added 2026-10-11, after the refresh token expired silently for days):
+`OwnerEmailHealth` (in-memory singleton) tracks whether the Gmail channel works. `GmailApiEmailSender`
+reports every send into it (a 400 from the send call is ignored, since that's one bad recipient, not
+a broken channel), and `OwnerEmailHealthWorker` probes the token exchange without sending ~30s after
+startup and then every `OwnerEmailHealth:CheckIntervalHours` (default 6). When it's failing,
+`OwnerEmailMonitor` emails the platform admin through the **system `IEmailSender` chain (Brevo)**, not
+Gmail, since the broken channel can't report itself: one alert per episode, repeated every
+`OwnerEmailHealth:AlertRepeatHours` (default 24), plus one "working again" email after recovery.
+Recipient is `Platform:AdminNotificationEmail`, else every `PlatformAdmin.Email`. The platform-admin
+dashboard shows `OwnerEmailHealthBanner` from `GET /api/platform-admin/system-health`, with a "Check
+again" button (`POST .../system-health/owner-email/check`). The worker is off in tests
+(`OwnerEmailHealth__WorkerEnabled=false`); not persisted, so status is "unknown" until the first probe
+after a restart.
+
 Both `POST .../whatsapp/link-token` (WhatsApp shareable link, see
 [WhatsApp chatbot](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)) and
 `POST .../reset-password` (with `{ temporary: true, silent: true }`) can be called from inside the

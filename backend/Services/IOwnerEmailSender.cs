@@ -11,4 +11,8 @@ namespace BarberSaas.Api.Services;
 public interface IOwnerEmailSender
 {
     Task SendAsync(string toEmail, string subject, string body);
+
+    // Verifies the credentials still work without sending anything (throws if not) -- used by
+    // OwnerEmailMonitor to notice a dead refresh token before an owner email fails on it.
+    Task CheckAuthAsync();
 }

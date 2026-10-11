@@ -17,4 +17,10 @@ public class FakeOwnerEmailSender : IOwnerEmailSender
         Sent.Add(new SentEmail(toEmail, subject, body));
         return Task.CompletedTask;
     }
+
+    // Set to make CheckAuthAsync fail the way a dead Gmail refresh token does.
+    public string? AuthError { get; set; }
+
+    public Task CheckAuthAsync() =>
+        AuthError is null ? Task.CompletedTask : Task.FromException(new HttpRequestException(AuthError));
 }

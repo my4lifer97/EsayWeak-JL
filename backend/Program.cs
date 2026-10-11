@@ -108,6 +108,12 @@ builder.Services.AddHttpClient<ICardcomService, CardcomService>();
 // ClientSecret/RefreshToken are all set before calling it, same pattern as CardcomService/
 // BillingController for a not-yet-configured integration.
 builder.Services.AddHttpClient<IOwnerEmailSender, GmailApiEmailSender>();
+// Watches that Gmail channel and alerts the platform admin (via the IEmailSender chain above) when
+// it breaks -- see OwnerEmailHealth. Worker off in the tests, same as the waitlist worker.
+builder.Services.AddSingleton<OwnerEmailHealth>();
+builder.Services.AddScoped<OwnerEmailMonitor>();
+if (builder.Configuration.GetValue("OwnerEmailHealth:WorkerEnabled", true))
+    builder.Services.AddHostedService<OwnerEmailHealthWorker>();
 
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p

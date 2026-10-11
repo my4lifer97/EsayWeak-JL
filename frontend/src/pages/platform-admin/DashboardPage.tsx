@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { usePlatformAdminAuth } from '../../lib/platformAdminAuth'
 import ThemeToggle from '../../components/ThemeToggle'
+import OwnerEmailHealthBanner from '../../components/platform-admin/OwnerEmailHealthBanner'
 
 type BusinessSummary = { id: string; name: string; email: string; slug: string; subscriptionStatus: string }
 type CustomerSummary = { id: string; name: string; familyName: string; phone: string }
@@ -34,6 +35,8 @@ export default function PlatformAdminDashboardPage() {
             <ThemeToggle />
           </div>
         </div>
+
+        <OwnerEmailHealthBanner />
 
         <div className="grid md:grid-cols-2 gap-6">
           <section className="bg-surface border border-line rounded-2xl p-5">

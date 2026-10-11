@@ -70,6 +70,23 @@ public class PlatformAdminController(
         return Ok(new PlatformAdminLoginResponse(token, admin.Id, admin.Name, admin.Email));
     }
 
+    // ─── System health ──────────────────────────────────────────────────────
+
+    // Backs the dashboard warning when owner emails (Gmail) are failing -- see OwnerEmailHealth.
+    [HttpGet("system-health")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public IActionResult GetSystemHealth([FromServices] OwnerEmailHealth ownerEmailHealth) =>
+        Ok(new { ownerEmail = ownerEmailHealth.GetSnapshot() });
+
+    // "Check again" button -- e.g. right after replacing the Gmail refresh token.
+    [HttpPost("system-health/owner-email/check")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> CheckOwnerEmail([FromServices] OwnerEmailMonitor monitor, [FromServices] OwnerEmailHealth ownerEmailHealth)
+    {
+        await monitor.CheckNowAsync();
+        return Ok(new { ownerEmail = ownerEmailHealth.GetSnapshot() });
+    }
+
     // ─── Businesses ────────────────────────────────────────────────────────────
 
     [HttpGet("businesses")]
