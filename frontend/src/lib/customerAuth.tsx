@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { customerApi, CUSTOMER_SESSION_EXPIRED } from './customerApi'
+import { clearImpersonationMarker } from './impersonation'
 
 interface CustomerUser { id: string; name: string; familyName: string; phone: string }
 interface WhatsAppLoginResult { businessSlug: string; itemId: string }
@@ -70,6 +71,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     localStorage.removeItem('customerToken')
     localStorage.removeItem('customerUser')
+    clearImpersonationMarker('customer')
     queryClient.clear()
     setUser(null)
   }

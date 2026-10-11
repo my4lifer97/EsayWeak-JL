@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
+import { clearImpersonationMarker } from './impersonation'
 
 interface User { id: string; name: string; email: string; slug: string; mustChangePassword: boolean }
 interface AuthCtx {
@@ -89,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    clearImpersonationMarker('business')
     queryClient.clear()
     setUser(null)
   }

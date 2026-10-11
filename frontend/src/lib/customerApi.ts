@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearImpersonationMarker } from './impersonation'
 
 // See api.ts's comment: frontend and backend deploy as separate services with separate
 // URLs in production, so the relative '/api' proxy that works in local dev doesn't exist
@@ -23,6 +24,7 @@ customerApi.interceptors.response.use(
     if (err.response?.status === 401 && !isAuthRequest) {
       localStorage.removeItem('customerToken')
       localStorage.removeItem('customerUser')
+      clearImpersonationMarker('customer')
       window.dispatchEvent(new Event(CUSTOMER_SESSION_EXPIRED))
     }
     return Promise.reject(err)

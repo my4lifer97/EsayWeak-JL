@@ -1,26 +1,12 @@
-type Impersonation = { type: 'business' | 'customer'; name: string; returnPath: string }
+import { endImpersonation, getImpersonation } from '../lib/impersonation'
 
 export default function ImpersonationBanner() {
-  const raw = localStorage.getItem('impersonation')
-  if (!raw) return null
-
-  let impersonation: Impersonation
-  try {
-    impersonation = JSON.parse(raw)
-  } catch {
-    return null
-  }
+  const impersonation = getImpersonation()
+  if (!impersonation) return null
 
   function exit() {
-    if (impersonation.type === 'business') {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-    } else {
-      localStorage.removeItem('customerToken')
-      localStorage.removeItem('customerUser')
-    }
-    localStorage.removeItem('impersonation')
-    window.location.href = impersonation.returnPath
+    endImpersonation()
+    window.location.href = impersonation!.returnPath
   }
 
   return (

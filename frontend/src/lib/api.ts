@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { clearImpersonationMarker } from './impersonation'
 
 // Relative '/api' works in local dev via vite.config.ts's proxy, which doesn't exist in the
 // built static output. In production, VITE_API_URL points at the backend's own domain since
@@ -21,6 +22,8 @@ api.interceptors.response.use(
     if (err.response?.status === 401 && !isLoginRequest) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
+      // An expired "Log in as" session (60 min) -- don't leave the banner up.
+      clearImpersonationMarker('business')
       window.location.href = '/admin/login'
     }
     // An admin-issued temp password that hasn't been replaced yet -- every BusinessOnly action
