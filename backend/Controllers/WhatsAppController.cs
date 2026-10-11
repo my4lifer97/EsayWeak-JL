@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
@@ -32,8 +33,15 @@ public class WhatsAppController(
     // never mistakes the gate's own "1"/"2" reply for an actual service-list numeric selection.
     private const string AwaitingModeChoiceMode = "AwaitingModeChoice";
 
-    private static readonly string[] CancelKeywords = ["cancel", "ביטול", "بطل", "إلغاء", "בטל"];
-    private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "تغيير", "שנה"];
+    // Matched as whole words only (see ContainsKeyword) -- a substring match cancelled real
+    // appointments on ordinary sentences ("בטל" inside "בטלפון", "بطل" inside "بطلب"). "שנה" was
+    // dropped from the reschedule list: on its own it far more often means "year" ("שנה טובה").
+    private static readonly string[] CancelKeywords = ["cancel", "ביטול", "בטל", "לבטל", "بطل", "إلغاء", "الغاء"];
+    private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "לשנות", "تغيير"];
+    // A cancel keyword never cancels on its own: it asks "reply 1 to cancel / 2 to keep" and parks
+    // the appointment id in WhatsAppConversationState.ChatbotMode as "ConfirmCancel:{id}" until the
+    // customer answers (see TryHandleCancelConfirmation).
+    private const string ConfirmCancelModePrefix = "ConfirmCancel:";
     private static readonly TimeSpan ConversationStateLifetime = TimeSpan.FromMinutes(10);
     // After this many consecutive non-numeric/out-of-range replies to a "which service?" prompt,
     // the rule-based bot stops replying to anything except the literal "$" unlock keyword -- see
@@ -365,12 +373,16 @@ public class WhatsAppController(
             }
         }
 
-        var lowerMsg = incomingMsg.ToLowerInvariant();
+        if (conversationState is not null && conversationState.ChatbotMode.StartsWith(ConfirmCancelModePrefix))
+        {
+            var confirmationReply = await TryHandleCancelConfirmation(business, conversationState, fromPhone, incomingMsg, lang, welcomeMessage);
+            if (confirmationReply is not null) return confirmationReply;
+        }
 
-        if (CancelKeywords.Any(k => lowerMsg.Contains(k)))
+        if (ContainsKeyword(incomingMsg, CancelKeywords))
             return await HandleCancel(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
 
-        if (RescheduleKeywords.Any(k => lowerMsg.Contains(k)))
+        if (ContainsKeyword(incomingMsg, RescheduleKeywords))
         {
             await ClearConversationState(business.Id, fromPhone);
             var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
@@ -515,11 +527,7 @@ public class WhatsAppController(
         if (cancelled is null)
             return JsonSerializer.Serialize(new { found = false });
 
-        var message = I18nService.T(lang, "whatsapp.cancelled", new()
-        {
-            ["date"] = cancelled.Date.ToString("yyyy-MM-dd"),
-            ["time"] = cancelled.StartTime,
-        });
+        var message = CancelResultMessage(cancelled, lang);
         return JsonSerializer.Serialize(new { found = true, message });
     }
 
@@ -594,48 +602,124 @@ public class WhatsAppController(
         return pendingLang ?? businessDefault;
     }
 
+    // Rule-based "cancel" keyword: never cancels directly. Names the appointment it would cancel and
+    // waits for "1" (cancel) / "2" (keep) -- see TryHandleCancelConfirmation.
     private async Task<string> HandleCancel(string businessId, string businessName, string fromPhone, string lang, string? welcomeMessage, bool inquiryEnabled)
     {
-        await ClearConversationState(businessId, fromPhone);
-        var cancelled = await FindAndCancelUpcomingAppointment(businessId, fromPhone);
+        var (upcoming, pending) = await FindUpcomingAppointments(businessId, fromPhone);
 
-        if (cancelled is null)
+        if (upcoming is null)
         {
+            await ClearConversationState(businessId, fromPhone);
+            // Everything left is already waiting on the owner -- say so instead of "no appointment".
+            if (pending is not null)
+                return I18nService.T(lang, "whatsapp.cancellationAlreadyRequested", DateTimeArgs(pending));
             var intro = I18nService.T(lang, "whatsapp.noAppointment");
             return $"{intro}\n\n{await PromptServiceSelection(businessId, businessName, fromPhone, lang, welcomeMessage, inquiryEnabled)}";
         }
 
-        return I18nService.T(lang, "whatsapp.cancelled", new()
+        var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == businessId && s.Phone == fromPhone);
+        if (state is null)
         {
-            ["date"] = cancelled.Date.ToString("yyyy-MM-dd"),
-            ["time"] = cancelled.StartTime,
-        });
+            state = new WhatsAppConversationState { BusinessId = businessId, Phone = fromPhone };
+            db.WhatsAppConversationStates.Add(state);
+        }
+        state.ChatbotMode = ConfirmCancelModePrefix + upcoming.Id;
+        state.Language = lang;
+        state.InvalidAttempts = 0;
+        state.AwaitingBookingCompletion = false;
+        state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        await db.SaveChangesAsync();
+
+        var args = DateTimeArgs(upcoming);
+        args["service"] = ItemName(upcoming.Item, lang);
+        return I18nService.T(lang, "whatsapp.confirmCancel", args);
     }
 
-    // Shared by the rule-based "cancel" keyword and the AI path's cancel_upcoming_appointment tool.
-    // Deliberately does NOT touch WhatsAppConversationState -- the rule-based caller clears it
-    // itself (its "awaiting numbered reply" semantics), while the AI path's conversation history
-    // in that same row must survive a cancellation instead of being wiped.
-    private async Task<Appointment?> FindAndCancelUpcomingAppointment(string businessId, string fromPhone)
+    // Answers an open "reply 1 to cancel / 2 to keep" question. Returns null for any other reply:
+    // the question is dropped (nothing cancelled) and the message is handled as a normal one.
+    private async Task<string?> TryHandleCancelConfirmation(Business business, WhatsAppConversationState state, string fromPhone, string incomingMsg, string lang, string? welcomeMessage)
+    {
+        var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
+        var answer = NormalizeDigits(incomingMsg.Trim());
+        await ClearConversationState(business.Id, fromPhone);
+
+        if (answer == "2") return I18nService.T(lang, "whatsapp.cancelKept");
+        if (answer != "1") return null;
+
+        var appointment = await db.Appointments
+            .Include(a => a.Customer)
+            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == business.Id && a.Customer.Phone == fromPhone);
+        // Changed since the question was asked (already cancelled, moved into the past, or
+        // already waiting on the owner) -- nothing left to cancel.
+        if (appointment is null || appointment.Status != AppointmentStatus.CONFIRMED || appointment.PendingCancellationApproval
+            || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+        {
+            var intro = I18nService.T(lang, "whatsapp.noAppointment");
+            return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
+        }
+
+        await cancellationService.CancelFromCustomerAsync(appointment);
+        await db.SaveChangesAsync();
+        return CancelResultMessage(appointment, lang);
+    }
+
+    // Shared by the rule-based cancel and the AI path's cancel_upcoming_appointment tool. With
+    // owner approval required, CancelFromCustomerAsync only freezes the appointment
+    // (PendingCancellationApproval) -- the reply must say "request sent", not "cancelled".
+    private static string CancelResultMessage(Appointment appointment, string lang) =>
+        I18nService.T(lang, appointment.PendingCancellationApproval ? "whatsapp.cancellationRequested" : "whatsapp.cancelled", DateTimeArgs(appointment));
+
+    private static Dictionary<string, string> DateTimeArgs(Appointment appointment) => new()
+    {
+        ["date"] = appointment.Date.ToString("yyyy-MM-dd"),
+        ["time"] = appointment.StartTime,
+    };
+
+    private static string ItemName(Item item, string lang) => lang switch
+    {
+        "AR" => item.NameAr,
+        "HE" => item.NameHe,
+        _ => item.NameEn,
+    };
+
+    // The customer's nearest upcoming appointment that can still be cancelled, plus (separately)
+    // the nearest one already waiting on owner approval, so callers can tell "nothing booked" apart
+    // from "already asked". Ordered by date then start time, so the earlier of two same-day
+    // appointments comes first.
+    private async Task<(Appointment? Upcoming, Appointment? PendingApproval)> FindUpcomingAppointments(string businessId, string fromPhone)
     {
         var customer = await db.Customers
             // a.Date is a calendar date (local wall-clock, never UTC-converted), so compare
             // against local "today" as a date — not DateTime.UtcNow, which is both the wrong
             // clock and, being a timestamp rather than a date, would already exclude today's
             // appointments as soon as any time had passed since UTC midnight.
-            .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && a.Date >= DateTime.Now.Date))
+            .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && a.Date >= DateTime.Now.Date))
+                .ThenInclude(a => a.Item)
             .FirstOrDefaultAsync(c => c.BusinessId == businessId && c.Phone == fromPhone);
 
-        var upcoming = customer?.Appointments
+        var upcoming = (customer?.Appointments ?? [])
             .Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED")
-            .OrderBy(a => a.Date)
-            .FirstOrDefault();
+            .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
+            .ToList();
+        return (upcoming.FirstOrDefault(a => !a.PendingCancellationApproval), upcoming.FirstOrDefault(a => a.PendingCancellationApproval));
+    }
+
+    // AI path's cancel_upcoming_appointment tool. Deliberately does NOT touch
+    // WhatsAppConversationState -- the AI path's conversation history in that row must survive a
+    // cancellation instead of being wiped.
+    private async Task<Appointment?> FindAndCancelUpcomingAppointment(string businessId, string fromPhone)
+    {
+        var (upcoming, _) = await FindUpcomingAppointments(businessId, fromPhone);
         if (upcoming is null) return null;
 
         await cancellationService.CancelFromCustomerAsync(upcoming);
         await db.SaveChangesAsync();
         return upcoming;
     }
+
+    private static bool ContainsKeyword(string message, string[] keywords) =>
+        Regex.Split(message.ToLowerInvariant(), @"[^\p{L}\p{Mn}\p{Nd}]+").Any(word => keywords.Contains(word));
 
     private async Task ClearConversationState(string businessId, string phone)
     {

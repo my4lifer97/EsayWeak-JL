@@ -718,6 +718,16 @@ to WhatsApp).
   after the first reminder read as the bot being broken/spammed, since a customer who missed or
   forgot that one message had no way to know the conversation could still be recovered). Prevents
   the bot replying forever to someone sending random text, while still telling them how to unlock it.
+- **Cancel keyword asks first** (rule-based path only, added 2026-10-11): cancel/reschedule
+  keywords match **whole words only** (`ContainsKeyword`) — the old substring match cancelled real
+  appointments on ordinary sentences like "אני בטלפון עכשיו" ("בטל" inside "בטלפון"); "שנה" was
+  dropped from the reschedule list since it usually means "year". A cancel keyword then names the
+  nearest cancellable appointment (date, then start time) and parks its id in
+  `WhatsAppConversationState.ChatbotMode` as `"ConfirmCancel:{id}"` (no extra column/migration):
+  `1` cancels it via `CancelFromCustomerAsync`, `2` keeps it, anything else drops the question and
+  is handled as a normal message. When owner approval is required the reply is
+  `whatsapp.cancellationRequested`, not `whatsapp.cancelled` (also for the AI path's cancel tool),
+  and a later "cancel" with only pending ones left gets `whatsapp.cancellationAlreadyRequested`.
 - **Quiet while a booking link is pending** (rule-based path only): once a booking link is issued
   (`WhatsAppController.IssueBookingLink`), the conversation-state row is kept alive (not removed)
   with `AwaitingBookingCompletion = true` instead, valid for the same 24h the link itself is --

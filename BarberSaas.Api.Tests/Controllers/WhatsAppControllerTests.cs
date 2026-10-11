@@ -207,8 +207,39 @@ public class WhatsAppControllerTests : IntegrationTestBase
         Assert.Contains("2.", unlockReply);
     }
 
+    // Seeds one CONFIRMED appointment tomorrow for this phone (creating the customer on first use).
+    private async Task<string> AddUpcomingAppointment(string businessId, string phone, string itemId, string startTime = "10:00", string endTime = "10:30")
+    {
+        using var db = Db();
+        var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == businessId && c.Phone == phone);
+        if (customer is null)
+        {
+            customer = new Customer { BusinessId = businessId, Phone = phone, Name = "Test", FamilyName = "Customer" };
+            db.Customers.Add(customer);
+        }
+        var appointment = new Appointment
+        {
+            BusinessId = businessId,
+            CustomerId = customer.Id,
+            ItemId = itemId,
+            Date = DateTime.Now.Date.AddDays(1),
+            StartTime = startTime,
+            EndTime = endTime,
+            Status = AppointmentStatus.CONFIRMED,
+        };
+        db.Appointments.Add(appointment);
+        await db.SaveChangesAsync();
+        return appointment.Id;
+    }
+
+    private async Task<Appointment> LoadAppointment(string id)
+    {
+        using var db = Db();
+        return await db.Appointments.FirstAsync(a => a.Id == id);
+    }
+
     [Fact]
-    public async Task CancelKeyword_MidSelection_WithUpcomingAppointment_CancelsAndClearsState()
+    public async Task CancelKeyword_MidSelection_AsksFirst_ThenCancelsOnOneAndClearsState()
     {
         // "No upcoming appointment" deliberately re-prompts for a fresh selection instead of
         // dead-ending the conversation (see HandleCancel), which would itself recreate a state
@@ -216,29 +247,111 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-webhook-4@example.com", "wa-webhook-4");
         var phone = "+15558880004";
         await SendWhatsAppMessage(phone, "hi"); // opens a pending selection state
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
 
-        using (var db = Db())
-        {
-            var customer = new Customer { BusinessId = businessId, Phone = phone, Name = "Test", FamilyName = "Customer" };
-            db.Customers.Add(customer);
-            db.Appointments.Add(new Appointment
-            {
-                BusinessId = businessId,
-                CustomerId = customer.Id,
-                ItemId = serviceIds[0],
-                Date = DateTime.Now.Date.AddDays(1),
-                StartTime = "10:00",
-                EndTime = "10:30",
-                Status = AppointmentStatus.CONFIRMED,
-            });
-            await db.SaveChangesAsync();
-        }
+        var question = await SendWhatsAppMessage(phone, "cancel");
+        Assert.Contains("Reply 1 to cancel", question);
+        Assert.Contains("10:00", question);
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(appointmentId)).Status);
 
-        var reply = await SendWhatsAppMessage(phone, "cancel");
+        var reply = await SendWhatsAppMessage(phone, "1");
 
         Assert.Contains("cancelled", reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(AppointmentStatus.CANCELLED, (await LoadAppointment(appointmentId)).Status);
         using var verifyDb = Db();
         Assert.False(await verifyDb.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone));
+    }
+
+    [Theory]
+    [InlineData("he", "אני בטלפון עכשיו")]         // "I'm on the phone now" -- contains בטל
+    [InlineData("ar", "بطلب من صديقي")]             // "at my friend's request" -- contains بطل
+    [InlineData("en", "I'll be there, no cancellation needed")]
+    public async Task CancelKeyword_InsideAnotherWord_DoesNotTriggerCancel(string caseId, string message)
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices($"wa-substr-{caseId}@example.com", $"wa-substr-{caseId}");
+        var phone = "+15558880040";
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+
+        var reply = await SendWhatsAppMessage(phone, message);
+        // Even if "1" follows, there was never a cancel question to answer.
+        await SendWhatsAppMessage(phone, "1");
+
+        Assert.DoesNotContain("10:00", reply);
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task CancelKeyword_InSentence_AsksAndKeepsOnTwo()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-keep@example.com", "wa-cancel-keep");
+        var phone = "+15558880041";
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+
+        var question = await SendWhatsAppMessage(phone, "Don't cancel, I'm just confirming I'll come");
+        Assert.Contains("Reply 1 to cancel", question);
+
+        var reply = await SendWhatsAppMessage(phone, "2");
+
+        Assert.Contains("stays as it is", reply);
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task CancelQuestion_AnsweredWithSomethingElse_CancelsNothing()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-other@example.com", "wa-cancel-other");
+        var phone = "+15558880042";
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+
+        await SendWhatsAppMessage(phone, "ביטול");
+        var reply = await SendWhatsAppMessage(phone, "מה השעות שלכם?");
+        await SendWhatsAppMessage(phone, "1"); // now a service choice, not a cancel confirmation
+
+        Assert.Contains("1.", reply); // handled as a normal message: fresh service list
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task CancelKeyword_TwoSameDayAppointments_OffersTheEarlierOne()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-order@example.com", "wa-cancel-order");
+        var phone = "+15558880043";
+        var later = await AddUpcomingAppointment(businessId, phone, serviceIds[0], "15:00", "15:30");
+        var earlier = await AddUpcomingAppointment(businessId, phone, serviceIds[0], "10:00", "10:30");
+
+        var question = await SendWhatsAppMessage(phone, "cancel");
+        await SendWhatsAppMessage(phone, "1");
+
+        Assert.Contains("10:00", question);
+        Assert.Equal(AppointmentStatus.CANCELLED, (await LoadAppointment(earlier)).Status);
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(later)).Status);
+    }
+
+    [Fact]
+    public async Task CancelKeyword_WithOwnerApprovalRequired_SaysRequestSent_NotCancelled()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-approval@example.com", "wa-cancel-approval");
+        using (var db = Db())
+        {
+            var business = await db.Businesses.FirstAsync(b => b.Id == businessId);
+            business.RequireApprovalOnCustomerCancel = true;
+            business.CancelApprovalNotifyViaWhatsApp = true;
+            business.CancelApprovalWhatsAppNumber = "+15550001111";
+            await db.SaveChangesAsync();
+        }
+        var phone = "+15558880044";
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+
+        await SendWhatsAppMessage(phone, "cancel");
+        var reply = await SendWhatsAppMessage(phone, "1");
+        var again = await SendWhatsAppMessage(phone, "cancel");
+
+        Assert.Contains("needs to approve", reply);
+        Assert.DoesNotContain("has been cancelled", reply);
+        var appointment = await LoadAppointment(appointmentId);
+        Assert.True(appointment.PendingCancellationApproval);
+        Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
+        Assert.Contains("already asked", again);
     }
 
     [Fact]
