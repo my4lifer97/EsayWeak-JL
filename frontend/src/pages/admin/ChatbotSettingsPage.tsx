@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 
 type ChatbotSettings = {
+  slug: string
   chatbotEnabled: boolean
   chatbotWelcomeMessageEn: string | null
   chatbotWelcomeMessageAr: string | null

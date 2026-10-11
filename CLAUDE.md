@@ -72,7 +72,7 @@ that read `IConfiguration` before `WebApplicationFactory`'s hook runs, which pre
 Set-Location "C:\Users\Jamel\Desktop\EsayWeek_JL\barber-saas\frontend"
 npx.cmd vite                         # Dev server at http://localhost:5173
 npx.cmd vite build                   # Production build
-npx.cmd tsc --noEmit                 # Type check
+npx.cmd tsc -b                       # Type check -- same as the Railway build; plain `tsc --noEmit` skips src/ (project references) and misses errors
 ```
 
 Both must run simultaneously. Vite dev server proxies `/api/*` to `http://localhost:5280`.
