@@ -348,4 +348,72 @@ public class AvailabilityServiceTests : IDisposable
         db.SaveChanges();
         return (holiday, def);
     }
+
+    private static (Item Item, Customer Customer) SeedItemAndCustomer(AppDbContext db, Business business)
+    {
+        var item = new Item { BusinessId = business.Id, NameEn = "Cut", NameAr = "Cut", NameHe = "Cut", DurationMinutes = 60, Price = 10 };
+        var customer = new Customer { BusinessId = business.Id, Name = "C", Phone = "+1" };
+        db.Items.Add(item);
+        db.Customers.Add(customer);
+        db.SaveChanges();
+        return (item, customer);
+    }
+
+    private static Appointment NewAppointment(Business business, Item item, Customer customer, string start, string end) => new()
+    {
+        BusinessId = business.Id, CustomerId = customer.Id, ItemId = item.Id,
+        Date = DateTime.Parse(TestDate + "T00:00:00Z").ToUniversalTime(),
+        StartTime = start, EndTime = end, Status = AppointmentStatus.CONFIRMED,
+    };
+
+    // The QA race: 09:00-10:00 and 09:30-10:00 both passed GetAvailableSlots before either saved,
+    // and the unique index only covers identical start times. The save itself must re-check overlap.
+    [Fact]
+    public async Task TrySaveOrDetectConflict_RejectsOverlapWithADifferentStartTime()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var (item, customer) = SeedItemAndCustomer(db, business);
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:00", "10:00"));
+        await db.SaveChangesAsync();
+
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:30", "10:00"));
+        var saved = await new AvailabilityService(db).TrySaveOrDetectConflict(business.Id, TestDate, "09:30", "10:00");
+
+        Assert.False(saved);
+        using var verify = NewDb();
+        Assert.Equal(1, await verify.Appointments.CountAsync());
+    }
+
+    [Fact]
+    public async Task TrySaveOrDetectConflict_AllowsAdjacentBooking()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var (item, customer) = SeedItemAndCustomer(db, business);
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:00", "10:00"));
+        await db.SaveChangesAsync();
+
+        db.Appointments.Add(NewAppointment(business, item, customer, "10:00", "11:00"));
+        Assert.True(await new AvailabilityService(db).TrySaveOrDetectConflict(business.Id, TestDate, "10:00", "11:00"));
+    }
+
+    // Moving an appointment 30 minutes later overlaps its own old time -- that's not a conflict.
+    [Fact]
+    public async Task TrySaveOrDetectConflict_RescheduleOverlappingItsOwnOldTime_Saves()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var (item, customer) = SeedItemAndCustomer(db, business);
+        var appt = NewAppointment(business, item, customer, "09:00", "10:00");
+        db.Appointments.Add(appt);
+        await db.SaveChangesAsync();
+
+        appt.StartTime = "09:30";
+        appt.EndTime = "10:30";
+        Assert.True(await new AvailabilityService(db).TrySaveOrDetectConflict(business.Id, TestDate, "09:30", "10:30"));
+
+        using var verify = NewDb();
+        Assert.Equal("09:30", (await verify.Appointments.SingleAsync()).StartTime);
+    }
 }

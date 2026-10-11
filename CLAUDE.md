@@ -246,8 +246,8 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 **Public booking (no JWT — `{slug}` identifies the tenant)**
 - `GET /api/{slug}/info` — business name, items, active days (weekday template), `openDates` (the next 60 dates actually open per `GetEffectiveDay`, minus dates with a **full-day** `BlockedSlot` — what `BookingWizard`'s date picker filters on, so a scheduled preset range is honored and a closed day never appears; a partial block keeps the day listed), isRTL flag, plus `city`/`addressLine`/`mapUrl` and the rating aggregate (`ratingCount`, `ratingAverage`). Resolves by slug **regardless of `IsListed`** — unlisting only removes a business from the directory; a direct/shared link still works
 - `GET /api/{slug}/availability?date=&serviceId=` — available 30-min slots
-- `POST /api/{slug}/appointments/photo` — upload a reference photo for a `CustomerUpload`-mode item (anonymous, guest booking allowed); returns `{ url }` to pass as `customerPhotoUrl` below
-- `POST /api/{slug}/appointments` — book appointment; returns `{ appointmentId, cancelToken }`; auto-follows the business if the caller is a logged-in customer; if the item's `photoMode` is `OwnerGallery`/`CustomerUpload`, `galleryPhotoId`/`customerPhotoUrl` respectively is required
+- `POST /api/{slug}/appointments/photo` — upload a reference photo for a `CustomerUpload`-mode item (anonymous); returns `{ url }` to pass as `customerPhotoUrl` below
+- `POST /api/{slug}/appointments` — book appointment; **requires a customer session** (401 otherwise) and always books under the session's verified phone, ignoring `customerPhone` in the body; returns `{ appointmentId, cancelToken }`; auto-follows the business; if the item's `photoMode` is `OwnerGallery`/`CustomerUpload`, `galleryPhotoId`/`customerPhotoUrl` respectively is required
 - `GET /api/{slug}/appointments/{id}?token=` — view appointment details (used by the public magic-link page); requires the cancelToken like cancel/reschedule (404 without it — ids are public via `availability/full`, and this response includes the customer phone + token)
 - `DELETE /api/{slug}/appointments/{id}?token=` — cancel (validated by cancelToken) — routes through `AppointmentCancellationService.CancelFromCustomerAsync`, see [Waitlist & cancellation approval](#waitlist--cancellation-approval)
 - `PATCH /api/{slug}/appointments/{id}?token=` — reschedule (re-checks availability first)
@@ -339,7 +339,7 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
 
 **Customer routes**: `/:slug/book` and `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor to a guarded route sees an inline "message us on WhatsApp" notice **plus** a link into `/login?next=<path>` (phone+OTP, see [Customer login via phone+OTP](#customer-login-via-phoneotp)), not a hard redirect, since there's no single canonical sign-in page the way business/platform-admin auth has. As of the Discovery phase, **`/:slug` and `/browse` are public** (read-only storefront + directory) — moved out of the guard so a logged-out visitor who finds a business can view it; booking still needs a customer session (from either login path). `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are also outside the guard. `CustomerAccountNav` (shown on customer pages) links to `/login` when logged out, same as the guard's fallback.
 
-**Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBusinessesPage` (`/browse`) fetches `GET /api/businesses/followed` itself and renders a "Businesses You Follow" list below the directory results (authenticated only). A customer is auto-followed to a business the moment they book an appointment while logged in (`BookingController.BookAppointment`), not just via an explicit Follow click — guest bookings don't create a follow (no account to attach it to). The Follow button on `/:slug` and on browse cards is rendered **disabled** (with a WhatsApp-only tooltip) for anonymous visitors, since there's no sign-in page to send them to.
+**Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBusinessesPage` (`/browse`) fetches `GET /api/businesses/followed` itself and renders a "Businesses You Follow" list below the directory results (authenticated only). A customer is auto-followed to a business the moment they book an appointment (`BookingController.BookAppointment`, which requires a customer session), not just via an explicit Follow click. The Follow button on `/:slug` and on browse cards is rendered **disabled** (with a WhatsApp-only tooltip) for anonymous visitors, since there's no sign-in page to send them to.
 
 ### i18n (Translations)
 - **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings (every new key must be added to all three).  
@@ -364,12 +364,22 @@ AppointmentPage). BookingWizard steps 2-4 keep their own in-wizard step-back but
 (moving between wizard steps, not pages).
 
 ### Per-customer booking limits
-A business can cap how many times the *same customer* (matched by phone — applies whether they're
-logged in or booking as a guest, so it can't be dodged by not signing in) can book with them:
+A business can cap how many times the *same customer* (matched by phone, not account — so a second
+login for the same number, e.g. phone OTP next to the WhatsApp link, still counts) can book with them:
 `Business.MaxBookingsPerDay` / `MaxBookingsPerWeek` (nullable int, `null` = unlimited), set via
 `Settings > Booking Limits`. Enforced in `BookingController.BookAppointment` before creating the
 appointment — "per week" means the fixed Sun–Sat calendar week containing the requested date.
 Reschedules are not currently checked against the limit (only new bookings).
+
+### No overlapping bookings (advisory lock)
+Every booking/reschedule write (public, customer, owner) saves through
+`AvailabilityService.TrySaveOrDetectConflict`, which on Postgres takes
+`pg_advisory_xact_lock(hashtext('booking:{businessId}:{date}'))`, re-checks for any overlapping
+CONFIRMED appointment (excluding the rows being saved, so a reschedule doesn't clash with its own
+old time), then saves and commits. The earlier `GetAvailableSlots` check alone let two concurrent
+requests with different-but-overlapping start times both through; the partial unique index on
+`(BusinessId, Date, StartTime)` only stops identical starts and stays as a backstop. SQLite tests
+skip the lock (single writer).
 
 ### Returning customer's name stays editable, remembered from last time
 `BookingWizard`'s First/Family Name fields are always editable (only the phone field is `disabled`

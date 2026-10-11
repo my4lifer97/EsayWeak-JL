@@ -170,7 +170,7 @@ public class ServicePhotoTests : IntegrationTestBase
         var service = await CreateService(businessToken, "OwnerGallery");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
-        var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var resp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990001", null));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
@@ -187,7 +187,7 @@ public class ServicePhotoTests : IntegrationTestBase
         Client.DefaultRequestHeaders.Authorization = null;
 
         var slot = await FirstAvailableSlot(slug, service.Id);
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990002", null, GalleryPhotoId: photo!.Id));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -208,7 +208,7 @@ public class ServicePhotoTests : IntegrationTestBase
         Client.DefaultRequestHeaders.Authorization = null;
 
         var slot = await FirstAvailableSlot(slug, service.Id);
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990003", null, GalleryPhotoId: photoOnOtherService!.Id));
 
         Assert.Equal(HttpStatusCode.BadRequest, bookResp.StatusCode);
@@ -221,7 +221,7 @@ public class ServicePhotoTests : IntegrationTestBase
         var service = await CreateService(businessToken, "CustomerUpload");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
-        var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var resp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990004", null));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
@@ -238,7 +238,7 @@ public class ServicePhotoTests : IntegrationTestBase
         var uploaded = await uploadResp.Content.ReadFromJsonAsync<UploadPhotoResponse>();
 
         var slot = await FirstAvailableSlot(slug, service.Id);
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990005", null, CustomerPhotoUrl: uploaded!.Url));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -254,7 +254,7 @@ public class ServicePhotoTests : IntegrationTestBase
         var service = await CreateService(businessToken, "CustomerUpload");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
-        var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var resp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990006", null, CustomerPhotoUrl: "https://evil.example.com/x.jpg"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
@@ -267,7 +267,7 @@ public class ServicePhotoTests : IntegrationTestBase
         var service = await CreateService(businessToken, "None");
         var slot = await FirstAvailableSlot(slug, service.Id);
 
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990007", null));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -376,7 +376,7 @@ public class ServicePhotoTests : IntegrationTestBase
         Authorize(Client, ownerToken);
         var date = NextWeekdayDate();
         var slot = await FirstAvailableSlot(slug, service.Id, date);
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(service.Id, date, slot, "Customer", "+15559990104", null, GalleryPhotoId: photo!.Id));
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
         var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=all");

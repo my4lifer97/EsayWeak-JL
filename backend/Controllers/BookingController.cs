@@ -147,21 +147,19 @@ public class BookingController(
         var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
         var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
 
-        // If a logged-in customer token is attached, link the booking to their account and trust
-        // their verified phone over whatever was typed in the form (never let a client override
-        // another account's Customer row via a spoofed phone number).
-        string? customerAccountId = null;
-        var phone = req.CustomerPhone;
-        if (User.FindFirst("type")?.Value == "customer")
-        {
-            customerAccountId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            phone = User.FindFirst("phone")?.Value ?? phone;
+        // Booking needs a logged-in customer (WhatsApp link or phone OTP), and the phone always
+        // comes from that verified session, never from the form -- otherwise anyone could book
+        // under someone else's number, landing in their My Bookings and overwriting their name.
+        // The website already only shows the booking wizard behind CustomerProtectedRoute.
+        var customerAccountId = User.FindFirst("type")?.Value == "customer" ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null;
+        var phone = User.FindFirst("phone")?.Value;
+        if (customerAccountId is null || string.IsNullOrEmpty(phone))
+            return Unauthorized(new { error = "Please log in to book." });
 
-            // Booking a business once is enough to follow them — no separate follow click required.
-            // Done as its own save (before any Customer/Appointment tracking below) so FollowService
-            // can safely clear the change tracker if it needs to recover from a concurrent duplicate.
-            await followService.EnsureFollowed(customerAccountId!, business.Id);
-        }
+        // Booking a business once is enough to follow them — no separate follow click required.
+        // Done as its own save (before any Customer/Appointment tracking below) so FollowService
+        // can safely clear the change tracker if it needs to recover from a concurrent duplicate.
+        await followService.EnsureFollowed(customerAccountId, business.Id);
 
         // Per-customer limits (matched by phone, not account, so a guest booking can't dodge
         // them by simply not logging in). Counts CONFIRMED bookings with this business only.
@@ -204,7 +202,7 @@ public class BookingController(
             // that correction is what's remembered from here on.
             customer.Name = req.CustomerName;
             customer.FamilyName = req.CustomerFamilyName ?? "";
-            if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
+            customer.CustomerAccountId = customerAccountId;
         }
 
         var appointment = new Appointment

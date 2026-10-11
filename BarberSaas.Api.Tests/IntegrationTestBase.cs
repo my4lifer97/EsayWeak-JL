@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using BarberSaas.Api.Data;
+using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,6 +55,23 @@ public abstract class IntegrationTestBase : IDisposable
         var resp = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new { token = tokenRow.Id });
         resp.EnsureSuccessStatusCode();
         return (await resp.Content.ReadFromJsonAsync<WhatsAppLoginResult>())!;
+    }
+
+    // Public booking requires a customer session, and the booked phone is the session's -- so this
+    // logs in as req.CustomerPhone (once per phone, per test) and books with that token. The token
+    // goes on the request itself, so a business token left on Client's default headers is untouched.
+    private readonly Dictionary<string, string> _customerTokens = new();
+
+    protected async Task<HttpResponseMessage> BookAsCustomerAsync(string slug, BookAppointmentRequest req)
+    {
+        if (!_customerTokens.TryGetValue(req.CustomerPhone, out var token))
+        {
+            token = (await LoginCustomerViaWhatsAppAsync(req.CustomerPhone, req.CustomerName, req.CustomerFamilyName ?? "")).Token;
+            _customerTokens[req.CustomerPhone] = token;
+        }
+        var msg = new HttpRequestMessage(HttpMethod.Post, $"/api/{slug}/appointments") { Content = JsonContent.Create(req) };
+        msg.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return await Client.SendAsync(msg);
     }
 
     private async Task EnsureLoginBusinessSeededAsync()

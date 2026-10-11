@@ -169,32 +169,56 @@ public class AvailabilityService(AppDbContext db)
         return blocked is null ? null : new BlockedDayInfo(blocked.Reason);
     }
 
-    public async Task<bool> HasConflictingAppointment(string businessId, string dateStr, string startTime, string endTime)
+    // Reads what's actually stored (AsNoTracking), so an appointment being moved in this request
+    // is seen at its old time -- callers saving it pass its id in `excludeIds`.
+    public async Task<bool> HasConflictingAppointment(string businessId, string dateStr, string startTime, string endTime,
+        IReadOnlyCollection<string>? excludeIds = null)
     {
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
-        var existing = await db.Appointments
+        var existing = await db.Appointments.AsNoTracking()
             .Where(a => a.BusinessId == businessId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED)
             .ToListAsync();
-        return existing.Any(a => Overlaps(startTime, endTime, a.StartTime, a.EndTime));
+        return existing.Any(a => (excludeIds is null || !excludeIds.Contains(a.Id)) && Overlaps(startTime, endTime, a.StartTime, a.EndTime));
     }
 
-    // Wraps a booking/reschedule SaveChangesAsync that could collide with the partial unique
-    // index on (BusinessId, Date, StartTime) for CONFIRMED appointments (AppDbContext) -- the
-    // DB-level guard against two requests claiming the same freed slot at once (e.g. two
-    // waitlisted customers racing for a just-cancelled appointment). Returns false only if a
-    // concurrent request genuinely won that exact slot (re-verified via HasConflictingAppointment
-    // before swallowing the exception, so any other failure still surfaces as a real exception).
+    // Saves a booking/reschedule only if nothing CONFIRMED overlaps it. The callers' earlier
+    // GetAvailableSlots check isn't enough on its own: two requests for overlapping-but-different
+    // start times (09:00 for 60 min, 09:30 for 30 min) can both pass it before either saves, and the
+    // partial unique index on (BusinessId, Date, StartTime) only catches identical starts. So on
+    // Postgres the overlap re-check and the save run inside one transaction holding an advisory lock
+    // per business+day, which serializes every booking write for that day. SQLite (tests) has no
+    // advisory locks but only ever has one writer at a time anyway. The unique index stays as a
+    // backstop; a DbUpdateException is still re-verified before being reported as a conflict.
     public async Task<bool> TrySaveOrDetectConflict(string businessId, string dateStr, string startTime, string endTime)
     {
+        // The appointment(s) this request is adding or moving -- not a conflict with themselves.
+        var savingIds = db.ChangeTracker.Entries<Appointment>()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified)
+            .Select(e => e.Entity.Id)
+            .ToList();
+
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync() : null;
         try
         {
+            if (db.Database.IsNpgsql())
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_xact_lock(hashtext({"booking:" + businessId + ":" + dateStr}))");
+
+            if (await HasConflictingAppointment(businessId, dateStr, startTime, endTime, savingIds))
+            {
+                db.ChangeTracker.Clear();
+                return false;
+            }
+
             await db.SaveChangesAsync();
+            if (tx is not null) await tx.CommitAsync();
             return true;
         }
         catch (DbUpdateException)
         {
+            if (tx is not null) await tx.RollbackAsync();
             db.ChangeTracker.Clear();
-            if (await HasConflictingAppointment(businessId, dateStr, startTime, endTime))
+            if (await HasConflictingAppointment(businessId, dateStr, startTime, endTime, savingIds))
                 return false;
             throw;
         }

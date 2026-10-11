@@ -83,7 +83,7 @@ public class BookingFlowTests : IntegrationTestBase
     }
 
     private Task<HttpResponseMessage> Book(string slug, string itemId, string date, string startTime, string phone) =>
-        Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(itemId, date, startTime, "Customer", phone, null));
+        BookAsCustomerAsync(slug, new BookAppointmentRequest(itemId, date, startTime, "Customer", phone, null));
 
     [Fact]
     public async Task Booking_StoresFirstAndFamilyNameSeparately()
@@ -92,7 +92,7 @@ public class BookingFlowTests : IntegrationTestBase
         var itemId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, itemId);
 
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments", new BookAppointmentRequest(
+        var bookResp = await BookAsCustomerAsync(slug, new BookAppointmentRequest(
             itemId, TestDate, slot, "Jane", "+15553330099", null, CustomerFamilyName: "Doe"));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -118,7 +118,7 @@ public class BookingFlowTests : IntegrationTestBase
 
         // The name/family name fields are always editable (prefilled from the account, but never
         // locked) -- a correction on a later booking should actually take effect and be remembered.
-        var second = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var second = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(itemId, TestDate, slots[1].Start, "Janet", phone, null, CustomerFamilyName: "Doe-Smith"));
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
 
@@ -164,14 +164,16 @@ public class BookingFlowTests : IntegrationTestBase
         Assert.False(await verifyDb.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone && s.AwaitingBookingCompletion));
     }
 
+    // Booking itself needs a customer session, but the confirmation link it returns (id + token)
+    // must keep working with no login at all -- it's what's shared in WhatsApp messages.
     [Fact]
-    public async Task GuestBooking_CanBookViewAndCancel_WithoutAuth()
+    public async Task BookedAppointment_CanBeViewedAndCancelledByToken_WithoutAuth()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("guest-flow@example.com", "guest-flow-shop");
         var itemId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, itemId);
 
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(itemId, TestDate, slot, "Guest Person", "+15553330001", "note"));
         Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
@@ -197,7 +199,7 @@ public class BookingFlowTests : IntegrationTestBase
         var itemId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, itemId);
 
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(itemId, TestDate, slot, "Victim Person", "+15553330009", null));
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
@@ -259,22 +261,49 @@ public class BookingFlowTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task GuestBooking_DoesNotCreateAFollow_NoAccountToAttachItTo()
+    public async Task Booking_WithoutLogin_IsUnauthorized_AndNothingIsStored()
     {
-        var (businessToken, slug) = await RegisterAndLoginBusiness("guestfollow-flow@example.com", "guestfollow-flow-shop");
+        var (businessToken, slug) = await RegisterAndLoginBusiness("nologin-flow@example.com", "nologin-flow-shop");
         var itemId = await CreateService(businessToken);
         var slot = await FirstAvailableSlot(slug, itemId);
 
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
-            new BookAppointmentRequest(itemId, TestDate, slot, "Guest", "+15553330007", null));
-        Assert.Equal(HttpStatusCode.Created, bookResp.StatusCode);
+        var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(itemId, TestDate, slot, "Someone", "+15553330007", null));
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
 
-        // Same phone later creates an account — should NOT have inherited a follow from the
-        // earlier guest booking (there was no account to attach it to at the time).
-        var customerToken = await GetCustomerToken("+15553330007");
-        Authorize(Client, customerToken);
-        var followed = await Client.GetFromJsonAsync<List<BusinessSearchResultDto>>("/api/businesses/followed");
-        Assert.DoesNotContain(followed!, b => b.Slug == slug);
+        using var db = Db();
+        Assert.False(await db.Appointments.AnyAsync(a => a.Business.Slug == slug));
+        Assert.False(await db.Customers.AnyAsync(c => c.Business.Slug == slug));
+    }
+
+    // The QA repro: a logged-in customer typing someone else's number into the request must not
+    // book under (or rename) that person -- the phone always comes from the session.
+    [Fact]
+    public async Task Booking_IgnoresPhoneInForm_UsesSessionPhone()
+    {
+        var (businessToken, slug) = await RegisterAndLoginBusiness("spoof-flow@example.com", "spoof-flow-shop");
+        var itemId = await CreateService(businessToken);
+        var slot = await FirstAvailableSlot(slug, itemId);
+        const string victimPhone = "+15553330021";
+        using (var seed = Db())
+        {
+            var business = await seed.Businesses.FirstAsync(b => b.Slug == slug);
+            seed.Customers.Add(new Customer { BusinessId = business.Id, Phone = victimPhone, Name = "Victim", FamilyName = "Real" });
+            await seed.SaveChangesAsync();
+        }
+
+        Authorize(Client, await GetCustomerToken("+15553330022"));
+        var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(itemId, TestDate, slot, "Attacker", victimPhone, null));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var booked = await resp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        using var db = Db();
+        var appt = await db.Appointments.Include(a => a.Customer).FirstAsync(a => a.Id == booked!.AppointmentId);
+        Assert.Equal("+15553330022", appt.Customer.Phone);
+        var victim = await db.Customers.FirstAsync(c => c.Business.Slug == slug && c.Phone == victimPhone);
+        Assert.Equal("Victim", victim.Name);
+        Assert.False(await db.Appointments.AnyAsync(a => a.CustomerId == victim.Id));
     }
 
     [Fact]
@@ -309,7 +338,7 @@ public class BookingFlowTests : IntegrationTestBase
 
         var ownerToken = await GetCustomerToken("+15553330004");
         Authorize(Client, ownerToken);
-        var bookResp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var bookResp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(itemId, TestDate, slot, "Owner", "+15553330004", null));
         var booked = await bookResp.Content.ReadFromJsonAsync<BookAppointmentResponse>();
 
@@ -372,8 +401,10 @@ public class BookingFlowTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Conflict, tuesday.StatusCode);
     }
 
+    // Limits are matched by phone, not account: a second login for the same number (e.g. the
+    // phone-OTP path next to the WhatsApp link) still counts toward the same limit.
     [Fact]
-    public async Task MaxBookingsPerDay_AppliesRegardlessOfLoginState_MatchedByPhone()
+    public async Task MaxBookingsPerDay_AppliesAcrossSessions_MatchedByPhone()
     {
         var (businessToken, slug) = await RegisterAndLoginBusiness("mixed-flow@example.com", "mixed-flow-shop");
         var itemId = await CreateService(businessToken);
@@ -382,15 +413,13 @@ public class BookingFlowTests : IntegrationTestBase
         await SetBookingLimits(businessToken, perDay: 1, perWeek: null);
         const string phone = "+15553330013";
 
-        var customerToken = await GetCustomerToken(phone);
-        Authorize(Client, customerToken);
-        var authenticated = await Book(slug, itemId, TestDate, slots[0].Start, phone);
-        Client.DefaultRequestHeaders.Authorization = null;
+        var first = await Book(slug, itemId, TestDate, slots[0].Start, phone);
 
-        // Same phone, now booking as a guest — must still count toward the same limit.
-        var guest = await Book(slug, itemId, TestDate, slots[1].Start, phone);
+        Authorize(Client, await GetCustomerToken(phone));
+        var second = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+            new BookAppointmentRequest(itemId, TestDate, slots[1].Start, "Customer", phone, null));
 
-        Assert.Equal(HttpStatusCode.Created, authenticated.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, guest.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
 }

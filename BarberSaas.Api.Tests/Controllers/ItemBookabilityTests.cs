@@ -61,7 +61,7 @@ public class ItemBookabilityTests : IntegrationTestBase
         var (token, slug) = await RegisterAndLoginBusiness("nonbookable-book@example.com", "nonbookable-book-shop");
         var item = await CreateNonBookableItem(token);
 
-        var resp = await Client.PostAsJsonAsync($"/api/{slug}/appointments",
+        var resp = await BookAsCustomerAsync(slug,
             new BookAppointmentRequest(item.Id, "2026-07-06", "09:00", "Customer", "+15550001234", null));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
