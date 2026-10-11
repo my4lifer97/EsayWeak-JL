@@ -152,7 +152,9 @@ public class BookingController(
         // under someone else's number, landing in their My Bookings and overwriting their name.
         // The website already only shows the booking wizard behind CustomerProtectedRoute.
         var customerAccountId = User.FindFirst("type")?.Value == "customer" ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null;
-        var phone = User.FindFirst("phone")?.Value;
+        // Normalized again because a session issued before phones were canonicalized can still
+        // carry the old local format in its claim.
+        var phone = PhoneNormalizer.Normalize(User.FindFirst("phone")?.Value ?? "");
         if (customerAccountId is null || string.IsNullOrEmpty(phone))
             return Unauthorized(new { error = "Please log in to book." });
 

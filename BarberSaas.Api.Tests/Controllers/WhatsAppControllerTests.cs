@@ -262,6 +262,31 @@ public class WhatsAppControllerTests : IntegrationTestBase
         Assert.False(await verifyDb.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone));
     }
 
+    // WhatsApp always sends E.164; a booking the owner typed in locally ("050...") must still be
+    // the same customer's, or "cancel" finds nothing.
+    [Fact]
+    public async Task CancelKeyword_FindsAppointmentBookedWithLocalFormatPhone()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-local@example.com", "wa-cancel-local");
+        var login = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("wa-cancel-local@example.com", "password123"));
+        var ownerToken = (await login.Content.ReadFromJsonAsync<LoginResponse>())!.Token;
+        var date = DateTime.Now.Date.AddDays(1);
+        Authorize(Client, ownerToken);
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
+        var booked = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Rami", "050-111-2255", serviceIds[0], date.ToString("yyyy-MM-dd"), "10:00", null));
+        Assert.Equal(HttpStatusCode.Created, booked.StatusCode);
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        var question = await SendWhatsAppMessage("+972501112255", "cancel");
+        Assert.Contains("Reply 1 to cancel", question);
+        await SendWhatsAppMessage("+972501112255", "1");
+
+        using var db = Db();
+        Assert.Equal(AppointmentStatus.CANCELLED, (await db.Appointments.SingleAsync(a => a.BusinessId == businessId)).Status);
+    }
+
     [Theory]
     [InlineData("he", "אני בטלפון עכשיו")]         // "I'm on the phone now" -- contains בטל
     [InlineData("ar", "بطلب من صديقي")]             // "at my friend's request" -- contains بطل

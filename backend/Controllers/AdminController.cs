@@ -1091,6 +1091,11 @@ public class AdminController(
 
         if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerPhone))
             return (null, BadRequest(new { error = "Customer name and phone are required" }));
+        if (!PhoneNormalizer.IsValid(customerPhone))
+            return (null, BadRequest(new { error = "Please enter a valid phone number" }));
+        // Same stored format as every other path, so "050..." typed here finds the customer who
+        // booked on the website or WhatsApp as "+97250..." instead of creating a duplicate.
+        customerPhone = PhoneNormalizer.Normalize(customerPhone);
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == customerPhone);
         // Link to an existing CustomerAccount by phone, same as the public booking flow does from

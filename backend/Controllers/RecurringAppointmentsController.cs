@@ -68,17 +68,20 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         {
             if (string.IsNullOrWhiteSpace(req.CustomerName) || string.IsNullOrWhiteSpace(req.CustomerPhone))
                 return BadRequest(new { error = "Customer name and phone are required" });
-            customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == req.CustomerPhone);
+            if (!PhoneNormalizer.IsValid(req.CustomerPhone))
+                return BadRequest(new { error = "Please enter a valid phone number" });
+            var customerPhone = PhoneNormalizer.Normalize(req.CustomerPhone);
+            customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == customerPhone);
             // Link to an existing CustomerAccount by phone, same as the public booking flow does
             // from its JWT -- otherwise a recurring series the owner sets up for an
             // already-registered customer never shows its occurrences in that customer's own "My
             // Bookings" until they book/reschedule with this business themselves.
-            var customerAccountId = (await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == req.CustomerPhone))?.Id;
+            var customerAccountId = (await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == customerPhone))?.Id;
             if (customer is null)
             {
                 customer = new Customer
                 {
-                    Name = req.CustomerName, FamilyName = req.CustomerFamilyName ?? "", Phone = req.CustomerPhone, BusinessId = BusinessId,
+                    Name = req.CustomerName, FamilyName = req.CustomerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId,
                     CustomerAccountId = customerAccountId,
                 };
                 db.Customers.Add(customer);

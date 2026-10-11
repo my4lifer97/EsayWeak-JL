@@ -169,6 +169,49 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Single(db.Customers.Where(c => c.BusinessId == businessId && c.Phone == "+15559998888"));
     }
 
+    // The owner types the number the local way; the customer who booked on the website or
+    // WhatsApp is stored as E.164 -- same person, so no duplicate Customer row.
+    [Fact]
+    public async Task CreateAppointment_LocalFormatPhone_MatchesExistingE164Customer()
+    {
+        var slug = "admin-book-local-phone";
+        var token = await RegisterAndLoginBusiness("admin-book-local-phone@example.com", slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        string customerId;
+        using (var db = Db())
+        {
+            var customer = new Customer { BusinessId = businessId, Name = "Rami", Phone = "+972501112244" };
+            db.Customers.Add(customer);
+            db.SaveChanges();
+            customerId = customer.Id;
+        }
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Rami", "050-111-2244", itemId, date.ToString("yyyy-MM-dd"), "09:00", null));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var verifyDb = Db();
+        var only = Assert.Single(verifyDb.Customers.Where(c => c.BusinessId == businessId));
+        Assert.Equal(customerId, only.Id);
+    }
+
+    [Fact]
+    public async Task CreateAppointment_GarbagePhone_ReturnsBadRequest()
+    {
+        var slug = "admin-book-bad-phone";
+        var token = await RegisterAndLoginBusiness("admin-book-bad-phone@example.com", slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Sara", "ASD", itemId, date.ToString("yyyy-MM-dd"), "09:00", null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        using var db = Db();
+        Assert.False(db.Customers.Any(c => c.BusinessId == businessId));
+    }
+
     [Fact]
     public async Task CreateAppointment_NewCustomer_StoresFirstAndFamilyNameSeparately()
     {

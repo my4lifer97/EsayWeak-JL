@@ -149,7 +149,7 @@ barber-saas/
 │   │   ├── PlatformAdminJwtService.cs  # Platform admin JWT generation (separate "type": "platform_admin" claim)
 │   │   ├── UsernameGenerator.cs        # Derives+dedupes the login username for an admin-approved account (firstname + first 2 letters of family name)
 │   │   ├── SlugValidator.cs            # Shared slug format/reserved-word rules for self-service and admin-issued signup
-│   │   ├── PhoneNormalizer.cs          # Normalizes phone numbers to a canonical form for matching
+│   │   ├── PhoneNormalizer.cs          # Normalizes phone numbers to E.164 (local = Israeli) for storage/matching + IsValid
 │   │   ├── WhatsAppBookingTokenService.cs  # Issues/resolves WhatsAppBookingToken rows (shared by WhatsAppController and CustomerAuthController)
 │   │   ├── IOpenAiChatClient.cs / OpenAiChatClient.cs  # Wraps the OpenAI Chat Completions API (tool calling) for the optional AI-driven WhatsApp chatbot layer -- pure transport, no DB access
 │   │   ├── IEmailSender.cs / DevEmailSender.cs / SmtpEmailSender.cs / ResendEmailSender.cs / BrevoEmailSender.cs  # Email delivery abstraction — precedence Brevo > SMTP > Resend > dev no-op, see Configuration
@@ -956,10 +956,15 @@ same kind of `CustomerAccount`-backed JWT. Flow (`WhatsAppController` + `Custome
    skips straight to date selection (`BookingWizard`'s deep-link `useEffect`) — no sign-up/sign-in
    step, no item list to pick from again.
 
-`PhoneNormalizer.Normalize` (used everywhere phones are stored/matched) keeps a bare local number
-as-is if the customer didn't type a `+` — WhatsApp's `From` field always arrives in E.164 already,
-so this mainly matters for matching against phones entered elsewhere (owner-created appointments,
-the booking form's editable phone field).
+**Phones are stored in E.164, always.** `PhoneNormalizer.Normalize` (used everywhere phones are
+stored/matched) turns a number with no `+` into a local Israeli one (`050-123-4567` →
+`+972501234567`) and reads a `00` prefix as `+`, so a number the owner typed locally and WhatsApp's
+E.164 `From` are the same customer. It runs at every entry point (`WhatsAppController.ProcessMessageAsync`
+for both inbound paths, `AdminController.ResolveCustomer`, recurring create, OTP request/verify,
+booking session claim); `PhoneNormalizer.IsValid` (7–15 digits, no letters) rejects garbage on the
+OTP request and owner booking/recurring forms. Rows stored before this (2026-10-11) were rewritten by
+the data-only `NormalizeStoredPhones` migration, which skips (never merges) a row whose canonical form
+would collide on a unique phone index — keep its SQL `tmp_canon_phone` in sync with `Normalize`.
 
 ### Customer login via phone+OTP
 A second, parallel entry point alongside WhatsApp login (`CustomerAuthController`, re-added

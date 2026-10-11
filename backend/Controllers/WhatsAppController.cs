@@ -135,6 +135,11 @@ public class WhatsAppController(
     // the old empty-TwiML-response behavior.
     private async Task<string?> ProcessMessageAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
+        // Both inbound paths (Twilio, bridge) land here: canonicalize once so every lookup and
+        // write below matches bookings made on the website (see PhoneNormalizer).
+        fromPhone = PhoneNormalizer.Normalize(fromPhone);
+        if (fromPhone.Length == 0) return null;
+
         // The business wants to reply themselves instead of the automated flow -- send no message
         // at all, rather than a fixed "not available" reply.
         if (!business.ChatbotEnabled)

@@ -32,6 +32,8 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
     {
         if (string.IsNullOrWhiteSpace(req.Phone))
             return BadRequest(new { error = "Phone is required" });
+        if (!PhoneNormalizer.IsValid(req.Phone))
+            return BadRequest(new { error = "Please enter a valid phone number" });
 
         var phone = PhoneNormalizer.Normalize(req.Phone);
         var since = DateTime.UtcNow.AddHours(-1);

@@ -7,7 +7,12 @@ public class PhoneNormalizerTests
 {
     [Theory]
     [InlineData("+1 (555) 000-1234", "+15550001234")]
-    [InlineData("555-000-1234", "5550001234")]
+    // No "+" = a local Israeli number (the business is Israel-based), same as ToE164.
+    [InlineData("555-000-1234", "+9725550001234")]
+    [InlineData("050-123-4567", "+972501234567")]
+    [InlineData("0501234567", "+972501234567")]
+    [InlineData("00972501234567", "+972501234567")]
+    [InlineData("0044 20 7946 0000", "+442079460000")]
     [InlineData("+972 50-123-4567", "+972501234567")]
     [InlineData("+15550001234", "+15550001234")]
     [InlineData("  +1 555 000 1234  ", "+15550001234")]
@@ -22,6 +27,31 @@ public class PhoneNormalizerTests
         var a = PhoneNormalizer.Normalize("+1 (555) 000-1234");
         var b = PhoneNormalizer.Normalize("+15550001234");
         Assert.Equal(a, b);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("abc")]
+    public void Normalize_NoDigits_ReturnsEmpty(string input)
+    {
+        Assert.Equal("", PhoneNormalizer.Normalize(input));
+    }
+
+    [Theory]
+    [InlineData("050-123-4567", true)]
+    [InlineData("+972 (50) 123.4567", true)]
+    [InlineData("1234567", true)]
+    [InlineData("123456", false)]           // too short
+    [InlineData("1234567890123456", false)] // too long
+    [InlineData("ASD", false)]
+    [InlineData("050-ABC-4567", false)]
+    [InlineData("+", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsValid_AcceptsOnlyRealLookingNumbers(string? input, bool expected)
+    {
+        Assert.Equal(expected, PhoneNormalizer.IsValid(input));
     }
 
     [Theory]
