@@ -11,12 +11,19 @@ customerApi.interceptors.request.use((config) => {
   return config
 })
 
+// Fired on a 401 so CustomerAuthProvider drops its logged-in state too -- clearing storage alone
+// left "Sign Out" in the menu and pages quietly loading as empty after the token expired.
+export const CUSTOMER_SESSION_EXPIRED = 'customer-session-expired'
+
 customerApi.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    // The login endpoints' own 401s are wrong codes, not an expired session.
+    const isAuthRequest = err.config?.url?.includes('/customer/auth/')
+    if (err.response?.status === 401 && !isAuthRequest) {
       localStorage.removeItem('customerToken')
       localStorage.removeItem('customerUser')
+      window.dispatchEvent(new Event(CUSTOMER_SESSION_EXPIRED))
     }
     return Promise.reject(err)
   }

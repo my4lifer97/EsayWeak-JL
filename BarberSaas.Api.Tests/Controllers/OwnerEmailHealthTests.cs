@@ -111,6 +111,18 @@ public class OwnerEmailHealthTests : IntegrationTestBase
     }
 
     [Fact]
+    public void FailedAlertSend_IsRetriedAfterThePauseNotEveryTick()
+    {
+        var health = new OwnerEmailHealth();
+        var now = DateTime.UtcNow;
+        health.RecordFailure("invalid_grant");
+        health.DeferNotification(now.AddMinutes(15));
+
+        Assert.Equal(OwnerEmailHealth.Notification.None, health.PendingNotification(now.AddMinutes(1), TimeSpan.FromHours(24)));
+        Assert.Equal(OwnerEmailHealth.Notification.Failing, health.PendingNotification(now.AddMinutes(16), TimeSpan.FromHours(24)));
+    }
+
+    [Fact]
     public void RecoveryWithoutAPriorAlert_SendsNoRecoveryEmail()
     {
         var health = new OwnerEmailHealth();

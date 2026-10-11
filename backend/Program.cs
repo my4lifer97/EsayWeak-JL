@@ -13,6 +13,7 @@ builder.Services.AddControllers(opt =>
 {
     opt.Filters.Add<ActivityLogFilter>();
     opt.Filters.Add<RequirePasswordChangeFilter>();
+    opt.Filters.Add<BlockDisabledBusinessFilter>();
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
@@ -39,8 +40,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization(opt =>
 {
     opt.AddPolicy("CustomerOnly", p => p.RequireAuthenticatedUser().RequireClaim("type", "customer"));
+    // Business JWTs are the only ones without a "type" claim (customer and platform_admin both
+    // carry one) -- checking only != "customer" used to let a platform-admin login act as an owner.
     opt.AddPolicy("BusinessOnly", p => p.RequireAuthenticatedUser().RequireAssertion(ctx =>
-        ctx.User.FindFirst("type")?.Value != "customer"));
+        ctx.User.FindFirst("type") is null));
     opt.AddPolicy("PlatformAdminOnly", p => p.RequireAuthenticatedUser().RequireClaim("type", "platform_admin"));
 });
 builder.Services.AddScoped<JwtService>();

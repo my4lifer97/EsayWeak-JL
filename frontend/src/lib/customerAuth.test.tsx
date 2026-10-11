@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { act } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CustomerAuthProvider, useCustomerAuth } from './customerAuth'
 import { customerApi } from './customerApi'
 
 vi.mock('./customerApi', () => ({
   customerApi: { post: vi.fn() },
+  CUSTOMER_SESSION_EXPIRED: 'customer-session-expired',
 }))
 
 function TestConsumer() {
@@ -25,9 +28,11 @@ function TestConsumer() {
 
 function renderWithProvider() {
   return render(
-    <CustomerAuthProvider>
-      <TestConsumer />
-    </CustomerAuthProvider>
+    <QueryClientProvider client={new QueryClient()}>
+      <CustomerAuthProvider>
+        <TestConsumer />
+      </CustomerAuthProvider>
+    </QueryClientProvider>
   )
 }
 
@@ -37,6 +42,17 @@ beforeEach(() => {
 })
 
 describe('CustomerAuthProvider', () => {
+  // An expired token used to leave "Sign Out" showing while pages quietly loaded as empty.
+  it('drops to signed-out when customerApi reports the session expired', () => {
+    localStorage.setItem('customerUser', JSON.stringify({ id: '1', name: 'A', familyName: 'B', phone: '+15550001111' }))
+    renderWithProvider()
+    expect(screen.getByTestId('authed').textContent).toBe('true')
+
+    act(() => { window.dispatchEvent(new Event('customer-session-expired')) })
+
+    expect(screen.getByTestId('authed').textContent).toBe('false')
+  })
+
   it('starts unauthenticated with no stored user', () => {
     renderWithProvider()
     expect(screen.getByTestId('authed').textContent).toBe('false')

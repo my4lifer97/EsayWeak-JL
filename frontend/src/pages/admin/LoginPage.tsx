@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import ThemeToggle from '../../components/ThemeToggle'
 
@@ -13,7 +13,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
   const [devCode, setDevCode] = useState<string | null>(null)
-  const [error, setError] = useState('')
+  const [searchParams] = useSearchParams()
+  // ?disabled=1: api.ts signed this owner out because the account was disabled mid-session.
+  const [error, setError] = useState(() => searchParams.get('disabled') ? 'This account has been disabled. Contact support.' : '')
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: FormEvent) {

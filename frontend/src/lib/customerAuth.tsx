@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
-import { customerApi } from './customerApi'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { customerApi, CUSTOMER_SESSION_EXPIRED } from './customerApi'
 
 interface CustomerUser { id: string; name: string; familyName: string; phone: string }
 interface WhatsAppLoginResult { businessSlug: string; itemId: string }
@@ -24,6 +25,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   // Independent from the business admin's language (useAuth) and from any specific business's
   // configured language — this is the customer's own choice, defaulting to Hebrew when unset.
   const [language, setLanguage] = useState(() => localStorage.getItem('customerLang') ?? 'HE')
+  const queryClient = useQueryClient()
 
   function setLang(l: string) {
     localStorage.setItem('customerLang', l)
@@ -33,6 +35,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   // Shared by every login path below -- each just needs to get a token + the four CustomerUser
   // fields from its own endpoint shape, then land here.
   function storeSession(data: { token: string; customerId: string; name: string; familyName: string; phone: string }) {
+    queryClient.clear()
     localStorage.setItem('customerToken', data.token)
     const u: CustomerUser = { id: data.customerId, name: data.name, familyName: data.familyName, phone: data.phone }
     localStorage.setItem('customerUser', JSON.stringify(u))
@@ -67,8 +70,16 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     localStorage.removeItem('customerToken')
     localStorage.removeItem('customerUser')
+    queryClient.clear()
     setUser(null)
   }
+
+  // customerApi got a 401 -- the token expired; show the signed-out state instead of empty pages.
+  useEffect(() => {
+    const onExpired = () => { queryClient.clear(); setUser(null) }
+    window.addEventListener(CUSTOMER_SESSION_EXPIRED, onExpired)
+    return () => window.removeEventListener(CUSTOMER_SESSION_EXPIRED, onExpired)
+  }, [queryClient])
 
   return (
     <CustomerAuthContext.Provider value={{ user, loginWithWhatsAppToken, requestOtp, verifyOtp, logout, isAuthenticated: !!user, language, setLang }}>

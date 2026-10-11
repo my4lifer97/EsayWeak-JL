@@ -341,6 +341,93 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, loginResp.StatusCode);
     }
 
+    private record DevCodeResponse(string? DevCode);
+
+    private static async Task AssertAccountDisabled(HttpResponseMessage resp)
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        Assert.True(body!["accountDisabled"] is System.Text.Json.JsonElement je && je.GetBoolean());
+    }
+
+    // A business JWT lives 30 days -- disabling must also cut off a session that's already open.
+    [Fact]
+    public async Task DisableBusiness_BlocksAnAlreadyLoggedInOwner_UntilReEnabled()
+    {
+        var adminToken = await BootstrapAdmin();
+        var ownerToken = await RegisterAndLoginBusiness("open-session@example.com", "open-session-shop");
+        Authorize(Client, ownerToken);
+        var businessId = (await Client.GetFromJsonAsync<Dictionary<string, object>>("/api/admin/settings"))!["id"].ToString();
+
+        Authorize(Client, adminToken);
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+        Authorize(Client, ownerToken);
+        await AssertAccountDisabled(await Client.GetAsync("/api/admin/settings"));
+        await AssertAccountDisabled(await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("newpassword123")));
+
+        Authorize(Client, adminToken);
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/enable", null);
+        Authorize(Client, ownerToken);
+        Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync("/api/admin/settings")).StatusCode);
+    }
+
+    [Fact]
+    public async Task DisableBusiness_ForgotPasswordSendsNoCode()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("disabled-forgot@example.com", "disabled-forgot-shop");
+        Authorize(Client, adminToken);
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        await AssertAccountDisabled(await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email)));
+        using var db = Db();
+        Assert.False(db.BusinessPasswordResetOtps.Any(o => o.Email == email));
+    }
+
+    // A reset code requested before the disable must not turn into a fresh login afterwards.
+    [Fact]
+    public async Task DisableBusiness_ResetCodeIssuedBeforehand_IsRejected()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("disabled-reset@example.com", "disabled-reset-shop");
+        var forgot = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email));
+        var code = (await forgot.Content.ReadFromJsonAsync<DevCodeResponse>())!.DevCode!;
+
+        Authorize(Client, adminToken);
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        await AssertAccountDisabled(await Client.PostAsJsonAsync("/api/auth/reset-password", new ResetPasswordRequest(email, code, "brandnew123")));
+        using var db = Db();
+        Assert.True(BCrypt.Net.BCrypt.Verify("password123", db.Businesses.Single(b => b.Id == businessId).PasswordHash));
+    }
+
+    // Support can still look inside a disabled account.
+    [Fact]
+    public async Task DisableBusiness_ImpersonationStillWorks()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, _) = await RegisterAndVerifyBusiness("disabled-impersonate@example.com", "disabled-impersonate-shop");
+        Authorize(Client, adminToken);
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+
+        var impersonate = await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/impersonate", null);
+        Authorize(Client, (await impersonate.Content.ReadFromJsonAsync<PlatformAdminImpersonateResponse>())!.Token);
+
+        Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync("/api/admin/settings")).StatusCode);
+    }
+
+    [Fact]
+    public async Task OwnerRoutes_RejectAPlatformAdminToken()
+    {
+        Authorize(Client, await BootstrapAdmin());
+
+        var resp = await Client.GetAsync("/api/admin/settings");
+
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
     [Fact]
     public async Task ResetPassword_Temporary_ChangesPasswordAndForcesChange()
     {

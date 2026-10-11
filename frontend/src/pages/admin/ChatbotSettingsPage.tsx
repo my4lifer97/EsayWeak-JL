@@ -78,12 +78,14 @@ export default function ChatbotSettingsPage() {
   const [chatbotInquiryEnabled, setChatbotInquiryEnabled] = useState(false)
   const [inquiryNotifyViaWhatsApp, setInquiryNotifyViaWhatsApp] = useState(false)
   const [inquiryNotifyViaEmail, setInquiryNotifyViaEmail] = useState(false)
-  const [initialized, setInitialized] = useState(false)
+  // Which business the form was filled from -- refills if a different owner's settings arrive,
+  // instead of keeping (and later saving) the previous business's values.
+  const [initializedFor, setInitializedFor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
-  if (business && !initialized) {
+  if (business && initializedFor !== business.slug) {
     setForm({
       chatbotWelcomeMessageEn: business.chatbotWelcomeMessageEn ?? '',
       chatbotWelcomeMessageAr: business.chatbotWelcomeMessageAr ?? '',
@@ -102,7 +104,7 @@ export default function ChatbotSettingsPage() {
     setChatbotInquiryEnabled(business.chatbotInquiryEnabled)
     setInquiryNotifyViaWhatsApp(business.inquiryNotifyViaWhatsApp)
     setInquiryNotifyViaEmail(business.inquiryNotifyViaEmail)
-    setInitialized(true)
+    setInitializedFor(business.slug)
   }
 
   async function handleSubmit(e: React.FormEvent) {

@@ -114,8 +114,9 @@ public class PlatformAdminController(
             b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber, b.IsDisabled));
     }
 
-    // "Active Directory"-style account lock -- blocks only AuthController.Login (see
-    // Business.IsDisabled); storefront/WhatsApp bot/appointments are unaffected.
+    // "Active Directory"-style account lock -- blocks login, password reset/email verification, and
+    // every BusinessOnly action on an already-issued token (BlockDisabledBusinessFilter);
+    // storefront/WhatsApp bot/appointments are unaffected.
     [HttpPost("businesses/{id}/disable")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> DisableBusiness(string id)

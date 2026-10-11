@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './auth'
 import { api } from './api'
 
@@ -24,11 +25,16 @@ function TestConsumer() {
   )
 }
 
+let queryClient: QueryClient
+
 function renderWithProvider() {
+  queryClient = new QueryClient()
   return render(
-    <AuthProvider>
-      <TestConsumer />
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TestConsumer />
+      </AuthProvider>
+    </QueryClientProvider>
   )
 }
 
@@ -38,6 +44,28 @@ beforeEach(() => {
 })
 
 describe('AuthProvider', () => {
+  // Shared salon tablet: the next owner must not see (or save over) the previous owner's data.
+  it('logout drops every cached query', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: '1', name: 'A', email: 'a@example.com', slug: 'a' }))
+    renderWithProvider()
+    queryClient.setQueryData(['settings'], { name: 'Owner A shop' })
+
+    await userEvent.click(screen.getByText('logout'))
+
+    expect(queryClient.getQueryData(['settings'])).toBeUndefined()
+  })
+
+  it('login drops data cached under the previous session', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { token: 't2', id: '2', name: 'B', email: 'b@example.com', slug: 'b' } })
+    renderWithProvider()
+    queryClient.setQueryData(['settings'], { name: 'Owner A shop' })
+
+    await userEvent.click(screen.getByText('login'))
+
+    await waitFor(() => expect(screen.getByTestId('authed').textContent).toBe('true'))
+    expect(queryClient.getQueryData(['settings'])).toBeUndefined()
+  })
+
   it('starts unauthenticated with no stored user', () => {
     renderWithProvider()
     expect(screen.getByTestId('authed').textContent).toBe('false')

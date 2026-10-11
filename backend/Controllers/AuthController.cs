@@ -88,6 +88,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         return StatusCode(201, new { business.Id, business.Name, business.Email, business.Slug, devCode });
     }
 
+    // Same shape as BlockDisabledBusinessFilter's response, which the frontend signs out on.
+    private ObjectResult AccountDisabled() =>
+        StatusCode(403, new { error = "This account has been disabled. Contact support.", accountDisabled = true });
+
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
     {
@@ -101,8 +105,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
             return Unauthorized(new { error = "Invalid email or password" });
 
-        if (business.IsDisabled)
-            return StatusCode(403, new { error = "This account has been disabled. Contact support.", accountDisabled = true });
+        if (business.IsDisabled) return AccountDisabled();
 
         if (!business.EmailVerified)
             return StatusCode(403, new { error = "Please verify your email before signing in.", emailNotVerified = true });
@@ -176,6 +179,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
         if (business is null) return NotFound(new { error = "Not found" });
+        if (business.IsDisabled) return AccountDisabled();
 
         var entry = await db.BusinessEmailOtps
             .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
@@ -206,6 +210,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
         if (business is null) return NotFound(new { error = "Not found" });
+        // Resetting the password would otherwise hand a disabled owner a fresh login.
+        if (business.IsDisabled) return AccountDisabled();
 
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.BusinessPasswordResetOtps
@@ -244,6 +250,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
         if (business is null) return NotFound(new { error = "Not found" });
+        // Also covers a reset code issued before the account was disabled.
+        if (business.IsDisabled) return AccountDisabled();
 
         var entry = await db.BusinessPasswordResetOtps
             .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)

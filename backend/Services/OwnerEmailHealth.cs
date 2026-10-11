@@ -17,6 +17,7 @@ public class OwnerEmailHealth
     private DateTime? _lastCheckedAt;
     private DateTime? _lastAlertSentAt;
     private bool _recoveryPending;
+    private DateTime? _retryNotifyAfter;
 
     public void RecordSuccess()
     {
@@ -57,6 +58,7 @@ public class OwnerEmailHealth
     {
         lock (_lock)
         {
+            if (now < _retryNotifyAfter) return Notification.None;
             if (_failingSince is not null)
                 return _lastAlertSentAt is null || now - _lastAlertSentAt >= repeatAfter ? Notification.Failing : Notification.None;
             return _recoveryPending ? Notification.Recovered : Notification.None;
@@ -69,6 +71,14 @@ public class OwnerEmailHealth
         {
             if (sent == Notification.Failing) _lastAlertSentAt = now;
             if (sent == Notification.Recovered) _recoveryPending = false;
+            _retryNotifyAfter = null;
         }
+    }
+
+    // The alert itself couldn't be sent (e.g. Brevo rejecting the server) -- back off instead of
+    // retrying, and logging the failure, every worker tick.
+    public void DeferNotification(DateTime until)
+    {
+        lock (_lock) _retryNotifyAfter = until;
     }
 }

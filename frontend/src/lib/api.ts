@@ -30,6 +30,13 @@ api.interceptors.response.use(
     if (err.response?.status === 403 && err.response?.data?.mustChangePassword && window.location.pathname !== '/admin/set-password') {
       window.location.href = '/admin/set-password'
     }
+    // The platform admin disabled this business (BlockDisabledBusinessFilter) -- end the session
+    // and let the login page say why.
+    if (err.response?.status === 403 && err.response?.data?.accountDisabled && !isLoginRequest) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      window.location.href = '/admin/login?disabled=1'
+    }
     return Promise.reject(err)
   }
 )

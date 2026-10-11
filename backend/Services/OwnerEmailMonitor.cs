@@ -59,8 +59,9 @@ public class OwnerEmailMonitor(
         }
         catch (Exception ex)
         {
-            // Not marked as sent, so the next tick tries again.
-            logger.LogError(ex, "Failed to send the owner-email health alert");
+            // Not marked as sent, so it's retried -- after a pause, not every tick.
+            health.DeferNotification(now.AddMinutes(15));
+            logger.LogError(ex, "Failed to send the owner-email health alert; retrying in 15 minutes");
         }
     }
 

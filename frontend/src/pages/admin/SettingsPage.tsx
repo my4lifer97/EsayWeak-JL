@@ -51,7 +51,9 @@ export default function SettingsPage() {
   const [cancelApprovalWhatsAppNumber, setCancelApprovalWhatsAppNumber] = useState('')
   const [cancelApprovalEmail, setCancelApprovalEmail] = useState('')
   const [isListed, setIsListed] = useState(true)
-  const [initialized, setInitialized] = useState(false)
+  // Which business the form was filled from -- refills if a different owner's settings arrive,
+  // instead of keeping (and later saving) the previous business's values.
+  const [initializedFor, setInitializedFor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -82,7 +84,7 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (business && !initialized) {
+  if (business && initializedFor !== business.slug) {
     setForm({
       name: business.name, phone: business.phone ?? '', description: business.description ?? '',
       language: business.language,
@@ -98,7 +100,7 @@ export default function SettingsPage() {
     setCancelApprovalEmail(business.cancelApprovalEmail ?? '')
     setIsListed(business.isListed)
     setLang(business.language)
-    setInitialized(true)
+    setInitializedFor(business.slug)
   }
 
   async function handleSubmit(e: React.FormEvent) {

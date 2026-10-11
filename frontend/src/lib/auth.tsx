@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from './api'
 
 interface User { id: string; name: string; email: string; slug: string; mustChangePassword: boolean }
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     catch { return null }
   })
   const [language, setLanguage] = useState(() => localStorage.getItem('lang') ?? 'EN')
+  const queryClient = useQueryClient()
 
   function setLang(l: string) {
     localStorage.setItem('lang', l)
@@ -40,8 +42,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api.get('/admin/settings').then(({ data }) => setLang(data.language)).catch(() => {})
   }, [user?.id])
 
-  async function login(email: string, password: string) {
-    const { data } = await api.post('/auth/login', { email, password })
+  // Every query cached so far belongs to whoever was signed in before (or nobody) -- drop it, or
+  // the next owner on a shared tablet sees the previous one's customers and Settings could save
+  // the previous business's details into theirs.
+  function storeSession(data: { token: string; id: string; name: string; email: string; slug: string; mustChangePassword?: boolean }) {
+    queryClient.clear()
     localStorage.setItem('token', data.token)
     const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
     localStorage.setItem('user', JSON.stringify(u))
@@ -49,13 +54,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return u
   }
 
+  async function login(email: string, password: string) {
+    const { data } = await api.post('/auth/login', { email, password })
+    return storeSession(data)
+  }
+
   async function verifyEmail(email: string, code: string) {
     const { data } = await api.post('/auth/verify-email', { email, code })
-    localStorage.setItem('token', data.token)
-    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
-    localStorage.setItem('user', JSON.stringify(u))
-    setUser(u)
-    return u
+    return storeSession(data)
   }
 
   async function resendVerification(email: string) {
@@ -70,27 +76,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function resetPassword(email: string, code: string, newPassword: string) {
     const { data } = await api.post('/auth/reset-password', { email, code, newPassword })
-    localStorage.setItem('token', data.token)
-    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
-    localStorage.setItem('user', JSON.stringify(u))
-    setUser(u)
-    return u
+    return storeSession(data)
   }
 
   // Used to clear a pending MustChangePassword (an admin-issued temp password) -- must remain
   // reachable while that lockout is in effect, see backend's AllowWithPendingPasswordChange.
   async function changePassword(newPassword: string) {
     const { data } = await api.patch('/auth/change-password', { newPassword })
-    localStorage.setItem('token', data.token)
-    const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
-    localStorage.setItem('user', JSON.stringify(u))
-    setUser(u)
-    return u
+    return storeSession(data)
   }
 
   function logout() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    queryClient.clear()
     setUser(null)
   }
 

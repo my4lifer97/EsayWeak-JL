@@ -11,12 +11,19 @@ platformAdminApi.interceptors.request.use((config) => {
   return config
 })
 
+// Fired on a 401 so PlatformAdminAuthProvider drops its logged-in state, which sends
+// PlatformAdminProtectedRoute back to the login page instead of an empty dashboard.
+export const PLATFORM_ADMIN_SESSION_EXPIRED = 'platform-admin-session-expired'
+
 platformAdminApi.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    // A 401 from login itself is a wrong password, not an expired session.
+    const isAuthRequest = /\/platform-admin\/(login|bootstrap)/.test(err.config?.url ?? '')
+    if (err.response?.status === 401 && !isAuthRequest) {
       localStorage.removeItem('platformAdminToken')
       localStorage.removeItem('platformAdminUser')
+      window.dispatchEvent(new Event(PLATFORM_ADMIN_SESSION_EXPIRED))
     }
     return Promise.reject(err)
   }

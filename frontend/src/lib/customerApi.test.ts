@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { customerApi } from './customerApi'
+import { customerApi, CUSTOMER_SESSION_EXPIRED } from './customerApi'
 
 function requestInterceptor() {
   return (customerApi.interceptors.request as unknown as { handlers: { fulfilled: (c: unknown) => unknown }[] }).handlers[0].fulfilled
@@ -37,6 +37,23 @@ describe('customerApi response interceptor', () => {
     expect(localStorage.getItem('customerToken')).toBeNull()
     expect(localStorage.getItem('customerUser')).toBeNull()
     expect(window.location.href).toBe(originalHref)
+  })
+
+  it('tells the auth provider the session expired on a 401', async () => {
+    let fired = false
+    const onExpired = () => { fired = true }
+    window.addEventListener(CUSTOMER_SESSION_EXPIRED, onExpired)
+
+    await expect(responseRejected()({ response: { status: 401 }, config: { url: '/customer/appointments' } })).rejects.toBeTruthy()
+
+    window.removeEventListener(CUSTOMER_SESSION_EXPIRED, onExpired)
+    expect(fired).toBe(true)
+  })
+
+  it('treats a 401 from the login endpoints as a wrong code, not an expired session', async () => {
+    await expect(responseRejected()({ response: { status: 401 }, config: { url: '/customer/auth/verify' } })).rejects.toBeTruthy()
+
+    expect(localStorage.getItem('customerToken')).toBe('xyz789')
   })
 
   it('leaves storage untouched for non-401 errors', async () => {
