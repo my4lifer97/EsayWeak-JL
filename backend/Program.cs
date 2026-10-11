@@ -125,11 +125,24 @@ builder.Services.AddCors(opt =>
         .AllowAnyHeader()
         .AllowAnyMethod()));
 
+// Railway's proxy sits in front of the app, so RemoteIpAddress was always the proxy's -- read the
+// client IP it appends to X-Forwarded-For instead (LoginThrottle, activity log). ForwardLimit = 1
+// takes only that last, proxy-added entry, so a client can't pick its own IP by sending the header.
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(opt =>
+{
+    opt.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor;
+    opt.ForwardLimit = 1;
+    opt.KnownNetworks.Clear();
+    opt.KnownProxies.Clear();
+});
+builder.Services.AddSingleton<LoginThrottle>();
+
 var app = builder.Build();
 
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
 Directory.CreateDirectory(uploadsPath);
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStaticFiles(new StaticFileOptions
 {

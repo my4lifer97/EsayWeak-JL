@@ -58,13 +58,24 @@ public class PlatformAdminController(
     }
 
     [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] PlatformAdminLoginRequest req)
+    public async Task<IActionResult> Login([FromBody] PlatformAdminLoginRequest req, [FromServices] LoginThrottle throttle)
     {
         // Case/whitespace-insensitive: mobile keyboards auto-capitalize and append spaces.
         var email = (req.Email ?? "").Trim().ToLower();
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (throttle.RetryAfter("platform-admin", email, ip, DateTime.UtcNow) is { } wait)
+        {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString();
+            return StatusCode(429, new { error = LoginThrottle.TooManyAttemptsMessage(wait) });
+        }
+
         var admin = await db.PlatformAdmins.FirstOrDefaultAsync(a => a.Email.ToLower() == email);
         if (admin is null || !BCrypt.Net.BCrypt.Verify(req.Password, admin.PasswordHash))
+        {
+            throttle.RecordFailure("platform-admin", email, ip, DateTime.UtcNow);
             return Unauthorized(new { error = "Invalid email or password" });
+        }
+        throttle.RecordSuccess("platform-admin", email, ip);
 
         var token = adminJwt.Generate(admin.Id, admin.Email, admin.Name);
         return Ok(new PlatformAdminLoginResponse(token, admin.Id, admin.Name, admin.Email));

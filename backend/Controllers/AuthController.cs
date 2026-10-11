@@ -93,8 +93,15 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         StatusCode(403, new { error = "This account has been disabled. Contact support.", accountDisabled = true });
 
     [HttpPost("login")]
-    public async Task<IActionResult> Login([FromBody] LoginRequest req)
+    public async Task<IActionResult> Login([FromBody] LoginRequest req, [FromServices] LoginThrottle throttle)
     {
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (throttle.RetryAfter("owner", req.Email ?? "", ip, DateTime.UtcNow) is { } wait)
+        {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString();
+            return StatusCode(429, new { error = LoginThrottle.TooManyAttemptsMessage(wait) });
+        }
+
         // The `Email` field carries either an email or a system-generated username (approved
         // accounts get one — see PlatformAdminController.ApproveBusinessOwnerRequest). Match on
         // whichever; the username lookup is skipped for blank/null so legacy rows with a null
@@ -103,7 +110,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         var business = await db.Businesses.FirstOrDefaultAsync(b =>
             b.Email == identifier || (b.Username != null && b.Username == identifier));
         if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
+        {
+            throttle.RecordFailure("owner", req.Email ?? "", ip, DateTime.UtcNow);
             return Unauthorized(new { error = "Invalid email or password" });
+        }
+        throttle.RecordSuccess("owner", req.Email ?? "", ip);
 
         if (business.IsDisabled) return AccountDisabled();
 

@@ -28,8 +28,10 @@ export default function PlatformAdminLoginPage() {
       if (bootstrapAvailable) await bootstrap(email, password, name)
       else await login(email, password)
       navigate('/platform-admin')
-    } catch {
-      setError(bootstrapAvailable ? 'Could not create admin account' : 'Invalid email or password')
+    } catch (err: unknown) {
+      const resp = (err as { response?: { status?: number; data?: { error?: string } } })?.response
+      if (resp?.status === 429) setError(resp.data?.error ?? 'Too many sign-in attempts. Try again later.')
+      else setError(bootstrapAvailable ? 'Could not create admin account' : 'Invalid email or password')
     } finally {
       setLoading(false)
     }

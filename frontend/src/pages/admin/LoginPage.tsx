@@ -37,6 +37,9 @@ export default function LoginPage() {
         setView('verify')
       } else if (resp?.status === 403 && resp.data?.accountDisabled) {
         setError(resp.data.error ?? 'This account has been disabled. Contact support.')
+      } else if (resp?.status === 429) {
+        // LoginThrottle: too many wrong passwords -- the message says how long to wait.
+        setError(resp.data?.error ?? 'Too many sign-in attempts. Try again later.')
       } else {
         setError('Invalid email/username or password')
       }
