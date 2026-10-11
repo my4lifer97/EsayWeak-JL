@@ -254,4 +254,18 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         var resp = await Client.DeleteAsync($"/api/admin/recurring/{created!.Id}");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    [Fact]
+    public async Task Create_ForcedSeriesEndingPastMidnight_ReturnsBadRequest()
+    {
+        var token = await RegisterAndLoginBusiness("recurring-force-midnight@example.com", "recurring-force-midnight");
+        var itemId = await SeedService(token);
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
+            null, "Mohamed", "+15551112222", itemId, (int)DateTime.Now.AddDays(1).DayOfWeek, "23:45", null, Force: true));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Contains("midnight", await resp.Content.ReadAsStringAsync());
+    }
 }

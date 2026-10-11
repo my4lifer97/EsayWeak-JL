@@ -224,6 +224,31 @@ public class AvailabilityService(AppDbContext db)
         }
     }
 
+    // A forced (walk-in) booking skips GetAvailableSlots, and with it the checks that come for free
+    // there: a real "HH:MM" time, ending by midnight, and not already in the past. Without them an
+    // owner could save "23:30" + 60 min as ending "24:30", or a past-dated booking that counts as
+    // completed at once and unlocks a verified review. Returns null when the slot is fine.
+    public static string? ForcedSlotError(string date, string startTime, int durationMinutes)
+    {
+        if (!DateTime.TryParseExact(date, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var day))
+            return "Invalid date";
+        if (SlotTimeError(startTime, durationMinutes) is { } timeError) return timeError;
+        if (day.AddMinutes(int.Parse(startTime[..2]) * 60 + int.Parse(startTime[3..])) <= DateTime.Now)
+            return "This time has already passed";
+        return null;
+    }
+
+    // The date-independent half of ForcedSlotError -- also used for a forced recurring series,
+    // whose individual dates are checked as each occurrence is generated.
+    public static string? SlotTimeError(string startTime, int durationMinutes)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime ?? "", @"^([01]\d|2[0-3]):[0-5]\d$"))
+            return "Invalid time";
+        var startMinutes = int.Parse(startTime![..2]) * 60 + int.Parse(startTime[3..]);
+        return startMinutes + durationMinutes > 24 * 60 ? "The appointment must end by midnight" : null;
+    }
+
     public static string AddMinutes(string time, int minutes)
     {
         var parts = time.Split(':');

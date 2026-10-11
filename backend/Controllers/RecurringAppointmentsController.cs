@@ -52,6 +52,8 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == BusinessId && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
+        if (req.Force && AvailabilityService.SlotTimeError(req.StartTime, item.DurationMinutes.Value) is { } timeError)
+            return BadRequest(new { error = timeError });
 
         if (req.DayOfWeek < 0 || req.DayOfWeek > 6)
             return BadRequest(new { error = "Invalid day of week" });

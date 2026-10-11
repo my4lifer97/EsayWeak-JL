@@ -306,6 +306,44 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
     }
 
+    // Forcing skips the availability engine, but must still refuse a time that's already passed
+    // (it would count as completed at once and unlock a verified review), one ending past
+    // midnight ("23:45" + 30 min used to be saved as "24:15"), and a malformed time.
+    [Theory]
+    [InlineData(-1, "10:00", "already passed")]
+    [InlineData(1, "23:45", "midnight")]
+    [InlineData(1, "25:00", "Invalid time")]
+    [InlineData(1, "9:00", "Invalid time")]
+    public async Task CreateAppointment_ForceTrue_RejectsImpossibleTimes(int daysFromToday, string startTime, string expectedError)
+    {
+        var slug = $"admin-force-bad-{daysFromToday}-{startTime.Replace(":", "")}";
+        var token = await RegisterAndLoginBusiness($"{slug}@example.com", slug);
+        var (businessId, itemId, _) = await SeedBusinessWithServiceAndAvailability(token, slug);
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Walkin", "+15551234567", itemId, DateTime.Now.Date.AddDays(daysFromToday).ToString("yyyy-MM-dd"), startTime, null, Force: true));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Contains(expectedError, await resp.Content.ReadAsStringAsync());
+        using var db = Db();
+        Assert.False(db.Appointments.Any(a => a.BusinessId == businessId));
+    }
+
+    [Fact]
+    public async Task CreateAppointment_ForceTrue_EndingExactlyAtMidnight_IsAllowed()
+    {
+        var slug = "admin-force-midnight";
+        var token = await RegisterAndLoginBusiness("admin-force-midnight@example.com", slug);
+        var (_, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Walkin", "+15551234567", itemId, date.ToString("yyyy-MM-dd"), "23:30", null, Force: true));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
     [Fact]
     public async Task CreateAppointment_ForceTrue_StillRejectsExactOverlap()
     {

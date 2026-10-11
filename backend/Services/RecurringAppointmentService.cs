@@ -74,8 +74,11 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
                 // working-hours/breaks/blocked-slot check entirely and only still hard-block on an
                 // exact conflicting-appointment overlap. Checked on every occurrence, not just the
                 // first, since this loop re-evaluates availability for every future week too.
+                // ForcedSlotError also stops a forced series from creating today's occurrence after
+                // its start time has passed (an instantly "completed" visit).
                 var slotOk = s.Force
-                    ? !await availability.HasConflictingAppointment(s.BusinessId, dateStr, s.StartTime, endTime)
+                    ? AvailabilityService.ForcedSlotError(dateStr, s.StartTime, s.Item.DurationMinutes.Value) is null
+                      && !await availability.HasConflictingAppointment(s.BusinessId, dateStr, s.StartTime, endTime)
                     : (await availability.GetAvailableSlots(s.BusinessId, dateStr, s.Item.DurationMinutes.Value)).Any(sl => sl.Start == s.StartTime);
                 if (slotOk)
                 {

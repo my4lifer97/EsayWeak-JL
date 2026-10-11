@@ -873,6 +873,9 @@ public class AdminController(
             photoUrl = req.CustomerPhotoUrl;
         }
 
+        if (req.Force && AvailabilityService.ForcedSlotError(req.Date, req.StartTime, item.DurationMinutes.Value) is { } forcedError)
+            return BadRequest(new { error = forcedError });
+
         var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
 
         if (!req.Force)
