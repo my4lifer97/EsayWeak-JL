@@ -363,7 +363,7 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
         Authorize(Client, ownerToken);
         await AssertAccountDisabled(await Client.GetAsync("/api/admin/settings"));
-        await AssertAccountDisabled(await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("newpassword123")));
+        await AssertAccountDisabled(await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("whatever", "newpassword123")));
 
         Authorize(Client, adminToken);
         await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/enable", null);
@@ -380,7 +380,8 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
         Client.DefaultRequestHeaders.Authorization = null;
 
-        await AssertAccountDisabled(await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email)));
+        // Same silent 200 as an unknown email (forgot-password never reveals account state).
+        Assert.Equal(HttpStatusCode.OK, (await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest(email))).StatusCode);
         using var db = Db();
         Assert.False(db.BusinessPasswordResetOtps.Any(o => o.Email == email));
     }

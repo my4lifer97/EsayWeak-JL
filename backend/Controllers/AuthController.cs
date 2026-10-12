@@ -24,7 +24,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     {
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length < 2)
             return BadRequest(new { error = "Name must be at least 2 characters" });
-        if (string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
+        var email = EmailAddress.Normalize(req.Email);
+        if (!email.Contains('@'))
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 6)
             return BadRequest(new { error = "Password must be at least 6 characters" });
@@ -33,7 +34,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (SlugValidator.IsReserved(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
 
-        if (await db.Businesses.AnyAsync(b => b.Email == req.Email))
+        if (await db.Businesses.AnyAsync(b => b.Email.ToLower() == email))
             return BadRequest(new { error = "Email already registered" });
         if (await db.Businesses.AnyAsync(b => b.Slug == req.Slug))
             return BadRequest(new { error = "URL already taken" });
@@ -41,7 +42,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         var business = new Business
         {
             Name = req.Name,
-            Email = req.Email,
+            Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             Slug = req.Slug,
             TrialEndsAt = DateTime.UtcNow.AddDays(30),
@@ -74,11 +75,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         string code;
         try
         {
-            code = await IssueVerificationCode(req.Email);
+            code = await IssueVerificationCode(email);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send verification email to {Email}", req.Email);
+            logger.LogError(ex, "Failed to send verification email to {Email}", email);
             return StatusCode(502, new { error = "Could not send the verification email. Please check the address and try again." });
         }
 
@@ -106,9 +107,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         // accounts get one — see PlatformAdminController.ApproveBusinessOwnerRequest). Match on
         // whichever; the username lookup is skipped for blank/null so legacy rows with a null
         // username can't be hit by an empty identifier.
-        var identifier = (req.Email ?? "").Trim();
+        var identifier = EmailAddress.Normalize(req.Email);
         var business = await db.Businesses.FirstOrDefaultAsync(b =>
-            b.Email == identifier || (b.Username != null && b.Username == identifier));
+            b.Email.ToLower() == identifier || (b.Username != null && b.Username.ToLower() == identifier));
         if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
         {
             throttle.RecordFailure("owner", req.Email ?? "", ip, DateTime.UtcNow);
@@ -121,7 +122,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (!business.EmailVerified)
             return StatusCode(403, new { error = "Please verify your email before signing in.", emailNotVerified = true });
 
-        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.MustChangePassword);
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.PasswordHash, business.MustChangePassword);
         await LogLoginAsync(business.Id, nameof(Login));
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug, business.MustChangePassword));
     }
@@ -149,13 +150,14 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     [HttpPost("resend-verification")]
     public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        var email = EmailAddress.Normalize(req.Email);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
         if (business is null) return NotFound(new { error = "Not found" });
         if (business.EmailVerified) return BadRequest(new { error = "Email is already verified" });
 
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.BusinessEmailOtps
-            .Where(o => o.Email == req.Email && o.CreatedAt > since)
+            .Where(o => o.Email == email && o.CreatedAt > since)
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
 
@@ -169,11 +171,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         string code;
         try
         {
-            code = await IssueVerificationCode(req.Email);
+            code = await IssueVerificationCode(email);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send verification email to {Email}", req.Email);
+            logger.LogError(ex, "Failed to send verification email to {Email}", email);
             return StatusCode(502, new { error = "Could not send the verification email. Please try again shortly." });
         }
         await db.SaveChangesAsync();
@@ -188,12 +190,13 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Code))
             return BadRequest(new { error = "Email and code are required" });
 
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
+        var email = EmailAddress.Normalize(req.Email);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
         if (business is null) return NotFound(new { error = "Not found" });
         if (business.IsDisabled) return AccountDisabled();
 
         var entry = await db.BusinessEmailOtps
-            .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
+            .Where(o => o.Email == email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -211,7 +214,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         business.EmailVerified = true;
         await db.SaveChangesAsync();
 
-        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.MustChangePassword);
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.PasswordHash, business.MustChangePassword);
         await LogLoginAsync(business.Id, nameof(VerifyEmail));
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug, business.MustChangePassword));
     }
@@ -219,14 +222,16 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
-        if (business is null) return NotFound(new { error = "Not found" });
-        // Resetting the password would otherwise hand a disabled owner a fresh login.
-        if (business.IsDisabled) return AccountDisabled();
+        // Same 200 whether or not the email has an account, so this can't be used to find out
+        // which emails are registered. A disabled account gets the same silent answer -- resetting
+        // its password would otherwise hand a disabled owner a fresh login.
+        var email = EmailAddress.Normalize(req.Email);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
+        if (business is null || business.IsDisabled) return Ok(new { devCode = (string?)null });
 
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.BusinessPasswordResetOtps
-            .Where(o => o.Email == req.Email && o.CreatedAt > since)
+            .Where(o => o.Email == email && o.CreatedAt > since)
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
 
@@ -240,11 +245,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         string code;
         try
         {
-            code = await IssuePasswordResetCode(req.Email);
+            code = await IssuePasswordResetCode(email);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send password reset email to {Email}", req.Email);
+            logger.LogError(ex, "Failed to send password reset email to {Email}", email);
             return StatusCode(502, new { error = "Could not send the reset email. Please try again shortly." });
         }
         await db.SaveChangesAsync();
@@ -259,13 +264,15 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
             return BadRequest(new { error = "Password must be at least 6 characters" });
 
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email == req.Email);
-        if (business is null) return NotFound(new { error = "Not found" });
+        // An unknown email gets the same answer as a wrong code (see ForgotPassword).
+        var email = EmailAddress.Normalize(req.Email);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
+        if (business is null) return BadRequest(new { error = "Invalid or expired code" });
         // Also covers a reset code issued before the account was disabled.
         if (business.IsDisabled) return AccountDisabled();
 
         var entry = await db.BusinessPasswordResetOtps
-            .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
+            .Where(o => o.Email == email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -286,7 +293,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         business.MustChangePassword = false;
         await db.SaveChangesAsync();
 
-        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
+        // The new hash changes the password stamp, so every other login of this account ends.
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.PasswordHash);
         await LogLoginAsync(business.Id, nameof(ResetPassword));
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }
@@ -294,7 +302,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     [HttpPatch("change-password")]
     [Authorize(Policy = "BusinessOnly")]
     [AllowWithPendingPasswordChange]
-    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req)
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest req, [FromServices] LoginThrottle throttle)
     {
         if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
             return BadRequest(new { error = "Password must be at least 6 characters" });
@@ -303,13 +311,30 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         var business = await db.Businesses.FindAsync(businessId);
         if (business is null) return NotFound();
 
+        // The current password is required so a stolen or left-open session can't take over the
+        // account. Throttled like login, since this would otherwise be a way to guess it. 400, not
+        // 401, so the frontend doesn't treat a typo as an expired session.
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
+        if (throttle.RetryAfter("change-password", businessId, ip, DateTime.UtcNow) is { } wait)
+        {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString();
+            return StatusCode(429, new { error = LoginThrottle.TooManyAttemptsMessage(wait) });
+        }
+        if (string.IsNullOrEmpty(req.CurrentPassword) || !BCrypt.Net.BCrypt.Verify(req.CurrentPassword, business.PasswordHash))
+        {
+            throttle.RecordFailure("change-password", businessId, ip, DateTime.UtcNow);
+            return BadRequest(new { error = "Current password is incorrect", currentPasswordIncorrect = true });
+        }
+        throttle.RecordSuccess("change-password", businessId, ip);
+
         business.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
         business.MustChangePassword = false;
         await db.SaveChangesAsync();
 
         // Fresh token without the mustChangePassword claim, so the client can keep using it
-        // immediately without a second login round-trip.
-        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug);
+        // immediately without a second login round-trip. Its new password stamp ends every other
+        // login of this account.
+        var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.PasswordHash);
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }
 

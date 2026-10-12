@@ -551,7 +551,7 @@ public class PlatformAdminController(
             return BadRequest(new { error = "URL already taken" });
         // Re-check at approval time too -- the requester's email could have registered a real
         // account through the self-service flow in the time since this request was submitted.
-        if (await db.Businesses.AnyAsync(b => b.Email == request.Email))
+        if (await db.Businesses.AnyAsync(b => b.Email.ToLower() == request.Email.ToLower()))
             return BadRequest(new { error = "This email already has an account." });
 
         // Username is generated here (never by the client) from the owner's name and made unique

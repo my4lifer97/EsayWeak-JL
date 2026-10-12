@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 
@@ -10,7 +11,10 @@ public class JwtService(IConfiguration config)
     // mustChangePassword should reflect the business's real Business.MustChangePassword value --
     // RequirePasswordChangeFilter reads this claim to block every BusinessOnly action except
     // AuthController.ChangePassword until it's cleared.
-    public string Generate(string id, string email, string name, string slug, bool mustChangePassword = false)
+    // passwordHash is the business's current Business.PasswordHash -- the token carries a stamp of
+    // it (pwd), and BlockDisabledBusinessFilter rejects the token once the password changes, so a
+    // reset or change ends every other login.
+    public string Generate(string id, string email, string name, string slug, string passwordHash, bool mustChangePassword = false)
     {
         var claims = new List<Claim>
         {
@@ -18,10 +22,18 @@ public class JwtService(IConfiguration config)
             new(JwtRegisteredClaimNames.Email, email),
             new(JwtRegisteredClaimNames.Name, name),
             new("slug", slug),
+            new(PasswordStampClaim, PasswordStamp(passwordHash)),
         };
         if (mustChangePassword) claims.Add(new Claim("mustChangePassword", "true"));
         return BuildToken(claims, DateTime.UtcNow.AddDays(30));
     }
+
+    public const string PasswordStampClaim = "pwd";
+
+    // Short fingerprint of the bcrypt hash (which has its own salt, so every new password gives a
+    // new stamp). Not reversible and says nothing about the password itself.
+    public static string PasswordStamp(string passwordHash) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(passwordHash)))[..16];
 
     // Same claim shape as Generate (so every existing BusinessOnly endpoint keeps working
     // unmodified against the target business's real id) plus an impersonatedBy marker and a much

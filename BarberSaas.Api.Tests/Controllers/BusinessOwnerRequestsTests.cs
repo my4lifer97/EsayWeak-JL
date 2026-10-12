@@ -93,6 +93,22 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         Assert.Equal((HttpStatusCode)429, resp.StatusCode);
     }
 
+    // QA: with Gmail down, every failed send still counted, so the requester hit the cooldown
+    // and hourly cap without ever receiving a code.
+    [Fact]
+    public async Task SendEmailCode_FailedSend_DoesNotCountTowardTheLimits()
+    {
+        Factory.OwnerEmail.SendError = "invalid_grant";
+        var failed = await Client.PostAsJsonAsync("/api/business-owner-requests/send-email-code",
+            new SendBusinessOwnerRequestEmailCodeRequest("gmail-down@example.com"));
+        Assert.Equal(HttpStatusCode.BadGateway, failed.StatusCode);
+
+        Factory.OwnerEmail.SendError = null;
+        var retry = await Client.PostAsJsonAsync("/api/business-owner-requests/send-email-code",
+            new SendBusinessOwnerRequestEmailCodeRequest("gmail-down@example.com"));
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+    }
+
     [Fact]
     public async Task Create_WithoutVerifyingEmailFirst_ReturnsBadRequest()
     {
@@ -300,7 +316,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var blockedResp = await Client.GetAsync("/api/admin/settings");
         Assert.Equal(HttpStatusCode.Forbidden, blockedResp.StatusCode);
 
-        var changeResp = await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("brandnewpassword456"));
+        var changeResp = await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest(approved.TempPassword, "brandnewpassword456"));
         Assert.Equal(HttpStatusCode.OK, changeResp.StatusCode);
         var changed = await changeResp.Content.ReadFromJsonAsync<LoginResponse>();
         Assert.False(changed!.MustChangePassword);

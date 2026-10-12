@@ -27,8 +27,7 @@ export default function ForgotPasswordPage() {
       setView('reset')
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 404) setError('No account found with that email')
-      else if (status === 429) setError('Please wait before requesting another code')
+      if (status === 429) setError('Please wait before requesting another code')
       else setError('Could not send reset code')
     } finally {
       setLoading(false)
@@ -73,7 +72,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-bold text-ink mb-2 text-center">Reset your password</h1>
         <p className="text-muted text-center mb-8">
-          {view === 'email' ? 'Enter your account email' : `Enter the code sent to ${email}`}
+          {view === 'email' ? 'Enter your account email' : `If ${email} has an account, we sent it a code. Enter it below.`}
         </p>
 
         {view === 'email' && (

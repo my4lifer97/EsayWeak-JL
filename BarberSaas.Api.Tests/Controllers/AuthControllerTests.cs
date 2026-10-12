@@ -233,12 +233,24 @@ public class AuthControllerTests : IntegrationTestBase
         return body!.DevCode!;
     }
 
+    // Same answer as a real account, so the form can't be used to find out who has one.
     [Fact]
-    public async Task ForgotPassword_ForUnknownEmail_ReturnsNotFound()
+    public async Task ForgotPassword_ForUnknownEmail_LooksLikeSuccessButSendsNothing()
     {
         var resp = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("nobody@example.com"));
 
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Null((await resp.Content.ReadFromJsonAsync<ForgotPasswordResponse>())!.DevCode);
+        Assert.DoesNotContain(Factory.Email.Sent, m => m.Email == "nobody@example.com");
+    }
+
+    [Fact]
+    public async Task ResetPassword_ForUnknownEmail_LooksLikeAWrongCode()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/auth/reset-password",
+            new ResetPasswordRequest("nobody@example.com", "123456", "newpassword456"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     [Fact]
@@ -304,5 +316,94 @@ public class AuthControllerTests : IntegrationTestBase
             new ResetPasswordRequest("reset-shortpw@example.com", code, "short"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    private async Task<string> RegisterVerifyAndLogin(string email, string slug)
+    {
+        var code = await RegisterAndGetDevCode(email, slug);
+        await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code));
+        var resp = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "password123"));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        return (await resp.Content.ReadFromJsonAsync<LoginResponse>())!.Token;
+    }
+
+    private async Task<HttpStatusCode> SettingsStatus(string token)
+    {
+        var msg = new HttpRequestMessage(HttpMethod.Get, "/api/admin/settings");
+        msg.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        return (await Client.SendAsync(msg)).StatusCode;
+    }
+
+    [Fact]
+    public async Task Email_IsCaseInsensitive_ForRegisterLoginAndForgotPassword()
+    {
+        var code = await RegisterAndGetDevCode("Mixed.Case@Example.com", "mixed-case-shop");
+        Assert.Equal(HttpStatusCode.OK, (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("mixed.case@example.com", code))).StatusCode);
+
+        var dupe = await Client.PostAsJsonAsync("/api/auth/register", ValidRegister("MIXED.CASE@example.com", "mixed-case-two"));
+        Assert.Equal(HttpStatusCode.BadRequest, dupe.StatusCode);
+
+        var login = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest(" Mixed.case@EXAMPLE.com ", "password123"));
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+
+        var forgot = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("MIXED.CASE@EXAMPLE.COM"));
+        Assert.NotNull((await forgot.Content.ReadFromJsonAsync<ForgotPasswordResponse>())!.DevCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_EndsEveryOtherLogin()
+    {
+        var oldToken = await RegisterVerifyAndLogin("reset-ends@example.com", "reset-ends-shop");
+        Assert.Equal(HttpStatusCode.OK, await SettingsStatus(oldToken));
+
+        var forgot = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("reset-ends@example.com"));
+        var code = (await forgot.Content.ReadFromJsonAsync<ForgotPasswordResponse>())!.DevCode!;
+        var reset = await Client.PostAsJsonAsync("/api/auth/reset-password", new ResetPasswordRequest("reset-ends@example.com", code, "newpassword456"));
+        var newToken = (await reset.Content.ReadFromJsonAsync<LoginResponse>())!.Token;
+
+        Assert.Equal(HttpStatusCode.Unauthorized, await SettingsStatus(oldToken));
+        Assert.Equal(HttpStatusCode.OK, await SettingsStatus(newToken));
+    }
+
+    [Fact]
+    public async Task ChangePassword_RequiresTheCurrentPassword()
+    {
+        var token = await RegisterVerifyAndLogin("change-current@example.com", "change-current-shop");
+        Authorize(Client, token);
+
+        var wrong = await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("not-my-password", "newpassword456"));
+        Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
+
+        // The failed attempt didn't change anything.
+        Client.DefaultRequestHeaders.Authorization = null;
+        Assert.Equal(HttpStatusCode.OK, (await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("change-current@example.com", "password123"))).StatusCode);
+    }
+
+    [Fact]
+    public async Task ChangePassword_EndsOtherLogins_ButReturnsAWorkingToken()
+    {
+        var otherDevice = await RegisterVerifyAndLogin("change-ends@example.com", "change-ends-shop");
+        Authorize(Client, otherDevice);
+
+        var resp = await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("password123", "newpassword456"));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var fresh = (await resp.Content.ReadFromJsonAsync<LoginResponse>())!.Token;
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        Assert.Equal(HttpStatusCode.Unauthorized, await SettingsStatus(otherDevice));
+        Assert.Equal(HttpStatusCode.OK, await SettingsStatus(fresh));
+    }
+
+    [Fact]
+    public async Task ChangePassword_IsThrottledAfterRepeatedWrongCurrentPasswords()
+    {
+        var token = await RegisterVerifyAndLogin("change-throttle@example.com", "change-throttle-shop");
+        Authorize(Client, token);
+
+        for (var i = 0; i < 5; i++)
+            await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("guess" + i, "newpassword456"));
+        var blocked = await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("password123", "newpassword456"));
+
+        Assert.Equal((HttpStatusCode)429, blocked.StatusCode);
     }
 }

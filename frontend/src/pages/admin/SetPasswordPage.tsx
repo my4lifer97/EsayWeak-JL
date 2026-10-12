@@ -6,6 +6,7 @@ import ThemeToggle from '../../components/ThemeToggle'
 export default function SetPasswordPage() {
   const { changePassword } = useAuth()
   const navigate = useNavigate()
+  const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
@@ -24,10 +25,13 @@ export default function SetPasswordPage() {
     }
     setLoading(true)
     try {
-      await changePassword(newPassword)
+      await changePassword(currentPassword, newPassword)
       navigate('/admin/dashboard')
-    } catch {
-      setError('Could not set your password. Please try again.')
+    } catch (err: unknown) {
+      const res = (err as { response?: { status?: number; data?: { error?: string; currentPasswordIncorrect?: boolean } } })?.response
+      if (res?.data?.currentPasswordIncorrect) setError('The temporary password is incorrect')
+      else if (res?.status === 429 && res.data?.error) setError(res.data.error)
+      else setError('Could not set your password. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -49,7 +53,13 @@ export default function SetPasswordPage() {
             </div>
           )}
           <input
-            type="password" required autoFocus value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+            type="password" required autoFocus autoComplete="current-password"
+            value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Temporary password"
+            className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
+          />
+          <input
+            type="password" required autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
             placeholder="New password"
             className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
           />

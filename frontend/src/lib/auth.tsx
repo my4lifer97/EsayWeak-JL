@@ -11,7 +11,7 @@ interface AuthCtx {
   resendVerification: (email: string) => Promise<{ devCode?: string }>
   forgotPassword: (email: string) => Promise<{ devCode?: string }>
   resetPassword: (email: string, code: string, newPassword: string) => Promise<User>
-  changePassword: (newPassword: string) => Promise<User>
+  changePassword: (currentPassword: string, newPassword: string) => Promise<User>
   logout: () => void
   isAuthenticated: boolean
   language: string
@@ -82,8 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Used to clear a pending MustChangePassword (an admin-issued temp password) -- must remain
   // reachable while that lockout is in effect, see backend's AllowWithPendingPasswordChange.
-  async function changePassword(newPassword: string) {
-    const { data } = await api.patch('/auth/change-password', { newPassword })
+  async function changePassword(currentPassword: string, newPassword: string) {
+    const { data } = await api.patch('/auth/change-password', { currentPassword, newPassword })
     return storeSession(data)
   }
 

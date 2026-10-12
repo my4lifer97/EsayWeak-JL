@@ -3,7 +3,7 @@ namespace BarberSaas.Api.DTOs;
 public record RegisterRequest(string Name, string Email, string Password, string Slug, string? BusinessTypeId = null);
 public record LoginRequest(string Email, string Password);
 public record LoginResponse(string Token, string Id, string Name, string Email, string Slug, bool MustChangePassword = false);
-public record ChangePasswordRequest(string NewPassword);
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 public record VerifyEmailRequest(string Email, string Code);
 public record ResendVerificationRequest(string Email);
 public record ForgotPasswordRequest(string Email);

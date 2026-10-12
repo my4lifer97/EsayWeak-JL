@@ -43,9 +43,9 @@ public class BusinessOwnerRequestsController(
     [HttpPost("api/business-owner-requests/send-email-code")]
     public async Task<IActionResult> SendEmailCode([FromBody] SendBusinessOwnerRequestEmailCodeRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
+        var email = EmailAddress.Normalize(req.Email);
+        if (!email.Contains('@'))
             return BadRequest(new { error = "Invalid email" });
-        var email = req.Email.Trim();
 
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.BusinessOwnerRequestEmailOtps
@@ -60,12 +60,13 @@ public class BusinessOwnerRequestsController(
             return StatusCode(429, new { error = "Too many requests. Try again later" });
 
         var code = Random.Shared.Next(100000, 999999).ToString();
-        db.BusinessOwnerRequestEmailOtps.Add(new BusinessOwnerRequestEmailOtp
+        var otpRow = new BusinessOwnerRequestEmailOtp
         {
             Email = email,
             CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
             ExpiresAt = DateTime.UtcNow.AddMinutes(EmailOtpExpiryMinutes),
-        });
+        };
+        db.BusinessOwnerRequestEmailOtps.Add(otpRow);
         await db.SaveChangesAsync();
 
         try
@@ -76,6 +77,9 @@ public class BusinessOwnerRequestsController(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send business-owner-request email verification code to {Email}", email);
+            // The code never reached them, so it mustn't count toward the cooldown/hourly cap.
+            db.BusinessOwnerRequestEmailOtps.Remove(otpRow);
+            await db.SaveChangesAsync();
             return StatusCode(502, new { error = "Could not send the verification email. Please try again shortly." });
         }
 
@@ -95,7 +99,8 @@ public class BusinessOwnerRequestsController(
             return BadRequest(new { error = "First name and family name are required" });
         if (!EnglishNameRegex.IsMatch(firstName) || !EnglishNameRegex.IsMatch(familyName))
             return BadRequest(new { error = "First name and family name must be in English letters" });
-        if (string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
+        var email = EmailAddress.Normalize(req.Email);
+        if (!email.Contains('@'))
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Phone))
             return BadRequest(new { error = "Phone is required" });
@@ -119,16 +124,16 @@ public class BusinessOwnerRequestsController(
         if (businessType is null)
             return BadRequest(new { error = "Invalid business type" });
 
-        if (await db.Businesses.AnyAsync(b => b.Email == req.Email))
+        if (await db.Businesses.AnyAsync(b => b.Email.ToLower() == email))
             return BadRequest(new { error = "This email already has an account. Try logging in instead." });
 
-        if (await db.BusinessOwnerRequests.AnyAsync(r => r.Email == req.Email && r.Status == BusinessOwnerRequestStatus.Pending))
+        if (await db.BusinessOwnerRequests.AnyAsync(r => r.Email.ToLower() == email && r.Status == BusinessOwnerRequestStatus.Pending))
             return Conflict(new { error = "A request from this email is already pending review." });
 
         // The request only ever reaches the admin once the requester has proven they control this
         // email -- see SendEmailCode above.
         var otp = await db.BusinessOwnerRequestEmailOtps
-            .Where(o => o.Email == req.Email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
+            .Where(o => o.Email == email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
         if (otp is null || !BCrypt.Net.BCrypt.Verify(req.Code ?? "", otp.CodeHash))
@@ -147,7 +152,7 @@ public class BusinessOwnerRequestsController(
             BusinessName = req.BusinessName.Trim(),
             OwnerFirstName = firstName,
             OwnerFamilyName = familyName,
-            Email = req.Email.Trim(),
+            Email = email,
             Phone = req.Phone.Trim(),
             BusinessTypeId = businessType.Id,
             BusinessDescription = string.IsNullOrWhiteSpace(req.BusinessDescription) ? null : req.BusinessDescription.Trim(),
