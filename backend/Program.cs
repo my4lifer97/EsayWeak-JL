@@ -142,6 +142,20 @@ var app = builder.Build();
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
 Directory.CreateDirectory(uploadsPath);
 
+// TEMPORARY diagnostic: logs the raw proxy IP headers on /api/ip-debug so we can see which one
+// carries the real client IP on Railway. Remove once ForwardedHeaders is configured correctly.
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.Equals("/api/ip-debug", StringComparison.OrdinalIgnoreCase))
+    {
+        var h = ctx.Request.Headers;
+        var info = $"remote={ctx.Connection.RemoteIpAddress} xff=[{h["X-Forwarded-For"]}] xreal=[{h["X-Real-IP"]}] fwd=[{h["Forwarded"]}] xenvoy=[{h["X-Envoy-External-Address"]}]";
+        app.Logger.LogWarning("IP-DEBUG {Info}", info);
+        await ctx.Response.WriteAsync(info);
+        return;
+    }
+    await next();
+});
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStaticFiles(new StaticFileOptions
