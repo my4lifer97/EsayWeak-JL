@@ -38,10 +38,15 @@ public class ServicePhotoTests : IntegrationTestBase
         return service!;
     }
 
-    private static MultipartFormDataContent FakeImage(string fileName = "photo.jpg", string contentType = "image/jpeg")
+    // Uploads are checked against the real file signature (ImageUpload), so the fake bytes start
+    // with a JPEG header unless a test passes its own.
+    private static readonly byte[] JpegBytes = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 0x4A, 0x46, 0x49, 0x46, 0, 1];
+    private static readonly byte[] PngBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D];
+
+    private static MultipartFormDataContent FakeImage(string fileName = "photo.jpg", string contentType = "image/jpeg", byte[]? bytes = null)
     {
         var content = new MultipartFormDataContent();
-        var fileContent = new ByteArrayContent([1, 2, 3, 4]);
+        var fileContent = new ByteArrayContent(bytes ?? JpegBytes);
         fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
         content.Add(fileContent, "file", fileName);
         return content;
@@ -115,6 +120,44 @@ public class ServicePhotoTests : IntegrationTestBase
         var resp = await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage(fileName: "photo.jpg", contentType: "text/plain"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    // QA: an HTML file renamed to .png (with a matching Content-Type) used to be accepted.
+    [Fact]
+    public async Task Uploads_RejectAFileWhoseContentIsNotThatImageType()
+    {
+        var (businessToken, slug) = await RegisterAndLoginBusiness("disguised@example.com", "disguised-shop");
+        var service = await CreateService(businessToken, "Both");
+        var html = System.Text.Encoding.UTF8.GetBytes("<html><script>alert(1)</script></html>");
+
+        Authorize(Client, businessToken);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsync("/api/admin/settings/logo", FakeImage("logo.png", "image/png", html))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage("p.png", "image/png", html))).StatusCode);
+        // A real JPEG named .png is rejected too: the extension and the contents must agree.
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsync($"/api/admin/items/{service.Id}/gallery", FakeImage("p.png", "image/png", JpegBytes))).StatusCode);
+        Client.DefaultRequestHeaders.Authorization = null;
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsync($"/api/{slug}/appointments/photo", FakeImage("p.png", "image/png", html))).StatusCode);
+
+        Authorize(Client, businessToken);
+        Assert.Equal(HttpStatusCode.OK, (await Client.PostAsync("/api/admin/settings/logo", FakeImage("logo.png", "image/png", PngBytes))).StatusCode);
+    }
+
+    private record LogoResponse(string Logo);
+
+    // QA: the logo was always saved as {id}{ext}, so after a change browsers kept showing the
+    // cached old one from the same URL.
+    [Fact]
+    public async Task UploadLogo_GetsANewUrlEachTime_AndRemovesTheOldFile()
+    {
+        var (businessToken, _) = await RegisterAndLoginBusiness("logo-cache@example.com", "logo-cache-shop");
+        Authorize(Client, businessToken);
+
+        var first = (await (await Client.PostAsync("/api/admin/settings/logo", FakeImage("logo.png", "image/png", PngBytes))).Content.ReadFromJsonAsync<LogoResponse>())!.Logo;
+        var second = (await (await Client.PostAsync("/api/admin/settings/logo", FakeImage("logo.png", "image/png", PngBytes))).Content.ReadFromJsonAsync<LogoResponse>())!.Logo;
+
+        Assert.NotEqual(first, second);
+        Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync(first)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Client.GetAsync(second)).StatusCode);
     }
 
     [Fact]

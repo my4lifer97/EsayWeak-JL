@@ -16,12 +16,6 @@ public class BookingController(
     WaitlistService waitlist, AppointmentCancellationService cancellationService,
     IWhatsAppSender whatsAppSender, ILogger<BookingController> logger) : ControllerBase
 {
-    private static readonly Dictionary<string, string> AllowedPhotoTypes = new()
-    {
-        [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".png"] = "image/png", [".webp"] = "image/webp",
-    };
-    private const long MaxPhotoBytes = 5 * 1024 * 1024;
-
     [HttpGet("info")]
     public async Task<IActionResult> GetBusinessInfo(string slug)
     {
@@ -272,17 +266,14 @@ public class BookingController(
     }
 
     [HttpPost("appointments/photo")]
-    [RequestSizeLimit(MaxPhotoBytes)]
+    [RequestSizeLimit(ImageUpload.MaxBytes)]
     public async Task<IActionResult> UploadAppointmentPhoto(string slug, IFormFile file)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (file.Length == 0 || file.Length > MaxPhotoBytes
-            || !AllowedPhotoTypes.TryGetValue(ext, out var expectedContentType)
-            || file.ContentType != expectedContentType)
-            return BadRequest(new { error = "Please upload a JPG, PNG, or WEBP image up to 5MB." });
+        if (await ImageUpload.ValidateAsync(file) is not { } ext)
+            return BadRequest(new { error = ImageUpload.Error });
 
         var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "appointment-photos");
         Directory.CreateDirectory(uploadsDir);

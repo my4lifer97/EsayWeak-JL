@@ -21,11 +21,6 @@ public class AdminController(
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
-    private static readonly Dictionary<string, string> AllowedLogoTypes = new()
-    {
-        [".jpg"] = "image/jpeg", [".jpeg"] = "image/jpeg", [".png"] = "image/png", [".webp"] = "image/webp",
-    };
-    private const long MaxLogoBytes = 5 * 1024 * 1024;
 
     private static ItemDto ToItemDto(Item s) => new(
         s.Id, s.BusinessId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
@@ -56,17 +51,14 @@ public class AdminController(
     }
 
     [HttpPost("settings/logo")]
-    [RequestSizeLimit(MaxLogoBytes)]
+    [RequestSizeLimit(ImageUpload.MaxBytes)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
         var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
 
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (file.Length == 0 || file.Length > MaxLogoBytes
-            || !AllowedLogoTypes.TryGetValue(ext, out var expectedContentType)
-            || file.ContentType != expectedContentType)
-            return BadRequest(new { error = "Please upload a JPG, PNG, or WEBP image up to 5MB." });
+        if (await ImageUpload.ValidateAsync(file) is not { } ext)
+            return BadRequest(new { error = ImageUpload.Error });
 
         var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "logos");
         Directory.CreateDirectory(uploadsDir);
@@ -77,7 +69,9 @@ public class AdminController(
             if (System.IO.File.Exists(oldPath)) System.IO.File.Delete(oldPath);
         }
 
-        var fileName = $"{b.Id}{ext}";
+        // A new name per upload: with a fixed {id}{ext} name, browsers and the WhatsApp preview kept
+        // showing the cached old logo at the same URL.
+        var fileName = $"{b.Id}-{Guid.NewGuid():N}{ext}";
         await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
             await file.CopyToAsync(stream);
 
@@ -370,17 +364,14 @@ public class AdminController(
     // ─── Item gallery photos ────────────────────────────────────────────────
 
     [HttpPost("items/{id}/gallery")]
-    [RequestSizeLimit(MaxLogoBytes)]
+    [RequestSizeLimit(ImageUpload.MaxBytes)]
     public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
     {
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
         if (item is null) return NotFound();
 
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (file.Length == 0 || file.Length > MaxLogoBytes
-            || !AllowedLogoTypes.TryGetValue(ext, out var expectedContentType)
-            || file.ContentType != expectedContentType)
-            return BadRequest(new { error = "Please upload a JPG, PNG, or WEBP image up to 5MB." });
+        if (await ImageUpload.ValidateAsync(file) is not { } ext)
+            return BadRequest(new { error = ImageUpload.Error });
 
         var uploadsDir = Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "gallery", item.Id);
         Directory.CreateDirectory(uploadsDir);

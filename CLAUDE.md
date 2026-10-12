@@ -435,7 +435,7 @@ modal (`WeeklyCalendar`), and to both parties in appointment detail views. The c
 it later — while the appointment is still CONFIRMED — from either "My Appointments With This
 Business" (`BusinessPage`) or "My Bookings" (`MyBookingsPage`); both render the shared
 `AppointmentCard`, whose "Change Photo" action calls `PATCH /api/customer/appointments/{id}/photo`.
-Uploads reuse the same JPG/PNG/WEBP/5MB validation as the business's own logo upload;
+Uploads reuse the same JPG/PNG/WEBP/5MB validation as the business's own logo upload (`Services/ImageUpload.ValidateAsync`, which also checks the file's first bytes match its extension, so a renamed HTML file is rejected). The logo gets a new file name on every upload (`{businessId}-{guid}{ext}`, old file deleted) so caches can't keep showing the old one;
 gallery photos live under `wwwroot/uploads/gallery/{itemId}/`, customer-uploaded reference
 photos under `wwwroot/uploads/appointment-photos/` — both served via the existing `/api/uploads`
 static file route.
