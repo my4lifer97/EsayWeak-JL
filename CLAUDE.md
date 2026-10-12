@@ -701,7 +701,7 @@ Migrations run roughly: `InitialCreate` ... `AddPlatformAdminAndActivityLog` ...
 multi-vertical rename) → `AddBusinessOwnerRequests` → `AddReviews` (adds `Reviews` +
 `Businesses.RatingCount`/`RatingAverage`) → `AddBusinessDiscoveryFields` (adds
 `Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) → `AddCustomerOtp` (adds the
-`CustomerOtps` table for phone+OTP login) — the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
+`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
 `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel
 **before** the code push, not after (see [Deployment (Railway)](#deployment-railway)) — skipping
 that ordering has caused multiple prod outages.
@@ -978,7 +978,7 @@ The primary way a customer session starts: redeeming a link the WhatsApp bot sen
 sign-up/sign-in step at all). Phone+OTP (below) is a second, parallel path — both just mint the
 same kind of `CustomerAccount`-backed JWT. Flow (`WhatsAppController` + `CustomerAuthController`):
 1. Any message from a phone with no pending selection (or the `book` keyword) gets a numbered list
-   of the business's active items (`whatsapp.selectService`, item order = `Item.Id` order)
+   of the business's active items (`whatsapp.selectService`, alphabetical in the reply language since 2026-10-13; it used to be `Item.Id` order). The shown ids are saved in `WhatsAppConversationState.ShownItemIds` (migration `AddConversationShownItemIds`), so a reply number means what the customer saw even if the owner changed the services since. A service turned off in the meantime gets `whatsapp.serviceNoLongerAvailable` plus the current list
    and opens a `WhatsAppConversationState` row (`BusinessId`+`Phone`, 10-minute expiry) remembering
    the bot is waiting on a reply — Twilio webhooks are stateless per-message, so this is the only
    way to connect the "which item?" prompt to the customer's numeric reply that follows.

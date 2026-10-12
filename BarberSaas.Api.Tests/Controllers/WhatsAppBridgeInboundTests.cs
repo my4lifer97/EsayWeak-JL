@@ -111,7 +111,8 @@ public class WhatsAppBridgeInboundTests : IntegrationTestBase
 
         var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => PostInbound(businessId, "+15559990010", "hi")));
 
-        Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        foreach (var r in responses)
+            Assert.True(r.StatusCode == HttpStatusCode.OK, await r.Content.ReadAsStringAsync());
         using var db = Db();
         Assert.Equal(1, await db.WhatsAppConversationStates.CountAsync(s => s.BusinessId == businessId && s.Phone == "+15559990010"));
     }
@@ -173,6 +174,59 @@ public class WhatsAppBridgeInboundTests : IntegrationTestBase
         Assert.Contains("1. Haircut", resp!.Reply);
         using var check = Db();
         Assert.Equal(0, (await check.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone)).InvalidAttempts);
+    }
+
+    private async Task<Dictionary<string, string>> AddServices(string businessId, params string[] names)
+    {
+        using var db = Db();
+        var items = names.Select(n => new Item { BusinessId = businessId, NameEn = n, NameAr = n, NameHe = n, DurationMinutes = 30 }).ToList();
+        db.Items.AddRange(items);
+        await db.SaveChangesAsync();
+        return items.ToDictionary(i => i.NameEn, i => i.Id);
+    }
+
+    private async Task TurnOff(string itemId)
+    {
+        using var db = Db();
+        (await db.Items.FirstAsync(i => i.Id == itemId)).IsActive = false;
+        await db.SaveChangesAsync();
+    }
+
+    // QA: the list was ordered by internal id (looked random), and a reply was matched against the
+    // *current* list -- after the owner turned off "Kids Cut", "2" for Haircut booked Beard Trim.
+    [Fact]
+    public async Task ServiceList_IsAlphabetical_AndAReplyMeansWhatTheCustomerSaw()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-shown@example.com", "wa-bridge-shown"); // "Haircut"
+        var ids = await AddServices(businessId, "Kids Cut", "Beard Trim");
+        var phone = "+15559990013";
+
+        var list = (await (await PostInbound(businessId, phone, "hi")).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply!;
+        Assert.Contains("1. Beard Trim\n2. Haircut\n3. Kids Cut", list);
+
+        await TurnOff(ids["Beard Trim"]); // the current list would now start with Haircut
+        await PostInbound(businessId, phone, "3");
+
+        using var db = Db();
+        var token = await db.WhatsAppBookingTokens.SingleAsync(t => t.BusinessId == businessId && t.Phone == phone);
+        Assert.Equal(ids["Kids Cut"], token.ItemId);
+    }
+
+    [Fact]
+    public async Task ReplyForAServiceTurnedOffSinceTheList_ShowsTheCurrentList()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-gone@example.com", "wa-bridge-gone"); // "Haircut"
+        var ids = await AddServices(businessId, "Beard Trim");
+        var phone = "+15559990014";
+        await PostInbound(businessId, phone, "hi"); // 1. Beard Trim, 2. Haircut
+
+        await TurnOff(ids["Beard Trim"]);
+        var reply = (await (await PostInbound(businessId, phone, "1")).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply!;
+
+        Assert.Contains("no longer available", reply);
+        Assert.Contains("1. Haircut", reply);
+        using var db = Db();
+        Assert.False(await db.WhatsAppBookingTokens.AnyAsync(t => t.BusinessId == businessId && t.Phone == phone));
     }
 
     [Fact]

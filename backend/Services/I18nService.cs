@@ -13,6 +13,7 @@ public static class I18nService
             // custom welcome message, which replaces the greeting instead of stacking on top of it.
             ["whatsapp.selectServicePrompt"] = "Which service would you like?\n\n{list}\n\nReply with the number.",
             ["whatsapp.invalidServiceSelection"] = "Sorry, I didn't recognize that. Please reply with just the number of the service you'd like.",
+            ["whatsapp.serviceNoLongerAvailable"] = "Sorry, that service is no longer available. Here's the current list:",
             ["whatsapp.tooManyInvalidReplies"] = "Looks like you're not sending what was asked. If you'd like to continue chatting with me, send \"{unlockKeyword}\".",
             ["whatsapp.bookingConfirmed"] = "You're booked! Hi {customerName}, your {service} appointment with {businessName} is confirmed for {date} at {time}. See you then!",
             ["whatsapp.noServices"] = "Sorry, {businessName} hasn't set up any bookable services yet.",
@@ -41,6 +42,7 @@ public static class I18nService
             ["whatsapp.selectService"] = "مرحبًا! أنا مساعد حجز {businessName}. ما هي الخدمة التي تريدها؟\n\n{list}\n\nأرسل الرقم للاختيار.",
             ["whatsapp.selectServicePrompt"] = "ما هي الخدمة التي تريدها؟\n\n{list}\n\nأرسل الرقم للاختيار.",
             ["whatsapp.invalidServiceSelection"] = "عذرًا، لم أفهم ذلك. الرجاء إرسال رقم الخدمة فقط.",
+            ["whatsapp.serviceNoLongerAvailable"] = "عذرًا، هذه الخدمة لم تعد متاحة. إليك القائمة الحالية:",
             ["whatsapp.tooManyInvalidReplies"] = "يبدو أنك لا ترسل ما طُلب منك. إذا كنت ترغب في متابعة الدردشة معي، أرسل \"{unlockKeyword}\".",
             ["whatsapp.bookingConfirmed"] = "تم الحجز! مرحبًا {customerName}، تم تأكيد موعد {service} مع {businessName} بتاريخ {date} الساعة {time}. أراك حينها!",
             ["whatsapp.noServices"] = "عذرًا، لم يقم {businessName} بإعداد أي خدمات للحجز بعد.",
@@ -69,6 +71,7 @@ public static class I18nService
             ["whatsapp.selectService"] = "שלום! אני עוזר התורים של {businessName}. איזה שירות תרצה?\n\n{list}\n\nהשב עם המספר.",
             ["whatsapp.selectServicePrompt"] = "איזה שירות תרצה?\n\n{list}\n\nהשב עם המספר.",
             ["whatsapp.invalidServiceSelection"] = "סליחה, לא הבנתי. אנא שלח רק את מספר השירות שתרצה.",
+            ["whatsapp.serviceNoLongerAvailable"] = "סליחה, השירות הזה כבר לא זמין. הנה הרשימה העדכנית:",
             ["whatsapp.tooManyInvalidReplies"] = "נראה שאתה לא שולח את מה שביקשתי. אם תרצה להמשיך לשוחח איתי, שלח \"{unlockKeyword}\".",
             ["whatsapp.bookingConfirmed"] = "התור נקבע! שלום {customerName}, התור שלך ל{service} אצל {businessName} אושר לתאריך {date} בשעה {time}. נתראה!",
             ["whatsapp.noServices"] = "סליחה, {businessName} עדיין לא הגדיר שירותים לקביעת תור.",

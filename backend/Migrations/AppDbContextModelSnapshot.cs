@@ -1233,6 +1233,9 @@ namespace BarberSaas.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ShownItemIds")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BusinessId", "Phone")

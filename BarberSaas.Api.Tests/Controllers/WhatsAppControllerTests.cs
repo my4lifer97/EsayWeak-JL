@@ -43,9 +43,10 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var businessForTwilio = await db.Businesses.FirstAsync(b => b.Id == businessId);
         businessForTwilio.WhatsAppNumber = TwilioNumber;
         await db.SaveChangesAsync();
-        // Same ordering WhatsAppController uses (OrderBy Id) -- so tests can pick "the Nth item
-        // the bot listed" without depending on service-creation order.
-        var idsInBotOrder = await db.Items.Where(s => s.BusinessId == businessId).OrderBy(s => s.Id).Select(s => s.Id).ToListAsync();
+        // Same ordering WhatsAppController uses (by name, "Service 0", "Service 1", ...) -- so tests
+        // can pick "the Nth item the bot listed".
+        var idsInBotOrder = (await db.Items.Where(s => s.BusinessId == businessId).ToListAsync())
+            .OrderBy(s => s.NameEn).ThenBy(s => s.Id).Select(s => s.Id).ToList();
         return (businessId, slug, idsInBotOrder);
     }
 

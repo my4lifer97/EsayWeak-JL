@@ -42,6 +42,10 @@ public class WhatsAppConversationState
     // session -- a back-and-forth conversation only pings once, not per message. Reset to false
     // whenever the customer returns to Booking mode, so a later inquiry session notifies again.
     public bool InquiryNotified { get; set; }
+    // Comma-separated Item ids in the exact order the last numbered service list showed them, so a
+    // reply like "2" means what the customer saw even if the owner added or turned off a service
+    // since. Null on rows from before this existed (the reply is then matched to the current list).
+    public string? ShownItemIds { get; set; }
     public DateTime ExpiresAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -120,12 +120,26 @@ public class WhatsAppController(
         if (string.IsNullOrEmpty(secret) || header != secret)
             return Unauthorized();
 
-        var business = await db.Businesses.FindAsync(req.BusinessId);
-        if (business is null) return NotFound();
+        // The bridge names the business up front, so the per-customer lock (see ConversationLocks)
+        // can cover this whole request, business lookup included.
+        var fromPhone = PhoneNormalizer.Normalize(req.FromPhone);
+        var conversationLock = LockFor(req.BusinessId, fromPhone);
+        await conversationLock.WaitAsync();
+        try
+        {
+            var business = await db.Businesses.FindAsync(req.BusinessId);
+            if (business is null) return NotFound();
 
-        var appUrl = config["AppUrl"] ?? "";
-        var reply = await ProcessMessageAsync(business, appUrl, req.FromPhone, req.ProfileName ?? "", req.Message.Trim());
-        return Ok(new BridgeInboundResponse(reply));
+            var appUrl = config["AppUrl"] ?? "";
+            var reply = fromPhone.Length == 0
+                ? null
+                : await ProcessMessageLockedAsync(business, appUrl, fromPhone, req.ProfileName ?? "", req.Message.Trim());
+            return Ok(new BridgeInboundResponse(reply));
+        }
+        finally
+        {
+            conversationLock.Release();
+        }
     }
 
     // Shared by both inbound transports (Twilio webhook + bridge inbound). Dispatches to the
@@ -140,6 +154,9 @@ public class WhatsAppController(
     private static readonly SemaphoreSlim[] ConversationLocks =
         Enumerable.Range(0, 256).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
+    private static SemaphoreSlim LockFor(string businessId, string normalizedPhone) =>
+        ConversationLocks[(uint)HashCode.Combine(businessId, normalizedPhone) % ConversationLocks.Length];
+
     private async Task<string?> ProcessMessageAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
         // Both inbound paths (Twilio, bridge) land here: canonicalize once so every lookup and
@@ -147,7 +164,7 @@ public class WhatsAppController(
         fromPhone = PhoneNormalizer.Normalize(fromPhone);
         if (fromPhone.Length == 0) return null;
 
-        var conversationLock = ConversationLocks[(uint)HashCode.Combine(business.Id, fromPhone) % ConversationLocks.Length];
+        var conversationLock = LockFor(business.Id, fromPhone);
         await conversationLock.WaitAsync();
         try
         {
@@ -766,18 +783,21 @@ public class WhatsAppController(
 
     // Only bookable items make sense to offer through the booking chatbot -- a showcase-only
     // item has nothing for this flow to schedule.
+    // Alphabetical in the customer's language -- ordering by Id looked random to owners.
     private async Task<List<(string Id, string Name)>> ActiveServices(string businessId, string lang)
     {
         var services = await db.Items
             .Where(s => s.BusinessId == businessId && s.IsActive && s.IsBookable)
-            .OrderBy(s => s.Id)
             .ToListAsync();
-        return services.Select(s => (s.Id, lang switch
-        {
-            "AR" => s.NameAr,
-            "HE" => s.NameHe,
-            _ => s.NameEn,
-        })).ToList();
+        return services
+            .Select(s => (s.Id, Name: lang switch
+            {
+                "AR" => s.NameAr,
+                "HE" => s.NameHe,
+                _ => s.NameEn,
+            }))
+            .OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(s => s.Id)
+            .ToList();
     }
 
     // Upserts the (BusinessId, Phone) conversation-state row (unique index guarantees at most one,
@@ -808,6 +828,7 @@ public class WhatsAppController(
         // next numeric service-selection reply as if it were inquiry content.
         existing.ChatbotMode = BookingMode;
         existing.InquiryNotified = false;
+        existing.ShownItemIds = string.Join(",", services.Select(s => s.Id));
         await db.SaveChangesAsync();
 
         var list = string.Join("\n", services.Select((s, i) => $"{i + 1}. {s.Name}"));
@@ -832,7 +853,13 @@ public class WhatsAppController(
         if (state is null) return null;
 
         var services = await ActiveServices(businessId, lang);
-        if (!int.TryParse(NormalizeDigits(message.Trim()), out var index) || index < 1 || index > services.Count)
+        // The number refers to the list this customer was shown (QA: after the owner turned off
+        // "Kids Cut", replying "2" for Haircut booked Beard Trim). Older rows fall back to the
+        // current list.
+        var shownIds = string.IsNullOrEmpty(state.ShownItemIds)
+            ? services.Select(s => s.Id).ToList()
+            : state.ShownItemIds.Split(',').ToList();
+        if (!int.TryParse(NormalizeDigits(message.Trim()), out var index) || index < 1 || index > shownIds.Count)
         {
             state.InvalidAttempts++;
             await db.SaveChangesAsync();
@@ -841,7 +868,14 @@ public class WhatsAppController(
                 : I18nService.T(lang, "whatsapp.invalidServiceSelection");
         }
 
-        var chosen = services[index - 1];
+        var chosen = services.FirstOrDefault(s => s.Id == shownIds[index - 1]);
+        if (chosen.Id is null)
+        {
+            // Turned off or no longer bookable since the list was sent -- show the current one.
+            var business = (await db.Businesses.FindAsync(businessId))!;
+            var intro = I18nService.T(lang, "whatsapp.serviceNoLongerAvailable");
+            return $"{intro}\n\n{await PromptServiceSelection(businessId, business.Name, phone, lang, null, business.ChatbotInquiryEnabled)}";
+        }
         // Kept alive (not removed) with AwaitingBookingCompletion set -- see the lockout gate in
         // ProcessMessageRuleBasedAsync for why: it's what stops the bot re-sending the opening
         // prompt while the customer finishes booking on the web page this link opens.
