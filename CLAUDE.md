@@ -879,7 +879,7 @@ signature changes again, keep `lang` as a parameter, not an internal `ResolveLan
 `WhatsAppConversationState.Language` and `WhatsAppBookingToken.Language` both persist the resolved
 language — the latter is returned by `POST /api/customer/auth/whatsapp` (`language` field) and the
 frontend's `loginWithWhatsAppToken` calls `setLang()` with it, so the booking wizard opens in the
-same language the customer was just chatting in, not whatever was last stored in this browser.
+same language the customer was just chatting in, not whatever was last stored in this browser. The error responses (expired 400, item-gone 404) carry it too (`WhatsAppBookingTokenService.FindLanguageAsync`, since expired rows are never deleted), so the "link expired" page shows in the chat language. A token that was never issued falls back to the browser language when this browser has no saved choice.
 
 That "business's own default" is `Business.ChatbotDefaultLanguage` (nullable, `Settings >
 Chatbot Settings`, falling back to the general `Language` field when unset) — kept as a separate

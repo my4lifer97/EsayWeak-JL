@@ -15,6 +15,7 @@ public class CustomerAuthControllerTests : IntegrationTestBase
     private record RegisterResponse(string? DevCode);
     private record ItemIdDto(string Id);
     private record ErrorResponse(string Error);
+    private record LinkErrorResponse(string Error, string? Language);
 
     private async Task<(string BusinessId, string Slug, string ItemId)> SeedBusinessAndService(string email, string slug)
     {
@@ -33,11 +34,11 @@ public class CustomerAuthControllerTests : IntegrationTestBase
         return (businessId, slug, svc!.Id);
     }
 
-    private async Task<string> CreateBookingToken(string businessId, string itemId, string phone, string? profileName = null)
+    private async Task<string> CreateBookingToken(string businessId, string itemId, string phone, string? profileName = null, string language = "EN")
     {
         using var scope = Factory.Services.CreateScope();
         var tokens = scope.ServiceProvider.GetRequiredService<WhatsAppBookingTokenService>();
-        var token = await tokens.CreateAsync(businessId, itemId, phone, profileName);
+        var token = await tokens.CreateAsync(businessId, itemId, phone, profileName, language);
         return token.Id;
     }
 
@@ -139,7 +140,7 @@ public class CustomerAuthControllerTests : IntegrationTestBase
     public async Task LoginWithWhatsApp_ExpiredToken_ReturnsBadRequest()
     {
         var (businessId, _, itemId) = await SeedBusinessAndService("wa-login-5@example.com", "wa-login-5");
-        var token = await CreateBookingToken(businessId, itemId, "+15557770005", "Jane Doe");
+        var token = await CreateBookingToken(businessId, itemId, "+15557770005", "Jane Doe", "AR");
 
         using (var db = Db())
         {
@@ -151,6 +152,8 @@ public class CustomerAuthControllerTests : IntegrationTestBase
         var resp = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new WhatsAppLoginRequest(token));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        // So the "link expired" page shows in the chat's language (QA: it was always Hebrew).
+        Assert.Equal("AR", (await resp.Content.ReadFromJsonAsync<LinkErrorResponse>())!.Language);
     }
 
     [Fact]
@@ -159,6 +162,7 @@ public class CustomerAuthControllerTests : IntegrationTestBase
         var resp = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new WhatsAppLoginRequest("not-a-real-token"));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Null((await resp.Content.ReadFromJsonAsync<LinkErrorResponse>())!.Language);
     }
 
     [Fact]
@@ -167,7 +171,7 @@ public class CustomerAuthControllerTests : IntegrationTestBase
         // Services are soft-deleted (IsActive = false) by the business, never hard-deleted --
         // this is the realistic "service no longer bookable" case, not a hard row delete.
         var (businessId, _, itemId) = await SeedBusinessAndService("wa-login-6@example.com", "wa-login-6");
-        var token = await CreateBookingToken(businessId, itemId, "+15557770006", "Jane Doe");
+        var token = await CreateBookingToken(businessId, itemId, "+15557770006", "Jane Doe", "EN");
 
         using (var db = Db())
         {
@@ -179,6 +183,7 @@ public class CustomerAuthControllerTests : IntegrationTestBase
         var resp = await Client.PostAsJsonAsync("/api/customer/auth/whatsapp", new WhatsAppLoginRequest(token));
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        Assert.Equal("EN", (await resp.Content.ReadFromJsonAsync<LinkErrorResponse>())!.Language);
     }
 
     // ─── Phone+OTP (second, parallel entry point alongside WhatsApp) ──────────

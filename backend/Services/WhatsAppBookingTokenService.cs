@@ -29,4 +29,9 @@ public class WhatsAppBookingTokenService(AppDbContext db)
 
     public Task<WhatsAppBookingToken?> TryResolveAsync(string token) =>
         db.WhatsAppBookingTokens.FirstOrDefaultAsync(t => t.Id == token && t.ExpiresAt > DateTime.UtcNow);
+
+    // The chat language of a token even after it expired (rows are never deleted), so the
+    // "link expired" page can be shown in the language the customer was chatting in.
+    public Task<string?> FindLanguageAsync(string token) =>
+        db.WhatsAppBookingTokens.Where(t => t.Id == token).Select(t => (string?)t.Language).FirstOrDefaultAsync();
 }

@@ -8,9 +8,11 @@ vi.mock('../../lib/customerAuth', () => ({
   useCustomerAuth: vi.fn(),
 }))
 
+const setLang = vi.fn()
+
 function renderAt(path: string, loginWithWhatsAppToken: ReturnType<typeof vi.fn>) {
   vi.mocked(useCustomerAuth).mockReturnValue({
-    loginWithWhatsAppToken, language: 'EN',
+    loginWithWhatsAppToken, language: 'EN', setLang,
   } as unknown as ReturnType<typeof useCustomerAuth>)
 
   return render(
@@ -23,7 +25,10 @@ function renderAt(path: string, loginWithWhatsAppToken: ReturnType<typeof vi.fn>
   )
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  localStorage.clear()
+})
 
 describe('WhatsAppLandingPage', () => {
   it('redeems the token and redirects into the booking wizard with the service preselected', async () => {
@@ -41,5 +46,33 @@ describe('WhatsAppLandingPage', () => {
     renderAt('/test-business/w/bad-token', login)
 
     await waitFor(() => expect(screen.getByText(/expired or is invalid/)).toBeInTheDocument())
+  })
+
+  // QA: the expired page was always Hebrew, whatever language the customer chatted in.
+  it('switches to the chat language the server returns for an expired link', async () => {
+    const login = vi.fn().mockRejectedValue({ response: { status: 400, data: { error: 'expired', language: 'AR' } } })
+
+    renderAt('/test-business/w/old-token', login)
+
+    await waitFor(() => expect(setLang).toHaveBeenCalledWith('AR'))
+  })
+
+  it("falls back to the browser's language for an unknown link when nothing is saved", async () => {
+    vi.spyOn(navigator, 'language', 'get').mockReturnValue('en-US')
+    const login = vi.fn().mockRejectedValue({ response: { status: 400, data: { error: 'invalid', language: null } } })
+
+    renderAt('/test-business/w/never-issued', login)
+
+    await waitFor(() => expect(setLang).toHaveBeenCalledWith('EN'))
+  })
+
+  it("keeps the customer's saved language for an unknown link", async () => {
+    localStorage.setItem('customerLang', 'HE')
+    const login = vi.fn().mockRejectedValue({ response: { status: 400, data: { error: 'invalid', language: null } } })
+
+    renderAt('/test-business/w/never-issued', login)
+
+    await waitFor(() => expect(screen.getByText(/expired or is invalid/)).toBeInTheDocument())
+    expect(setLang).not.toHaveBeenCalled()
   })
 })

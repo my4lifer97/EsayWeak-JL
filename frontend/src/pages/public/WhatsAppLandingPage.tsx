@@ -7,9 +7,14 @@ import { t } from '../../lib/i18n'
 // (WhatsAppController -> POST /customer/auth/whatsapp). Redeems the token, then sends the
 // customer straight into the booking wizard with their service already chosen -- no sign-up/
 // sign-in step and no service-selection step, per the WhatsApp booking flow.
+function browserLanguage(): string | null {
+  const code = (navigator.language || '').slice(0, 2).toLowerCase()
+  return code === 'he' || code === 'iw' ? 'HE' : code === 'ar' ? 'AR' : code === 'en' ? 'EN' : null
+}
+
 export default function WhatsAppLandingPage() {
   const { token } = useParams<{ token: string }>()
-  const { loginWithWhatsAppToken, language: lang } = useCustomerAuth()
+  const { loginWithWhatsAppToken, language: lang, setLang } = useCustomerAuth()
   const navigate = useNavigate()
   const [error, setError] = useState(false)
 
@@ -17,7 +22,14 @@ export default function WhatsAppLandingPage() {
     if (!token) { setError(true); return }
     loginWithWhatsAppToken(token)
       .then(({ businessSlug, itemId }) => navigate(`/${businessSlug}/book?itemId=${itemId}`, { replace: true }))
-      .catch(() => setError(true))
+      .catch((err: unknown) => {
+        // An expired link still knows the language the customer chatted in. For a link the
+        // server never issued, use the browser's language if this browser has no saved choice.
+        const chatLang = (err as { response?: { data?: { language?: string } } })?.response?.data?.language
+        const fallback = localStorage.getItem('customerLang') ? null : browserLanguage()
+        if (chatLang || fallback) setLang((chatLang || fallback)!)
+        setError(true)
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 

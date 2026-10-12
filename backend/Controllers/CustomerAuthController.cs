@@ -130,16 +130,18 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         if (string.IsNullOrWhiteSpace(req.Token))
             return BadRequest(new { error = "Token is required" });
 
+        // Errors carry the chat language too (null for a token we never issued), so the landing
+        // page doesn't fall back to Hebrew for an English or Arabic chat.
         var tokenRow = await bookingTokens.TryResolveAsync(req.Token);
         if (tokenRow is null)
-            return BadRequest(new { error = "This link has expired or is invalid" });
+            return BadRequest(new { error = "This link has expired or is invalid", language = await bookingTokens.FindLanguageAsync(req.Token) });
 
         var business = await db.Businesses.Where(b => b.Id == tokenRow.BusinessId).Select(b => new { b.Slug }).FirstOrDefaultAsync();
         // Items are soft-deleted (IsActive = false), never hard-deleted -- so this also covers
         // the business deactivating the item after the WhatsApp link was already sent.
         var item = await db.Items.Where(s => s.Id == tokenRow.ItemId && s.IsActive).Select(s => new { s.Id }).FirstOrDefaultAsync();
         if (business is null || item is null)
-            return NotFound(new { error = "This business or item is no longer available" });
+            return NotFound(new { error = "This business or item is no longer available", language = tokenRow.Language });
 
         var phone = PhoneNormalizer.Normalize(tokenRow.Phone);
         var account = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == phone);
