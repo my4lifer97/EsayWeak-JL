@@ -119,7 +119,9 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             .Include(a => a.Business)
             .Include(a => a.Customer)
             .Include(a => a.Item)
-            .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.ReminderSent)
+            // A customer cancellation waiting on the owner's approval stays CONFIRMED internally, but the
+            // customer already sees it as cancelled -- no reminder for it.
+            .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSent)
             .ToListAsync();
 
         var (dayBeforeSent, dayBeforeFailed) = await SendBatchAsync(dayBeforeAppointments, "reminder.message", appUrl,
@@ -135,7 +137,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             .Include(a => a.Business)
             .Include(a => a.Customer)
             .Include(a => a.Item)
-            .Where(a => a.Status == AppointmentStatus.CONFIRMED && !a.ReminderSentSoon
+            .Where(a => a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSentSoon
                 && a.Date >= now.Date && a.Date <= in3Hours.Date)
             .ToListAsync();
         var soonAppointments = soonCandidates

@@ -365,7 +365,9 @@ public class BookingController(
         appointment.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         appointment.StartTime = req.StartTime;
         appointment.EndTime = AvailabilityService.AddMinutes(req.StartTime, appointment.Item.DurationMinutes.Value);
+        // Both reminders are for the new time, including the 3-hours-before one.
         appointment.ReminderSent = false;
+        appointment.ReminderSentSoon = false;
 
         await waitlist.ResolveForRebooking(appointment.BusinessId, appointment.Date, req.StartTime);
         if (!await availability.TrySaveOrDetectConflict(appointment.BusinessId, req.Date, req.StartTime, appointment.EndTime))

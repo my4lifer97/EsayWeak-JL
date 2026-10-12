@@ -393,6 +393,14 @@ public class AdminAppointmentsTests : IntegrationTestBase
         var created = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
             null, "Riley", "+15551115001", itemId, dateStr, "09:00", null));
         var appt = await created.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
+        // Both reminders already went out for the old time.
+        using (var db = Db())
+        {
+            var stored = db.Appointments.First(a => a.Id == appt!.Id);
+            stored.ReminderSent = true;
+            stored.ReminderSentSoon = true;
+            db.SaveChanges();
+        }
 
         var resp = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt!.Id}/reschedule",
             new RescheduleRequest(dateStr, "10:00"));
@@ -402,6 +410,9 @@ public class AdminAppointmentsTests : IntegrationTestBase
         {
             var stored = db.Appointments.First(a => a.Id == appt.Id);
             Assert.Equal("10:00", stored.StartTime);
+            // QA: the "3 hours before" flag wasn't reset, so the moved booking never got one.
+            Assert.False(stored.ReminderSent);
+            Assert.False(stored.ReminderSentSoon);
         }
 
         // The old 09:00 slot is free again.

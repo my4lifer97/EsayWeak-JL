@@ -136,6 +136,28 @@ public class CronControllerTests : IntegrationTestBase
         Assert.False(appt.ReminderSentSoon);
     }
 
+    // QA: a cancellation waiting for the owner's approval stays CONFIRMED internally, and the
+    // customer (who already sees it as cancelled) kept getting reminders for it.
+    [Fact]
+    public async Task Reminders_SkipAppointmentsWaitingForCancelApproval()
+    {
+        var soon = DateTime.Now.AddHours(2);
+        var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
+            "cron-reminder-pending@example.com", "cron-reminder-pending-shop", soon.Date, soon.ToString("HH:mm"));
+        using (var db = Db())
+        {
+            var appt = await db.Appointments.SingleAsync(a => a.Id == appointmentId);
+            appt.PendingCancellationApproval = true;
+            await db.SaveChangesAsync();
+        }
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+
+        var resp = await Client.GetAsync("/api/cron/reminders");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == phone);
+    }
+
     // ─── generate-recurring: same auth contract as reminders above ─────────
 
     [Fact]
