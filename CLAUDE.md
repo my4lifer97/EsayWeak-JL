@@ -373,6 +373,13 @@ route, so it works regardless of how the customer arrived. Used on every custome
 AppointmentPage). BookingWizard steps 2-4 keep their own in-wizard step-back button instead
 (moving between wizard steps, not pages).
 
+### Input validation (global)
+`Filters/ValidateInputFilter.cs` (global, 2026-10-13) answers 400 before an action runs when:
+- a `date`/`startDate`/`endDate` query argument, or a `Date`/`StartDate`/`EndDate` string property on a request DTO, isn't an exact `yyyy-MM-dd` (years 2000–2100). Endpoints still call `DateTime.Parse`, which turned "2026-02-30" into a 500 before this.
+- a `Notes` property is over 2000 characters, or any `*Name` property is over 200.
+
+It checks only action arguments whose type is in this assembly (our DTOs), plus plain string arguments. `AvailabilityService` offers no slots more than `MaxDaysAhead` (365) days out. Booking requires a non-blank `customerName`. Settings rejects a blank business name. Items go through `AdminController.ItemInputError` on create *and* edit: names, a duration of at most 24 h, and a price between 0 and 1,000,000. `SlugValidator` reserves every top-level frontend route, including `platform-admin`, `request-business-account` and `wa-link`. Keep it in sync with `App.tsx`.
+
 ### Per-customer booking limits
 A business can cap how many times the *same customer* (matched by phone, not account — so a second
 login for the same number, e.g. phone OTP next to the WhatsApp link, still counts) can book with them:

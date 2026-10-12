@@ -14,6 +14,7 @@ builder.Services.AddControllers(opt =>
     opt.Filters.Add<ActivityLogFilter>();
     opt.Filters.Add<RequirePasswordChangeFilter>();
     opt.Filters.Add<BlockDisabledBusinessFilter>();
+    opt.Filters.Add<ValidateInputFilter>();
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();

@@ -17,6 +17,8 @@ public class AvailabilityService(AppDbContext db)
     // overlap a CONFIRMED appointment, flags them Available=false with that appointment's Id —
     // lets the customer-facing calendar show booked slots (for joining a waitlist) rather than
     // hiding them entirely. Breaks/blocked-slots are still fully excluded (not real bookings).
+    public const int MaxDaysAhead = 365;
+
     public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string businessId, string dateStr, int serviceDuration)
     {
         // A date entirely before today (not just "already passed today's slots", see the isToday
@@ -24,6 +26,8 @@ public class AvailabilityService(AppDbContext db)
         // and the resulting appointment reads back as already COMPLETED, letting anyone fabricate
         // an instant "verified visit" and leave a review for a business they never went to.
         if (DateTime.Parse(dateStr).Date < DateTime.Now.Date) return [];
+        // Nor more than a year ahead -- QA booked 14 months out, past any schedule the owner keeps.
+        if (DateTime.Parse(dateStr).Date > DateTime.Now.Date.AddDays(MaxDaysAhead)) return [];
 
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
         var day = await GetEffectiveDay(businessId, DateTime.Parse(dateStr).Date);

@@ -88,6 +88,8 @@ public class BookingController(
     [HttpPost("appointments")]
     public async Task<IActionResult> BookAppointment(string slug, [FromBody] BookAppointmentRequest req)
     {
+        if (string.IsNullOrWhiteSpace(req.CustomerName))
+            return BadRequest(new { error = "Please enter your name." });
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 

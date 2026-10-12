@@ -140,7 +140,11 @@ public class AdminController(
         var oldCancelApprovalNotifyViaEmail = b.CancelApprovalNotifyViaEmail;
         var oldCancelApprovalEmail = b.CancelApprovalEmail;
 
-        if (req.Name is not null) b.Name = req.Name;
+        if (req.Name is not null)
+        {
+            if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Business name is required" });
+            b.Name = req.Name.Trim();
+        }
         if (req.Phone is not null) b.Phone = req.Phone;
         if (req.Description is not null) b.Description = req.Description;
         if (req.Language is not null && Enum.TryParse<Language>(req.Language, out var lang)) b.Language = lang;
@@ -263,13 +267,26 @@ public class AdminController(
         return Ok(items.Select(ToItemDto));
     }
 
+    // Shared by create and edit -- edit used to skip the name check, and neither bounded price or
+    // duration (a negative price saved; a huge one overflowed the DB column and returned 500).
+    private static string? ItemInputError(CreateItemRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.NameEn) || string.IsNullOrWhiteSpace(req.NameAr) || string.IsNullOrWhiteSpace(req.NameHe))
+            return "All name fields are required";
+        if (req.IsBookable && (req.DurationMinutes is null || req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0))
+            return "Duration must be a multiple of 15 (min 15)";
+        if (req.IsBookable && req.DurationMinutes > 24 * 60)
+            return "Duration can be at most 24 hours";
+        if (req.Price is < 0 or > 1_000_000)
+            return "Price must be between 0 and 1,000,000";
+        return null;
+    }
+
     [HttpPost("items")]
     public async Task<IActionResult> CreateItem([FromBody] CreateItemRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.NameEn) || string.IsNullOrWhiteSpace(req.NameAr) || string.IsNullOrWhiteSpace(req.NameHe))
-            return BadRequest(new { error = "All name fields are required" });
-        if (req.IsBookable && (req.DurationMinutes is null || req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0))
-            return BadRequest(new { error = "Duration must be a multiple of 15 (min 15)" });
+        if (ItemInputError(req) is { } inputError)
+            return BadRequest(new { error = inputError });
         if (!Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
             return BadRequest(new { error = "Invalid photo mode" });
 
@@ -293,8 +310,8 @@ public class AdminController(
     [HttpPatch("items/{id}")]
     public async Task<IActionResult> UpdateItem(string id, [FromBody] CreateItemRequest req)
     {
-        if (req.IsBookable && (req.DurationMinutes is null || req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0))
-            return BadRequest(new { error = "Duration must be a multiple of 15 (min 15)" });
+        if (ItemInputError(req) is { } inputError)
+            return BadRequest(new { error = inputError });
         if (!Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
             return BadRequest(new { error = "Invalid photo mode" });
 
