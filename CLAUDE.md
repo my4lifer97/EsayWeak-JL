@@ -755,7 +755,7 @@ number). `Twilio:AccountSid`/`Twilio:AuthToken` config still exists for this dor
 `TwilioOtpSender` (phone+OTP customer login, a separate Twilio product — Programmable SMS, unrelated
 to WhatsApp).
 - `WhatsAppController.ProcessMessageAsync` is the shared dispatcher for both the bridge-inbound and
-  legacy Twilio paths — see the AI layer subsection below for what it dispatches to.
+  legacy Twilio paths. It handles one message at a time per (business, phone) using a striped in-memory `SemaphoreSlim` (a single backend instance). Two messages arriving together used to both insert the conversation row and 500 on its unique index — see the AI layer subsection below for what it dispatches to.
 - Reminders (day-before and ~3-hours-before, see `/api/cron/reminders` above) are sent via an
   external cron-job.org job calling the endpoint every 15 minutes — see the cron scheduling note
   earlier in this doc for why this isn't a GitHub Actions workflow.
@@ -783,7 +783,7 @@ to WhatsApp).
   (`WhatsAppController.IssueBookingLink`), the conversation-state row is kept alive (not removed)
   with `AwaitingBookingCompletion = true` instead, valid for the same 24h the link itself is --
   any further message from that phone gets no automated reply at all, rather than re-sending the
-  opening prompt, while the customer finishes booking on the web page the link opened.
+  opening prompt, except cancel/reschedule keywords and the answer to the cancel confirmation they start (2026-10-13; QA found "cancel" ignored for 24 h), while the customer finishes booking on the web page the link opened.
   `BookingController.BookAppointment` clears the flag once the appointment is actually created, and
   -- whenever `Business.WhatsAppNumber` is set, regardless of whether the booking came from
   WhatsApp at all -- sends the customer a `whatsapp.bookingConfirmed` confirmation message (service,
@@ -929,7 +929,7 @@ shows the real numbered service list. Replying `2` enters Inquiry mode directly.
 the gate. Once *past* the gate — mid-booking, looking at the actual service list — the plain `1`/`2`
 digits are already spoken for (service selection), so switching modes from there uses the dollar-prefixed
 commands instead, checked ahead of the gate/service logic:
-- `$1` — back to Booking mode. The conversation-state row is *removed* outright (not just flipped),
+- `$1` — back to Booking mode, also when sent at the opening gate (2026-10-13; it used to be read as a service number there). The conversation-state row is *removed* outright (not just flipped),
   matching the reschedule keyword's own `ClearConversationState` call — merely updating the row
   would leave it looking "open" to `TryHandleServiceSelectionReply`, which would then try (and fail)
   to parse the literal text `"$1"` as a numeric service choice instead of falling through to a

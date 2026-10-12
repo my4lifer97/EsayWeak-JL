@@ -102,6 +102,79 @@ public class WhatsAppBridgeInboundTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Unauthorized, noSecret.StatusCode);
     }
 
+    // QA: two quick messages from the same customer often got a 500 and no reply -- both tried to
+    // create the conversation row and the second hit its unique index.
+    [Fact]
+    public async Task MessagesArrivingTogether_AllGetAReply()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-race@example.com", "wa-bridge-race");
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => PostInbound(businessId, "+15559990010", "hi")));
+
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        using var db = Db();
+        Assert.Equal(1, await db.WhatsAppConversationStates.CountAsync(s => s.BusinessId == businessId && s.Phone == "+15559990010"));
+    }
+
+    // QA: for 24 h after a booking link was sent, the bot ignored everything, "cancel" included.
+    [Fact]
+    public async Task Cancel_StillWorksWhileABookingLinkIsPending()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-pending@example.com", "wa-bridge-pending");
+        var phone = "+15559990011";
+        await PostInbound(businessId, phone, "hi");
+        await PostInbound(businessId, phone, "1"); // booking link issued -> quiet mode
+
+        string appointmentId;
+        using (var db = Db())
+        {
+            var item = await db.Items.FirstAsync(i => i.BusinessId == businessId);
+            var customer = new Customer { BusinessId = businessId, Name = "Dana", Phone = phone };
+            var appt = new Appointment
+            {
+                BusinessId = businessId, CustomerId = customer.Id, ItemId = item.Id,
+                Date = DateTime.Now.Date.AddDays(2), StartTime = "10:00", EndTime = "10:30", Status = AppointmentStatus.CONFIRMED,
+            };
+            db.Customers.Add(customer);
+            db.Appointments.Add(appt);
+            await db.SaveChangesAsync();
+            appointmentId = appt.Id;
+        }
+
+        // Ordinary chatter is still ignored while the link is pending...
+        var chatter = await (await PostInbound(businessId, phone, "thanks")).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Null(chatter!.Reply);
+
+        // ...but "cancel" asks to confirm, and the "1" answer goes through too.
+        var ask = await (await PostInbound(businessId, phone, "cancel")).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.False(string.IsNullOrWhiteSpace(ask!.Reply));
+        await PostInbound(businessId, phone, "1");
+
+        using var check = Db();
+        Assert.Equal(AppointmentStatus.CANCELLED, (await check.Appointments.SingleAsync(a => a.Id == appointmentId)).Status);
+    }
+
+    // QA: "$1" at the opening Book/Ask menu answered "didn't recognize that" and counted toward
+    // the lockout, instead of going to booking.
+    [Fact]
+    public async Task DollarOne_AtTheOpeningMenu_ShowsTheServiceList()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-gate@example.com", "wa-bridge-gate");
+        using (var db = Db())
+        {
+            (await db.Businesses.FirstAsync(b => b.Id == businessId)).ChatbotInquiryEnabled = true;
+            await db.SaveChangesAsync();
+        }
+        var phone = "+15559990012";
+        await PostInbound(businessId, phone, "hi"); // opening Book/Ask menu
+
+        var resp = await (await PostInbound(businessId, phone, "$1")).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+
+        Assert.Contains("1. Haircut", resp!.Reply);
+        using var check = Db();
+        Assert.Equal(0, (await check.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone)).InvalidAttempts);
+    }
+
     [Fact]
     public async Task UnknownBusinessId_Returns404()
     {

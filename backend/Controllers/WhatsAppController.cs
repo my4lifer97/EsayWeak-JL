@@ -133,12 +133,34 @@ public class WhatsAppController(
     // whenever OpenAI isn't configured at all) -- see ProcessMessageWithAiAsync's doc comment for
     // why this fallback matters. Returns null to mean "send nothing" (chatbot disabled), mirroring
     // the old empty-TwiML-response behavior.
+    // Two messages from the same customer arriving together each created the conversation row,
+    // and the second hit its unique (BusinessId, Phone) index: a 500 and no reply (QA). One
+    // backend instance, so an in-memory lock per (business, phone) handles them one at a time.
+    // Striped so memory stays bounded; an unrelated customer sharing a stripe just waits briefly.
+    private static readonly SemaphoreSlim[] ConversationLocks =
+        Enumerable.Range(0, 256).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
     private async Task<string?> ProcessMessageAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
         // Both inbound paths (Twilio, bridge) land here: canonicalize once so every lookup and
         // write below matches bookings made on the website (see PhoneNormalizer).
         fromPhone = PhoneNormalizer.Normalize(fromPhone);
         if (fromPhone.Length == 0) return null;
+
+        var conversationLock = ConversationLocks[(uint)HashCode.Combine(business.Id, fromPhone) % ConversationLocks.Length];
+        await conversationLock.WaitAsync();
+        try
+        {
+            return await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, incomingMsg);
+        }
+        finally
+        {
+            conversationLock.Release();
+        }
+    }
+
+    private async Task<string?> ProcessMessageLockedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
+    {
 
         // The business wants to reply themselves instead of the automated flow -- send no message
         // at all, rather than a fixed "not available" reply.
@@ -205,7 +227,9 @@ public class WhatsAppController(
             // try to parse the literal text "$1" as a numeric service choice (fails) instead of
             // falling through to a fresh prompt. Same idiom as the reschedule keyword's own
             // ClearConversationState call.
-            if (isLive && state!.ChatbotMode == InquiryMode)
+            // Also at the opening Book/Ask gate: left in place, the gate's state row made the
+            // booking dispatch read "$1" as a service number and answer "didn't recognize" (QA).
+            if (isLive && (state!.ChatbotMode == InquiryMode || state.ChatbotMode == AwaitingModeChoiceMode))
                 await ClearConversationState(business.Id, fromPhone);
             // Falls through to the normal booking dispatch, which starts a fresh prompt for a
             // phone with no (or an expired) conversation state -- exactly what "back to booking"
@@ -360,7 +384,13 @@ public class WhatsAppController(
             // re-sending the opening prompt for every message the customer sends while they finish
             // booking on the web page the link opened. BookingController clears this once the
             // appointment is actually created (or it just expires with the row).
-            if (conversationState.AwaitingBookingCompletion) return null;
+            // Cancel and reschedule still get through (QA: for 24 h after a link the bot ignored
+            // even "cancel"), as does the answer to the cancel confirmation they start.
+            if (conversationState.AwaitingBookingCompletion
+                && !conversationState.ChatbotMode.StartsWith(ConfirmCancelModePrefix)
+                && !ContainsKeyword(incomingMsg, CancelKeywords)
+                && !ContainsKeyword(incomingMsg, RescheduleKeywords))
+                return null;
 
             // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
             // automated replies entirely -- including cancel/reschedule keywords -- until they send
