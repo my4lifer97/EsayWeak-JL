@@ -6,7 +6,7 @@ using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
 
-// QA: 25 wrong passwords in 4 seconds were all checked. Each request sets X-Forwarded-For (what
+// QA: 25 wrong passwords in 4 seconds were all checked. Each request sets X-Real-IP (what
 // Railway's proxy adds) so these also cover reading the real client IP.
 public class LoginThrottleTests : IntegrationTestBase
 {
@@ -25,7 +25,7 @@ public class LoginThrottleTests : IntegrationTestBase
     private Task<HttpResponseMessage> Send(string url, object body, string ip)
     {
         var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
-        req.Headers.Add("X-Forwarded-For", ip);
+        req.Headers.Add("X-Real-IP", ip);
         return Client.SendAsync(req);
     }
 

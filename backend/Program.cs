@@ -126,11 +126,13 @@ builder.Services.AddCors(opt =>
         .AllowAnyMethod()));
 
 // Railway's proxy sits in front of the app, so RemoteIpAddress was always the proxy's -- read the
-// client IP it appends to X-Forwarded-For instead (LoginThrottle, activity log). ForwardLimit = 1
-// takes only that last, proxy-added entry, so a client can't pick its own IP by sending the header.
+// client IP from X-Real-IP instead (LoginThrottle, activity log). Checked in prod 2026-10-12: Railway
+// overwrites both X-Real-IP and X-Forwarded-For (client-sent values are dropped), and X-Forwarded-For
+// is "<client>, <Railway edge>" -- so its last entry is the edge, not the client.
 builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(opt =>
 {
     opt.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor;
+    opt.ForwardedForHeaderName = "X-Real-IP";
     opt.ForwardLimit = 1;
     opt.KnownNetworks.Clear();
     opt.KnownProxies.Clear();
@@ -142,20 +144,6 @@ var app = builder.Build();
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
 Directory.CreateDirectory(uploadsPath);
 
-// TEMPORARY diagnostic: logs the raw proxy IP headers on /api/ip-debug so we can see which one
-// carries the real client IP on Railway. Remove once ForwardedHeaders is configured correctly.
-app.Use(async (ctx, next) =>
-{
-    if (ctx.Request.Path.Equals("/api/ip-debug", StringComparison.OrdinalIgnoreCase))
-    {
-        var h = ctx.Request.Headers;
-        var info = $"remote={ctx.Connection.RemoteIpAddress} xff=[{h["X-Forwarded-For"]}] xreal=[{h["X-Real-IP"]}] fwd=[{h["Forwarded"]}] xenvoy=[{h["X-Envoy-External-Address"]}]";
-        app.Logger.LogWarning("IP-DEBUG {Info}", info);
-        await ctx.Response.WriteAsync(info);
-        return;
-    }
-    await next();
-});
 app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStaticFiles(new StaticFileOptions
