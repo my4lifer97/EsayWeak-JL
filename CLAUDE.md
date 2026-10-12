@@ -615,6 +615,12 @@ own system email; `POST .../business-owner-requests/{id}/approve` has the same `
 composer opens right after approval, pre-filled with the new username and the (already applied)
 temp password.
 
+**Guards (2026-10-12):** the server keeps only a hash, so closing the composer while an *applied*
+password was never sent or copied asks "Close anyway?" first, since otherwise it's gone for good.
+Whenever a username or password is included, the field lines also add `Sign in at: {origin}/admin/login`.
+Every irreversible platform-admin action asks first via `useConfirmDialog('EN')`: approve, reject,
+disable (not re-enable), WhatsApp unlink, both password resets and the composer's "Set password now".
+
 ### Waitlist & cancellation approval
 Two related, independently-toggleable `Business` settings (`Settings > Booking Limits` area):
 

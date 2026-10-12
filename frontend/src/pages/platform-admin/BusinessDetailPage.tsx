@@ -5,6 +5,7 @@ import { platformAdminApi } from '../../lib/platformAdminApi'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
 import OwnerEmailComposer from '../../components/platform-admin/OwnerEmailComposer'
 import ThemeToggle from '../../components/ThemeToggle'
+import { useConfirmDialog } from '../../components/ConfirmDialog'
 
 type BusinessDetail = {
   id: string; name: string; email: string; slug: string; phone: string | null; username: string | null
@@ -39,6 +40,7 @@ export default function PlatformAdminBusinessDetailPage() {
   const [generatingLink, setGeneratingLink] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [showEmailComposer, setShowEmailComposer] = useState(false)
+  const [ask, confirmDialog] = useConfirmDialog('EN')
 
   const { data: business } = useQuery<BusinessDetail>({
     queryKey: ['platform-admin-business', id],
@@ -74,6 +76,7 @@ export default function PlatformAdminBusinessDetailPage() {
 
   async function handleUnlink() {
     if (!business) return
+    if (!(await ask(`Unlink WhatsApp from ${business.name}? The chatbot stops answering customers until it's linked again with a new QR scan.`, { yesLabel: 'Unlink' }))) return
     setLinkError(''); setUnlinking(true)
     try {
       await platformAdminApi.delete(`/platform-admin/businesses/${business.id}/whatsapp/link`)
@@ -108,6 +111,9 @@ export default function PlatformAdminBusinessDetailPage() {
   }
   async function handleToggleDisabled() {
     if (!business) return
+    // Re-enabling is harmless; disabling signs the owner out of their dashboard.
+    if (!business.isDisabled &&
+        !(await ask(`Disable ${business.name}? The owner is signed out and can't sign in until you enable it again.`, { yesLabel: 'Disable' }))) return
     setAccountError(''); setTogglingDisabled(true)
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${business.id}/${business.isDisabled ? 'enable' : 'disable'}`)
@@ -121,6 +127,7 @@ export default function PlatformAdminBusinessDetailPage() {
 
   async function handleResetTempPassword() {
     if (!business) return
+    if (!(await ask(`Reset ${business.name}'s password? Their current password stops working and they're signed out everywhere.`, { yesLabel: 'Reset password' }))) return
     setAccountError(''); setTempPassword(null); setCopied(false); setResettingPassword(true)
     try {
       const { data } = await platformAdminApi.post(`/platform-admin/businesses/${business.id}/reset-password`, { temporary: true })
@@ -135,6 +142,7 @@ export default function PlatformAdminBusinessDetailPage() {
   async function handleSetCustomPassword(e: FormEvent) {
     e.preventDefault()
     if (!business) return
+    if (!(await ask(`Set a new password for ${business.name}? Their current password stops working and they're signed out everywhere.`, { yesLabel: 'Set password' }))) return
     setAccountError(''); setResettingPassword(true)
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${business.id}/reset-password`, { temporary: false, newPassword: customPassword })
@@ -384,6 +392,7 @@ export default function PlatformAdminBusinessDetailPage() {
           onClose={() => setShowEmailComposer(false)}
         />
       )}
+      {confirmDialog}
     </div>
   )
 }

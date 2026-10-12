@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { platformAdminApi } from '../../lib/platformAdminApi'
+import { useConfirmDialog } from '../ConfirmDialog'
 
 type Props = {
   businessId: string
@@ -33,6 +34,8 @@ function buildFields(username: string | null, includeUsername: boolean, password
   if (includeUsername && username) lines.push(`Username: ${username}`)
   if (includePassword && password) lines.push(`Password: ${password}`)
   if (includeChatbotLink && chatbotLink) lines.push(`Connect your WhatsApp chatbot (open on your phone and scan): ${chatbotLink}`)
+  // The platform admin panel is served from the same frontend as the owner dashboard.
+  if ((includeUsername && username) || (includePassword && password)) lines.push(`Sign in at: ${window.location.origin}/admin/login`)
   return lines.length ? lines.join('\n') : '(nothing selected yet)'
 }
 
@@ -79,6 +82,17 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [sendError, setSendError] = useState('')
   const [sent, setSent] = useState(false)
   const [copied, setCopied] = useState(false)
+  // Sent or copied at least once. The server keeps only a hash, so an active password that was
+  // never sent or copied is gone for good once this closes -- the owner would need a new one.
+  const [delivered, setDelivered] = useState(false)
+  const [ask, confirmDialog] = useConfirmDialog('EN')
+
+  async function requestClose() {
+    if (password && passwordApplied && !delivered &&
+        !(await ask("You haven't sent or copied the owner's login details. Once this closes, the password can't be shown again. Close anyway?",
+          { yesLabel: 'Close anyway', noLabel: 'Keep open' }))) return
+    onClose()
+  }
 
   // Re-templates the body whenever a checkbox, a generated value, or the template itself changes;
   // edits made directly in the Body textarea persist until the next such change, at which point
@@ -122,6 +136,8 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
 
   async function applyPasswordNow() {
     if (!password) return
+    if (!(await ask("Change the owner's password now? Their current password stops working and they're signed out everywhere.",
+      { yesLabel: 'Set password' }))) return
     setGenError(''); setApplyingPassword(true)
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${businessId}/reset-password`, { temporary: true, newPassword: password, silent: true })
@@ -154,6 +170,7 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
       await platformAdminApi.post(`/platform-admin/businesses/${businessId}/email`, { subject, body, newTempPassword })
       if (newTempPassword) setPasswordApplied(true)
       setSent(true)
+      setDelivered(true)
     } catch (err: unknown) {
       const resp = (err as { response?: { data?: { error?: string } } })?.response
       setSendError(resp?.data?.error ?? 'Could not send the email')
@@ -165,15 +182,16 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   async function copyToClipboard() {
     await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
     setCopied(true)
+    setDelivered(true)
     setTimeout(() => setCopied(false), 2000)
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 overflow-y-auto z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 overflow-y-auto z-50" onClick={requestClose}>
       <div className="bg-surface border border-line rounded-2xl p-6 w-full max-w-xl my-8" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-1">
           <h2 className="text-lg font-bold">Email the owner</h2>
-          <button onClick={onClose} aria-label="Close" className="text-muted hover:text-ink text-2xl leading-none -mt-1">✕</button>
+          <button onClick={requestClose} aria-label="Close" className="text-muted hover:text-ink text-2xl leading-none -mt-1">✕</button>
         </div>
         <p className="text-muted text-sm mb-4">{businessEmail}</p>
 
@@ -278,6 +296,7 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
           Or just read the text above during a phone call — nothing here is sent until you click Send.
         </p>
       </div>
+      {confirmDialog}
     </div>
   )
 }

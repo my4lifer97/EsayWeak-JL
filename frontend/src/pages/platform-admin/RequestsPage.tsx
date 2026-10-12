@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import ThemeToggle from '../../components/ThemeToggle'
 import OwnerEmailComposer from '../../components/platform-admin/OwnerEmailComposer'
+import { useConfirmDialog } from '../../components/ConfirmDialog'
 
 type BusinessOwnerRequest = {
   id: string
@@ -47,6 +48,7 @@ export default function PlatformAdminRequestsPage() {
   const [noteDraft, setNoteDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [rowError, setRowError] = useState('')
+  const [ask, confirmDialog] = useConfirmDialog('EN')
   const [composerFor, setComposerFor] = useState<{ businessId: string; businessName: string; businessEmail: string; username: string; tempPassword: string } | null>(null)
 
   const { data: requests } = useQuery<BusinessOwnerRequest[]>({
@@ -68,6 +70,7 @@ export default function PlatformAdminRequestsPage() {
 
   async function approve() {
     if (!open) return
+    if (!(await ask(`Approve ${open.businessName} and create the account at /${slugDraft}?`, { yesLabel: 'Approve', danger: false }))) return
     setBusy(true)
     setRowError('')
     try {
@@ -87,6 +90,7 @@ export default function PlatformAdminRequestsPage() {
 
   async function reject() {
     if (!open) return
+    if (!(await ask(`Reject the request from ${open.businessName}? This can't be undone.`, { yesLabel: 'Reject' }))) return
     setBusy(true)
     setRowError('')
     try {
@@ -230,6 +234,7 @@ export default function PlatformAdminRequestsPage() {
           onClose={() => setComposerFor(null)}
         />
       )}
+      {confirmDialog}
     </div>
   )
 }
