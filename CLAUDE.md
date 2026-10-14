@@ -862,8 +862,10 @@ Per business, in `Settings > WhatsApp Chatbot`:
   template); `ChatbotConfirmationMessage*` is sent alongside the booking *link* (`IssueBookingLink`,
   may include a literal `{url}` placeholder, else the link is appended on its own line); `ChatbotFinalMessage*`
   replaces the default text `BookingController` sends once the appointment is *actually created*
-  (`whatsapp.bookingConfirmed`) -- the last message in the journey, used as-is with no placeholder
-  substitution. A business writes each message per language exactly like item names; when the
+  (`whatsapp.bookingConfirmed`) -- the last message in the journey. It takes the same placeholders
+  as the default (`{customerName}`, `{businessName}`, `{service}`, `{date}`, `{time}`, via
+  `I18nService.Fill`); one with neither `{date}` nor `{time}` gets a `📅 date · time · service` line
+  appended, since it used to drop the booking details entirely. A business writes each message per language exactly like item names; when the
   customer's resolved conversation language (`lang`) has no custom text set for that message,
   `Resolve<X>Message` returns `null` and every call site's existing `IsNullOrWhiteSpace` check falls
   through to the built-in `I18nService` default for that language -- it never borrows another

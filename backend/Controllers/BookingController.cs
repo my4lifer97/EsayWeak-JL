@@ -247,21 +247,29 @@ public class BookingController(
         if (business.WhatsAppNumber is not null)
         {
             var itemDisplayName = confirmationLang switch { "AR" => item.NameAr, "HE" => item.NameHe, _ => item.NameEn };
-            // ChatbotFinalMessage replaces the default text as-is (no placeholder substitution,
-            // matching ChatbotWelcomeMessage's own pattern) -- the last message in the customer's
+            // ChatbotFinalMessage replaces the default text -- the last message in the customer's
             // chatbot journey, as opposed to ChatbotConfirmationMessage (sent earlier, alongside
-            // the booking *link* itself, before the appointment actually exists).
+            // the booking *link* itself, before the appointment actually exists). It takes the
+            // same placeholders as the default; one with neither {date} nor {time} gets the details
+            // appended, since it used to drop them entirely (QA run 2).
+            var details = new Dictionary<string, string>
+            {
+                ["customerName"] = req.CustomerName,
+                ["businessName"] = business.Name,
+                ["service"] = itemDisplayName,
+                ["date"] = req.Date,
+                ["time"] = req.StartTime,
+            };
             var finalMessage = business.ResolveChatbotFinalMessage(confirmationLang);
-            var message = !string.IsNullOrWhiteSpace(finalMessage)
-                ? finalMessage
-                : I18nService.T(confirmationLang, "whatsapp.bookingConfirmed", new()
-                {
-                    ["customerName"] = req.CustomerName,
-                    ["businessName"] = business.Name,
-                    ["service"] = itemDisplayName,
-                    ["date"] = req.Date,
-                    ["time"] = req.StartTime,
-                });
+            string message;
+            if (string.IsNullOrWhiteSpace(finalMessage))
+                message = I18nService.T(confirmationLang, "whatsapp.bookingConfirmed", details);
+            else
+            {
+                message = I18nService.Fill(finalMessage, details);
+                if (!finalMessage.Contains("{date}") && !finalMessage.Contains("{time}"))
+                    message += $"\n\n📅 {req.Date} · {req.StartTime} · {itemDisplayName}";
+            }
             try
             {
                 await whatsAppSender.SendAsync(business, phone, message);

@@ -99,7 +99,10 @@ public static class I18nService
     {
         var messages = Messages.GetValueOrDefault(lang) ?? Messages["EN"];
         var template = messages.GetValueOrDefault(key) ?? key;
-        if (args is null) return template;
-        return args.Aggregate(template, (s, kv) => s.Replace($"{{{kv.Key}}}", kv.Value));
+        return Fill(template, args);
     }
+
+    // Replaces {name} placeholders -- also used on owner-written chatbot messages.
+    public static string Fill(string template, Dictionary<string, string>? args) =>
+        args is null ? template : args.Aggregate(template, (s, kv) => s.Replace($"{{{kv.Key}}}", kv.Value));
 }
