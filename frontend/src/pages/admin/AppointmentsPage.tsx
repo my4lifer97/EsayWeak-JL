@@ -212,6 +212,7 @@ export default function AppointmentsPage() {
           lang={lang}
           appointmentId={cancelTargetId}
           waitlistEnabled={settings?.waitlistEnabled ?? false}
+          pendingCancellation={appointments.find((a) => a.id === cancelTargetId)?.pendingCancellationApproval}
           onClose={() => setCancelTargetId(null)}
           onDone={onCancelFlowDone}
         />

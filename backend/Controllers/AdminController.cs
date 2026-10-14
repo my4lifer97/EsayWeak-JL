@@ -1046,7 +1046,26 @@ public class AdminController(
         return Ok(entries);
     }
 
-    // ─── Replace Customer (owner-cancel Option 3: swap who the slot belongs to, no cancel) ────
+    // ─── Keep (decline a customer's cancellation request) ────────────────────────────────────
+
+    [HttpPost("appointments/{id}/keep")]
+    public async Task<IActionResult> KeepAppointment(string id)
+    {
+        var appt = await db.Appointments.Include(a => a.Item)
+            .FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
+        if (appt is null) return NotFound();
+        if (!appt.PendingCancellationApproval)
+            return Conflict(new { error = "This appointment has no cancellation request" });
+
+        appt.PendingCancellationApproval = false;
+        await db.SaveChangesAsync();
+
+        this.SetActivityDetail(
+            $"Declined cancellation request: {appt.Item.NameEn} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
+        return Ok(new { appt.Id });
+    }
+
+    // ─── Replace Customer (owner-cancel Option 3: give the slot to someone else) ──────────────
 
     [HttpPatch("appointments/{id}/customer")]
     public async Task<IActionResult> ReplaceCustomer(string id, [FromBody] ReplaceCustomerRequest req)
@@ -1077,18 +1096,44 @@ public class AdminController(
         }
 
         var wasPendingApproval = appt.PendingCancellationApproval;
-        appt.CustomerId = customer.Id;
-        // Un-freezes it if the customer had already tried to cancel and the owner is choosing to
-        // keep the slot filled (with someone else) instead of finalizing that cancellation.
+        // The original customer keeps their own row, cancelled, and the new customer gets a fresh
+        // one. Reassigning the row instead made it vanish from the original customer's list, and
+        // their magic link (same row, same token) then showed the new customer's name and phone.
+        // Notes, photo and recurring series belong to the original booking, so they aren't copied.
+        var replacement = new Appointment
+        {
+            BusinessId = appt.BusinessId,
+            CustomerId = customer.Id,
+            ItemId = appt.ItemId,
+            Date = appt.Date,
+            StartTime = appt.StartTime,
+            EndTime = appt.EndTime,
+            Status = AppointmentStatus.CONFIRMED,
+        };
+        appt.Status = AppointmentStatus.CANCELLED;
         appt.PendingCancellationApproval = false;
-        await db.SaveChangesAsync();
+
+        // Two saves in one transaction: the partial unique index allows one CONFIRMED row per
+        // start time, so the original must be cancelled before the replacement is inserted.
+        await using (var tx = await db.Database.BeginTransactionAsync())
+        {
+            await db.SaveChangesAsync();
+            db.Appointments.Add(replacement);
+            // Whoever is still waiting for this slot keeps waiting -- on the new appointment.
+            var waiting = await db.WaitlistEntries
+                .Where(w => w.AppointmentId == appt.Id && w.Status != WaitlistEntryStatus.RESOLVED)
+                .ToListAsync();
+            foreach (var w in waiting) w.AppointmentId = replacement.Id;
+            await db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
 
         var verb = wasPendingApproval ? "Resolved cancellation request by replacing customer on appointment"
             : "Replaced customer on appointment";
         this.SetActivityDetail(
             $"{verb}: {appt.Item.NameEn} on {appt.Date:yyyy-MM-dd} at {appt.StartTime} — now {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)}");
 
-        return Ok(new { appt.Id, appt.CustomerId });
+        return Ok(new { replacement.Id, replacement.CustomerId });
     }
 
     // Shared by CreateAppointment and ReplaceCustomer: resolve an existing customer by id, or

@@ -5,11 +5,13 @@ import { t } from '../../lib/i18n'
 import CustomerPicker, { type CustomerSelection } from './CustomerPicker'
 
 export default function CancelOptionsModal({
-  lang, appointmentId, waitlistEnabled, onClose, onDone,
+  lang, appointmentId, waitlistEnabled, pendingCancellation = false, onClose, onDone,
 }: {
   lang: string
   appointmentId: string
   waitlistEnabled: boolean
+  // The customer asked to cancel and the owner is deciding -- adds "keep the appointment".
+  pendingCancellation?: boolean
   onClose: () => void
   onDone: () => void
 }) {
@@ -26,6 +28,14 @@ export default function CancelOptionsModal({
     setLoading(true)
     try {
       await api.patch(`/admin/appointments/${appointmentId}`, { status: 'CANCELLED', notifyWaitlist })
+      onDone()
+    } finally { setLoading(false) }
+  }
+
+  async function keep() {
+    setLoading(true)
+    try {
+      await api.post(`/admin/appointments/${appointmentId}/keep`)
       onDone()
     } finally { setLoading(false) }
   }
@@ -54,6 +64,13 @@ export default function CancelOptionsModal({
         {mode === 'options' ? (
           <div className="space-y-4">
             <div className="space-y-2">
+              {pendingCancellation && (
+                <button type="button" disabled={loading} onClick={keep}
+                  className="w-full text-start bg-teal-tint hover:bg-teal-tint/70 disabled:opacity-50 text-ink rounded-xl px-4 py-3 transition-colors">
+                  <div className="text-sm font-semibold">{t(lang, 'keepAppointment')}</div>
+                  <div className="text-xs text-muted mt-0.5">{t(lang, 'keepAppointmentHint')}</div>
+                </button>
+              )}
               {waitlistEnabled && (
                 <button type="button" disabled={loading} onClick={() => cancel(true)}
                   className="w-full text-start bg-coral hover:bg-coral-dark disabled:opacity-50 text-white rounded-xl px-4 py-3 transition-colors">

@@ -22,13 +22,14 @@ public static class AppointmentStatusHelper
     // What the CUSTOMER sees. A PendingCancellationApproval appointment is still stored as
     // CONFIRMED (so it keeps blocking the slot exactly like a normal booking -- see
     // AppointmentCancellationService.CancelFromCustomerAsync), but the customer already asked to
-    // cancel it, so from their side it must read as cancelled, not confirmed. Admin-facing views
-    // use EffectiveStatus directly instead, since the owner needs to see it's still CONFIRMED
-    // (that's exactly what "frozen, awaiting your decision" means) alongside the separate
-    // PendingCancellationApproval flag driving the dashboard's special color.
+    // cancel it, so it reads as CANCELLATION_PENDING: not confirmed, and not cancelled yet either,
+    // since the owner may still keep it (QA run 2 found "Cancelled" misleading). Admin-facing
+    // views use EffectiveStatus directly instead, since the owner needs to see it's still
+    // CONFIRMED alongside the separate PendingCancellationApproval flag driving the dashboard's
+    // special color.
     public static string CustomerFacingStatus(AppointmentStatus status, bool pendingCancellationApproval, DateTime date, string endTime)
     {
-        if (pendingCancellationApproval) return "CANCELLED";
+        if (pendingCancellationApproval) return "CANCELLATION_PENDING";
         return EffectiveStatus(status, date, endTime);
     }
 }

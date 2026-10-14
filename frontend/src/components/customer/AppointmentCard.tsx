@@ -26,6 +26,8 @@ const STATUS_COLORS: Record<string, string> = {
   CONFIRMED: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-800/50',
   COMPLETED: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800/50',
   CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800/60 dark:text-gray-400 dark:border-gray-700/50',
+  // Asked to cancel, waiting on the owner's decision.
+  CANCELLATION_PENDING: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-400 dark:border-amber-800/50',
 }
 
 export default function AppointmentCard({
@@ -141,7 +143,8 @@ export default function AppointmentCard({
           )}
         </div>
         <span className={`shrink-0 text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLORS[appt.status] ?? STATUS_COLORS.CANCELLED}`}>
-          {t(lang, appt.status === 'CONFIRMED' ? 'statusConfirmed' : appt.status === 'COMPLETED' ? 'statusCompleted' : 'statusCancelled')}
+          {t(lang, appt.status === 'CONFIRMED' ? 'statusConfirmed' : appt.status === 'COMPLETED' ? 'statusCompleted'
+            : appt.status === 'CANCELLATION_PENDING' ? 'cancellationRequestedBadge' : 'statusCancelled')}
         </span>
       </div>
 

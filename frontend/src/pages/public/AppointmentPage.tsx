@@ -20,7 +20,6 @@ export default function AppointmentPage() {
   const [searchParams] = useSearchParams()
   const token = searchParams.get('token') ?? ''
   const [loading, setLoading] = useState(false)
-  const [cancelled, setCancelled] = useState(false)
   const [showReschedule, setShowReschedule] = useState(false)
   const [rescheduleDate, setRescheduleDate] = useState('')
   const [rescheduleError, setRescheduleError] = useState('')
@@ -46,13 +45,16 @@ export default function AppointmentPage() {
 
   const lang = appt.business.language
   const isRTL = lang === 'AR' || lang === 'HE'
-  const isCancelled = appt.status === 'CANCELLED' || cancelled
+  const isCancelled = appt.status === 'CANCELLED'
+  // The customer asked to cancel and the owner still has to approve it.
+  const isPending = appt.status === 'CANCELLATION_PENDING'
 
   async function cancelAppointment() {
     setLoading(true); setCancelError('')
     try {
       await api.delete(`/${slug}/appointments/${id}?token=${token}`)
-      setCancelled(true)
+      // Refetch rather than assume "cancelled": with owner approval on, it's only pending.
+      await refetch()
       setConfirmingCancel(false)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
@@ -88,6 +90,8 @@ export default function AppointmentPage() {
 
   const statusLabel = isCancelled
     ? t(lang, 'statusCancelled')
+    : isPending
+      ? t(lang, 'cancellationRequestedBadge')
     : appt.status === 'COMPLETED'
       ? t(lang, 'statusCompleted')
       : t(lang, 'statusConfirmed')
@@ -121,7 +125,7 @@ export default function AppointmentPage() {
           )}
           <div className="flex justify-between text-sm pt-2 border-t border-line">
             <span className="text-muted">{t(lang, 'status')}</span>
-            <span className={isCancelled ? 'text-red-600 dark:text-red-400' : appt.status === 'COMPLETED' ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}>
+            <span className={isCancelled ? 'text-red-600 dark:text-red-400' : isPending ? 'text-amber-600 dark:text-amber-400' : appt.status === 'COMPLETED' ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}>
               {statusLabel}
             </span>
           </div>

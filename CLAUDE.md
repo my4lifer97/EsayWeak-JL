@@ -674,9 +674,15 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   `CancelApprovalEmail` (sent through the platform's Gmail via `IOwnerEmailSender`, the same sender as the platform-admin owner-credentials email — not the Brevo system chain); a blank contact falls back
   to `Business.Phone`/`Business.Email`, and the message is in `Business.Language`. Falls back to
   immediate-cancel automatically if no enabled channel can reach the owner (WhatsApp also needs the
-  business's linked `WhatsAppNumber` to send from). `AppointmentStatusHelper` computes a
-  separate customer-facing status so a frozen appointment still reads as "CANCELLED" to the customer
-  despite being `CONFIRMED` internally.
+  business's linked `WhatsAppNumber` to send from). `AppointmentStatusHelper.CustomerFacingStatus`
+  returns `CANCELLATION_PENDING` for a frozen appointment (shown as "Cancellation requested"), not
+  `CONFIRMED` and not yet `CANCELLED`. The owner's options for a request (`CancelOptionsModal`):
+  **keep it** (`POST /api/admin/appointments/{id}/keep`, clears the flag), offer the slot to the
+  waitlist, cancel silently, or **replace the customer** (`PATCH .../{id}/customer`). Replacing
+  cancels the original row, which stays with the original customer and their magic-link token, and
+  creates a new row for the new customer (its id is in the response); waiting entries move to the
+  new row. It used to reassign the row, which made it vanish from the original customer's list and
+  showed the new customer's details on the original customer's link.
 
 ### Owner-created & recurring appointments
 Two ways for the business to book without the customer using the self-service flow:

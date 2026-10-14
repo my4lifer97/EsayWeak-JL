@@ -9,13 +9,13 @@ vi.mock('../../lib/api', () => ({
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }))
 
-function renderModal(waitlistEnabled = true) {
+function renderModal(waitlistEnabled = true, pendingCancellation = false) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onClose = vi.fn()
   const onDone = vi.fn()
   render(
     <QueryClientProvider client={queryClient}>
-      <CancelOptionsModal lang="EN" appointmentId="appt-1" waitlistEnabled={waitlistEnabled} onClose={onClose} onDone={onDone} />
+      <CancelOptionsModal lang="EN" appointmentId="appt-1" waitlistEnabled={waitlistEnabled} pendingCancellation={pendingCancellation} onClose={onClose} onDone={onDone} />
     </QueryClientProvider>
   )
   return { onClose, onDone }
@@ -26,6 +26,21 @@ beforeEach(() => {
 })
 
 describe('CancelOptionsModal', () => {
+  it('offers "Keep the Appointment" only for a cancellation request', () => {
+    renderModal(true, false)
+    expect(screen.queryByText('Keep the Appointment')).not.toBeInTheDocument()
+  })
+
+  it('keeping the appointment declines the request', async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { id: 'appt-1' } })
+    const { onDone } = renderModal(true, true)
+
+    await userEvent.click(screen.getByText('Keep the Appointment'))
+
+    expect(api.post).toHaveBeenCalledWith('/admin/appointments/appt-1/keep')
+    expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
   it('shows all three options when the waitlist is enabled', () => {
     renderModal(true)
 

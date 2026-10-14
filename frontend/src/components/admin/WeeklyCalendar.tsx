@@ -376,6 +376,7 @@ export default function WeeklyCalendar({
           lang={lang}
           appointmentId={selected.id}
           waitlistEnabled={settings?.waitlistEnabled ?? false}
+          pendingCancellation={selected.pendingCancellationApproval}
           onClose={() => setShowCancelOptions(false)}
           onDone={onCancelFlowDone}
         />

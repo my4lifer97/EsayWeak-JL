@@ -106,10 +106,11 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         var conflicting = await BookAs(otherCustomerToken, "approval-freeze-shop", itemId, dateStr, "09:00");
         Assert.Equal(HttpStatusCode.Conflict, conflicting.StatusCode);
 
-        // The customer's own view already reads as cancelled, even though it's admin-CONFIRMED.
+        // The customer's own view reads as "cancellation requested": not confirmed, and not
+        // cancelled yet either, since the owner may still keep it.
         Authorize(Client, customerToken);
         var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=upcoming");
-        Assert.Equal("CANCELLED", mine!.Single(a => a.Id == appt.AppointmentId).Status);
+        Assert.Equal("CANCELLATION_PENDING", mine!.Single(a => a.Id == appt.AppointmentId).Status);
 
         // And a second cancel attempt is rejected, not double-processed.
         var secondCancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt.AppointmentId}/cancel");
@@ -201,12 +202,56 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         var replace = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt.AppointmentId}/customer",
             new { customerName = "Walk-in Replacement", customerPhone = "+15551110099" });
         Assert.Equal(HttpStatusCode.OK, replace.StatusCode);
+        var newId = (await replace.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetString();
+        Assert.NotEqual(appt.AppointmentId, newId);
 
-        using var db = Db();
-        var stored = db.Appointments.Include(a => a.Customer).First(a => a.Id == appt.AppointmentId);
-        Assert.Equal(AppointmentStatus.CONFIRMED, stored.Status);
-        Assert.False(stored.PendingCancellationApproval);
-        Assert.Equal("Walk-in Replacement", stored.Customer.Name);
+        using (var db = Db())
+        {
+            // The slot is confirmed for the new customer on a fresh row...
+            var replacement = db.Appointments.Include(a => a.Customer).First(a => a.Id == newId);
+            Assert.Equal(AppointmentStatus.CONFIRMED, replacement.Status);
+            Assert.Equal("Walk-in Replacement", replacement.Customer.Name);
+            // ...and the original row stays with the original customer, cancelled.
+            var original = db.Appointments.Include(a => a.Customer).First(a => a.Id == appt.AppointmentId);
+            Assert.Equal(AppointmentStatus.CANCELLED, original.Status);
+            Assert.False(original.PendingCancellationApproval);
+            Assert.NotEqual("Walk-in Replacement", original.Customer.Name);
+        }
+
+        // QA run 2: it vanished from the original customer's list, and their magic link showed
+        // the new customer's details.
+        Client.DefaultRequestHeaders.Authorization = null;
+        Authorize(Client, customerToken);
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments");
+        Assert.Equal("CANCELLED", Assert.Single(mine!).Status);
+        Client.DefaultRequestHeaders.Authorization = null;
+        var viaLink = await Client.GetFromJsonAsync<System.Text.Json.JsonElement>($"/api/approval-replace-shop/appointments/{appt.AppointmentId}?token={appt.CancelToken}");
+        Assert.Equal("CANCELLED", viaLink.GetProperty("status").GetString());
+        Assert.DoesNotContain("Walk-in", viaLink.ToString());
+    }
+
+    [Fact]
+    public async Task OwnerKeepsAppointment_AfterApprovalFreeze_CustomerSeesItConfirmedAgain()
+    {
+        var token = await RegisterAndLoginBusiness("approval-keep@example.com", "approval-keep-shop");
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-keep-shop");
+
+        var customerToken = await GetCustomerToken("+15551110006");
+        var booked = await BookAs(customerToken, "approval-keep-shop", itemId, date.ToString("yyyy-MM-dd"), "09:00");
+        var appt = (await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+        var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt.AppointmentId}/cancel");
+        cancelReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        await Client.SendAsync(cancelReq);
+
+        Authorize(Client, token);
+        Assert.Equal(HttpStatusCode.OK, (await Client.PostAsync($"/api/admin/appointments/{appt.AppointmentId}/keep", null)).StatusCode);
+        // Nothing left to decline the second time.
+        Assert.Equal(HttpStatusCode.Conflict, (await Client.PostAsync($"/api/admin/appointments/{appt.AppointmentId}/keep", null)).StatusCode);
+
+        Client.DefaultRequestHeaders.Authorization = null;
+        Authorize(Client, customerToken);
+        var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments");
+        Assert.Equal("CONFIRMED", Assert.Single(mine!).Status);
     }
 
     private async Task SetApprovalChannels(string token, bool viaWhatsApp, string? whatsAppNumber, bool viaEmail, string? email, string? language = null)
