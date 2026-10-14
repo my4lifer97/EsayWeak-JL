@@ -1137,7 +1137,7 @@ public class AdminController(
     }
 
     // Shared by CreateAppointment and ReplaceCustomer: resolve an existing customer by id, or
-    // upsert one by phone (same as public booking's upsert-by-phone logic).
+    // find or create one by phone -- an existing phone with a different name is a 409, see OwnerTypedCustomer.
     private async Task<(Customer? Customer, IActionResult? Error)> ResolveCustomer(
         string? customerId, string? customerName, string? customerPhone, string? customerFamilyName = null)
     {
@@ -1168,8 +1168,8 @@ public class AdminController(
         }
         else
         {
-            customer.Name = customerName;
-            customer.FamilyName = customerFamilyName ?? "";
+            if (OwnerTypedCustomer.MatchExisting(customer, customerName, customerFamilyName) is { } conflict)
+                return (null, Conflict(new { error = conflict }));
             if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
         }
         return (customer, null);

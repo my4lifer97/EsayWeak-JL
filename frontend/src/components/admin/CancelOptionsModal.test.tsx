@@ -31,6 +31,16 @@ describe('CancelOptionsModal', () => {
     expect(screen.queryByText('Keep the Appointment')).not.toBeInTheDocument()
   })
 
+  it('shows the server error instead of failing silently', async () => {
+    vi.mocked(api.patch).mockRejectedValue({ response: { data: { error: 'Slot is no longer available' } } })
+    const { onDone } = renderModal(true)
+
+    await userEvent.click(screen.getByText('Cancel Without Notifying'))
+
+    expect(await screen.findByText('Slot is no longer available')).toBeInTheDocument()
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
   it('keeping the appointment declines the request', async () => {
     vi.mocked(api.post).mockResolvedValue({ data: { id: 'appt-1' } })
     const { onDone } = renderModal(true, true)

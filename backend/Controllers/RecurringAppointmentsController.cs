@@ -90,8 +90,8 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             }
             else
             {
-                customer.Name = req.CustomerName;
-                customer.FamilyName = req.CustomerFamilyName ?? "";
+                if (OwnerTypedCustomer.MatchExisting(customer, req.CustomerName, req.CustomerFamilyName) is { } conflict)
+                    return Conflict(new { error = conflict });
                 if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
             }
         }

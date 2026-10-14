@@ -196,6 +196,55 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal(customerId, only.Id);
     }
 
+    // QA run 2: typing a different name with an existing customer's phone renamed that customer
+    // everywhere, past appointments included.
+    [Fact]
+    public async Task CreateAppointment_ExistingPhoneDifferentName_RejectsWithoutRenaming()
+    {
+        var slug = "admin-book-phone-clash";
+        var token = await RegisterAndLoginBusiness("admin-book-phone-clash@example.com", slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        using (var db = Db())
+        {
+            db.Customers.Add(new Customer { BusinessId = businessId, Name = "Rami", FamilyName = "Levi", Phone = "+972501112255" });
+            db.SaveChanges();
+        }
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Dana", "050-111-2255", itemId, date.ToString("yyyy-MM-dd"), "09:00", null));
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+        Assert.Contains("Rami Levi", await resp.Content.ReadAsStringAsync());
+        using var verifyDb = Db();
+        var only = Assert.Single(verifyDb.Customers.Where(c => c.BusinessId == businessId));
+        Assert.Equal("Rami", only.Name);
+        Assert.Empty(verifyDb.Appointments.Where(a => a.BusinessId == businessId));
+    }
+
+    [Fact]
+    public async Task CreateAppointment_ExistingPhoneSameName_FillsMissingFamilyName()
+    {
+        var slug = "admin-book-phone-same";
+        var token = await RegisterAndLoginBusiness("admin-book-phone-same@example.com", slug);
+        var (businessId, itemId, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        using (var db = Db())
+        {
+            db.Customers.Add(new Customer { BusinessId = businessId, Name = "Rami", Phone = "+972501112266" });
+            db.SaveChanges();
+        }
+
+        Authorize(Client, token);
+        var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "rami", "050-111-2266", itemId, date.ToString("yyyy-MM-dd"), "09:00", null, CustomerFamilyName: "Levi"));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var verifyDb = Db();
+        var only = Assert.Single(verifyDb.Customers.Where(c => c.BusinessId == businessId));
+        Assert.Equal("Rami", only.Name);
+        Assert.Equal("Levi", only.FamilyName);
+    }
+
     [Fact]
     public async Task CreateAppointment_GarbagePhone_ReturnsBadRequest()
     {

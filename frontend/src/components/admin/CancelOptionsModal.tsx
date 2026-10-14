@@ -18,38 +18,39 @@ export default function CancelOptionsModal({
   const [mode, setMode] = useState<'options' | 'replace'>('options')
   const [replaceSelection, setReplaceSelection] = useState<CustomerSelection | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  // Every action shows the server's reason on failure instead of silently doing nothing.
+  async function run(action: () => Promise<unknown>) {
+    setLoading(true); setError('')
+    try {
+      await action()
+      onDone()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ?? t(lang, 'somethingWentWrong'))
+    } finally { setLoading(false) }
+  }
 
   const { data: waitlistEntries = [] } = useQuery<{ id: string; name: string; familyName: string; phone: string }[]>({
     queryKey: ['appointment-waitlist', appointmentId],
     queryFn: () => api.get(`/admin/appointments/${appointmentId}/waitlist`).then((r) => r.data),
   })
 
-  async function cancel(notifyWaitlist: boolean) {
-    setLoading(true)
-    try {
-      await api.patch(`/admin/appointments/${appointmentId}`, { status: 'CANCELLED', notifyWaitlist })
-      onDone()
-    } finally { setLoading(false) }
+  function cancel(notifyWaitlist: boolean) {
+    return run(() => api.patch(`/admin/appointments/${appointmentId}`, { status: 'CANCELLED', notifyWaitlist }))
   }
 
-  async function keep() {
-    setLoading(true)
-    try {
-      await api.post(`/admin/appointments/${appointmentId}/keep`)
-      onDone()
-    } finally { setLoading(false) }
+  function keep() {
+    return run(() => api.post(`/admin/appointments/${appointmentId}/keep`))
   }
 
   async function replaceCustomer() {
     if (!replaceSelection) return
-    setLoading(true)
-    try {
-      await api.patch(`/admin/appointments/${appointmentId}/customer`,
-        'waitlistEntryId' in replaceSelection ? { waitlistEntryId: replaceSelection.waitlistEntryId }
-          : 'customerId' in replaceSelection ? { customerId: replaceSelection.customerId }
-          : { customerName: replaceSelection.customerName, customerFamilyName: replaceSelection.customerFamilyName, customerPhone: replaceSelection.customerPhone })
-      onDone()
-    } finally { setLoading(false) }
+    return run(() => api.patch(`/admin/appointments/${appointmentId}/customer`,
+      'waitlistEntryId' in replaceSelection ? { waitlistEntryId: replaceSelection.waitlistEntryId }
+        : 'customerId' in replaceSelection ? { customerId: replaceSelection.customerId }
+        : { customerName: replaceSelection.customerName, customerFamilyName: replaceSelection.customerFamilyName, customerPhone: replaceSelection.customerPhone }))
   }
 
   return (
@@ -60,6 +61,8 @@ export default function CancelOptionsModal({
           <button onClick={onClose} aria-label="Close"
             className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
         </div>
+
+        {error && <p className="text-red-600 dark:text-red-400 text-sm mb-3">{error}</p>}
 
         {mode === 'options' ? (
           <div className="space-y-4">
@@ -110,7 +113,7 @@ export default function CancelOptionsModal({
           <div className="space-y-4">
             <CustomerPicker lang={lang} value={replaceSelection} onChange={setReplaceSelection} waitlistEntries={waitlistEntries} />
             <div className="flex gap-2">
-              <button type="button" onClick={() => setMode('options')}
+              <button type="button" onClick={() => { setMode('options'); setError('') }}
                 className="flex-1 bg-teal-tint hover:bg-teal-tint/70 text-ink text-sm font-medium py-2.5 rounded-lg transition-colors">
                 {t(lang, 'back')}
               </button>
