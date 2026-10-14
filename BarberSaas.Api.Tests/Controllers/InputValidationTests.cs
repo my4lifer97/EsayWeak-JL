@@ -63,6 +63,7 @@ public class InputValidationTests : IntegrationTestBase
     [InlineData("platform-admin")]
     [InlineData("request-business-account")]
     [InlineData("wa-link")]
+    [InlineData("admin-platform")]
     public async Task Register_RejectsSlugsThatAreFrontendPages(string slug)
     {
         var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", $"{slug}@example.com", "password123", slug));

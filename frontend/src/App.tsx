@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './lib/theme'
 import { AuthProvider } from './lib/auth'
@@ -93,6 +93,8 @@ export default function App() {
                 <Route path="/wa-link/:token" element={<WhatsAppLinkPage />} />
                 {/* Deliberately not linked from any public nav -- internal tool only. */}
                 <Route path="/platform-admin/login" element={<PlatformAdminLoginPage />} />
+                {/* Easy to type the words the other way round; it used to load as a business storefront and 404. */}
+                <Route path="/admin-platform/*" element={<Navigate to="/platform-admin" replace />} />
                 <Route element={<PlatformAdminProtectedRoute />}>
                   <Route path="/platform-admin" element={<PlatformAdminDashboardPage />} />
                   <Route path="/platform-admin/businesses/:id" element={<PlatformAdminBusinessDetailPage />} />
