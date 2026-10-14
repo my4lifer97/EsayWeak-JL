@@ -12,7 +12,7 @@ export default function BackButton({ lang, fallback = '/' }: { lang: string; fal
   }
 
   return (
-    <button onClick={goBack} className="text-muted hover:text-ink text-sm transition-colors">
+    <button onClick={goBack} className="text-muted hover:text-ink text-sm transition-colors whitespace-nowrap">
       ← {t(lang, 'back')}
     </button>
   )

@@ -30,9 +30,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-cream text-ink" dir={dir}>
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-line max-w-6xl mx-auto">
+      <nav className="flex flex-wrap items-center justify-between gap-y-3 px-4 sm:px-6 py-4 border-b border-line max-w-6xl mx-auto">
         <div className="font-bold text-xl">✂️ EsayWeek</div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
           <LanguageSwitcher />
           <ThemeToggle />
           <Link to="/admin/login" className="text-muted hover:text-ink text-sm transition-colors">{t(lang, 'homeSignIn')}</Link>

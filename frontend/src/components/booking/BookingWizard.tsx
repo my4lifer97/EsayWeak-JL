@@ -214,7 +214,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="flex items-center gap-2 mb-8">
           {step > (isFromLink ? 2 : 1) ? (
-            <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-muted hover:text-ink text-sm">
+            <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-muted hover:text-ink text-sm whitespace-nowrap">
               ← {t(lang, 'back')}
             </button>
           ) : isFromLink ? (
@@ -224,7 +224,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           )}
           <div className="flex gap-1 mx-auto">
             {[1, 2, 3, 4].map((s) => (
-              <div key={s} className={`h-1.5 w-8 rounded-full transition-colors ${s <= step ? 'bg-coral' : 'bg-line'}`} />
+              <div key={s} className={`h-1.5 w-5 sm:w-8 rounded-full transition-colors ${s <= step ? 'bg-coral' : 'bg-line'}`} />
             ))}
           </div>
           <div className="flex items-center gap-2">
