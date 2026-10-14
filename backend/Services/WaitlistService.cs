@@ -38,6 +38,15 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
             .ToListAsync();
         if (entries.Count == 0) return (0, 0);
 
+        // Someone may have booked over the freed slot without starting at exactly its time (or a
+        // recurring series filled it), which ResolveForRebooking can miss. Offering it anyway
+        // sends the customer to a link that says "not available", so end the queue instead.
+        if (await IsSlotTaken(cancelledAppointment))
+        {
+            foreach (var entry in entries) entry.Status = WaitlistEntryStatus.RESOLVED;
+            return (0, 0);
+        }
+
         var item = await db.Items.FindAsync(cancelledAppointment.ItemId);
 
         var appUrl = config["AppUrl"] ?? "";
@@ -159,22 +168,37 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
         return oldSlot;
     }
 
-    // Flips any outstanding waitlist entry for a slot that just got (re)booked to RESOLVED, so
-    // stale entries don't linger or trigger a future notification for a slot that's taken again.
-    // Cheap no-op in the common case (a slot nobody was ever waitlisted for) -- safe to call
-    // unconditionally from every booking/reschedule write path. Does not call SaveChangesAsync.
-    public async Task ResolveForRebooking(string businessId, DateTime date, string startTime)
+    // Flips any outstanding waitlist entry for a freed slot that a new booking overlaps to
+    // RESOLVED, so stale entries don't linger or trigger a future notification for a slot that's
+    // taken again. Overlap, not an identical start: a 09:30 booking takes a freed 09:00-10:00
+    // slot just as much as a 09:00 one. Cheap no-op in the common case (a slot nobody was ever
+    // waitlisted for) -- safe to call unconditionally from every booking/reschedule write path.
+    // Does not call SaveChangesAsync.
+    public async Task ResolveForRebooking(string businessId, DateTime date, string startTime, string endTime)
     {
         var entries = await db.WaitlistEntries
             .Include(w => w.Appointment)
             .Where(w => w.Status != WaitlistEntryStatus.RESOLVED
                 && w.BusinessId == businessId
                 && w.Appointment.Date == date
-                && w.Appointment.StartTime == startTime
                 && w.Appointment.Status == AppointmentStatus.CANCELLED)
             .ToListAsync();
 
-        foreach (var entry in entries)
+        // "HH:MM" strings are zero-padded, so ordinal comparison is time order.
+        foreach (var entry in entries.Where(w => Overlaps(w.Appointment.StartTime, w.Appointment.EndTime, startTime, endTime)))
             entry.Status = WaitlistEntryStatus.RESOLVED;
     }
+
+    private async Task<bool> IsSlotTaken(Appointment freed)
+    {
+        var sameDay = await db.Appointments
+            .Where(a => a.BusinessId == freed.BusinessId && a.Date == freed.Date
+                && a.Status == AppointmentStatus.CONFIRMED && a.Id != freed.Id)
+            .Select(a => new { a.StartTime, a.EndTime })
+            .ToListAsync();
+        return sameDay.Any(a => Overlaps(a.StartTime, a.EndTime, freed.StartTime, freed.EndTime));
+    }
+
+    private static bool Overlaps(string start1, string end1, string start2, string end2) =>
+        string.CompareOrdinal(start1, end2) < 0 && string.CompareOrdinal(start2, end1) < 0;
 }

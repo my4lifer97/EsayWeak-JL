@@ -227,7 +227,7 @@ public class BookingController(
         if (pendingWhatsAppState is not null)
             db.WhatsAppConversationStates.Remove(pendingWhatsAppState);
 
-        await waitlist.ResolveForRebooking(business.Id, requestedDate, req.StartTime);
+        await waitlist.ResolveForRebooking(business.Id, requestedDate, req.StartTime, endTime);
         if (!await availability.TrySaveOrDetectConflict(business.Id, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
@@ -369,7 +369,7 @@ public class BookingController(
         appointment.ReminderSent = false;
         appointment.ReminderSentSoon = false;
 
-        await waitlist.ResolveForRebooking(appointment.BusinessId, appointment.Date, req.StartTime);
+        await waitlist.ResolveForRebooking(appointment.BusinessId, appointment.Date, appointment.StartTime, appointment.EndTime);
         if (!await availability.TrySaveOrDetectConflict(appointment.BusinessId, req.Date, req.StartTime, appointment.EndTime))
             return Conflict(new { error = "Slot not available" });
         if (freedSlot is not null)

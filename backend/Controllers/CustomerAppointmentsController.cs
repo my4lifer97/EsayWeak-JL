@@ -103,7 +103,7 @@ public class CustomerAppointmentsController(
         appt.ReminderSent = false;
         appt.ReminderSentSoon = false;
 
-        await waitlist.ResolveForRebooking(appt.BusinessId, appt.Date, req.StartTime);
+        await waitlist.ResolveForRebooking(appt.BusinessId, appt.Date, appt.StartTime, appt.EndTime);
         if (!await availability.TrySaveOrDetectConflict(appt.BusinessId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
         if (freedSlot is not null)

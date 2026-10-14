@@ -273,6 +273,81 @@ public class WaitlistTests : IntegrationTestBase
             e => Assert.Equal(WaitlistEntryStatus.RESOLVED, e.Status));
     }
 
+    // A freed 09:00-10:00 slot with two waiters, the first already messaged. Returns what the
+    // overlap tests below need.
+    private async Task<(string BusinessId, string ItemId, string DateStr, string FreedId, string[] WaiterPhones)> FreeAnHourWithTwoWaiters(string slug)
+    {
+        var token = await RegisterAndLoginBusiness($"{slug}@example.com", slug);
+        var (businessId, shortItemId, date) = await SeedWaitlistEnabledBusiness(token, slug);
+        Authorize(Client, token);
+        var longItem = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Long", "Long", "Long", 60, 40m)))
+            .Content.ReadFromJsonAsync<ItemDto>();
+        Client.DefaultRequestHeaders.Authorization = null;
+        var dateStr = date.ToString("yyyy-MM-dd");
+
+        var booked = await BookAs(await GetCustomerToken("+15554000001", "Hour", "Booker"), slug, longItem!.Id, dateStr, "09:00", "Hour Booker");
+        var appt = (await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+
+        string[] waiterPhones = ["+15554000002", "+15554000003"];
+        foreach (var phone in waiterPhones)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await JoinWaitlistAs(await GetCustomerToken(phone, "Waiter", "Overlap"), slug, appt.AppointmentId)).StatusCode);
+            await Task.Delay(20); // distinct CreatedAt per join
+        }
+
+        var cancel = await Client.DeleteAsync($"/api/{slug}/appointments/{appt.AppointmentId}?token={appt.CancelToken}");
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        return (businessId, shortItemId, dateStr, appt.AppointmentId, waiterPhones);
+    }
+
+    private List<string> SlotOpenMessages(string businessId, string[] phones) => Factory.WhatsAppSender.Sent
+        .Where(s => s.BusinessId == businessId && phones.Contains(s.Phone) && s.Message.Contains("just opened up"))
+        .Select(s => s.Phone).ToList();
+
+    // QA run 2: a booking that overlaps the freed slot without starting at exactly its time
+    // (09:30 inside 09:00-10:00) left the queue running, and the next waiter's link said "not available".
+    [Fact]
+    public async Task OverlappingRebook_EndsTheQueue()
+    {
+        var (businessId, shortItemId, dateStr, freedId, waiterPhones) = await FreeAnHourWithTwoWaiters("wl-overlap-shop");
+        Assert.Equal([waiterPhones[0]], SlotOpenMessages(businessId, waiterPhones));
+
+        var overlap = await BookAs(await GetCustomerToken("+15554000004", "Other", "Customer"), "wl-overlap-shop", shortItemId, dateStr, "09:30", "Other Customer");
+        Assert.Equal(HttpStatusCode.Created, overlap.StatusCode);
+
+        BackdateNotifications(freedId, 10);
+        await AdvanceQueues();
+        Assert.Equal([waiterPhones[0]], SlotOpenMessages(businessId, waiterPhones));
+        using var db = Db();
+        Assert.All(db.WaitlistEntries.Where(w => w.AppointmentId == freedId), e => Assert.Equal(WaitlistEntryStatus.RESOLVED, e.Status));
+    }
+
+    // Paths that never call ResolveForRebooking (recurring generation, say) can fill the slot
+    // too -- the queue checks the slot is still free before each message.
+    [Fact]
+    public async Task SlotFilledWithoutResolve_NextWaiterIsNotMessaged()
+    {
+        var (businessId, shortItemId, dateStr, freedId, waiterPhones) = await FreeAnHourWithTwoWaiters("wl-filled-shop");
+
+        using (var db = Db())
+        {
+            var freed = db.Appointments.First(a => a.Id == freedId);
+            db.Appointments.Add(new Appointment
+            {
+                BusinessId = businessId, CustomerId = freed.CustomerId, ItemId = shortItemId,
+                Date = freed.Date, StartTime = "09:30", EndTime = "10:00", Status = AppointmentStatus.CONFIRMED,
+            });
+            db.SaveChanges();
+        }
+
+        BackdateNotifications(freedId, 10);
+        await AdvanceQueues();
+        Assert.Equal([waiterPhones[0]], SlotOpenMessages(businessId, waiterPhones));
+        using var db2 = Db();
+        Assert.All(db2.WaitlistEntries.Where(w => w.AppointmentId == freedId && w.Status != WaitlistEntryStatus.NOTIFIED),
+            e => Assert.Equal(WaitlistEntryStatus.RESOLVED, e.Status));
+    }
+
     private Task<HttpResponseMessage> SendWhatsAppAs(string businessId, string fromPhone, string message)
     {
         var req = new HttpRequestMessage(HttpMethod.Post, "/api/whatsapp/bridge/inbound")

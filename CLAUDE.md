@@ -641,8 +641,10 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   `NOTIFIED`/`RESOLVED`) when `AppointmentCancellationService.CancelAsync(notifyWaitlist: true)`
   frees that slot — **one at a time, in join order** (`CreatedAt`): the first is messaged right
   away, and each `Waitlist:NotifyIntervalMinutes` (default 5) that the slot stays free, the next
-  one is. Rebooking the slot (`ResolveForRebooking`) flips every remaining entry to `RESOLVED`,
-  which ends the queue. The follow-up sends come from `Services/WaitlistQueueWorker.cs`, an
+  one is. A booking that **overlaps** the freed slot (`ResolveForRebooking`, not only an identical
+  start) flips every remaining entry to `RESOLVED`, which ends the queue. Each send also re-checks
+  that no CONFIRMED appointment overlaps the slot (`IsSlotTaken`) and ends the queue if one does,
+  which covers paths that don't call `ResolveForRebooking`, such as recurring generation. The follow-up sends come from `Services/WaitlistQueueWorker.cs`, an
   in-process `BackgroundService` polling `WaitlistService.AdvanceQueues` every
   `Waitlist:WorkerPollSeconds` (default 30) — the 15-minute external cron is too coarse for a
   5-minute gap. Disabled in tests via `Waitlist__WorkerEnabled=false`. A slot whose start time

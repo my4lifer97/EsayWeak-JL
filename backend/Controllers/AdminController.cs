@@ -912,7 +912,7 @@ public class AdminController(
         };
         db.Appointments.Add(appointment);
 
-        await waitlist.ResolveForRebooking(BusinessId, requestedDate, req.StartTime);
+        await waitlist.ResolveForRebooking(BusinessId, requestedDate, req.StartTime, endTime);
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available" });
 
@@ -980,7 +980,7 @@ public class AdminController(
         appt.ReminderSent = false;
         appt.ReminderSentSoon = false;
 
-        await waitlist.ResolveForRebooking(BusinessId, appt.Date, req.StartTime);
+        await waitlist.ResolveForRebooking(BusinessId, appt.Date, appt.StartTime, appt.EndTime);
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
         if (freedSlot is not null)
