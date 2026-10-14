@@ -82,7 +82,7 @@ export default function CancelOptionsModal({
                 <div className="bg-cream border border-line rounded-lg divide-y divide-line max-h-32 overflow-y-auto">
                   {waitlistEntries.map((w) => (
                     <div key={w.id} className="px-3 py-1.5 text-sm text-ink">
-                      {w.name} {w.familyName} · {w.phone}
+                      {w.name} {w.familyName} · <bdi dir="ltr">{w.phone}</bdi>
                     </div>
                   ))}
                 </div>

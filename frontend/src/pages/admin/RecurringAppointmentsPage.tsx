@@ -137,7 +137,7 @@ export default function RecurringAppointmentsPage() {
             <div key={s.id} className="bg-surface border border-line rounded-xl px-5 py-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-ink font-medium">{s.customer.name} {s.customer.familyName} · {s.customer.phone}</div>
+                  <div className="text-ink font-medium">{s.customer.name} {s.customer.familyName} · <bdi dir="ltr">{s.customer.phone}</bdi></div>
                   <div className="text-muted text-sm mt-0.5">{itemName(s.item, lang)}</div>
                   <div className="text-muted text-xs mt-1">
                     {t(lang, 'everyWeekAt')} {t(lang, DAY_KEYS[s.dayOfWeek])} {t(lang, 'atTime')} {s.startTime}

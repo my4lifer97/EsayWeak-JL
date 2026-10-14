@@ -158,11 +158,11 @@ export default function AppointmentsPage() {
               {filtered.map((a) => (
                 <tr key={a.id} className="border-b border-line hover:bg-cream">
                   <td className="px-4 py-3 text-ink">{format(parseISO(a.date.slice(0, 10)), 'MMM d, yyyy')}</td>
-                  <td className="px-4 py-3 text-muted">{a.startTime}–{a.endTime}</td>
+                  <td className="px-4 py-3 text-muted"><bdi dir="ltr">{a.startTime}–{a.endTime}</bdi></td>
                   <td className="px-4 py-3 text-ink font-medium">
                     {a.recurringSeriesId && <span title={t(lang, 'partOfSeries')}>🔁 </span>}{a.customer.name}
                   </td>
-                  <td className="px-4 py-3 text-muted">{a.customer.phone}</td>
+                  <td className="px-4 py-3 text-muted"><bdi dir="ltr">{a.customer.phone}</bdi></td>
                   <td className="px-4 py-3 text-muted">{itemName(a.item, lang)}</td>
                   <td className="px-4 py-3">
                     {a.photoUrl && (

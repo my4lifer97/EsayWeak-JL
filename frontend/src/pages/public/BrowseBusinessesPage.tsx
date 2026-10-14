@@ -94,7 +94,7 @@ export default function BrowseBusinessesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream text-ink">
+    <div className="min-h-screen bg-cream text-ink" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
         <BackButton lang={lang} />
@@ -150,7 +150,7 @@ export default function BrowseBusinessesPage() {
             <div className="text-center text-muted py-8">{t(lang, 'noBusinessesMatch')}</div>
           ) : (
             <>
-              <div className="text-xs text-muted mb-2">{results.length} / {total}</div>
+              <div className="text-xs text-muted mb-2"><bdi dir="ltr">{results.length} / {total}</bdi></div>
               <div className="space-y-3">
                 {results.map((b) => (
                   <div key={b.slug} className="bg-surface border border-line rounded-2xl p-4 flex items-start gap-3">

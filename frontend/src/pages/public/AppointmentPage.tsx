@@ -110,7 +110,7 @@ export default function AppointmentPage() {
           {rows.map(({ label, value }) => (
             <div key={label} className="flex justify-between text-sm">
               <span className="text-muted">{label}</span>
-              <span className="text-ink">{value}</span>
+              <span className="text-ink"><bdi>{value}</bdi></span>
             </div>
           ))}
           {appt.notes && (

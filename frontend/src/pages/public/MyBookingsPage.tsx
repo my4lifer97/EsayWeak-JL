@@ -31,7 +31,7 @@ export default function MyBookingsPage() {
   const emptyKey: TKey = filter === 'past' ? 'noPastBookings' : 'noUpcomingBookings'
 
   return (
-    <div className="min-h-screen bg-cream text-ink">
+    <div className="min-h-screen bg-cream text-ink" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
       <CustomerAccountNav />
       <div className="max-w-2xl mx-auto px-4 py-8">
         <BackButton lang={lang} />

@@ -13,7 +13,7 @@ export default function CustomerProtectedRoute() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4">
+      <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
         <div className="text-center max-w-sm space-y-4">
           <p className="text-muted">{t(lang, 'signInToContinue')}</p>
           <Link

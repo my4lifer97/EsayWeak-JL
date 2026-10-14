@@ -211,11 +211,11 @@ export default function SchedulePage() {
                   ) : (
                     <span className="text-end">
                       <span className={h.isActive ? 'text-ink text-sm' : 'text-muted text-sm'}>
-                        {h.isActive ? `${h.startTime} – ${h.endTime}` : t(lang, 'dayClosedLabel')}
+                        {h.isActive ? <bdi dir="ltr">{h.startTime} – {h.endTime}</bdi> : t(lang, 'dayClosedLabel')}
                       </span>
                       {h.isActive && partialBlocks.map((b) => (
                         <span key={b.id} className="block text-[11px] text-rose-600 dark:text-rose-400" title={b.reason ?? undefined}>
-                          {t(lang, 'calBlocked')} {b.startTime}–{b.endTime}
+                          {t(lang, 'calBlocked')} <bdi dir="ltr">{b.startTime}–{b.endTime}</bdi>
                         </span>
                       ))}
                     </span>
@@ -273,7 +273,7 @@ export default function SchedulePage() {
             <div className="space-y-2">
               {shownBreaks.map((br) => (
                 <div key={br.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
-                  <span className="text-ink text-sm">{dayName(br.dayOfWeek)} · {br.startTime}–{br.endTime}</span>
+                  <span className="text-ink text-sm">{dayName(br.dayOfWeek)} · <bdi dir="ltr">{br.startTime}–{br.endTime}</bdi></span>
                 </div>
               ))}
             </div>
@@ -287,7 +287,7 @@ export default function SchedulePage() {
               {blocked.map((b) => (
                 <div key={b.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
                   <span className="text-ink text-sm">
-                    {b.date.slice(0, 10)}{b.startTime ? ` · ${b.startTime}–${b.endTime}` : ` · ${t(lang, 'fullDay')}`}{b.reason ? ` — ${b.reason}` : ''}
+                    <bdi dir="ltr">{b.date.slice(0, 10)}</bdi>{b.startTime ? <> · <bdi dir="ltr">{b.startTime}–{b.endTime}</bdi></> : ` · ${t(lang, 'fullDay')}`}{b.reason ? ` — ${b.reason}` : ''}
                   </span>
                   <button onClick={() => deleteBlocked(b.id)} className="text-red-600 hover:text-red-500 text-xs">{t(lang, 'remove')}</button>
                 </div>

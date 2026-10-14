@@ -364,6 +364,10 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
   picker; it's on `CustomerAccountNav`, `BusinessPage`, and `BookingWizard`.
   **Admin/business dashboard pages** are unaffected — they still use `useAuth().language`, set from the
   business's own `Settings > Language` field, unrelated to any customer's choice.
+  Every translated page sets `dir` on its root (`AR`/`HE` → `rtl`). Inside rtl text, wrap time
+  ranges, phone numbers and counts in `<bdi dir="ltr">` (or a plain `<bdi>` for a generic
+  label/value row): unwrapped, "09:00 – 10:00" displays as "10:00 – 09:00" and "+972…" puts the `+`
+  at the end. Phone/OTP inputs get `dir="ltr"`.
 - **Backend**: `backend/Services/I18nService.cs` — static `T(lang, key, args)` for WhatsApp/reminder messages.
 
 ### Back navigation (customer pages)

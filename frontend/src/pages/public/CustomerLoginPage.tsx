@@ -49,7 +49,7 @@ export default function CustomerLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4">
+    <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-between mb-4">
           <BackButton lang={lang} />
@@ -68,7 +68,7 @@ export default function CustomerLoginPage() {
             <form onSubmit={handleRequestOtp} className="space-y-4">
               <p className="text-muted text-sm text-center mb-1">{t(lang, 'enterPhone')}</p>
               <input
-                type="tel" required autoFocus
+                type="tel" dir="ltr" required autoFocus
                 value={phone} onChange={(e) => setPhone(e.target.value)}
                 placeholder="+1234567890"
                 className="w-full bg-cream border border-line rounded-xl px-4 py-3 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
@@ -108,7 +108,7 @@ export default function CustomerLoginPage() {
                 )}
 
                 <input
-                  type="text" inputMode="numeric" maxLength={6} required autoFocus={!isNewCustomer}
+                  type="text" dir="ltr" inputMode="numeric" maxLength={6} required autoFocus={!isNewCustomer}
                   value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                   placeholder="123456"
                   className="w-full bg-cream border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"

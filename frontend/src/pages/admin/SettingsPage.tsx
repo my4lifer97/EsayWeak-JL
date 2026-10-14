@@ -397,7 +397,7 @@ export default function SettingsPage() {
           <h2 className="text-ink font-semibold mb-1">{t(lang, 'whatsappSetup')}</h2>
           <p className="text-muted text-sm">{t(lang, 'whatsappNumberHint')}</p>
           <div className="bg-cream border border-line rounded-lg px-3 py-2.5 text-ink font-mono">
-            {business?.whatsAppNumber || <span className="text-muted font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
+            {business?.whatsAppNumber ? <bdi dir="ltr">{business.whatsAppNumber}</bdi> : <span className="text-muted font-sans italic">{t(lang, 'whatsappNumberUnassigned')}</span>}
           </div>
         </div>
 

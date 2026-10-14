@@ -72,7 +72,7 @@ export default function CustomerPicker({
               className={`w-full text-start px-3 py-2 text-sm hover:bg-surface ${
                 value && 'waitlistEntryId' in value && value.waitlistEntryId === w.id ? 'bg-surface text-ink' : 'text-ink'
               }`}>
-              {w.name} {w.familyName} · {w.phone}
+              {w.name} {w.familyName} · <bdi dir="ltr">{w.phone}</bdi>
             </button>
           ))}
         </div>
@@ -92,7 +92,7 @@ export default function CustomerPicker({
                 results.map((c) => (
                   <button key={c.id} type="button" onClick={() => selectExisting(c)}
                     className="w-full text-start px-3 py-2 text-sm text-ink hover:bg-cream">
-                    {c.name} {c.familyName} · {c.phone}
+                    {c.name} {c.familyName} · <bdi dir="ltr">{c.phone}</bdi>
                   </button>
                 ))
               )}

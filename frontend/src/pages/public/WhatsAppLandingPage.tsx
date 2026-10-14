@@ -34,7 +34,7 @@ export default function WhatsAppLandingPage() {
   }, [token])
 
   return (
-    <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4">
+    <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
       <div className="text-center max-w-sm">
         {error ? (
           <p className="text-muted">{t(lang, 'whatsappLinkExpired')}</p>

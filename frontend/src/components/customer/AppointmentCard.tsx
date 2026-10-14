@@ -128,7 +128,7 @@ export default function AppointmentCard({
           <div className="text-muted text-sm mt-1">{itemName(appt.item, lang)}</div>
           <div className="text-muted text-sm mt-1">
             {format(parseISO(appt.date), 'EEE, MMM d yyyy', { locale: lang === 'AR' ? ar : lang === 'HE' ? he : enUS })}
-            {' · '}{appt.startTime}–{appt.endTime}
+            {' · '}<bdi dir="ltr">{appt.startTime}–{appt.endTime}</bdi>
           </div>
           {appt.notes && !expandedNotes && (
             <div className="text-muted text-sm mt-1 italic">"{appt.notes}"</div>
