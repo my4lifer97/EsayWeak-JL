@@ -51,7 +51,8 @@ public class BookingController(
     }
 
     [HttpGet("availability")]
-    public async Task<IActionResult> GetAvailability(string slug, [FromQuery] string date, [FromQuery] string itemId)
+    public async Task<IActionResult> GetAvailability(string slug, [FromQuery] string date, [FromQuery] string itemId,
+        [FromQuery] string? excludeAppointmentId = null, [FromQuery] string? token = null)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
@@ -60,7 +61,14 @@ public class BookingController(
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
-        var slots = await availability.GetAvailableSlots(business.Id, date, item.DurationMinutes.Value);
+        // Rescheduling: the appointment being moved doesn't block its own neighbouring slots. Only
+        // honored with its cancel token, so nobody can hide someone else's booking from the list.
+        string? exclude = null;
+        if (!string.IsNullOrEmpty(excludeAppointmentId) && !string.IsNullOrEmpty(token)
+            && await db.Appointments.AnyAsync(a => a.Id == excludeAppointmentId && a.BusinessId == business.Id && a.CancelToken == token))
+            exclude = excludeAppointmentId;
+
+        var slots = await availability.GetAvailableSlots(business.Id, date, item.DurationMinutes.Value, exclude);
         // Only worth the extra query when there's actually nothing to offer -- lets the customer
         // see WHY (closed by the owner, with an optional reason) instead of a bare "no times".
         var blockInfo = slots.Count == 0 ? await availability.GetFullDayBlockInfo(business.Id, date) : null;
@@ -353,7 +361,7 @@ public class BookingController(
         if (!appointment.Item.IsBookable || appointment.Item.DurationMinutes is null)
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        var slots = await availability.GetAvailableSlots(appointment.BusinessId, req.Date, appointment.Item.DurationMinutes.Value);
+        var slots = await availability.GetAvailableSlots(appointment.BusinessId, req.Date, appointment.Item.DurationMinutes.Value, appointment.Id);
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 

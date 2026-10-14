@@ -60,8 +60,6 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELLED: 'bg-gray-700',
 }
 
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 7)
-
 function timeToMinutes(t: string) {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
@@ -104,11 +102,27 @@ export default function WeeklyCalendar({
   const weekStartDate = parseISO(weekStart)
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStartDate, i))
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
-  const startMinute = 7 * 60
-  const totalMinutes = 14 * 60
-  const endMinute = startMinute + totalMinutes
+  // 07:00-21:00 by default, widened to whole hours to fit this week's opening hours and
+  // appointments -- a 06:00 or 22:00 booking used to be clipped off the board entirely.
+  let earliest = 7 * 60
+  let latest = 21 * 60
+  for (const day of days) {
+    const { hours, closed } = dayInfo(day)
+    if (hours && !closed) {
+      earliest = Math.min(earliest, timeToMinutes(hours.startTime))
+      latest = Math.max(latest, timeToMinutes(hours.endTime))
+    }
+  }
+  for (const a of appointments) {
+    earliest = Math.min(earliest, timeToMinutes(a.startTime))
+    latest = Math.max(latest, timeToMinutes(a.endTime) || 24 * 60)
+  }
+  const startMinute = Math.floor(earliest / 60) * 60
+  const endMinute = Math.min(Math.ceil(latest / 60) * 60, 24 * 60)
+  const totalMinutes = endMinute - startMinute
+  const HOURS = Array.from({ length: totalMinutes / 60 }, (_, i) => i + startMinute / 60)
 
-  // Clamps a time range to the visible 07:00-21:00 window; null if it falls entirely outside.
+  // Clamps a time range to the visible window; null if it falls entirely outside.
   function span(start: string, end: string) {
     const s = Math.max(timeToMinutes(start), startMinute)
     const e = Math.min(timeToMinutes(end), endMinute)

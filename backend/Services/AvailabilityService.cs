@@ -7,9 +7,11 @@ namespace BarberSaas.Api.Services;
 
 public class AvailabilityService(AppDbContext db)
 {
-    public async Task<List<TimeSlot>> GetAvailableSlots(string businessId, string dateStr, int serviceDuration)
+    // excludeAppointmentId: the appointment being rescheduled. Without it, a booking blocked its
+    // own neighbouring slots, so a 60-min 10:00 appointment could never move to 10:30.
+    public async Task<List<TimeSlot>> GetAvailableSlots(string businessId, string dateStr, int serviceDuration, string? excludeAppointmentId = null)
     {
-        var slots = await GetSlotsWithBookingInfo(businessId, dateStr, serviceDuration);
+        var slots = await GetSlotsWithBookingInfo(businessId, dateStr, serviceDuration, excludeAppointmentId);
         return slots.Where(s => s.Available).Select(s => new TimeSlot(s.Start, s.End)).ToList();
     }
 
@@ -19,7 +21,7 @@ public class AvailabilityService(AppDbContext db)
     // hiding them entirely. Breaks/blocked-slots are still fully excluded (not real bookings).
     public const int MaxDaysAhead = 365;
 
-    public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string businessId, string dateStr, int serviceDuration)
+    public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string businessId, string dateStr, int serviceDuration, string? excludeAppointmentId = null)
     {
         // A date entirely before today (not just "already passed today's slots", see the isToday
         // check further down) must never offer any slots at all -- otherwise it's booking-able,
@@ -41,7 +43,8 @@ public class AvailabilityService(AppDbContext db)
             .ToListAsync();
 
         var existingAppointments = await db.Appointments
-            .Where(a => a.BusinessId == businessId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED)
+            .Where(a => a.BusinessId == businessId && a.Date == date && a.Status == AppointmentStatus.CONFIRMED
+                && a.Id != excludeAppointmentId)
             .ToListAsync();
 
         if (blockedSlots.Any(b => b.StartTime is null)) return [];

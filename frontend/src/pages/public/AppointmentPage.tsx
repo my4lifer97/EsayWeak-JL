@@ -37,7 +37,8 @@ export default function AppointmentPage() {
     queryKey: ['reschedule-slots', id, rescheduleDate],
     enabled: showReschedule && !!rescheduleDate,
     queryFn: () =>
-      api.get(`/${slug}/availability?date=${rescheduleDate}&itemId=${appt!.item.id}`).then((r) => r.data.slots),
+      // Excluding this appointment, so it doesn't block its own neighbouring slots.
+      api.get(`/${slug}/availability?date=${rescheduleDate}&itemId=${appt!.item.id}&excludeAppointmentId=${id}&token=${token}`).then((r) => r.data.slots),
   })
 
   if (isLoading) return <div className="min-h-screen bg-cream flex items-center justify-center"><div className="text-muted">{t('EN', 'loading')}</div></div>

@@ -503,6 +503,47 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, rebooked.StatusCode);
     }
 
+    // QA run 2: a booking blocked its own neighbouring slots, so a 60-min 10:00 appointment
+    // could never move to 10:30 -- not offered in the slot list, and rejected on save.
+    [Fact]
+    public async Task Reschedule_ByLessThanItsOwnLength_IsOfferedAndSaves()
+    {
+        var slug = "admin-reschedule-shift";
+        var token = await RegisterAndLoginBusiness("admin-reschedule-shift@example.com", slug);
+        var (_, _, date) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        var dateStr = date.ToString("yyyy-MM-dd");
+        Authorize(Client, token);
+        var hourItem = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Hour", "Hour", "Hour", 60, 50m)))
+            .Content.ReadFromJsonAsync<ItemDto>();
+        var created = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
+            null, "Shifter", "+15551115101", hourItem!.Id, dateStr, "10:00", null));
+        var appt = (await created.Content.ReadFromJsonAsync<DashboardAppointmentDto>())!;
+
+        async Task<List<string?>> Starts(string url) =>
+            (await Client.GetFromJsonAsync<System.Text.Json.JsonElement>(url)).GetProperty("slots").EnumerateArray()
+                .Select(x => x.GetProperty("start").GetString()).ToList();
+
+        // Other bookers still can't take 10:30; the appointment being moved can.
+        Assert.DoesNotContain("10:30", await Starts($"/api/admin/appointments/availability?date={dateStr}&itemId={hourItem.Id}"));
+        Assert.Contains("10:30", await Starts($"/api/admin/appointments/availability?date={dateStr}&itemId={hourItem.Id}&excludeAppointmentId={appt.Id}"));
+
+        var resp = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt.Id}/reschedule", new RescheduleRequest(dateStr, "10:30"));
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+
+        // The customer's magic link: shift it back by 30 minutes. The public slot list only
+        // excludes the appointment with its own token.
+        Client.DefaultRequestHeaders.Authorization = null;
+        string cancelToken;
+        using (var db = Db()) cancelToken = db.Appointments.First(a => a.Id == appt.Id).CancelToken;
+        var publicUrl = $"/api/{slug}/availability?date={dateStr}&itemId={hourItem.Id}&excludeAppointmentId={appt.Id}";
+        Assert.DoesNotContain("10:00", await Starts(publicUrl + "&token=wrong"));
+        Assert.Contains("10:00", await Starts(publicUrl + $"&token={cancelToken}"));
+        var viaLink = await Client.PatchAsJsonAsync($"/api/{slug}/appointments/{appt.Id}?token={cancelToken}", new RescheduleRequest(dateStr, "10:00"));
+        Assert.Equal(HttpStatusCode.OK, viaLink.StatusCode);
+        using var verify = Db();
+        Assert.Equal("10:00", verify.Appointments.First(a => a.Id == appt.Id).StartTime);
+    }
+
     [Fact]
     public async Task Reschedule_ToAnUnavailableSlot_ReturnsConflict()
     {

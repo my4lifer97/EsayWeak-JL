@@ -87,7 +87,7 @@ public class CustomerAppointmentsController(
         if (!appt.Item.IsBookable || appt.Item.DurationMinutes is null)
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        var slots = await availability.GetAvailableSlots(appt.BusinessId, req.Date, appt.Item.DurationMinutes.Value);
+        var slots = await availability.GetAvailableSlots(appt.BusinessId, req.Date, appt.Item.DurationMinutes.Value, appt.Id);
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 

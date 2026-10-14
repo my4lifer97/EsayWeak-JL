@@ -850,13 +850,14 @@ public class AdminController(
     // ─── Manual appointment creation ───────────────────────────────────────
 
     [HttpGet("appointments/availability")]
-    public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string itemId)
+    public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string itemId, [FromQuery] string? excludeAppointmentId = null)
     {
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == BusinessId && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
-        var slots = await availability.GetAvailableSlots(BusinessId, date, item.DurationMinutes.Value);
+        // The reschedule modal passes the appointment it's moving, so it doesn't block itself.
+        var slots = await availability.GetAvailableSlots(BusinessId, date, item.DurationMinutes.Value, excludeAppointmentId);
         return Ok(new { slots });
     }
 
@@ -987,7 +988,7 @@ public class AdminController(
         if (!appt.Item.IsBookable || appt.Item.DurationMinutes is null)
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        var slots = await availability.GetAvailableSlots(BusinessId, req.Date, appt.Item.DurationMinutes.Value);
+        var slots = await availability.GetAvailableSlots(BusinessId, req.Date, appt.Item.DurationMinutes.Value, appt.Id);
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 

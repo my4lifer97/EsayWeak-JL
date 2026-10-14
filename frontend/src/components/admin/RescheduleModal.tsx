@@ -21,8 +21,9 @@ export default function RescheduleModal({
   const [error, setError] = useState('')
 
   const { data: slots = [], isFetching: slotsLoading } = useQuery<Slot[]>({
-    queryKey: ['admin-availability', date, itemId],
-    queryFn: () => api.get(`/admin/appointments/availability?date=${date}&itemId=${itemId}`).then((r) => r.data.slots),
+    queryKey: ['admin-availability', date, itemId, appointmentId],
+    // Excluding the appointment being moved, so it can shift by less than its own length.
+    queryFn: () => api.get(`/admin/appointments/availability?date=${date}&itemId=${itemId}&excludeAppointmentId=${appointmentId}`).then((r) => r.data.slots),
     enabled: !!date,
   })
 

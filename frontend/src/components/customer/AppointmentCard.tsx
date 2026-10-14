@@ -55,7 +55,8 @@ export default function AppointmentCard({
     enabled: expandedReschedule && !!rescheduleDate,
     queryFn: () =>
       customerApi
-        .get(`/${appt.businessSlug}/availability?date=${rescheduleDate}&itemId=${appt.item.id}`)
+        // Excluding this appointment (proved by its token), so it doesn't block its own neighbouring slots.
+        .get(`/${appt.businessSlug}/availability?date=${rescheduleDate}&itemId=${appt.item.id}&excludeAppointmentId=${appt.id}&token=${appt.cancelToken}`)
         .then((r) => r.data.slots),
   })
 
