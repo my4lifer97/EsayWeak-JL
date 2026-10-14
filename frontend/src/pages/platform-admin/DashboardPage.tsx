@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { usePlatformAdminAuth } from '../../lib/platformAdminAuth'
@@ -8,20 +8,51 @@ import OwnerEmailHealthBanner from '../../components/platform-admin/OwnerEmailHe
 
 type BusinessSummary = { id: string; name: string; email: string; slug: string; subscriptionStatus: string }
 type CustomerSummary = { id: string; name: string; familyName: string; phone: string }
+type PagedResult<T> = { items: T[]; page: number; pageSize: number; total: number; hasMore: boolean }
+
+// Both lists are paged server-side (50 a page); they used to stop silently at 50 rows.
+function usePagedSearch<T>(path: string, search: string) {
+  const query = useInfiniteQuery({
+    queryKey: [path, search],
+    queryFn: ({ pageParam }) =>
+      platformAdminApi.get<PagedResult<T>>(path, { params: { search: search || undefined, page: pageParam } }).then((r) => r.data),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
+  })
+  return {
+    items: query.data?.pages.flatMap((p) => p.items),
+    total: query.data?.pages[0]?.total,
+    hasMore: query.hasNextPage,
+    loadingMore: query.isFetchingNextPage,
+    loadMore: () => query.fetchNextPage(),
+  }
+}
+
+function ListFooter({ shown, total, hasMore, loadingMore, loadMore }: {
+  shown: number; total?: number; hasMore: boolean; loadingMore: boolean; loadMore: () => void
+}) {
+  if (total === undefined || total === 0) return null
+  return (
+    <div className="flex items-center justify-between mt-2 px-3 text-xs text-muted">
+      <span>{shown} of {total}</span>
+      {hasMore && (
+        <button onClick={loadMore} disabled={loadingMore} className="text-coral-dark hover:underline disabled:opacity-50">
+          {loadingMore ? 'Loading…' : 'Load more'}
+        </button>
+      )}
+    </div>
+  )
+}
 
 export default function PlatformAdminDashboardPage() {
   const { user, logout } = usePlatformAdminAuth()
   const [businessSearch, setBusinessSearch] = useState('')
   const [customerSearch, setCustomerSearch] = useState('')
 
-  const { data: businesses } = useQuery<BusinessSummary[]>({
-    queryKey: ['platform-admin-businesses', businessSearch],
-    queryFn: () => platformAdminApi.get('/platform-admin/businesses', { params: { search: businessSearch || undefined } }).then((r) => r.data),
-  })
-  const { data: customers } = useQuery<CustomerSummary[]>({
-    queryKey: ['platform-admin-customers', customerSearch],
-    queryFn: () => platformAdminApi.get('/platform-admin/customers', { params: { search: customerSearch || undefined } }).then((r) => r.data),
-  })
+  const businessList = usePagedSearch<BusinessSummary>('/platform-admin/businesses', businessSearch)
+  const customerList = usePagedSearch<CustomerSummary>('/platform-admin/customers', customerSearch)
+  const businesses = businessList.items
+  const customers = customerList.items
 
   return (
     <div className="min-h-screen bg-cream text-ink p-6">
@@ -62,6 +93,7 @@ export default function PlatformAdminDashboardPage() {
               ))}
               {businesses?.length === 0 && <p className="text-muted text-sm px-3 py-2">No results</p>}
             </div>
+            <ListFooter shown={businesses?.length ?? 0} {...businessList} />
           </section>
 
           <section className="bg-surface border border-line rounded-2xl p-5">
@@ -83,6 +115,7 @@ export default function PlatformAdminDashboardPage() {
               ))}
               {customers?.length === 0 && <p className="text-muted text-sm px-3 py-2">No results</p>}
             </div>
+            <ListFooter shown={customers?.length ?? 0} {...customerList} />
           </section>
         </div>
       </div>

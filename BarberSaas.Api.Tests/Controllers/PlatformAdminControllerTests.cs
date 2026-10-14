@@ -118,9 +118,46 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         await GetCustomerToken("+15559991111", "Waitlist", "Customer");
 
         Authorize(Client, adminToken);
-        var results = await Client.GetFromJsonAsync<List<PlatformAdminCustomerSummaryDto>>("/api/platform-admin/customers?search=Waitlist%20Customer");
+        var results = await Client.GetFromJsonAsync<PagedResult<PlatformAdminCustomerSummaryDto>>("/api/platform-admin/customers?search=Waitlist%20Customer");
 
-        Assert.Contains(results!, c => c.Phone == "+15559991111");
+        Assert.Contains(results!.Items, c => c.Phone == "+15559991111");
+    }
+
+    // QA run 2: search was case-sensitive, and the lists stopped silently at 50.
+    [Fact]
+    public async Task Search_IgnoresCase_AndMatchesLocalPhoneFormat()
+    {
+        var adminToken = await BootstrapAdmin();
+        await GetCustomerToken("+972501239876", "Noa", "Mizrahi");
+        await RegisterAndLoginBusiness("CaseShop@example.com", "case-shop-pa");
+
+        Authorize(Client, adminToken);
+        var byName = await Client.GetFromJsonAsync<PagedResult<PlatformAdminCustomerSummaryDto>>("/api/platform-admin/customers?search=noa%20MIZRAHI");
+        var byLocalPhone = await Client.GetFromJsonAsync<PagedResult<PlatformAdminCustomerSummaryDto>>("/api/platform-admin/customers?search=050-123-9876");
+        var business = await Client.GetFromJsonAsync<PagedResult<PlatformAdminBusinessSummaryDto>>("/api/platform-admin/businesses?search=CASE-SHOP");
+
+        Assert.Contains(byName!.Items, c => c.Phone == "+972501239876");
+        Assert.Contains(byLocalPhone!.Items, c => c.Phone == "+972501239876");
+        Assert.Contains(business!.Items, b => b.Slug == "case-shop-pa");
+    }
+
+    [Fact]
+    public async Task SearchBusinesses_Pages_WithTotalAndHasMore()
+    {
+        var adminToken = await BootstrapAdmin();
+        for (var i = 0; i < 3; i++)
+            await RegisterAndLoginBusiness($"pager{i}@example.com", $"pager-shop-{i}");
+
+        Authorize(Client, adminToken);
+        var first = await Client.GetFromJsonAsync<PagedResult<PlatformAdminBusinessSummaryDto>>("/api/platform-admin/businesses?search=pager-shop&pageSize=2");
+        var second = await Client.GetFromJsonAsync<PagedResult<PlatformAdminBusinessSummaryDto>>("/api/platform-admin/businesses?search=pager-shop&pageSize=2&page=2");
+
+        Assert.Equal(3, first!.Total);
+        Assert.Equal(2, first.Items.Count);
+        Assert.True(first.HasMore);
+        Assert.Single(second!.Items);
+        Assert.False(second.HasMore);
+        Assert.Empty(first.Items.Select(b => b.Id).Intersect(second.Items.Select(b => b.Id)));
     }
 
     // ─── Impersonation ──────────────────────────────────────────────────────
@@ -134,8 +171,8 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
 
         Authorize(Client, adminToken);
-        var searchResp = await Client.GetFromJsonAsync<List<PlatformAdminBusinessSummaryDto>>("/api/platform-admin/businesses?search=target-business");
-        var found = Assert.Single(searchResp!);
+        var searchResp = await Client.GetFromJsonAsync<PagedResult<PlatformAdminBusinessSummaryDto>>("/api/platform-admin/businesses?search=target-business");
+        var found = Assert.Single(searchResp!.Items);
         Assert.Equal(settings!.Id, found.Id);
 
         var impersonateResp = await Client.PostAsync($"/api/platform-admin/businesses/{found.Id}/impersonate", null);

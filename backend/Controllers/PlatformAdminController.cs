@@ -102,16 +102,28 @@ public class PlatformAdminController(
 
     [HttpGet("businesses")]
     [Authorize(Policy = "PlatformAdminOnly")]
-    public async Task<IActionResult> SearchBusinesses([FromQuery] string? search)
+    // Both lists: case-insensitive search (lower(), not ILike, which SQLite tests can't run) and
+    // paged as PagedResult. They used to be case-sensitive and stop silently at 50 rows.
+    public async Task<IActionResult> SearchBusinesses([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var query = db.Businesses.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(b => b.Name.Contains(search) || b.Email.Contains(search) || b.Slug.Contains(search));
+        {
+            var term = search.Trim().ToLower();
+            query = query.Where(b => b.Name.ToLower().Contains(term) || b.Email.ToLower().Contains(term) || b.Slug.ToLower().Contains(term));
+        }
 
-        var businesses = await query.OrderByDescending(b => b.CreatedAt).Take(50)
-            .Select(b => new PlatformAdminBusinessSummaryDto(b.Id, b.Name, b.Email, b.Slug, b.SubscriptionStatus.ToString()))
-            .ToListAsync();
-        return Ok(businesses);
+        return Ok(await Page(query.OrderByDescending(b => b.CreatedAt)
+            .Select(b => new PlatformAdminBusinessSummaryDto(b.Id, b.Name, b.Email, b.Slug, b.SubscriptionStatus.ToString())), page, pageSize));
+    }
+
+    private static async Task<PagedResult<T>> Page<T>(IQueryable<T> ordered, int page, int pageSize)
+    {
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var total = await ordered.CountAsync();
+        var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        return new PagedResult<T>(items, page, pageSize, total, page * pageSize < total);
     }
 
     [HttpGet("businesses/{id}")]
@@ -442,19 +454,22 @@ public class PlatformAdminController(
 
     [HttpGet("customers")]
     [Authorize(Policy = "PlatformAdminOnly")]
-    public async Task<IActionResult> SearchCustomers([FromQuery] string? search)
+    public async Task<IActionResult> SearchCustomers([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
         var query = db.CustomerAccounts.AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            // Phones are stored in E.164, so "050-111..." also matches as "+97250111...".
+            var phone = PhoneNormalizer.IsValid(term) ? PhoneNormalizer.Normalize(term) : term;
             // Match against the concatenated "First Last" rather than Name/FamilyName
             // separately -- a full-name search like "Waitlist Customer" spans both columns, and
             // this alone still matches a first-name-only or last-name-only query too.
-            query = query.Where(c => (c.Name + " " + c.FamilyName).Contains(search) || c.Phone.Contains(search));
+            query = query.Where(c => (c.Name + " " + c.FamilyName).ToLower().Contains(term) || c.Phone.Contains(term) || c.Phone.Contains(phone));
+        }
 
-        var customers = await query.OrderByDescending(c => c.CreatedAt).Take(50)
-            .Select(c => new PlatformAdminCustomerSummaryDto(c.Id, c.Name, c.FamilyName, c.Phone))
-            .ToListAsync();
-        return Ok(customers);
+        return Ok(await Page(query.OrderByDescending(c => c.CreatedAt)
+            .Select(c => new PlatformAdminCustomerSummaryDto(c.Id, c.Name, c.FamilyName, c.Phone)), page, pageSize));
     }
 
     [HttpGet("customers/{id}")]

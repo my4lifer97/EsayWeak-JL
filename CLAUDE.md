@@ -285,7 +285,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/platform-admin/bootstrap-available` — `{ available }`, true until the first admin account exists
 - `POST /api/platform-admin/bootstrap` — creates the (single, for now) platform admin account; 403 once one already exists, so it's safe to leave the endpoint public
 - `POST /api/platform-admin/login` — email+password, returns a platform-admin JWT (`"type": "platform_admin"` claim, separate from Business/CustomerAccount tokens)
-- `GET /api/platform-admin/businesses?search=`, `GET .../businesses/{id}` — search/detail across every tenant
+- `GET /api/platform-admin/businesses?search=&page=&pageSize=`, `GET .../businesses/{id}` — search/detail across every tenant. This list and `GET .../customers?search=&page=&pageSize=` match case-insensitively and return `PagedResult` (default 50, max 100 a page); customer search also matches a local phone (050…) against the stored E.164
 - `POST /api/platform-admin/businesses/{id}/whatsapp/link`, `GET .../whatsapp/status`, `DELETE .../whatsapp/link` — link/poll/unlink a business's self-hosted WhatsApp chatbot session (see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge))
 - `GET /api/platform-admin/businesses/{id}/activity`, `GET .../customers/{id}/activity` — that entity's `ActivityLog` rows, newest first, flagged when the acting token was an impersonation
 - `POST /api/platform-admin/businesses/{id}/impersonate`, `POST .../customers/{id}/impersonate` — mint a real Business/Customer JWT on their behalf for support purposes; every action taken with it is logged with `ImpersonatedByPlatformAdminId` set
