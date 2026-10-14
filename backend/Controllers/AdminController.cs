@@ -500,6 +500,7 @@ public class AdminController(
     [HttpPost("schedule/blocked")]
     public async Task<IActionResult> AddBlockedSlot([FromBody] CreateBlockedSlotRequest req)
     {
+        if (BlockedTimesError(req.StartTime, req.EndTime) is { } timesError) return BadRequest(new { error = timesError });
         var slot = new BlockedSlot
         {
             BusinessId = BusinessId,
@@ -530,6 +531,7 @@ public class AdminController(
         var start = DateTime.Parse(req.StartDate + "T00:00:00Z").ToUniversalTime();
         var end = DateTime.Parse(req.EndDate + "T00:00:00Z").ToUniversalTime();
         if (end < start) return BadRequest(new { error = "End date cannot be before start date" });
+        if (BlockedTimesError(req.StartTime, req.EndTime) is { } timesError) return BadRequest(new { error = timesError });
         if ((end - start).Days > 366) return BadRequest(new { error = "Range too large (max 366 days)" });
 
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -550,6 +552,21 @@ public class AdminController(
         return StatusCode(201, created.OrderBy(s => s.Date)
             .Select(s => new BlockedSlotDto(s.Id, s.Date.ToString("yyyy-MM-dd"), s.StartTime, s.EndTime, s.Reason))
             .ToList());
+    }
+
+    // A partial block needs both times, in order. Null/null is a full-day block. One missing time
+    // used to quietly become a full-day block, and 15:00-10:00 was accepted.
+    private const string TimePattern = @"^([01]\d|2[0-3]):[0-5]\d$";
+
+    private static string? BlockedTimesError(string? startTime, string? endTime)
+    {
+        if (startTime is null && endTime is null) return null;
+        if (string.IsNullOrWhiteSpace(startTime) || string.IsNullOrWhiteSpace(endTime))
+            return "Enter both a start and an end time, or block the full day";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime, TimePattern) || !System.Text.RegularExpressions.Regex.IsMatch(endTime, TimePattern))
+            return "Invalid time";
+        // "HH:MM" is zero-padded, so ordinal comparison is time order.
+        return string.CompareOrdinal(endTime, startTime) <= 0 ? "End time must be after start time" : null;
     }
 
     [HttpDelete("schedule/blocked/{id}")]
@@ -739,6 +756,8 @@ public class AdminController(
         var start = DateTime.Parse(req.StartDate + "T00:00:00Z").ToUniversalTime();
         var end = DateTime.Parse(req.EndDate + "T00:00:00Z").ToUniversalTime();
         if (end < start) return BadRequest(new { error = "End date cannot be before start date" });
+        // A range that's already over used to count as "starting now" and replace the live hours.
+        if (DateTime.Parse(req.EndDate) < DateTime.Now.Date) return BadRequest(new { error = "This date range has already ended" });
 
         try
         {
@@ -814,7 +833,11 @@ public class AdminController(
             _ => query
         };
 
-        var appointments = await query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime).ToListAsync();
+        // Upcoming and today read soonest first; past and all, newest first.
+        var ordered = filter is "upcoming" or "today"
+            ? query.OrderBy(a => a.Date).ThenBy(a => a.StartTime)
+            : query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime);
+        var appointments = await ordered.ToListAsync();
 
         return Ok(appointments.Select(a => new DashboardAppointmentDto(
             a.Id, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,

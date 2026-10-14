@@ -48,6 +48,7 @@ export default function SchedulePage() {
   const [newBlocked, setNewBlocked] = useState({ date: '', startTime: '', endTime: '', reason: '', fullDay: true })
   const [blockRangeMode, setBlockRangeMode] = useState(false)
   const [rangeEndDate, setRangeEndDate] = useState('')
+  const [blockedError, setBlockedError] = useState('')
   // null = closed, 'new' = creating a preset from the current live hours, a SchedulePreset = editing it.
   const [modalPreset, setModalPreset] = useState<SchedulePreset | 'new' | null>(null)
   const [notice, setNotice] = useState('')
@@ -91,28 +92,51 @@ export default function SchedulePage() {
     }
   }
 
-  async function addBlocked() {
-    if (!newBlocked.date) return
-    const { data: slot } = await api.post('/admin/schedule/blocked', {
-      date: newBlocked.date,
-      startTime: newBlocked.fullDay ? null : newBlocked.startTime || null,
-      endTime: newBlocked.fullDay ? null : newBlocked.endTime || null,
-      reason: newBlocked.reason || null,
-    })
-    setBlocked((prev) => [...prev, slot])
+  // A partial block needs both times, in order -- a missing one used to save as a full-day block.
+  function blockedTimesError() {
+    if (newBlocked.fullDay) return ''
+    if (!newBlocked.startTime || !newBlocked.endTime) return t(lang, 'blockTimesRequired')
+    return newBlocked.endTime <= newBlocked.startTime ? t(lang, 'endTimeAfterStart') : ''
   }
 
-  async function addBlockedRange() {
-    if (!newBlocked.date || !rangeEndDate) return
-    const { data: slots } = await api.post('/admin/schedule/blocked/range', {
-      startDate: newBlocked.date,
-      endDate: rangeEndDate,
-      startTime: newBlocked.fullDay ? null : newBlocked.startTime || null,
-      endTime: newBlocked.fullDay ? null : newBlocked.endTime || null,
-      reason: newBlocked.reason || null,
+  async function submitBlocked(action: () => Promise<void>) {
+    const timesError = blockedTimesError()
+    setBlockedError(timesError)
+    if (timesError) return
+    try {
+      await action()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setBlockedError(msg ?? t(lang, 'somethingWentWrong'))
+    }
+  }
+
+  function addBlocked() {
+    if (!newBlocked.date) return
+    return submitBlocked(async () => {
+      const { data: slot } = await api.post('/admin/schedule/blocked', {
+        date: newBlocked.date,
+        startTime: newBlocked.fullDay ? null : newBlocked.startTime,
+        endTime: newBlocked.fullDay ? null : newBlocked.endTime,
+        reason: newBlocked.reason || null,
+      })
+      setBlocked((prev) => [...prev, slot])
     })
-    setBlocked((prev) => [...prev, ...slots])
-    setRangeEndDate('')
+  }
+
+  function addBlockedRange() {
+    if (!newBlocked.date || !rangeEndDate) return
+    return submitBlocked(async () => {
+      const { data: slots } = await api.post('/admin/schedule/blocked/range', {
+        startDate: newBlocked.date,
+        endDate: rangeEndDate,
+        startTime: newBlocked.fullDay ? null : newBlocked.startTime,
+        endTime: newBlocked.fullDay ? null : newBlocked.endTime,
+        reason: newBlocked.reason || null,
+      })
+      setBlocked((prev) => [...prev, ...slots])
+      setRangeEndDate('')
+    })
   }
 
   async function deleteBlocked(id: string) {
@@ -330,6 +354,7 @@ export default function SchedulePage() {
               {t(lang, blockRangeMode ? 'blockDateRange' : 'blockDate')}
             </button>
           </div>
+          {blockedError && <p className="text-red-600 dark:text-red-400 text-sm mt-2">{blockedError}</p>}
         </section>
       </div>
     </div>

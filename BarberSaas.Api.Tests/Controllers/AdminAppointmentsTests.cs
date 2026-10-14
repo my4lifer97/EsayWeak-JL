@@ -245,6 +245,39 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal("Levi", only.FamilyName);
     }
 
+    // QA run 2: "Upcoming" listed the furthest booking first.
+    [Fact]
+    public async Task GetAppointments_Upcoming_SoonestFirst_Past_NewestFirst()
+    {
+        var slug = "admin-list-order";
+        var token = await RegisterAndLoginBusiness("admin-list-order@example.com", slug);
+        var (businessId, itemId, _) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        using (var db = Db())
+        {
+            var customer = new Customer { BusinessId = businessId, Name = "Order", Phone = "+972501119900" };
+            db.Customers.Add(customer);
+            foreach (var days in new[] { 14, 2, 7, -3, -10 })
+                db.Appointments.Add(new Appointment
+                {
+                    BusinessId = businessId, CustomerId = customer.Id, ItemId = itemId,
+                    Date = DateTime.Now.Date.AddDays(days), StartTime = "09:00", EndTime = "09:30",
+                    Status = AppointmentStatus.CONFIRMED,
+                });
+            db.SaveChanges();
+        }
+
+        Authorize(Client, token);
+        var upcoming = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=upcoming");
+        var past = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=past");
+
+        var upcomingDates = upcoming!.Select(a => a.GetProperty("date").GetString()).ToList();
+        var pastDates = past!.Select(a => a.GetProperty("date").GetString()).ToList();
+        Assert.Equal(upcomingDates.Order().ToList(), upcomingDates);
+        Assert.Equal(3, upcomingDates.Count);
+        Assert.Equal(pastDates.OrderDescending().ToList(), pastDates);
+        Assert.Equal(2, pastDates.Count);
+    }
+
     [Fact]
     public async Task CreateAppointment_GarbagePhone_ReturnsBadRequest()
     {

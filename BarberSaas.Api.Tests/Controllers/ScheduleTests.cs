@@ -28,6 +28,58 @@ public class ScheduleTests : IntegrationTestBase
         return body!.Token;
     }
 
+    // QA run 2: one missing time quietly became a full-day block, and end-before-start was saved.
+    [Theory]
+    [InlineData("10:00", null)]
+    [InlineData(null, "12:00")]
+    [InlineData("15:00", "10:00")]
+    [InlineData("10:00", "10:00")]
+    [InlineData("25:00", "26:00")]
+    public async Task BlockedSlot_IncompleteOrBackwardsTimes_AreRejected(string? start, string? end)
+    {
+        var slug = $"sched-bad-{start ?? "x"}-{end ?? "x"}".Replace(":", "");
+        var token = await RegisterAndLoginBusiness($"{slug}@example.com", slug);
+        Authorize(Client, token);
+
+        var single = await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest("2030-12-24", start, end, null));
+        var range = await Client.PostAsJsonAsync("/api/admin/schedule/blocked/range", new CreateBlockedRangeRequest("2030-12-24", "2030-12-25", start, end, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, single.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, range.StatusCode);
+        using var db = Db();
+        var businessId = db.Businesses.Single(b => b.Slug == slug).Id;
+        Assert.Empty(db.BlockedSlots.Where(b => b.BusinessId == businessId));
+    }
+
+    [Fact]
+    public async Task BlockedSlot_FullDayAndValidPartial_AreAccepted()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-goodtimes@example.com", "sched-good-times");
+        Authorize(Client, token);
+
+        Assert.Equal(HttpStatusCode.Created, (await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest("2030-12-24", null, null, null))).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest("2030-12-25", "10:00", "12:30", null))).StatusCode);
+    }
+
+    // QA run 2: a range that had already ended was treated as starting now and replaced the live hours.
+    [Fact]
+    public async Task SchedulePreset_RangeAlreadyOver_IsRejectedAndLiveHoursUnchanged()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-past-range@example.com", "sched-past-range");
+        Authorize(Client, token);
+        var before = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        var created = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Old", PresetDays(5, "08:00", "09:00")));
+        var preset = await created.Content.ReadFromJsonAsync<SchedulePresetDto>();
+
+        var lastWeek = DateTime.Now.Date.AddDays(-7).ToString("yyyy-MM-dd");
+        var yesterday = DateTime.Now.Date.AddDays(-1).ToString("yyyy-MM-dd");
+        var resp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(lastWeek, yesterday));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var after = await Client.GetFromJsonAsync<ScheduleResponse>("/api/admin/schedule");
+        Assert.Equal(before!.WorkingHours.Single(h => h.DayOfWeek == 5).IsActive, after!.WorkingHours.Single(h => h.DayOfWeek == 5).IsActive);
+    }
+
     [Fact]
     public async Task BlockedRange_CreatesOneRowPerDateInclusive()
     {
