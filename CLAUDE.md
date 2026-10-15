@@ -392,6 +392,21 @@ login for the same number, e.g. phone OTP next to the WhatsApp link, still count
 appointment — "per week" means the fixed Sun–Sat calendar week containing the requested date.
 Reschedules are not currently checked against the limit (only new bookings).
 
+### Background sends (NotificationQueue)
+Best-effort WhatsApp/email sends no longer run inside the request (QA run 2: an owner cancel that
+offered the slot to the waitlist took ~8s waiting on the bridge). An action adds them to the
+scoped `NotificationOutbox` (`AddWhatsApp`/`AddOwnerEmail`); the global `DispatchNotificationsFilter`
+hands them to the singleton `NotificationQueue` after the action ran (so after its SaveChanges), or
+drops them if it threw; `NotificationWorker` (hosted) runs them, up to 4 at once, each in its own DI
+scope. A job must not capture request-scoped services, only data. Queued so far: booking
+confirmations (customer and owner bookings), the owner's cancellation-approval WhatsApp/email,
+chatbot inquiry alerts, and the first waitlist message after a cancel/reschedule (the entry is
+marked `NOTIFIED` in the request; a failed send puts it back to `WAITING` for `WaitlistQueueWorker`).
+Still in the request: login/verification codes, platform-admin emails (their result is shown),
+cron reminders and the waitlist worker's own sends. Jobs queued at shutdown are lost.
+Tests run jobs inline (`Notifications__Inline=true`, set by `TestWebApplicationFactory`, whose
+`inlineNotifications: false` runs the real queue -- `BackgroundNotificationTests`, non-parallel).
+
 ### No overlapping bookings (advisory lock)
 Every booking/reschedule write (public, customer, owner) saves through
 `AvailabilityService.TrySaveOrDetectConflict`, which on Postgres takes

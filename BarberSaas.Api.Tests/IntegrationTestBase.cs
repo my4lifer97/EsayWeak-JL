@@ -25,9 +25,9 @@ public abstract class IntegrationTestBase : IDisposable
 
     protected IntegrationTestBase() : this(configureCardcom: false) { }
 
-    protected IntegrationTestBase(bool configureCardcom, bool configureOpenAi = false)
+    protected IntegrationTestBase(bool configureCardcom, bool configureOpenAi = false, bool inlineNotifications = true)
     {
-        Factory = new TestWebApplicationFactory(configureCardcom, configureOpenAi);
+        Factory = new TestWebApplicationFactory(configureCardcom, configureOpenAi, inlineNotifications);
         Client = Factory.CreateClient();
     }
 

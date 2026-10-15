@@ -17,8 +17,7 @@ public class WhatsAppController(
     AppointmentCancellationService cancellationService,
     WhatsAppBookingTokenService bookingTokens,
     IOpenAiChatClient openAi,
-    IWhatsAppSender whatsAppSender,
-    IOwnerEmailSender ownerEmailSender,
+    NotificationOutbox notifications,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
     // Literal commands, not natural language -- deliberately simple so a business can explain them
@@ -281,7 +280,7 @@ public class WhatsAppController(
             await db.SaveChangesAsync();
 
             if (shouldNotify)
-                await SendInquiryNotificationsAsync(business, fromPhone, profileName, incomingMsg);
+                QueueInquiryNotifications(business, fromPhone, profileName, incomingMsg);
 
             return (true, I18nService.T(lang, "whatsapp.inquiryAck"));
         }
@@ -354,35 +353,18 @@ public class WhatsAppController(
     // whatever number the owner registered for inquiries -- a different recipient than the
     // customer, not a reply in the same thread. Email goes through the platform's own Gmail
     // (IOwnerEmailSender), like every other email to a business owner -- not the Brevo chain.
-    private async Task SendInquiryNotificationsAsync(Business business, string fromPhone, string profileName, string message)
+    // Both go out after the reply is returned (NotificationQueue).
+    private void QueueInquiryNotifications(Business business, string fromPhone, string profileName, string message)
     {
         var fromLabel = string.IsNullOrWhiteSpace(profileName) ? fromPhone : $"{profileName} ({fromPhone})";
 
         if (business.InquiryNotifyViaWhatsApp && !string.IsNullOrWhiteSpace(business.InquiryWhatsAppNumber))
-        {
-            try
-            {
-                await whatsAppSender.SendAsync(business, business.InquiryWhatsAppNumber,
-                    $"📩 New inquiry from {fromLabel}:\n\n{message}");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to send WhatsApp inquiry notification for business {BusinessId}", business.Id);
-            }
-        }
+            notifications.AddWhatsApp(business, business.InquiryWhatsAppNumber,
+                $"📩 New inquiry from {fromLabel}:\n\n{message}", $"WhatsApp inquiry notification for business {business.Id}");
 
         if (business.InquiryNotifyViaEmail && !string.IsNullOrWhiteSpace(business.InquiryEmail))
-        {
-            try
-            {
-                await ownerEmailSender.SendAsync(business.InquiryEmail, $"New customer inquiry — {business.Name}",
-                    $"From: {fromLabel}\n\nMessage:\n{message}");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to send email inquiry notification for business {BusinessId}", business.Id);
-            }
-        }
+            notifications.AddOwnerEmail(business.InquiryEmail, $"New customer inquiry — {business.Name}",
+                $"From: {fromLabel}\n\nMessage:\n{message}", $"email inquiry notification for business {business.Id}");
     }
 
     // Everything from cancel/reschedule keyword matching through numbered service-selection

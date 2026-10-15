@@ -43,7 +43,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // paths by default, while tests that need the real flow can request the relevant config via
     // ConfigureAppConfiguration below -- read lazily per-request (unlike Jwt:Secret), so this
     // timing is safe (see the ConfigureAppConfiguration note further down).
-    public TestWebApplicationFactory(bool configureCardcom = false, bool configureOpenAi = false)
+    // inlineNotifications: false runs the real background NotificationQueue (BackgroundNotificationTests).
+    public TestWebApplicationFactory(bool configureCardcom = false, bool configureOpenAi = false, bool inlineNotifications = true)
     {
         _configureCardcom = configureCardcom;
         _configureOpenAi = configureOpenAi;
@@ -72,6 +73,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("AppUrl", "http://localhost:5173");
         // No background WaitlistQueueWorker in tests -- see Program.cs.
         Environment.SetEnvironmentVariable("Waitlist__WorkerEnabled", "false");
+        // Background sends run right away, so a test sees them as soon as the response arrives.
+        Environment.SetEnvironmentVariable("Notifications__Inline", inlineNotifications ? "true" : "false");
         Environment.SetEnvironmentVariable("OwnerEmailHealth__WorkerEnabled", "false");
 
         // Force DevEmailSender regardless of the developer's local `dotnet user-secrets` store —

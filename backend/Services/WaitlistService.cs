@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BarberSaas.Api.Services;
 
-public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IConfiguration config, ILogger<WaitlistService> logger)
+public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, NotificationOutbox notifications, IConfiguration config, ILogger<WaitlistService> logger)
 {
     // Waitlist entries are offered the freed slot one at a time, in the order they joined
     // (CreatedAt): the first gets a message right away, and if the slot is still free
@@ -19,13 +19,17 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
     // is linked for this business (same permissive skip CronController.SendReminders already
     // uses). Does not call SaveChangesAsync -- the caller's own save persists the appointment
     // status change and this entry's NOTIFIED flip together.
+    // Called inside a request (an owner/customer cancel or reschedule), so the message itself goes
+    // out after the response (NotificationQueue): the entry is marked NOTIFIED now, and a failed
+    // send puts it back to WAITING for WaitlistQueueWorker to retry.
     public Task<(int Sent, int Failed)> NotifyForCancellation(Appointment cancelledAppointment) =>
-        NotifyNextInQueue(cancelledAppointment);
+        NotifyNextInQueue(cancelledAppointment, inBackground: true);
 
     // Sends to the earliest-joined still-WAITING entry. If that send fails (bridge outage, bad
     // number) it moves on to the next one in the same pass rather than stalling the whole queue
     // on one customer -- the failed entry stays WAITING and gets picked up again on a later turn.
-    private async Task<(int Sent, int Failed)> NotifyNextInQueue(Appointment cancelledAppointment)
+    // In the background (inBackground) the entry is only marked; see NotifyForCancellation.
+    private async Task<(int Sent, int Failed)> NotifyNextInQueue(Appointment cancelledAppointment, bool inBackground = false)
     {
         var business = await db.Businesses.FindAsync(cancelledAppointment.BusinessId);
         if (business is null || !business.WaitlistEnabled) return (0, 0);
@@ -79,6 +83,14 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
                     ["url"] = deepLink,
                 });
 
+                if (inBackground)
+                {
+                    entry.Status = WaitlistEntryStatus.NOTIFIED;
+                    entry.NotifiedAt = DateTime.UtcNow;
+                    QueueSend(business, entry, message, cancelledAppointment.Id);
+                    return (1, failed);
+                }
+
                 await whatsAppSender.SendAsync(business, entry.CustomerAccount.Phone, message);
 
                 entry.Status = WaitlistEntryStatus.NOTIFIED;
@@ -93,6 +105,35 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, IC
             }
         }
         return (0, failed);
+    }
+
+    private void QueueSend(Business business, WaitlistEntry entry, string message, string appointmentId)
+    {
+        var entryId = entry.Id;
+        var notifiedAt = entry.NotifiedAt;
+        var phone = entry.CustomerAccount.Phone;
+        notifications.Add($"waitlist notification for appointment {appointmentId} to waitlist entry {entryId}", async sp =>
+        {
+            try
+            {
+                await sp.GetRequiredService<IWhatsAppSender>().SendAsync(business, phone, message);
+            }
+            catch
+            {
+                // Not sent after all -- back in line, unless something else has moved it on since.
+                var scopedDb = sp.GetRequiredService<AppDbContext>();
+                var row = await scopedDb.WaitlistEntries.FindAsync(entryId);
+                // (Postgres keeps microseconds, so compare with a tolerance.)
+                if (row is not null && row.Status == WaitlistEntryStatus.NOTIFIED
+                    && row.NotifiedAt is { } at && notifiedAt is { } sent && Math.Abs((at - sent).TotalMilliseconds) < 1)
+                {
+                    row.Status = WaitlistEntryStatus.WAITING;
+                    row.NotifiedAt = null;
+                    await scopedDb.SaveChangesAsync();
+                }
+                throw;
+            }
+        });
     }
 
     // Moves every open queue forward one step where it's due: a cancelled appointment that still

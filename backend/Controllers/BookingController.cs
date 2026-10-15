@@ -14,7 +14,7 @@ namespace BarberSaas.Api.Controllers;
 public class BookingController(
     AppDbContext db, AvailabilityService availability, FollowService followService, IWebHostEnvironment env,
     WaitlistService waitlist, AppointmentCancellationService cancellationService,
-    IWhatsAppSender whatsAppSender, ILogger<BookingController> logger) : ControllerBase
+    NotificationOutbox notifications) : ControllerBase
 {
     [HttpGet("info")]
     public async Task<IActionResult> GetBusinessInfo(string slug)
@@ -270,14 +270,7 @@ public class BookingController(
                 if (!finalMessage.Contains("{date}") && !finalMessage.Contains("{time}"))
                     message += $"\n\n📅 {req.Date} · {req.StartTime} · {itemDisplayName}";
             }
-            try
-            {
-                await whatsAppSender.SendAsync(business, phone, message);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to send WhatsApp booking confirmation for appointment {AppointmentId}", appointment.Id);
-            }
+            notifications.AddWhatsApp(business, phone, message, $"booking confirmation for appointment {appointment.Id}");
         }
 
         return StatusCode(201, new BookAppointmentResponse(appointment.Id, appointment.CancelToken));

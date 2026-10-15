@@ -17,7 +17,7 @@ namespace BarberSaas.Api.Controllers;
 public class AdminController(
     AppDbContext db, IWebHostEnvironment env, AvailabilityService availability,
     WaitlistService waitlist, AppointmentCancellationService cancellationService,
-    IWhatsAppSender whatsAppSender, ILogger<AdminController> logger, SchedulePresetService schedulePresets) : ControllerBase
+    NotificationOutbox notifications, SchedulePresetService schedulePresets) : ControllerBase
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -944,7 +944,7 @@ public class AdminController(
 
         // Best-effort, same as the public booking flow -- an appointment the owner books directly
         // should still confirm on WhatsApp for a business with a linked number, not just ones the
-        // customer books themselves.
+        // customer books themselves. Sent after the response (NotificationQueue).
         if (business.WhatsAppNumber is not null)
         {
             var lang = business.Language.ToString();
@@ -957,15 +957,8 @@ public class AdminController(
                 ["date"] = req.Date,
                 ["time"] = req.StartTime,
             });
-            try
-            {
-                await whatsAppSender.SendAsync(business, customer.Phone, message);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to send WhatsApp booking confirmation for appointment {AppointmentId} (business {BusinessId})",
-                    appointment.Id, BusinessId);
-            }
+            notifications.AddWhatsApp(business, customer.Phone, message,
+                $"booking confirmation for appointment {appointment.Id} (business {BusinessId})");
         }
 
         return StatusCode(201, new DashboardAppointmentDto(

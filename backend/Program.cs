@@ -15,6 +15,7 @@ builder.Services.AddControllers(opt =>
     opt.Filters.Add<RequirePasswordChangeFilter>();
     opt.Filters.Add<BlockDisabledBusinessFilter>();
     opt.Filters.Add<ValidateInputFilter>();
+    opt.Filters.Add<DispatchNotificationsFilter>();
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
@@ -84,6 +85,11 @@ builder.Services.AddScoped<WaitlistService>();
 if (builder.Configuration.GetValue("Waitlist:WorkerEnabled", true))
     builder.Services.AddHostedService<WaitlistQueueWorker>();
 builder.Services.AddScoped<AppointmentCancellationService>();
+// Best-effort WhatsApp/email sends run after the request instead of inside it (see NotificationQueue).
+builder.Services.AddSingleton<NotificationQueue>();
+builder.Services.AddScoped<NotificationOutbox>();
+if (!builder.Configuration.GetValue("Notifications:Inline", false))
+    builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
 builder.Services.AddScoped<WhatsAppLinkingService>();
 // Email delivery, in order of precedence: Brevo (Brevo:ApiKey set -- the only option that can

@@ -8,7 +8,7 @@ namespace BarberSaas.Api.Services;
 // hook is written once instead of duplicated at every call site. Caller still owns
 // SaveChangesAsync -- keeps this composable with bulk-cancel loops (e.g. deleting a recurring
 // series cancels every future occurrence in one save after the loop).
-public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, IWhatsAppSender whatsAppSender, IOwnerEmailSender ownerEmailSender, IConfiguration config, ILogger<AppointmentCancellationService> logger)
+public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, NotificationOutbox notifications, IConfiguration config)
 {
     public async Task CancelAsync(Appointment appointment, bool notifyWaitlist)
     {
@@ -72,40 +72,17 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             ["url"] = $"{appUrl}/admin/appointments",
         });
 
-        // Best-effort on each channel, like every other notification in this app -- the
-        // appointment must stay frozen (PendingCancellationApproval already set above) regardless
-        // of whether the owner could actually be reached, or a bridge/email outage would silently
-        // drop the customer's cancellation request entirely (500, nothing persisted). Both run at
-        // once so the customer waits for the slower one, not the sum.
-        async Task SendWhatsApp()
-        {
-            try
-            {
-                await whatsAppSender.SendAsync(business, ownerWhatsApp!, message);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to WhatsApp owner of business {BusinessId} about a pending cancellation approval for appointment {AppointmentId}",
-                    business.Id, appointment.Id);
-            }
-        }
-
-        // Through the platform's own Gmail (IOwnerEmailSender) -- the same sender as the owner
-        // credentials email from the platform-admin panel, not the Brevo system-mail chain.
-        async Task SendEmail()
-        {
-            try
-            {
-                var subject = I18nService.T(lang, "email.ownerCancellationApprovalSubject", new() { ["businessName"] = business.Name });
-                await ownerEmailSender.SendAsync(ownerEmail!, subject, message);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to email owner of business {BusinessId} about a pending cancellation approval for appointment {AppointmentId}",
-                    business.Id, appointment.Id);
-            }
-        }
-
-        await Task.WhenAll(viaWhatsApp ? SendWhatsApp() : Task.CompletedTask, viaEmail ? SendEmail() : Task.CompletedTask);
+        // Best-effort on each channel, sent after the response (NotificationQueue) -- the
+        // appointment stays frozen (PendingCancellationApproval already set above) whether or not
+        // the owner could actually be reached. Email goes through the platform's own Gmail
+        // (IOwnerEmailSender), the same sender as the owner credentials email from the
+        // platform-admin panel, not the Brevo system-mail chain.
+        if (viaWhatsApp)
+            notifications.AddWhatsApp(business, ownerWhatsApp!, message,
+                $"cancellation-approval WhatsApp to the owner of business {business.Id} for appointment {appointment.Id}");
+        if (viaEmail)
+            notifications.AddOwnerEmail(ownerEmail!,
+                I18nService.T(lang, "email.ownerCancellationApprovalSubject", new() { ["businessName"] = business.Name }), message,
+                $"cancellation-approval email to the owner of business {business.Id} for appointment {appointment.Id}");
     }
 }

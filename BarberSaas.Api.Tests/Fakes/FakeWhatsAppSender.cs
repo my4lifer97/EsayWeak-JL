@@ -15,12 +15,15 @@ public class FakeWhatsAppSender : IWhatsAppSender
     // of throwing an unhandled exception up to the controller.
     public bool ShouldFail { get; set; } = false;
 
-    public Task SendAsync(Business business, string toPhone, string message)
+    // A slow bridge, for checking a request doesn't wait on the send (BackgroundNotificationTests).
+    public TimeSpan Delay { get; set; } = TimeSpan.Zero;
+
+    public async Task SendAsync(Business business, string toPhone, string message)
     {
+        if (Delay > TimeSpan.Zero) await Task.Delay(Delay);
         if (ShouldFail)
             throw new HttpRequestException("Response status code does not indicate success: 401 (Unauthorized).");
 
         Sent.Add(new SentMessage(business.Id, toPhone, message));
-        return Task.CompletedTask;
     }
 }
