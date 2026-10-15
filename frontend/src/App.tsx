@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Route, Navigate, Outlet } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './lib/theme'
 import { AuthProvider } from './lib/auth'
@@ -40,6 +40,64 @@ import PlatformAdminRequestsPage from './pages/platform-admin/RequestsPage'
 
 const queryClient = new QueryClient()
 
+// A data router (not <BrowserRouter>) so pages can use useBlocker -- the admin forms ask before
+// leaving with unsaved edits (components/admin/useUnsavedChangesGuard).
+const router = createBrowserRouter(createRoutesFromElements(
+  <Route element={<><ImpersonationBanner /><Outlet /></>}>
+    <Route path="/" element={<HomePage />} />
+    <Route path="/admin/login" element={<LoginPage />} />
+    <Route path="/admin/register" element={<RegisterPage />} />
+    <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
+    <Route path="/request-business-account" element={<RequestBusinessAccountPage />} />
+    <Route element={<ProtectedRoute />}>
+      {/* Outside AdminLayout deliberately -- a business with a pending temp password
+          would just see nav links to pages that all 403 until this is done. */}
+      <Route path="/admin/set-password" element={<SetPasswordPage />} />
+      <Route element={<AdminLayout />}>
+        <Route path="/admin/dashboard" element={<DashboardPage />} />
+        <Route path="/admin/appointments" element={<AppointmentsPage />} />
+        <Route path="/admin/recurring" element={<RecurringAppointmentsPage />} />
+        <Route path="/admin/schedule" element={<SchedulePage />} />
+        <Route path="/admin/services" element={<ServicesPage />} />
+        <Route path="/admin/reviews" element={<ReviewsPage />} />
+        <Route path="/admin/chatbot" element={<ChatbotSettingsPage />} />
+        <Route path="/admin/settings" element={<SettingsPage />} />
+      </Route>
+    </Route>
+    {/* Second, parallel entry point alongside the WhatsApp booking-link flow --
+        mainly for a future native mobile app, which can't rely on the customer
+        having already messaged the business on WhatsApp. */}
+    <Route path="/login" element={<CustomerLoginPage />} />
+    <Route path="/browse" element={<BrowseBusinessesPage />} />
+    {/* Public, read-only storefront — a logged-out visitor who finds a business via
+        the directory can view it; booking still needs the WhatsApp-link session. */}
+    <Route path="/:slug" element={<BusinessPage />} />
+    <Route element={<CustomerProtectedRoute />}>
+      <Route path="/account/bookings" element={<MyBookingsPage />} />
+      <Route path="/:slug/book" element={<BookPage />} />
+    </Route>
+    {/* Magic-link view stays public and token-secured — opened directly from a
+        WhatsApp/SMS reminder, must not require login. */}
+    <Route path="/:slug/appointments/:id" element={<AppointmentPage />} />
+    {/* WhatsApp booking-link landing point — establishes the customer session itself
+        (see WhatsAppLandingPage), so it's public and outside CustomerProtectedRoute. */}
+    <Route path="/:slug/w/:token" element={<WhatsAppLandingPage />} />
+    {/* Shareable link a platform admin hands off to a business owner so they can scan
+        their own WhatsApp-link QR code themselves -- see WhatsAppLinkController. */}
+    <Route path="/wa-link/:token" element={<WhatsAppLinkPage />} />
+    {/* Deliberately not linked from any public nav -- internal tool only. */}
+    <Route path="/platform-admin/login" element={<PlatformAdminLoginPage />} />
+    {/* Easy to type the words the other way round; it used to load as a business storefront and 404. */}
+    <Route path="/admin-platform/*" element={<Navigate to="/platform-admin" replace />} />
+    <Route element={<PlatformAdminProtectedRoute />}>
+      <Route path="/platform-admin" element={<PlatformAdminDashboardPage />} />
+      <Route path="/platform-admin/businesses/:id" element={<PlatformAdminBusinessDetailPage />} />
+      <Route path="/platform-admin/customers/:id" element={<PlatformAdminCustomerDetailPage />} />
+      <Route path="/platform-admin/requests" element={<PlatformAdminRequestsPage />} />
+    </Route>
+  </Route>
+))
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -47,62 +105,7 @@ export default function App() {
       <AuthProvider>
         <CustomerAuthProvider>
           <PlatformAdminAuthProvider>
-            <BrowserRouter>
-              <ImpersonationBanner />
-              <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/admin/login" element={<LoginPage />} />
-                <Route path="/admin/register" element={<RegisterPage />} />
-                <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
-                <Route path="/request-business-account" element={<RequestBusinessAccountPage />} />
-                <Route element={<ProtectedRoute />}>
-                  {/* Outside AdminLayout deliberately -- a business with a pending temp password
-                      would just see nav links to pages that all 403 until this is done. */}
-                  <Route path="/admin/set-password" element={<SetPasswordPage />} />
-                  <Route element={<AdminLayout />}>
-                    <Route path="/admin/dashboard" element={<DashboardPage />} />
-                    <Route path="/admin/appointments" element={<AppointmentsPage />} />
-                    <Route path="/admin/recurring" element={<RecurringAppointmentsPage />} />
-                    <Route path="/admin/schedule" element={<SchedulePage />} />
-                    <Route path="/admin/services" element={<ServicesPage />} />
-                    <Route path="/admin/reviews" element={<ReviewsPage />} />
-                    <Route path="/admin/chatbot" element={<ChatbotSettingsPage />} />
-                    <Route path="/admin/settings" element={<SettingsPage />} />
-                  </Route>
-                </Route>
-                {/* Second, parallel entry point alongside the WhatsApp booking-link flow --
-                    mainly for a future native mobile app, which can't rely on the customer
-                    having already messaged the business on WhatsApp. */}
-                <Route path="/login" element={<CustomerLoginPage />} />
-                <Route path="/browse" element={<BrowseBusinessesPage />} />
-                {/* Public, read-only storefront — a logged-out visitor who finds a business via
-                    the directory can view it; booking still needs the WhatsApp-link session. */}
-                <Route path="/:slug" element={<BusinessPage />} />
-                <Route element={<CustomerProtectedRoute />}>
-                  <Route path="/account/bookings" element={<MyBookingsPage />} />
-                  <Route path="/:slug/book" element={<BookPage />} />
-                </Route>
-                {/* Magic-link view stays public and token-secured — opened directly from a
-                    WhatsApp/SMS reminder, must not require login. */}
-                <Route path="/:slug/appointments/:id" element={<AppointmentPage />} />
-                {/* WhatsApp booking-link landing point — establishes the customer session itself
-                    (see WhatsAppLandingPage), so it's public and outside CustomerProtectedRoute. */}
-                <Route path="/:slug/w/:token" element={<WhatsAppLandingPage />} />
-                {/* Shareable link a platform admin hands off to a business owner so they can scan
-                    their own WhatsApp-link QR code themselves -- see WhatsAppLinkController. */}
-                <Route path="/wa-link/:token" element={<WhatsAppLinkPage />} />
-                {/* Deliberately not linked from any public nav -- internal tool only. */}
-                <Route path="/platform-admin/login" element={<PlatformAdminLoginPage />} />
-                {/* Easy to type the words the other way round; it used to load as a business storefront and 404. */}
-                <Route path="/admin-platform/*" element={<Navigate to="/platform-admin" replace />} />
-                <Route element={<PlatformAdminProtectedRoute />}>
-                  <Route path="/platform-admin" element={<PlatformAdminDashboardPage />} />
-                  <Route path="/platform-admin/businesses/:id" element={<PlatformAdminBusinessDetailPage />} />
-                  <Route path="/platform-admin/customers/:id" element={<PlatformAdminCustomerDetailPage />} />
-                  <Route path="/platform-admin/requests" element={<PlatformAdminRequestsPage />} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
+            <RouterProvider router={router} />
           </PlatformAdminAuthProvider>
         </CustomerAuthProvider>
       </AuthProvider>

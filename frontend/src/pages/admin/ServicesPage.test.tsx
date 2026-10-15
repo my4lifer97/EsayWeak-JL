@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createMemoryRouter, RouterProvider, Link } from 'react-router-dom'
 import ServicesPage from './ServicesPage'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
@@ -19,9 +20,14 @@ const services = [
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // A data router, since the page uses useBlocker (unsaved-changes guard).
+  const router = createMemoryRouter([
+    { path: '/admin/services', element: <><Link to="/admin/dashboard">Dashboard</Link><ServicesPage /></> },
+    { path: '/admin/dashboard', element: <div>Dashboard page</div> },
+  ], { initialEntries: ['/admin/services'] })
   return render(
     <QueryClientProvider client={queryClient}>
-      <ServicesPage />
+      <RouterProvider router={router} />
     </QueryClientProvider>
   )
 }
@@ -107,5 +113,53 @@ describe('ServicesPage', () => {
     await userEvent.click(screen.getByText('No, keep it'))
 
     expect(api.delete).not.toHaveBeenCalled()
+  })
+
+  it('asks before closing the form with unsaved edits', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: services })
+    renderPage()
+    await screen.findByText('Haircut')
+
+    await userEvent.click(screen.getByText('Edit'))
+    await userEvent.type(screen.getByLabelText('Name (English)'), ' deluxe')
+    await userEvent.click(screen.getByLabelText('Close'))
+
+    expect(screen.getByText('You have unsaved changes. Close without saving?')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('Keep editing'))
+    expect((screen.getByLabelText('Name (English)') as HTMLInputElement).value).toBe('Haircut deluxe')
+
+    await userEvent.click(screen.getByLabelText('Close'))
+    await userEvent.click(screen.getByText('Discard changes'))
+    expect(screen.queryByLabelText('Name (English)')).not.toBeInTheDocument()
+  })
+
+  it('closes an unchanged form without asking', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: services })
+    renderPage()
+    await screen.findByText('Haircut')
+
+    await userEvent.click(screen.getByText('Edit'))
+    await userEvent.click(screen.getByLabelText('Close'))
+
+    expect(screen.queryByLabelText('Name (English)')).not.toBeInTheDocument()
+    expect(screen.queryByText('You have unsaved changes. Close without saving?')).not.toBeInTheDocument()
+  })
+
+  it('asks before navigating away with unsaved edits', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: services })
+    renderPage()
+    await screen.findByText('Haircut')
+
+    await userEvent.click(screen.getByText('Edit'))
+    await userEvent.type(screen.getByLabelText('Price'), '5')
+    await userEvent.click(screen.getByText('Dashboard'))
+
+    expect(await screen.findByText('You have unsaved changes. Leave without saving?')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('Keep editing'))
+    expect(screen.queryByText('Dashboard page')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('Dashboard'))
+    await userEvent.click(await screen.findByText('Leave without saving'))
+    expect(await screen.findByText('Dashboard page')).toBeInTheDocument()
   })
 })

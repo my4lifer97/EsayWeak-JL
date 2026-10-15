@@ -8,6 +8,7 @@ import { t } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import ThemeToggle from '../../components/ThemeToggle'
 import { useTheme } from '../../lib/theme'
+import { useUnsavedChangesGuard } from '../../components/admin/useUnsavedChangesGuard'
 
 type BusinessSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
@@ -27,6 +28,60 @@ type BusinessSettings = {
   isListed: boolean
 }
 
+type FormValues = {
+  form: {
+    name: string; phone: string; description: string; language: 'EN' | 'AR' | 'HE'
+    maxBookingsPerDay: string; maxBookingsPerWeek: string
+    city: string; addressLine: string; mapUrl: string
+  }
+  waitlistEnabled: boolean
+  requireApprovalOnCustomerCancel: boolean
+  cancelApprovalNotifyViaWhatsApp: boolean
+  cancelApprovalWhatsAppNumber: string
+  cancelApprovalNotifyViaEmail: boolean
+  cancelApprovalEmail: string
+  isListed: boolean
+}
+
+function valuesFrom(business: BusinessSettings): FormValues {
+  return {
+    form: {
+      name: business.name, phone: business.phone ?? '', description: business.description ?? '',
+      language: business.language,
+      maxBookingsPerDay: business.maxBookingsPerDay?.toString() ?? '',
+      maxBookingsPerWeek: business.maxBookingsPerWeek?.toString() ?? '',
+      city: business.city ?? '', addressLine: business.addressLine ?? '', mapUrl: business.mapUrl ?? '',
+    },
+    waitlistEnabled: business.waitlistEnabled,
+    requireApprovalOnCustomerCancel: business.requireApprovalOnCustomerCancel,
+    cancelApprovalNotifyViaWhatsApp: business.cancelApprovalNotifyViaWhatsApp,
+    cancelApprovalWhatsAppNumber: business.cancelApprovalWhatsAppNumber ?? '',
+    cancelApprovalNotifyViaEmail: business.cancelApprovalNotifyViaEmail,
+    cancelApprovalEmail: business.cancelApprovalEmail ?? '',
+    isListed: business.isListed,
+  }
+}
+
+// What Save sends -- also compared against the server's values to tell whether there are unsaved edits.
+function toPayload(v: FormValues): Record<string, string | number | boolean | null | undefined> {
+  return {
+    name: v.form.name, phone: v.form.phone, description: v.form.description,
+    language: v.form.language,
+    maxBookingsPerDay: v.form.maxBookingsPerDay ? Number(v.form.maxBookingsPerDay) : null,
+    maxBookingsPerWeek: v.form.maxBookingsPerWeek ? Number(v.form.maxBookingsPerWeek) : null,
+    waitlistEnabled: v.waitlistEnabled,
+    requireApprovalOnCustomerCancel: v.requireApprovalOnCustomerCancel,
+    cancelApprovalNotifyViaWhatsApp: v.cancelApprovalNotifyViaWhatsApp,
+    cancelApprovalWhatsAppNumber: v.cancelApprovalWhatsAppNumber || null,
+    cancelApprovalNotifyViaEmail: v.cancelApprovalNotifyViaEmail,
+    cancelApprovalEmail: v.cancelApprovalEmail || null,
+    city: v.form.city || null,
+    addressLine: v.form.addressLine || null,
+    mapUrl: v.form.mapUrl || null,
+    isListed: v.isListed,
+  }
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const { language: lang, setLang, updateUserName } = useAuth()
@@ -36,8 +91,8 @@ export default function SettingsPage() {
     queryFn: () => api.get('/admin/settings').then((r) => r.data),
   })
 
-  const [form, setForm] = useState({
-    name: '', phone: '', description: '', language: 'EN' as 'EN' | 'AR' | 'HE',
+  const [form, setForm] = useState<FormValues['form']>({
+    name: '', phone: '', description: '', language: 'EN',
     maxBookingsPerDay: '', maxBookingsPerWeek: '',
     city: '', addressLine: '', mapUrl: '',
   })
@@ -85,44 +140,37 @@ export default function SettingsPage() {
   }, [])
 
   if (business && initializedFor !== business.slug) {
-    setForm({
-      name: business.name, phone: business.phone ?? '', description: business.description ?? '',
-      language: business.language,
-      maxBookingsPerDay: business.maxBookingsPerDay?.toString() ?? '',
-      maxBookingsPerWeek: business.maxBookingsPerWeek?.toString() ?? '',
-      city: business.city ?? '', addressLine: business.addressLine ?? '', mapUrl: business.mapUrl ?? '',
-    })
-    setWaitlistEnabled(business.waitlistEnabled)
-    setRequireApprovalOnCustomerCancel(business.requireApprovalOnCustomerCancel)
-    setCancelApprovalNotifyViaWhatsApp(business.cancelApprovalNotifyViaWhatsApp)
-    setCancelApprovalNotifyViaEmail(business.cancelApprovalNotifyViaEmail)
-    setCancelApprovalWhatsAppNumber(business.cancelApprovalWhatsAppNumber ?? '')
-    setCancelApprovalEmail(business.cancelApprovalEmail ?? '')
-    setIsListed(business.isListed)
+    const v = valuesFrom(business)
+    setForm(v.form)
+    setWaitlistEnabled(v.waitlistEnabled)
+    setRequireApprovalOnCustomerCancel(v.requireApprovalOnCustomerCancel)
+    setCancelApprovalNotifyViaWhatsApp(v.cancelApprovalNotifyViaWhatsApp)
+    setCancelApprovalNotifyViaEmail(v.cancelApprovalNotifyViaEmail)
+    setCancelApprovalWhatsAppNumber(v.cancelApprovalWhatsAppNumber)
+    setCancelApprovalEmail(v.cancelApprovalEmail)
+    setIsListed(v.isListed)
     setLang(business.language)
     setInitializedFor(business.slug)
   }
 
+  const payload = toPayload({
+    form, waitlistEnabled, requireApprovalOnCustomerCancel,
+    cancelApprovalNotifyViaWhatsApp, cancelApprovalWhatsAppNumber,
+    cancelApprovalNotifyViaEmail, cancelApprovalEmail, isListed,
+  })
+  // Compared against the last save too, so leaving right after Save doesn't ask while the
+  // settings refetch is still in flight. A picked-but-not-uploaded logo counts as unsaved.
+  const payloadJson = JSON.stringify(payload)
+  const [lastSavedJson, setLastSavedJson] = useState<string | null>(null)
+  const dirty = !!business && initializedFor === business.slug
+    && ((payloadJson !== JSON.stringify(toPayload(valuesFrom(business))) && payloadJson !== lastSavedJson) || logoFile !== null)
+  const unsavedDialog = useUnsavedChangesGuard(dirty, lang)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError('')
-    const payload: Record<string, string | number | boolean | null | undefined> = {
-      name: form.name, phone: form.phone, description: form.description,
-      language: form.language,
-      maxBookingsPerDay: form.maxBookingsPerDay ? Number(form.maxBookingsPerDay) : null,
-      maxBookingsPerWeek: form.maxBookingsPerWeek ? Number(form.maxBookingsPerWeek) : null,
-      waitlistEnabled,
-      requireApprovalOnCustomerCancel,
-      cancelApprovalNotifyViaWhatsApp,
-      cancelApprovalWhatsAppNumber: cancelApprovalWhatsAppNumber || null,
-      cancelApprovalNotifyViaEmail,
-      cancelApprovalEmail: cancelApprovalEmail || null,
-      city: form.city || null,
-      addressLine: form.addressLine || null,
-      mapUrl: form.mapUrl || null,
-      isListed,
-    }
     try {
       await api.patch('/admin/settings', payload)
+      setLastSavedJson(payloadJson)
       setLang(form.language)
       updateUserName(form.name)
       setSaved(true); setTimeout(() => setSaved(false), 2000)
@@ -175,6 +223,7 @@ export default function SettingsPage() {
 
   return (
     <div>
+      {unsavedDialog}
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'settings')}</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
         {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">{error}</div>}

@@ -461,6 +461,12 @@ silently. Admin pages use the same idea as a dialog: `components/ConfirmDialog.t
 `useConfirmDialog(lang)` returns an async `ask(message, { yesLabel, noLabel })` plus the element to
 render — no `window.confirm()` anywhere in the frontend.
 
+**Unsaved edits**: `components/admin/useUnsavedChangesGuard(dirty, lang)` asks before leaving a page
+with unsaved changes (in-app navigation via `useBlocker`, reload/close via `beforeunload`; signing out
+is never blocked). Used by Settings, Chatbot settings and the service form (which also asks before
+closing its modal). `useBlocker` needs a data router, so `App.tsx` uses `createBrowserRouter`, not
+`<BrowserRouter>`, and component tests of these pages render through `createMemoryRouter` + `RouterProvider`.
+
 ### Reviews
 `Models/Review.cs` (own file) — `Business` + `CustomerAccount` + `Appointment` FKs, `Rating` 1–5,
 `Comment?`, `OwnerReply?`/`OwnerRepliedAt?`, `IsHidden` (platform moderation). Unique index

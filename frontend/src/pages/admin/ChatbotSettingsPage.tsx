@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
+import { useUnsavedChangesGuard } from '../../components/admin/useUnsavedChangesGuard'
 
 type ChatbotSettings = {
   slug: string
@@ -59,6 +60,61 @@ const MESSAGE_TYPES: {
   },
 ]
 
+type ChatbotValues = {
+  form: ChatbotForm
+  chatbotEnabled: boolean
+  chatbotDefaultLanguage: '' | 'EN' | 'AR' | 'HE'
+  chatbotInquiryEnabled: boolean
+  inquiryNotifyViaWhatsApp: boolean
+  inquiryNotifyViaEmail: boolean
+}
+
+function valuesFrom(business: ChatbotSettings): ChatbotValues {
+  return {
+    form: {
+      chatbotWelcomeMessageEn: business.chatbotWelcomeMessageEn ?? '',
+      chatbotWelcomeMessageAr: business.chatbotWelcomeMessageAr ?? '',
+      chatbotWelcomeMessageHe: business.chatbotWelcomeMessageHe ?? '',
+      chatbotConfirmationMessageEn: business.chatbotConfirmationMessageEn ?? '',
+      chatbotConfirmationMessageAr: business.chatbotConfirmationMessageAr ?? '',
+      chatbotConfirmationMessageHe: business.chatbotConfirmationMessageHe ?? '',
+      chatbotFinalMessageEn: business.chatbotFinalMessageEn ?? '',
+      chatbotFinalMessageAr: business.chatbotFinalMessageAr ?? '',
+      chatbotFinalMessageHe: business.chatbotFinalMessageHe ?? '',
+      inquiryWhatsAppNumber: business.inquiryWhatsAppNumber ?? '',
+      inquiryEmail: business.inquiryEmail ?? '',
+    },
+    chatbotEnabled: business.chatbotEnabled,
+    chatbotDefaultLanguage: (business.chatbotDefaultLanguage as 'EN' | 'AR' | 'HE' | null) ?? '',
+    chatbotInquiryEnabled: business.chatbotInquiryEnabled,
+    inquiryNotifyViaWhatsApp: business.inquiryNotifyViaWhatsApp,
+    inquiryNotifyViaEmail: business.inquiryNotifyViaEmail,
+  }
+}
+
+// What Save sends -- also compared against the server's values to tell whether there are unsaved edits.
+function toPayload(v: ChatbotValues) {
+  const { form } = v
+  return {
+    chatbotEnabled: v.chatbotEnabled,
+    chatbotWelcomeMessageEn: form.chatbotWelcomeMessageEn || null,
+    chatbotWelcomeMessageAr: form.chatbotWelcomeMessageAr || null,
+    chatbotWelcomeMessageHe: form.chatbotWelcomeMessageHe || null,
+    chatbotConfirmationMessageEn: form.chatbotConfirmationMessageEn || null,
+    chatbotConfirmationMessageAr: form.chatbotConfirmationMessageAr || null,
+    chatbotConfirmationMessageHe: form.chatbotConfirmationMessageHe || null,
+    chatbotFinalMessageEn: form.chatbotFinalMessageEn || null,
+    chatbotFinalMessageAr: form.chatbotFinalMessageAr || null,
+    chatbotFinalMessageHe: form.chatbotFinalMessageHe || null,
+    chatbotDefaultLanguage: v.chatbotDefaultLanguage || null,
+    chatbotInquiryEnabled: v.chatbotInquiryEnabled,
+    inquiryNotifyViaWhatsApp: v.inquiryNotifyViaWhatsApp,
+    inquiryWhatsAppNumber: form.inquiryWhatsAppNumber || null,
+    inquiryNotifyViaEmail: v.inquiryNotifyViaEmail,
+    inquiryEmail: form.inquiryEmail || null,
+  }
+}
+
 export default function ChatbotSettingsPage() {
   const queryClient = useQueryClient()
   const { language: lang } = useAuth()
@@ -87,49 +143,32 @@ export default function ChatbotSettingsPage() {
   const [error, setError] = useState('')
 
   if (business && initializedFor !== business.slug) {
-    setForm({
-      chatbotWelcomeMessageEn: business.chatbotWelcomeMessageEn ?? '',
-      chatbotWelcomeMessageAr: business.chatbotWelcomeMessageAr ?? '',
-      chatbotWelcomeMessageHe: business.chatbotWelcomeMessageHe ?? '',
-      chatbotConfirmationMessageEn: business.chatbotConfirmationMessageEn ?? '',
-      chatbotConfirmationMessageAr: business.chatbotConfirmationMessageAr ?? '',
-      chatbotConfirmationMessageHe: business.chatbotConfirmationMessageHe ?? '',
-      chatbotFinalMessageEn: business.chatbotFinalMessageEn ?? '',
-      chatbotFinalMessageAr: business.chatbotFinalMessageAr ?? '',
-      chatbotFinalMessageHe: business.chatbotFinalMessageHe ?? '',
-      inquiryWhatsAppNumber: business.inquiryWhatsAppNumber ?? '',
-      inquiryEmail: business.inquiryEmail ?? '',
-    })
-    setChatbotEnabled(business.chatbotEnabled)
-    setChatbotDefaultLanguage((business.chatbotDefaultLanguage as 'EN' | 'AR' | 'HE' | null) ?? '')
-    setChatbotInquiryEnabled(business.chatbotInquiryEnabled)
-    setInquiryNotifyViaWhatsApp(business.inquiryNotifyViaWhatsApp)
-    setInquiryNotifyViaEmail(business.inquiryNotifyViaEmail)
+    const v = valuesFrom(business)
+    setForm(v.form)
+    setChatbotEnabled(v.chatbotEnabled)
+    setChatbotDefaultLanguage(v.chatbotDefaultLanguage)
+    setChatbotInquiryEnabled(v.chatbotInquiryEnabled)
+    setInquiryNotifyViaWhatsApp(v.inquiryNotifyViaWhatsApp)
+    setInquiryNotifyViaEmail(v.inquiryNotifyViaEmail)
     setInitializedFor(business.slug)
   }
 
+  const payload = toPayload({
+    form, chatbotEnabled, chatbotDefaultLanguage, chatbotInquiryEnabled, inquiryNotifyViaWhatsApp, inquiryNotifyViaEmail,
+  })
+  // Compared against the last save too, so leaving right after Save doesn't ask while the
+  // settings refetch is still in flight.
+  const payloadJson = JSON.stringify(payload)
+  const [lastSavedJson, setLastSavedJson] = useState<string | null>(null)
+  const dirty = !!business && initializedFor === business.slug
+    && payloadJson !== JSON.stringify(toPayload(valuesFrom(business))) && payloadJson !== lastSavedJson
+  const unsavedDialog = useUnsavedChangesGuard(dirty, lang)
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault(); setSaving(true); setError('')
-    const payload = {
-      chatbotEnabled,
-      chatbotWelcomeMessageEn: form.chatbotWelcomeMessageEn || null,
-      chatbotWelcomeMessageAr: form.chatbotWelcomeMessageAr || null,
-      chatbotWelcomeMessageHe: form.chatbotWelcomeMessageHe || null,
-      chatbotConfirmationMessageEn: form.chatbotConfirmationMessageEn || null,
-      chatbotConfirmationMessageAr: form.chatbotConfirmationMessageAr || null,
-      chatbotConfirmationMessageHe: form.chatbotConfirmationMessageHe || null,
-      chatbotFinalMessageEn: form.chatbotFinalMessageEn || null,
-      chatbotFinalMessageAr: form.chatbotFinalMessageAr || null,
-      chatbotFinalMessageHe: form.chatbotFinalMessageHe || null,
-      chatbotDefaultLanguage: chatbotDefaultLanguage || null,
-      chatbotInquiryEnabled,
-      inquiryNotifyViaWhatsApp,
-      inquiryWhatsAppNumber: form.inquiryWhatsAppNumber || null,
-      inquiryNotifyViaEmail,
-      inquiryEmail: form.inquiryEmail || null,
-    }
     try {
       await api.patch('/admin/settings', payload)
+      setLastSavedJson(payloadJson)
       setSaved(true); setTimeout(() => setSaved(false), 2000)
       queryClient.invalidateQueries({ queryKey: ['settings'] })
     } catch (err) {
@@ -142,6 +181,7 @@ export default function ChatbotSettingsPage() {
 
   return (
     <div>
+      {unsavedDialog}
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'chatbotSettings')}</h1>
       <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
         {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">{error}</div>}

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useConfirmDialog } from '../../components/ConfirmDialog'
+import { useUnsavedChangesGuard } from '../../components/admin/useUnsavedChangesGuard'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
@@ -21,6 +22,8 @@ export default function ServicesPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Item | null>(null)
   const [form, setForm] = useState(EMPTY)
+  // The form as it was opened (or last saved) -- edits since then are unsaved.
+  const [savedForm, setSavedForm] = useState(EMPTY)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [uploadingGallery, setUploadingGallery] = useState(false)
@@ -34,15 +37,24 @@ export default function ServicesPage() {
   // Keep the modal's gallery list in sync with the latest fetched data while editing.
   const editingService = editing ? services.find((s) => s.id === editing.id) ?? editing : null
 
-  function openCreate() { setEditing(null); setForm(EMPTY); setError(''); setGalleryError(''); setShowForm(true) }
+  const dirty = showForm && JSON.stringify(form) !== JSON.stringify(savedForm)
+  const unsavedDialog = useUnsavedChangesGuard(dirty, lang)
+
+  function openCreate() { setEditing(null); setForm(EMPTY); setSavedForm(EMPTY); setError(''); setGalleryError(''); setShowForm(true) }
   function openEdit(s: Item) {
     setEditing(s)
-    setForm({
+    const values = {
       nameEn: s.nameEn, nameAr: s.nameAr, nameHe: s.nameHe,
       durationMinutes: s.durationMinutes ?? 30, price: s.price === null ? '' : String(s.price),
       photoMode: s.photoMode, isBookable: s.isBookable,
-    })
+    }
+    setForm(values); setSavedForm(values)
     setError(''); setGalleryError(''); setShowForm(true)
+  }
+
+  async function closeForm() {
+    if (dirty && !(await ask(t(lang, 'unsavedChangesDiscard'), { yesLabel: t(lang, 'unsavedChangesDiscardYes'), noLabel: t(lang, 'unsavedChangesStay') }))) return
+    setShowForm(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -61,6 +73,7 @@ export default function ServicesPage() {
         const { data } = await api.post('/admin/items', payload)
         setEditing(data)
       }
+      setSavedForm(form)
       // On first creation of a gallery/both-mode service, keep the modal open so gallery photos
       // can be added right away (the service has to exist first); on every later save, close it.
       const needsGallerySetup = wasCreating && (form.photoMode === 'OwnerGallery' || form.photoMode === 'Both')
@@ -102,6 +115,7 @@ export default function ServicesPage() {
   return (
     <div>
       {confirmDialog}
+      {unsavedDialog}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-ink">{t(lang, 'services')}</h1>
         <button onClick={openCreate} className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
@@ -144,11 +158,11 @@ export default function ServicesPage() {
       )}
 
       {showForm && (
-        <div onClick={() => setShowForm(false)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div onClick={closeForm} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-md border border-line max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h2 className="text-ink font-semibold text-lg">{editing ? t(lang, 'editServiceTitle') : t(lang, 'addServiceTitle')}</h2>
-              <button onClick={() => setShowForm(false)} aria-label="Close"
+              <button onClick={closeForm} aria-label="Close"
                 className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
             </div>
             {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
