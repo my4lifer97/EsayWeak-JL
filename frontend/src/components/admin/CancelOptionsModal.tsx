@@ -19,6 +19,8 @@ export default function CancelOptionsModal({
   const [replaceSelection, setReplaceSelection] = useState<CustomerSelection | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Cancel, keep and replace each send the customer a WhatsApp message by default.
+  const [notifyCustomer, setNotifyCustomer] = useState(true)
 
   // Every action shows the server's reason on failure instead of silently doing nothing.
   async function run(action: () => Promise<unknown>) {
@@ -37,21 +39,36 @@ export default function CancelOptionsModal({
     queryFn: () => api.get(`/admin/appointments/${appointmentId}/waitlist`).then((r) => r.data),
   })
 
+  // Same query key as the Settings page; the server only messages customers when a WhatsApp
+  // number is linked, so the checkbox is shown only then.
+  const { data: settings } = useQuery<{ whatsAppNumber: string | null }>({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/admin/settings').then((r) => r.data),
+  })
+
   function cancel(notifyWaitlist: boolean) {
-    return run(() => api.patch(`/admin/appointments/${appointmentId}`, { status: 'CANCELLED', notifyWaitlist }))
+    return run(() => api.patch(`/admin/appointments/${appointmentId}`, { status: 'CANCELLED', notifyWaitlist, notifyCustomer }))
   }
 
   function keep() {
-    return run(() => api.post(`/admin/appointments/${appointmentId}/keep`))
+    return run(() => api.post(`/admin/appointments/${appointmentId}/keep?notifyCustomer=${notifyCustomer}`))
   }
 
   async function replaceCustomer() {
     if (!replaceSelection) return
-    return run(() => api.patch(`/admin/appointments/${appointmentId}/customer`,
-      'waitlistEntryId' in replaceSelection ? { waitlistEntryId: replaceSelection.waitlistEntryId }
-        : 'customerId' in replaceSelection ? { customerId: replaceSelection.customerId }
-        : { customerName: replaceSelection.customerName, customerFamilyName: replaceSelection.customerFamilyName, customerPhone: replaceSelection.customerPhone }))
+    const target = 'waitlistEntryId' in replaceSelection ? { waitlistEntryId: replaceSelection.waitlistEntryId }
+      : 'customerId' in replaceSelection ? { customerId: replaceSelection.customerId }
+      : { customerName: replaceSelection.customerName, customerFamilyName: replaceSelection.customerFamilyName, customerPhone: replaceSelection.customerPhone }
+    return run(() => api.patch(`/admin/appointments/${appointmentId}/customer`, { ...target, notifyCustomer }))
   }
+
+  const notifyCustomerToggle = settings?.whatsAppNumber ? (
+    <label className="flex items-center gap-2 text-sm text-ink mb-3 cursor-pointer">
+      <input type="checkbox" checked={notifyCustomer} onChange={(e) => setNotifyCustomer(e.target.checked)}
+        className="w-4 h-4 accent-coral" />
+      {t(lang, 'notifyCustomerWhatsApp')}
+    </label>
+  ) : null
 
   return (
     <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -63,6 +80,7 @@ export default function CancelOptionsModal({
         </div>
 
         {error && <p className="text-red-600 dark:text-red-400 text-sm mb-3">{error}</p>}
+        {notifyCustomerToggle}
 
         {mode === 'options' ? (
           <div className="space-y-4">
@@ -84,6 +102,7 @@ export default function CancelOptionsModal({
               <button type="button" disabled={loading} onClick={() => cancel(false)}
                 className="w-full text-start bg-teal-tint hover:bg-teal-tint/70 disabled:opacity-50 text-ink rounded-xl px-4 py-3 transition-colors">
                 <div className="text-sm font-semibold">{t(lang, 'cancelSilently')}</div>
+                {waitlistEnabled && <div className="text-xs text-muted mt-0.5">{t(lang, 'cancelSilentlyHint')}</div>}
               </button>
               <button type="button" disabled={loading} onClick={() => setMode('replace')}
                 className="w-full text-start bg-teal-tint hover:bg-teal-tint/70 disabled:opacity-50 text-ink rounded-xl px-4 py-3 transition-colors">

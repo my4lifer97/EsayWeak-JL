@@ -19,6 +19,13 @@ export default function RescheduleModal({
   const [slot, setSlot] = useState<Slot | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [notifyCustomer, setNotifyCustomer] = useState(true)
+
+  // Same query key as the Settings page; customers are messaged only when a WhatsApp number is linked.
+  const { data: settings } = useQuery<{ whatsAppNumber: string | null }>({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/admin/settings').then((r) => r.data),
+  })
 
   const { data: slots = [], isFetching: slotsLoading } = useQuery<Slot[]>({
     queryKey: ['admin-availability', date, itemId, appointmentId],
@@ -31,7 +38,7 @@ export default function RescheduleModal({
     if (!slot) return
     setSubmitting(true); setError('')
     try {
-      await api.patch(`/admin/appointments/${appointmentId}/reschedule`, { date, startTime: slot.start })
+      await api.patch(`/admin/appointments/${appointmentId}/reschedule`, { date, startTime: slot.start, notifyCustomer })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['appointments'] })
       onDone()
@@ -80,6 +87,14 @@ export default function RescheduleModal({
                 </div>
               )}
             </div>
+          )}
+
+          {settings?.whatsAppNumber && (
+            <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+              <input type="checkbox" checked={notifyCustomer} onChange={(e) => setNotifyCustomer(e.target.checked)}
+                className="w-4 h-4 accent-coral" />
+              {t(lang, 'notifyCustomerWhatsApp')}
+            </label>
           )}
 
           <button type="button" onClick={submit} disabled={!slot || submitting}

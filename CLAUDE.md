@@ -407,6 +407,17 @@ cron reminders and the waitlist worker's own sends. Jobs queued at shutdown are 
 Tests run jobs inline (`Notifications__Inline=true`, set by `TestWebApplicationFactory`, whose
 `inlineNotifications: false` runs the real queue -- `BackgroundNotificationTests`, non-parallel).
 
+**Customer notices for owner actions** (`Services/CustomerNotifier.cs`, queued the same way): the
+owner cancelling (`whatsapp.ownerCancelled`, link to the storefront), rescheduling
+(`whatsapp.ownerRescheduled`, old and new time + the magic link), keeping a cancellation request
+(`whatsapp.cancellationDeclined`) or cancelling/replacing one (`whatsapp.cancellationApproved`)
+messages the customer; replacing also confirms the booking to the new customer. A cancel of an
+appointment that's already over sends nothing. Each request takes `notifyCustomer` (default true;
+`keep` takes it as a query parameter), the "Let the customer know on WhatsApp" checkbox in
+`CancelOptionsModal`/`RescheduleModal`, shown only when the business has a linked number. Language:
+the customer's `LastMessageLanguage` (account matched by phone too), else `ChatbotDefaultLanguage ?? Language`.
+Owner-booked confirmations go through it as well. Deleting a recurring series still tells no one.
+
 ### No overlapping bookings (advisory lock)
 Every booking/reschedule write (public, customer, owner) saves through
 `AvailabilityService.TrySaveOrDetectConflict`, which on Postgres takes

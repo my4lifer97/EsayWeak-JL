@@ -394,4 +394,5 @@ public class BookingController(
     }
 }
 
-public record RescheduleRequest(string Date, string StartTime);
+// NotifyCustomer is read only by the owner's reschedule (AdminController).
+public record RescheduleRequest(string Date, string StartTime, bool NotifyCustomer = true);

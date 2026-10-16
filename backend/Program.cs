@@ -85,6 +85,7 @@ builder.Services.AddScoped<WaitlistService>();
 if (builder.Configuration.GetValue("Waitlist:WorkerEnabled", true))
     builder.Services.AddHostedService<WaitlistQueueWorker>();
 builder.Services.AddScoped<AppointmentCancellationService>();
+builder.Services.AddScoped<CustomerNotifier>();
 // Best-effort WhatsApp/email sends run after the request instead of inside it (see NotificationQueue).
 builder.Services.AddSingleton<NotificationQueue>();
 builder.Services.AddScoped<NotificationOutbox>();

@@ -9,7 +9,10 @@ vi.mock('../../lib/api', () => ({
   api: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }))
 
-function renderModal(waitlistEnabled = true, pendingCancellation = false) {
+function renderModal(waitlistEnabled = true, pendingCancellation = false, whatsAppNumber: string | null = '+972500000000') {
+  vi.mocked(api.get).mockImplementation((url: string) => Promise.resolve({
+    data: url === '/admin/settings' ? { whatsAppNumber } : [],
+  }))
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onClose = vi.fn()
   const onDone = vi.fn()
@@ -35,7 +38,7 @@ describe('CancelOptionsModal', () => {
     vi.mocked(api.patch).mockRejectedValue({ response: { data: { error: 'Slot is no longer available' } } })
     const { onDone } = renderModal(true)
 
-    await userEvent.click(screen.getByText('Cancel Without Notifying'))
+    await userEvent.click(screen.getByText('Cancel Only'))
 
     expect(await screen.findByText('Slot is no longer available')).toBeInTheDocument()
     expect(onDone).not.toHaveBeenCalled()
@@ -47,7 +50,7 @@ describe('CancelOptionsModal', () => {
 
     await userEvent.click(screen.getByText('Keep the Appointment'))
 
-    expect(api.post).toHaveBeenCalledWith('/admin/appointments/appt-1/keep')
+    expect(api.post).toHaveBeenCalledWith('/admin/appointments/appt-1/keep?notifyCustomer=true')
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
@@ -55,7 +58,7 @@ describe('CancelOptionsModal', () => {
     renderModal(true)
 
     expect(screen.getByText('Offer to Waitlist')).toBeInTheDocument()
-    expect(screen.getByText('Cancel Without Notifying')).toBeInTheDocument()
+    expect(screen.getByText('Cancel Only')).toBeInTheDocument()
     expect(screen.getByText('Replace Customer')).toBeInTheDocument()
   })
 
@@ -63,7 +66,7 @@ describe('CancelOptionsModal', () => {
     renderModal(false)
 
     expect(screen.queryByText('Offer to Waitlist')).not.toBeInTheDocument()
-    expect(screen.getByText('Cancel Without Notifying')).toBeInTheDocument()
+    expect(screen.getByText('Cancel Only')).toBeInTheDocument()
   })
 
   it('offering to the waitlist cancels with notifyWaitlist:true', async () => {
@@ -72,17 +75,17 @@ describe('CancelOptionsModal', () => {
 
     await userEvent.click(screen.getByText('Offer to Waitlist'))
 
-    expect(api.patch).toHaveBeenCalledWith('/admin/appointments/appt-1', { status: 'CANCELLED', notifyWaitlist: true })
+    expect(api.patch).toHaveBeenCalledWith('/admin/appointments/appt-1', { status: 'CANCELLED', notifyWaitlist: true, notifyCustomer: true })
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
-  it('cancelling silently cancels with notifyWaitlist:false', async () => {
+  it('cancelling only cancels with notifyWaitlist:false', async () => {
     vi.mocked(api.patch).mockResolvedValue({ data: { ok: true } })
     const { onDone } = renderModal(true)
 
-    await userEvent.click(screen.getByText('Cancel Without Notifying'))
+    await userEvent.click(screen.getByText('Cancel Only'))
 
-    expect(api.patch).toHaveBeenCalledWith('/admin/appointments/appt-1', { status: 'CANCELLED', notifyWaitlist: false })
+    expect(api.patch).toHaveBeenCalledWith('/admin/appointments/appt-1', { status: 'CANCELLED', notifyWaitlist: false, notifyCustomer: true })
     expect(onDone).toHaveBeenCalledTimes(1)
   })
 
@@ -100,8 +103,29 @@ describe('CancelOptionsModal', () => {
     await userEvent.click(screen.getByText('Replace Customer'))
 
     expect(api.patch).toHaveBeenCalledWith('/admin/appointments/appt-1/customer', {
-      customerName: 'Sam', customerFamilyName: 'Adams', customerPhone: '+15550001111',
+      customerName: 'Sam', customerFamilyName: 'Adams', customerPhone: '+15550001111', notifyCustomer: true,
     })
     expect(onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('unticking "let the customer know" sends notifyCustomer:false', async () => {
+    vi.mocked(api.patch).mockResolvedValue({ data: { ok: true } })
+    vi.mocked(api.post).mockResolvedValue({ data: { id: 'appt-1' } })
+    renderModal(true, true)
+
+    await userEvent.click(await screen.findByLabelText('Let the customer know on WhatsApp'))
+    await userEvent.click(screen.getByText('Keep the Appointment'))
+    await userEvent.click(screen.getByText('Cancel Only'))
+
+    expect(api.post).toHaveBeenCalledWith('/admin/appointments/appt-1/keep?notifyCustomer=false')
+    expect(api.patch).toHaveBeenCalledWith('/admin/appointments/appt-1', { status: 'CANCELLED', notifyWaitlist: false, notifyCustomer: false })
+  })
+
+  it('hides the WhatsApp checkbox when the business has no linked number', async () => {
+    renderModal(true, false, null)
+
+    await screen.findByText('Cancel Only')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByLabelText('Let the customer know on WhatsApp')).not.toBeInTheDocument()
   })
 })

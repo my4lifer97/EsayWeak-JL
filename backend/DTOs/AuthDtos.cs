@@ -104,7 +104,7 @@ public record SlotWithBookingInfoDto(string Start, string End, bool Available, s
 
 public record FullAvailabilityResponse(List<SlotWithBookingInfoDto> Slots);
 
-public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, string? CustomerPhone, string? WaitlistEntryId = null, string? CustomerFamilyName = null);
+public record ReplaceCustomerRequest(string? CustomerId, string? CustomerName, string? CustomerPhone, string? WaitlistEntryId = null, string? CustomerFamilyName = null, bool NotifyCustomer = true);
 
 public record WaitlistEntrySummaryDto(string Id, string CustomerAccountId, string Name, string FamilyName, string Phone, string Status, DateTime CreatedAt);
 

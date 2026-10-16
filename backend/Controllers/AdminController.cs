@@ -17,7 +17,7 @@ namespace BarberSaas.Api.Controllers;
 public class AdminController(
     AppDbContext db, IWebHostEnvironment env, AvailabilityService availability,
     WaitlistService waitlist, AppointmentCancellationService cancellationService,
-    NotificationOutbox notifications, SchedulePresetService schedulePresets) : ControllerBase
+    CustomerNotifier customerNotifier, SchedulePresetService schedulePresets) : ControllerBase
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -945,21 +945,7 @@ public class AdminController(
         // Best-effort, same as the public booking flow -- an appointment the owner books directly
         // should still confirm on WhatsApp for a business with a linked number, not just ones the
         // customer books themselves. Sent after the response (NotificationQueue).
-        if (business.WhatsAppNumber is not null)
-        {
-            var lang = business.Language.ToString();
-            var itemDisplayName = lang switch { "AR" => item.NameAr, "HE" => item.NameHe, _ => item.NameEn };
-            var message = I18nService.T(lang, "whatsapp.bookingConfirmed", new()
-            {
-                ["customerName"] = customer.Name,
-                ["businessName"] = business.Name,
-                ["service"] = itemDisplayName,
-                ["date"] = req.Date,
-                ["time"] = req.StartTime,
-            });
-            notifications.AddWhatsApp(business, customer.Phone, message,
-                $"booking confirmation for appointment {appointment.Id} (business {BusinessId})");
-        }
+        await customerNotifier.QueueBookedByOwner(appointment);
 
         return StatusCode(201, new DashboardAppointmentDto(
             appointment.Id, req.Date, appointment.StartTime, appointment.EndTime,
@@ -1005,6 +991,8 @@ public class AdminController(
             await waitlist.NotifyForCancellation(freedSlot);
             await db.SaveChangesAsync();
         }
+        if (req.NotifyCustomer)
+            await customerNotifier.QueueRescheduledByOwner(appt, oldDate, oldStartTime);
 
         this.SetActivityDetail(
             $"Rescheduled appointment: {appt.Item.NameEn} for {ActivityDetailExtensions.FullName(appt.Customer.Name, appt.Customer.FamilyName)} from {oldDate} {oldStartTime} to {req.Date} at {req.StartTime}");
@@ -1034,6 +1022,12 @@ public class AdminController(
         var offeredToWaitlist = req.NotifyWaitlist && stillConfirmed;
         await cancellationService.CancelAsync(appt, notifyWaitlist: offeredToWaitlist);
         await db.SaveChangesAsync();
+        // Not for a booking that's already over -- that's the owner correcting history.
+        if (req.NotifyCustomer && stillConfirmed)
+        {
+            if (wasPendingApproval) await customerNotifier.QueueCancellationApproved(appt);
+            else await customerNotifier.QueueCancelledByOwner(appt);
+        }
 
         var verb = wasPendingApproval ? "Resolved cancellation request" : "Cancelled appointment";
         var suffix = offeredToWaitlist ? " (offered to waitlist)" : "";
@@ -1066,7 +1060,7 @@ public class AdminController(
     // ─── Keep (decline a customer's cancellation request) ────────────────────────────────────
 
     [HttpPost("appointments/{id}/keep")]
-    public async Task<IActionResult> KeepAppointment(string id)
+    public async Task<IActionResult> KeepAppointment(string id, [FromQuery] bool notifyCustomer = true)
     {
         var appt = await db.Appointments.Include(a => a.Item)
             .FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
@@ -1076,6 +1070,7 @@ public class AdminController(
 
         appt.PendingCancellationApproval = false;
         await db.SaveChangesAsync();
+        if (notifyCustomer) await customerNotifier.QueueCancellationDeclined(appt);
 
         this.SetActivityDetail(
             $"Declined cancellation request: {appt.Item.NameEn} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");
@@ -1143,6 +1138,14 @@ public class AdminController(
             foreach (var w in waiting) w.AppointmentId = replacement.Id;
             await db.SaveChangesAsync();
             await tx.CommitAsync();
+        }
+
+        // Giving the slot back to the same customer isn't news to them.
+        if (req.NotifyCustomer && customer.Id != appt.CustomerId)
+        {
+            if (wasPendingApproval) await customerNotifier.QueueCancellationApproved(appt);
+            else await customerNotifier.QueueCancelledByOwner(appt);
+            await customerNotifier.QueueBookedByOwner(replacement);
         }
 
         var verb = wasPendingApproval ? "Resolved cancellation request by replacing customer on appointment"
@@ -1272,4 +1275,5 @@ public class AdminController(
     }
 }
 
-public record UpdateStatusRequest(string Status, bool NotifyWaitlist = false);
+// NotifyCustomer: tell the customer on WhatsApp (the business needs a linked number).
+public record UpdateStatusRequest(string Status, bool NotifyWaitlist = false, bool NotifyCustomer = true);

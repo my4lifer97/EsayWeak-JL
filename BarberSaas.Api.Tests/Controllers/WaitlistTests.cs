@@ -460,7 +460,7 @@ public class WaitlistTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task OwnerCancelsSilently_SendsNoNotification()
+    public async Task OwnerCancelsWithoutOfferingToWaitlist_MessagesNoWaiter()
     {
         var token = await RegisterAndLoginBusiness("wl-silent@example.com", "wl-silent-shop");
         var (businessId, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-silent-shop");
@@ -473,17 +473,14 @@ public class WaitlistTests : IntegrationTestBase
         var waiterToken = await GetCustomerToken("+15551000013");
         await JoinWaitlistAs(waiterToken, "wl-silent-shop", appt!.AppointmentId);
 
-        // Booking the appointment above already sent its own "you're booked" confirmation
-        // (business.WhatsAppNumber is set for this test) -- snapshot the count here so the
-        // assertion below is only about what the silent cancel itself does (or rather doesn't).
-        var sentBeforeCancel = Factory.WhatsAppSender.Sent.Count;
-
         Authorize(Client, token);
         var cancelResp = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt.AppointmentId}",
             new { status = "CANCELLED", notifyWaitlist = false });
         Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
 
-        Assert.Equal(sentBeforeCancel, Factory.WhatsAppSender.Sent.Count);
+        // The booker is told their appointment was cancelled (OwnerActionCustomerNoticeTests);
+        // nobody on the waitlist hears anything.
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.Phone == "+15551000013");
         using var db = Db();
         Assert.All(db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId), e => Assert.Equal(WaitlistEntryStatus.WAITING, e.Status));
     }
