@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { useConfirmDialog } from '../ConfirmDialog'
 
@@ -74,9 +74,15 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [editingTemplate, setEditingTemplate] = useState(false)
   const [templateDraft, setTemplateDraft] = useState('')
 
-  const [subject, setSubject] = useState(`Your EsayWeek account — ${businessName}`)
-  const [body, setBody] = useState(() =>
-    applyTemplate(template, businessName, buildFields(username, !!username, password, !!initialPassword, null, false)))
+  const defaultSubject = `Your EsayWeek account — ${businessName}`
+  const [subject, setSubject] = useState(defaultSubject)
+  const initialFields = buildFields(username, !!username, password, !!initialPassword, null, false)
+  const [body, setBody] = useState(() => applyTemplate(template, businessName, initialFields))
+  // Typed in by hand since the body was last built from the template.
+  const [bodyEdited, setBodyEdited] = useState(false)
+  // The field lines last put into the body, so a checkbox change can swap just those lines.
+  const fieldsInBody = useRef(initialFields)
+  const [fieldsOutOfSync, setFieldsOutOfSync] = useState(false)
 
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
@@ -88,20 +94,54 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [ask, confirmDialog] = useConfirmDialog('EN')
 
   async function requestClose() {
-    if (password && passwordApplied && !delivered &&
-        !(await ask("You haven't sent or copied the owner's login details. Once this closes, the password can't be shown again. Close anyway?",
-          { yesLabel: 'Close anyway', noLabel: 'Keep open' }))) return
+    if (password && passwordApplied && !delivered) {
+      if (!(await ask("You haven't sent or copied the owner's login details. Once this closes, the password can't be shown again. Close anyway?",
+        { yesLabel: 'Close anyway', noLabel: 'Keep open' }))) return
+    } else if ((bodyEdited || subject !== defaultSubject) && !delivered) {
+      if (!(await ask('Discard the changes you made to this email?', { yesLabel: 'Discard', noLabel: 'Keep editing' }))) return
+    }
     onClose()
   }
 
-  // Re-templates the body whenever a checkbox, a generated value, or the template itself changes;
-  // edits made directly in the Body textarea persist until the next such change, at which point
-  // they're intentionally replaced (keeps the preview trustworthy -- what you see is always
-  // consistent with what's checked and with the saved template).
+  // A latest-value ref, so the Escape listener below doesn't need re-adding on every keystroke.
+  const requestCloseRef = useRef(requestClose)
+  requestCloseRef.current = requestClose
   useEffect(() => {
-    setBody(applyTemplate(template, businessName, buildFields(username, includeUsername, password, includePassword, chatbotLink, includeChatbotLink)))
+    // ConfirmDialog catches Escape first (capture phase) while it's open.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestCloseRef.current() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Only a click that starts and ends on the backdrop closes, not a text selection dragged out of the dialog.
+  const pressStartedOnBackdrop = useRef(false)
+
+  // A checkbox or generated value changes only the field lines. An untouched body is rebuilt from
+  // the template; an edited one keeps the admin's text and has just the old field lines swapped.
+  // If those lines were edited too, the body is left alone and a notice offers a rebuild.
+  useEffect(() => {
+    const fields = buildFields(username, includeUsername, password, includePassword, chatbotLink, includeChatbotLink)
+    if (fields === fieldsInBody.current) return
+    if (!bodyEdited) {
+      setBody(applyTemplate(template, businessName, fields))
+    } else if (body.includes(fieldsInBody.current)) {
+      setBody(body.replace(fieldsInBody.current, () => fields))
+    } else {
+      setFieldsOutOfSync(true)
+      return
+    }
+    fieldsInBody.current = fields
+    setFieldsOutOfSync(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [includeUsername, includePassword, includeChatbotLink, password, chatbotLink, template])
+  }, [includeUsername, includePassword, includeChatbotLink, password, chatbotLink])
+
+  function rebuildBody(fromTemplate = template) {
+    const fields = buildFields(username, includeUsername, password, includePassword, chatbotLink, includeChatbotLink)
+    setBody(applyTemplate(fromTemplate, businessName, fields))
+    fieldsInBody.current = fields
+    setBodyEdited(false)
+    setFieldsOutOfSync(false)
+  }
 
   function startEditingTemplate() {
     setTemplateDraft(template)
@@ -110,6 +150,7 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
 
   function saveTemplate() {
     setTemplate(templateDraft)
+    rebuildBody(templateDraft)
     try {
       localStorage.setItem(TEMPLATE_STORAGE_KEY, templateDraft)
     } catch { /* private-mode/blocked storage -- template still applies for this session */ }
@@ -187,8 +228,10 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 overflow-y-auto z-50" onClick={requestClose}>
-      <div className="bg-surface border border-line rounded-2xl p-6 w-full max-w-xl my-8" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/60 flex items-start justify-center p-4 overflow-y-auto z-50"
+      onMouseDown={(e) => { pressStartedOnBackdrop.current = e.target === e.currentTarget }}
+      onClick={(e) => { if (pressStartedOnBackdrop.current && e.target === e.currentTarget) requestClose() }}>
+      <div className="bg-surface border border-line rounded-2xl p-6 w-full max-w-xl my-8">
         <div className="flex items-start justify-between mb-1">
           <h2 className="text-lg font-bold">Email the owner</h2>
           <button onClick={requestClose} aria-label="Close" className="text-muted hover:text-ink text-2xl leading-none -mt-1">✕</button>
@@ -274,8 +317,21 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
             <input value={subject} onChange={(e) => setSubject(e.target.value)}
               className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
             <label className="block text-xs text-muted">Body (editable — this is exactly what will be sent)</label>
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8}
+            <textarea value={body} onChange={(e) => { setBody(e.target.value); setBodyEdited(true) }} rows={8}
               className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-coral resize-y" />
+            {fieldsOutOfSync && (
+              <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                You edited the account details in the body, so the checkboxes above didn't change it.{' '}
+                <button type="button" onClick={() => rebuildBody()} className="text-coral-dark hover:underline">
+                  Rebuild the body
+                </button>{' '}(drops your edits)
+              </p>
+            )}
+            {bodyEdited && !fieldsOutOfSync && (
+              <button type="button" onClick={() => rebuildBody()} className="text-muted hover:text-ink text-xs">
+                Reset body to the template
+              </button>
+            )}
           </div>
         )}
 

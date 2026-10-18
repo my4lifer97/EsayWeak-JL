@@ -110,3 +110,64 @@ describe('OwnerEmailComposer close guard', () => {
     expect(screen.getByDisplayValue(/Password: Tmp-approved1\s+Sign in at: .*\/admin\/login/)).toBeInTheDocument()
   })
 })
+
+// QA: Esc did nothing, any backdrop click closed (losing edits), and ticking a checkbox
+// rebuilt the whole body over the admin's own text.
+describe('OwnerEmailComposer editing', () => {
+  function renderWith(onClose: () => void) {
+    return render(
+      <OwnerEmailComposer businessId="b1" businessName="Shop" businessEmail="owner@example.com" username="ownersh" onClose={onClose} />
+    )
+  }
+  const bodyBox = () => screen.getByDisplayValue(/Here's your EsayWeek account/) as HTMLTextAreaElement
+
+  it('Escape closes an untouched composer', async () => {
+    const onClose = vi.fn()
+    renderWith(onClose)
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('asks before Escape or a backdrop click throws away edits', async () => {
+    const onClose = vi.fn()
+    const { container } = renderWith(onClose)
+    await userEvent.type(bodyBox(), ' Call me.')
+
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep editing' }))
+
+    await userEvent.click(container.firstChild as HTMLElement)
+    expect(onClose).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Discard' }))
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it('a click inside the dialog never closes it', async () => {
+    const onClose = vi.fn()
+    renderWith(onClose)
+    await userEvent.click(screen.getByText('Email the owner'))
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('toggling a checkbox keeps text typed into the body', async () => {
+    renderWith(() => {})
+    await userEvent.type(bodyBox(), ' Call me.')
+    await userEvent.click(screen.getByRole('checkbox', { name: /Username/ }))
+
+    expect(bodyBox().value).toContain('Call me.')
+    expect(bodyBox().value).not.toContain('Username: ownersh')
+  })
+
+  it('leaves edited field lines alone and offers a rebuild', async () => {
+    renderWith(() => {})
+    const box = bodyBox()
+    await userEvent.clear(box)
+    await userEvent.type(box, "Here's your EsayWeek account: see you soon")
+    await userEvent.click(screen.getByRole('checkbox', { name: /Username/ }))
+
+    expect(bodyBox().value).toBe("Here's your EsayWeek account: see you soon")
+    await userEvent.click(screen.getByText('Rebuild the body'))
+    expect(bodyBox().value).toContain('(nothing selected yet)')
+  })
+})
