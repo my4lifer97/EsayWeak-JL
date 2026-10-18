@@ -125,6 +125,25 @@ public class AvailabilityService(AppDbContext db)
             .ToList();
     }
 
+    // The opening hours of the next `days` dates for the storefront (QA run 2: it showed none), per
+    // GetEffectiveDay so a scheduled preset range shows its own hours. A closed or fully blocked
+    // date has null times.
+    public async Task<List<OpeningDayDto>> GetUpcomingHours(string businessId, int days)
+    {
+        var ctx = await LoadScheduleContext(businessId);
+        var open = (await GetOpenDates(businessId, days)).ToHashSet();
+        var today = DateTime.Now.Date;
+        return Enumerable.Range(0, days).Select(i =>
+        {
+            var date = today.AddDays(i);
+            var key = date.ToString("yyyy-MM-dd");
+            var day = ctx.Resolve(date);
+            return open.Contains(key)
+                ? new OpeningDayDto(key, (int)date.DayOfWeek, day.StartTime, day.EndTime)
+                : new OpeningDayDto(key, (int)date.DayOfWeek, null, null);
+        }).ToList();
+    }
+
     // Everything GetEffectiveDay needs, loaded once so resolving many dates costs no extra queries.
     private async Task<ScheduleContext> LoadScheduleContext(string businessId)
     {

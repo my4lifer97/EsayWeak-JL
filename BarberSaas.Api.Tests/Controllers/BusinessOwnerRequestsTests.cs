@@ -221,7 +221,10 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Approve_TwiceAtOnce_OneWins_TheOtherGetsNoServerError()
+    // The tests' shared in-memory SQLite connection can't take truly parallel requests, so this
+    // checks the second approval sequentially; on Postgres a simultaneous one hits the unique
+    // username index and the DbUpdateException catch turns it into a 409.
+    public async Task Approve_Twice_SecondIsRefusedWithoutAServerError()
     {
         var typeId = await SeedBusinessType();
         var adminToken = await BootstrapAdmin();
@@ -229,11 +232,13 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
             await ValidRequest(typeId, email: "double-approve@example.com"))).Content.ReadFromJsonAsync<JsonRequestId>();
 
         Authorize(Client, adminToken);
-        var results = await Task.WhenAll(new[] { "double-a", "double-b" }.Select(slug => Client.PostAsJsonAsync(
-            $"/api/platform-admin/business-owner-requests/{created!.Id}/approve", new ApproveBusinessOwnerRequestRequest(slug))));
+        var first = await Client.PostAsJsonAsync($"/api/platform-admin/business-owner-requests/{created!.Id}/approve",
+            new ApproveBusinessOwnerRequestRequest("double-a"));
+        var second = await Client.PostAsJsonAsync($"/api/platform-admin/business-owner-requests/{created.Id}/approve",
+            new ApproveBusinessOwnerRequestRequest("double-b"));
 
-        Assert.Single(results, r => r.StatusCode == HttpStatusCode.OK);
-        Assert.DoesNotContain(results, r => (int)r.StatusCode >= 500);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
     }
 
     [Fact]

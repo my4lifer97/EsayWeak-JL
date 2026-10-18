@@ -47,7 +47,8 @@ public class BookingController(
             business.Language.ToString(), isRTL, activeDays, items, isFollowed, business.WaitlistEnabled,
             business.City, business.AddressLine, business.MapUrl,
             business.RatingCount, business.RatingAverage,
-            await availability.GetOpenDates(business.Id, 60)));
+            await availability.GetOpenDates(business.Id, 60),
+            await availability.GetUpcomingHours(business.Id, 7)));
     }
 
     [HttpGet("availability")]
@@ -146,7 +147,7 @@ public class BookingController(
 
         var slots = await availability.GetAvailableSlots(business.Id, req.Date, item.DurationMinutes.Value);
         if (!slots.Any(s => s.Start == req.StartTime))
-            return Conflict(new { error = "Slot no longer available" });
+            return Conflict(new { error = "Slot no longer available", slotTaken = true });
 
         var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
         var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
@@ -237,7 +238,7 @@ public class BookingController(
 
         await waitlist.ResolveForRebooking(business.Id, requestedDate, req.StartTime, endTime);
         if (!await availability.TrySaveOrDetectConflict(business.Id, req.Date, req.StartTime, endTime))
-            return Conflict(new { error = "Slot no longer available" });
+            return Conflict(new { error = "Slot no longer available", slotTaken = true });
 
         this.SetActivityDetail($"Booked appointment: {item.NameEn} with {business.Name} on {req.Date} at {req.StartTime}");
 

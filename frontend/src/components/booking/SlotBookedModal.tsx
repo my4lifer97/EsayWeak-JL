@@ -1,13 +1,14 @@
 import { t } from '../../lib/i18n'
 
 export default function SlotBookedModal({
-  lang, dir, waitlistEnabled, joining, joined, onJoinWaitlist, onClose,
+  lang, dir, waitlistEnabled, joining, joined, error, onJoinWaitlist, onClose,
 }: {
   lang: string
   dir: 'rtl' | 'ltr'
   waitlistEnabled: boolean
   joining: boolean
   joined: boolean
+  error?: string
   onJoinWaitlist: () => void
   onClose: () => void
 }) {
@@ -19,6 +20,9 @@ export default function SlotBookedModal({
           <p className="text-green-700 dark:text-green-400 text-sm mb-5">{t(lang, 'joinedWaitlistConfirmation')}</p>
         ) : (
           <p className="text-muted text-sm mb-5">{t(lang, 'slotBookedBody')}</p>
+        )}
+        {error && !joined && (
+          <div role="alert" className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-3 py-2 mb-3">{error}</div>
         )}
         <div className="space-y-2">
           {!joined && (
@@ -32,7 +36,7 @@ export default function SlotBookedModal({
           )}
           <button type="button" onClick={onClose}
             className="w-full bg-teal-tint hover:bg-teal-tint/70 text-ink font-semibold py-2.5 rounded-xl transition-colors">
-            {joined ? t(lang, 'chooseAnother') : t(lang, 'chooseAnother')}
+            {t(lang, 'chooseAnother')}
           </button>
         </div>
       </div>

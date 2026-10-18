@@ -241,16 +241,19 @@ public class CustomerAuthControllerTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task VerifyOtp_SameCodeSentTwiceAtOnce_OnlyOneSignsIn()
+    // Sequential: the tests' shared SQLite connection can't take parallel requests. The fix for
+    // simultaneous ones is the conditional UPDATE that claims the code.
+    public async Task VerifyOtp_SameCodeTwice_SecondIsRejected()
     {
         var phone = "+15558880011";
         var request = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
         var code = (await request.Content.ReadFromJsonAsync<RequestOtpResponse>())!.DevOtp!;
 
-        var results = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ =>
-            Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, code, "First", "Last"))));
+        var first = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, code, "First", "Last"));
+        var second = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, code, "First", "Last"));
 
-        Assert.Single(results, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
     }
 
     [Fact]

@@ -136,7 +136,10 @@ public record PublicBusinessDto(
     string Language, bool IsRTL, int[] ActiveDays, List<ItemDto> Items, bool IsFollowed,
     bool WaitlistEnabled,
     string? City, string? AddressLine, string? MapUrl, int RatingCount, double RatingAverage,
-    List<string> OpenDates);
+    List<string> OpenDates, List<OpeningDayDto> OpeningHours);
+
+// One storefront opening-hours row; null times = closed that day.
+public record OpeningDayDto(string Date, int DayOfWeek, string? StartTime, string? EndTime);
 
 // Shared by BusinessesController.Search (the public directory) and .GetFollowed (the customer's
 // followed list). BusinessTypeKey/City/rating/follower fields back the discovery result cards.

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import BrowseBusinessesPage from './BrowseBusinessesPage'
@@ -36,8 +36,11 @@ function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <BrowseBusinessesPage />
+      <MemoryRouter initialEntries={['/browse']}>
+        <Routes>
+          <Route path="/browse" element={<BrowseBusinessesPage />} />
+          <Route path="/login" element={<div>LOGIN PAGE</div>} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -142,12 +145,15 @@ describe('BrowseBusinessesPage', () => {
     expect(customerApi.get).not.toHaveBeenCalledWith('/businesses/followed')
   })
 
-  it('disables the follow button for logged-out visitors', async () => {
+  it('sends a logged-out visitor who taps Follow to sign in', async () => {
     vi.mocked(useCustomerAuth).mockReturnValue({ language: 'EN', isAuthenticated: false } as ReturnType<typeof useCustomerAuth>)
     renderPage()
     await screen.findByText('Joe the Business')
 
-    expect(screen.getByRole('button', { name: 'Follow' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Follow' }))
+
+    expect(await screen.findByText('LOGIN PAGE')).toBeInTheDocument()
+    expect(customerApi.post).not.toHaveBeenCalled()
   })
 
   it('following a business from the results calls the follow endpoint', async () => {

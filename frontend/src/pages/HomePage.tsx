@@ -14,7 +14,7 @@ export default function HomePage() {
     { icon: '🤖', title: t(lang, 'homeFeature3Title'), desc: t(lang, 'homeFeature3Desc') },
     { icon: '🌍', title: t(lang, 'homeFeature4Title'), desc: t(lang, 'homeFeature4Desc') },
     { icon: '📱', title: t(lang, 'homeFeature5Title'), desc: t(lang, 'homeFeature5Desc') },
-    { icon: '✂️', title: t(lang, 'homeFeature6Title'), desc: t(lang, 'homeFeature6Desc') },
+    { icon: '🧾', title: t(lang, 'homeFeature6Title'), desc: t(lang, 'homeFeature6Desc') },
     { icon: '🔁', title: t(lang, 'homeFeature7Title'), desc: t(lang, 'homeFeature7Desc') },
     { icon: '⏳', title: t(lang, 'homeFeature8Title'), desc: t(lang, 'homeFeature8Desc') },
     { icon: '👤', title: t(lang, 'homeFeature9Title'), desc: t(lang, 'homeFeature9Desc') },
@@ -31,10 +31,13 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-cream text-ink" dir={dir}>
       <nav className="flex flex-wrap items-center justify-between gap-y-3 px-4 sm:px-6 py-4 border-b border-line max-w-6xl mx-auto">
-        <div className="font-bold text-xl">✂️ EsayWeek</div>
+        <div className="font-bold text-xl">📅 EsayWeek</div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
           <LanguageSwitcher />
           <ThemeToggle />
+          {/* Customers had no way in from here: browse the directory, or sign in to their bookings. */}
+          <Link to="/browse" className="text-muted hover:text-ink text-sm transition-colors">{t(lang, 'homeBrowse')}</Link>
+          <Link to="/login?next=/account/bookings" className="text-muted hover:text-ink text-sm transition-colors">{t(lang, 'homeCustomerLogin')}</Link>
           <Link to="/admin/login" className="text-muted hover:text-ink text-sm transition-colors">{t(lang, 'homeSignIn')}</Link>
           <Link to="/request-business-account" className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">{t(lang, 'homeGetStarted')}</Link>
         </div>

@@ -42,7 +42,7 @@ export default function PlatformAdminBusinessDetailPage() {
   const [showEmailComposer, setShowEmailComposer] = useState(false)
   const [ask, confirmDialog] = useConfirmDialog('EN')
 
-  const { data: business } = useQuery<BusinessDetail>({
+  const { data: business, isError: businessMissing } = useQuery<BusinessDetail>({
     queryKey: ['platform-admin-business', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/businesses/${id}`).then((r) => r.data),
   })
@@ -197,6 +197,7 @@ export default function PlatformAdminBusinessDetailPage() {
     }
   }
 
+  if (businessMissing) return <div className="min-h-screen bg-cream text-ink p-6">Business not found. <Link to="/platform-admin" className="text-coral underline">Back to dashboard</Link></div>
   if (!business) return <div className="min-h-screen bg-cream text-ink p-6">Loading...</div>
 
   return (

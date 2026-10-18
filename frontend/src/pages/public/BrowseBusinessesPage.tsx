@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { customerApi } from '../../lib/customerApi'
@@ -24,6 +24,7 @@ const PAGE_SIZE = 12
 export default function BrowseBusinessesPage() {
   const { language: lang, isAuthenticated } = useCustomerAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [categoryKey, setCategoryKey] = useState('')
   const [city, setCity] = useState('')
@@ -176,9 +177,8 @@ export default function BrowseBusinessesPage() {
                       </Link>
                     </div>
                     <button
-                      disabled={pending === b.slug || !isAuthenticated}
-                      title={isAuthenticated ? undefined : t(lang, 'whatsappOnlyAccess')}
-                      onClick={() => toggleFollow(b.slug, b.isFollowed)}
+                      disabled={pending === b.slug}
+                      onClick={() => isAuthenticated ? toggleFollow(b.slug, b.isFollowed) : navigate('/login?next=/browse')}
                       className={`shrink-0 text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50 ${
                         b.isFollowed
                           ? 'bg-teal-tint text-ink border border-line hover:bg-teal-tint/70'

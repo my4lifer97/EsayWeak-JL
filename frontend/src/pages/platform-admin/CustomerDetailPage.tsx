@@ -12,7 +12,7 @@ export default function PlatformAdminCustomerDetailPage() {
   const [error, setError] = useState('')
   const [impersonating, setImpersonating] = useState(false)
 
-  const { data: customer } = useQuery<CustomerDetail>({
+  const { data: customer, isError: customerMissing } = useQuery<CustomerDetail>({
     queryKey: ['platform-admin-customer', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/customers/${id}`).then((r) => r.data),
   })
@@ -42,6 +42,7 @@ export default function PlatformAdminCustomerDetailPage() {
     }
   }
 
+  if (customerMissing) return <div className="min-h-screen bg-cream text-ink p-6">Customer not found. <Link to="/platform-admin" className="text-coral underline">Back to dashboard</Link></div>
   if (!customer) return <div className="min-h-screen bg-cream text-ink p-6">Loading...</div>
 
   return (

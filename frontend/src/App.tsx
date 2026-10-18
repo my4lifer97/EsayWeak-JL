@@ -32,13 +32,26 @@ import MyBookingsPage from './pages/public/MyBookingsPage'
 import RequestBusinessAccountPage from './pages/public/RequestBusinessAccountPage'
 import CustomerLoginPage from './pages/public/CustomerLoginPage'
 import HomePage from './pages/HomePage'
+import NotFoundPage from './pages/NotFoundPage'
 import PlatformAdminLoginPage from './pages/platform-admin/LoginPage'
 import PlatformAdminDashboardPage from './pages/platform-admin/DashboardPage'
 import PlatformAdminBusinessDetailPage from './pages/platform-admin/BusinessDetailPage'
 import PlatformAdminCustomerDetailPage from './pages/platform-admin/CustomerDetailPage'
 import PlatformAdminRequestsPage from './pages/platform-admin/RequestsPage'
 
-const queryClient = new QueryClient()
+// A 4xx (unknown slug, deleted record, no access) won't change on a retry -- the default 3 retries
+// with backoff kept "Loading..." on screen ~8s before a not-found message (QA run 2).
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        const status = (error as { response?: { status?: number } })?.response?.status
+        if (status !== undefined && status >= 400 && status < 500) return false
+        return failureCount < 2
+      },
+    },
+  },
+})
 
 // A data router (not <BrowserRouter>) so pages can use useBlocker -- the admin forms ask before
 // leaving with unsaved edits (components/admin/useUnsavedChangesGuard).
@@ -95,6 +108,7 @@ const router = createBrowserRouter(createRoutesFromElements(
       <Route path="/platform-admin/customers/:id" element={<PlatformAdminCustomerDetailPage />} />
       <Route path="/platform-admin/requests" element={<PlatformAdminRequestsPage />} />
     </Route>
+    <Route path="*" element={<NotFoundPage />} />
   </Route>
 ))
 

@@ -69,6 +69,9 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoError, setPhotoError] = useState('')
   const [bookedSlot, setBookedSlot] = useState<Slot | null>(null)
+  const [waitlistError, setWaitlistError] = useState('')
+  const [slotsError, setSlotsError] = useState(false)
+  const [slotTakenNotice, setSlotTakenNotice] = useState(false)
   const [joiningWaitlist, setJoiningWaitlist] = useState(false)
   const [joinedWaitlist, setJoinedWaitlist] = useState(false)
   const [blockedReason, setBlockedReason] = useState<string | null>(null)
@@ -84,7 +87,8 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
 
   async function fetchSlots(d: string, it: Item) {
-    setSlotsLoading(true); setSlots([]); setIsBlocked(false); setBlockedReason(null)
+    setSlotsLoading(true); setSlotsError(false); setSlots([]); setIsBlocked(false); setBlockedReason(null)
+    try {
     const [{ data }, mine] = await Promise.all([
       customerApi.get(`/${business.slug}/availability/full?date=${d}&itemId=${it.id}`),
       isAuthenticated
@@ -97,11 +101,14 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     setSlots(data.slots ?? [])
     setIsBlocked(!!data.isBlocked)
     setBlockedReason(data.blockedReason ?? null)
-    setSlotsLoading(false)
+    } catch {
+      // A failed request used to leave "Loading times..." on screen for good (QA run 2).
+      setSlotsError(true)
+    } finally { setSlotsLoading(false) }
   }
 
   function pickDate(d: string) {
-    setDate(d); setSlot(null)
+    setDate(d); setSlot(null); setSlotTakenNotice(false)
     if (item) fetchSlots(d, item)
     setStep(3)
   }
@@ -111,19 +118,22 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   }
 
   function pickSlot(s: Slot) {
-    if (s.available) { setSlot(s); setStep(4); return }
+    if (s.available) { setSlot(s); setSlotTakenNotice(false); setStep(4); return }
     const mine = myAppointmentAt(s)
     if (mine) { setMyOpenAppointment(mine); return }
-    setJoinedWaitlist(false)
+    setJoinedWaitlist(false); setWaitlistError('')
     setBookedSlot(s)
   }
 
   async function joinWaitlist() {
     if (!bookedSlot?.appointmentId) return
-    setJoiningWaitlist(true)
+    setJoiningWaitlist(true); setWaitlistError('')
     try {
       await customerApi.post(`/${business.slug}/waitlist/${bookedSlot.appointmentId}`)
       setJoinedWaitlist(true)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setWaitlistError(msg ?? t(lang, 'waitlistJoinFailed'))
     } finally { setJoiningWaitlist(false) }
   }
 
@@ -196,8 +206,14 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
       })
       setBookingSuccess(true)
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Booking failed. Please try again.')
+      const data = (err as { response?: { data?: { error?: string; slotTaken?: boolean } } })?.response?.data
+      if (data?.slotTaken) {
+        // Someone else got there first: back to the times, refreshed, without the stale pick.
+        setSlot(null); setStep(3); setSlotTakenNotice(true)
+        fetchSlots(date, item)
+        return
+      }
+      setError(data?.error ?? t(lang, 'bookingFailed'))
     } finally { setConfirmLoading(false) }
   }
 
@@ -290,8 +306,19 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           <div>
             <p className="text-muted mb-1">{t(lang, 'selectTime')}</p>
             <p className="text-sm text-muted mb-5">{date}</p>
+            {slotTakenNotice && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800/50 dark:text-amber-300 text-sm rounded-lg px-4 py-3 mb-4">{t(lang, 'slotJustTaken')}</div>
+            )}
             {slotsLoading ? (
               <div className="text-muted text-center py-8">{t(lang, 'loadingTimes')}</div>
+            ) : slotsError ? (
+              <div className="text-muted text-center py-8">
+                <p className="mb-3">{t(lang, 'timesLoadFailed')}</p>
+                <button type="button" onClick={() => date && item && fetchSlots(date, item)}
+                  className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                  {t(lang, 'retry')}
+                </button>
+              </div>
             ) : slots.length === 0 ? (
               <div className="text-muted text-center py-8">
                 <p>{isBlocked ? t(lang, 'closedByOwner') : t(lang, 'noTimes')}</p>
@@ -414,6 +441,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           waitlistEnabled={business.waitlistEnabled}
           joining={joiningWaitlist}
           joined={joinedWaitlist}
+          error={waitlistError}
           onJoinWaitlist={joinWaitlist}
           onClose={() => setBookedSlot(null)}
         />

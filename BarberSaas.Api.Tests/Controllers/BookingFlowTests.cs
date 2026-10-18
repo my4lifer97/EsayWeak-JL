@@ -353,6 +353,10 @@ public class BookingFlowTests : IntegrationTestBase
 
         var ownerCancel = await Client.PostAsync($"/api/customer/appointments/{booked.AppointmentId}/cancel", null);
         Assert.Equal(HttpStatusCode.OK, ownerCancel.StatusCode);
+
+        // QA run 2: notes were still editable after cancelling.
+        var noteAfterCancel = await Client.PatchAsJsonAsync($"/api/customer/appointments/{booked.AppointmentId}/notes", new { notes = "too late" });
+        Assert.Equal(HttpStatusCode.Conflict, noteAfterCancel.StatusCode);
     }
 
     [Fact]

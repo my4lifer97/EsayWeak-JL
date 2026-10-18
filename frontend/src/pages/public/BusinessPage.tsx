@@ -19,6 +19,8 @@ type BusinessInfo = {
   isFollowed: boolean
   city: string | null; addressLine: string | null; mapUrl: string | null
   ratingCount: number; ratingAverage: number
+  // The next 7 days, today first; null times = closed.
+  openingHours?: { date: string; dayOfWeek: number; startTime: string | null; endTime: string | null }[]
 }
 
 export default function BusinessPage() {
@@ -118,6 +120,22 @@ export default function BusinessPage() {
           )}
         </div>
 
+        {business.openingHours && business.openingHours.some((d) => d.startTime) && (
+          <div className="bg-surface border border-line rounded-2xl p-4 mb-4">
+            <h2 className="text-ink font-semibold mb-2">{t(lang, 'openingHours')}</h2>
+            <ul className="text-sm space-y-1">
+              {business.openingHours.map((d, i) => (
+                <li key={d.date} className={`flex justify-between gap-4 ${i === 0 ? 'text-ink font-medium' : 'text-muted'}`}>
+                  <span>{new Date(`${d.date}T00:00:00`).toLocaleDateString(lang === 'AR' ? 'ar' : lang === 'HE' ? 'he' : 'en', { weekday: 'long' })}</span>
+                  {d.startTime && d.endTime
+                    ? <bdi dir="ltr">{d.startTime} – {d.endTime}</bdi>
+                    : <span>{t(lang, 'dayClosedLabel')}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="space-y-3">
           {business.items.some((i) => i.isBookable) && (
             <button onClick={() => navigate(`/${slug}/book`)}
@@ -127,9 +145,8 @@ export default function BusinessPage() {
           )}
 
           <button
-            disabled={followLoading || !isAuthenticated}
-            onClick={toggleFollow}
-            title={isAuthenticated ? undefined : t(lang, 'whatsappOnlyAccess')}
+            disabled={followLoading}
+            onClick={isAuthenticated ? toggleFollow : () => navigate(`/login?next=${encodeURIComponent(`/${slug}`)}`)}
             className={`w-full font-semibold py-3 rounded-2xl transition-colors disabled:opacity-50 ${
               business.isFollowed
                 ? 'bg-teal-tint text-ink border border-line hover:bg-teal-tint/70'

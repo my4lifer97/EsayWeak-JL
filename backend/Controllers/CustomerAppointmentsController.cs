@@ -180,6 +180,10 @@ public class CustomerAppointmentsController(
             .Include(a => a.Item).Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
+        // Same rule as reschedule: the card only offers notes on a live booking (QA run 2: the API
+        // still took them on a cancelled or finished one).
+        if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+            return Conflict(new { error = "This appointment can no longer be modified" });
 
         appt.Notes = req.Notes;
         await db.SaveChangesAsync();

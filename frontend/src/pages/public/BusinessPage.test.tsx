@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import BusinessPage from './BusinessPage'
 import { customerApi } from '../../lib/customerApi'
@@ -27,6 +28,7 @@ function renderPage() {
       <MemoryRouter initialEntries={['/joe']}>
         <Routes>
           <Route path="/:slug" element={<BusinessPage />} />
+          <Route path="/login" element={<div>LOGIN PAGE</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
@@ -54,12 +56,14 @@ describe('BusinessPage (public storefront)', () => {
     expect(screen.getByText('Reviews Section')).toBeInTheDocument()
   })
 
-  it('disables the follow button for anonymous visitors', async () => {
+  it('sends an anonymous visitor who taps Follow to sign in', async () => {
     vi.mocked(useCustomerAuth).mockReturnValue({ isAuthenticated: false, language: 'EN' } as ReturnType<typeof useCustomerAuth>)
 
     renderPage()
+    await userEvent.click(await screen.findByRole('button', { name: 'Follow' }))
 
-    expect(await screen.findByRole('button', { name: 'Follow' })).toBeDisabled()
+    expect(await screen.findByText('LOGIN PAGE')).toBeInTheDocument()
+    expect(customerApi.post).not.toHaveBeenCalled()
   })
 
   it('enables the follow button when authenticated', async () => {

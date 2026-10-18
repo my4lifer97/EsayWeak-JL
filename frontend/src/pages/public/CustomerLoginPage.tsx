@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link, Navigate } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
@@ -9,7 +9,7 @@ import ThemeToggle from '../../components/ThemeToggle'
 type View = 'phone' | 'otp'
 
 export default function CustomerLoginPage() {
-  const { language: lang, requestOtp, verifyOtp } = useCustomerAuth()
+  const { language: lang, requestOtp, verifyOtp, isAuthenticated } = useCustomerAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = params.get('next') ?? '/browse'
@@ -47,6 +47,9 @@ export default function CustomerLoginPage() {
       setError(t(lang, 'invalidOtp'))
     } finally { setLoading(false) }
   }
+
+  // Already signed in (QA run 2: the form still showed): go straight where the login would lead.
+  if (isAuthenticated) return <Navigate to={next} replace />
 
   return (
     <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
