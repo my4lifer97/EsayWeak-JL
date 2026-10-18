@@ -364,6 +364,12 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
   picker; it's on `CustomerAccountNav`, `BusinessPage`, and `BookingWizard`.
   **Admin/business dashboard pages** are unaffected — they still use `useAuth().language`, set from the
   business's own `Settings > Language` field, unrelated to any customer's choice.
+  The signed-out owner pages (login, register, forgot/set password, `/request-business-account`) use the
+  same `useAuth().language` (`localStorage['lang']`, default English) through `components/admin/OwnerAuthShell.tsx`,
+  which adds a HE/EN/AR picker (`components/LanguagePicker.tsx`, shared with the customer `LanguageSwitcher`)
+  and the `dir`; signing in replaces it with the business's setting. Placeholders like `{email}` are filled
+  with `.replace()`, or `components/WithEmail.tsx` when the value needs a `<bdi>`. Server error messages
+  (`response.data.error`) are still English. The platform-admin panel is English only on purpose.
   Every translated page sets `dir` on its root (`AR`/`HE` → `rtl`). Inside rtl text, wrap time
   ranges, phone numbers and counts in `<bdi dir="ltr">` (or a plain `<bdi>` for a generic
   label/value row): unwrapped, "09:00 – 10:00" displays as "10:00 – 09:00" and "+972…" puts the `+`

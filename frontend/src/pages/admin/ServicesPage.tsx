@@ -81,7 +81,7 @@ export default function ServicesPage() {
       queryClient.invalidateQueries({ queryKey: ['services'] })
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setError(msg ?? 'Failed to save')
+      setError(msg ?? t(lang, 'failedToSave'))
     } finally { setLoading(false) }
   }
 
@@ -165,12 +165,12 @@ export default function ServicesPage() {
           <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-md border border-line max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-5">
               <h2 className="text-ink font-semibold text-lg">{editing ? t(lang, 'editServiceTitle') : t(lang, 'addServiceTitle')}</h2>
-              <button onClick={closeForm} aria-label="Close"
+              <button onClick={closeForm} aria-label={t(lang, 'close')}
                 className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
             </div>
             {error && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-4">{error}</div>}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {[['Name (English)', 'nameEn'], ['Name (Arabic)', 'nameAr'], ['Name (Hebrew)', 'nameHe']].map(([label, key]) => (
+              {[[`${t(lang, 'name')} (${t(lang, 'langEnglish')})`, 'nameEn'], [`${t(lang, 'name')} (${t(lang, 'langArabic')})`, 'nameAr'], [`${t(lang, 'name')} (${t(lang, 'langHebrew')})`, 'nameHe']].map(([label, key]) => (
                 <div key={key}>
                   <label htmlFor={`service-${key}`} className="block text-sm font-medium text-ink mb-1.5">{label}</label>
                   <input id={`service-${key}`} type="text" required value={form[key as keyof typeof form] as string}
@@ -187,15 +187,15 @@ export default function ServicesPage() {
               <div className="grid grid-cols-2 gap-4">
                 {form.isBookable && (
                   <div>
-                    <label htmlFor="service-duration" className="block text-sm font-medium text-ink mb-1.5">Duration (min)</label>
+                    <label htmlFor="service-duration" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'durationMinLabel')}</label>
                     <select id="service-duration" value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}
                       className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
-                      {[15, 30, 45, 60, 75, 90, 120].map((v) => <option key={v} value={v}>{v} min</option>)}
+                      {[15, 30, 45, 60, 75, 90, 120].map((v) => <option key={v} value={v}>{v} {t(lang, 'min')}</option>)}
                     </select>
                   </div>
                 )}
                 <div>
-                  <label htmlFor="service-price" className="block text-sm font-medium text-ink mb-1.5">Price</label>
+                  <label htmlFor="service-price" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'priceLabel')}</label>
                   <input id="service-price" type="number" min="0" step="0.01" value={form.price}
                     onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} placeholder="25.00"
                     className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />

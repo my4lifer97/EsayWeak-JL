@@ -351,7 +351,7 @@ export default function WeeklyCalendar({
               </div>
               <button onClick={() => setSelected(null)}
                 className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream text-2xl leading-none transition-colors"
-                aria-label="Close">✕</button>
+                aria-label={t(lang, 'close')}>✕</button>
             </div>
             <div className="space-y-2 text-sm mb-6">
               <Row label={t(lang, 'service')} value={itemName(selected.item, lang)} />
@@ -443,7 +443,7 @@ function ScheduleInfoModal({ sel, lang, dateLocale, onClose }: {
           </div>
           <button onClick={onClose}
             className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream text-2xl leading-none transition-colors"
-            aria-label="Close">✕</button>
+            aria-label={t(lang, 'close')}>✕</button>
         </div>
         <div className="space-y-2 text-sm mb-4">
           {sel.kind === 'blocked' ? (

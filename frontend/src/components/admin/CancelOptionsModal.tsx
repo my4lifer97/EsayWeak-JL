@@ -75,7 +75,7 @@ export default function CancelOptionsModal({
       <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-line">
         <div className="flex justify-between items-start mb-4">
           <h2 className="text-ink font-semibold text-lg">{t(lang, 'cancelOptionsTitle')}</h2>
-          <button onClick={onClose} aria-label="Close"
+          <button onClick={onClose} aria-label={t(lang, 'close')}
             className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
         </div>
 

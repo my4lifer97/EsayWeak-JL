@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
+import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
@@ -177,7 +178,7 @@ export default function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error
-      setError(msg || 'Failed to save')
+      setError(msg || t(lang, 'failedToSave'))
     } finally { setSaving(false) }
   }
 
@@ -234,11 +235,11 @@ export default function SettingsPage() {
         )}
 
         <div className="bg-surface border border-line rounded-2xl p-6">
-          <h2 className="text-ink font-semibold mb-1">Appearance</h2>
+          <h2 className="text-ink font-semibold mb-1">{t(lang, 'appearance')}</h2>
           <div className="flex items-center justify-between gap-4 mt-3">
             <div>
-              <div className="text-sm font-medium text-ink">{theme === 'dark' ? 'Dark mode' : 'Light mode'}</div>
-              <div className="text-muted text-sm mt-0.5">Switch between the light and dark theme.</div>
+              <div className="text-sm font-medium text-ink">{t(lang, theme === 'dark' ? 'darkMode' : 'lightMode')}</div>
+              <div className="text-muted text-sm mt-0.5">{t(lang, 'appearanceHint')}</div>
             </div>
             <ThemeToggle />
           </div>
@@ -251,7 +252,9 @@ export default function SettingsPage() {
               : isTrialActive ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
           }`}>
             {business.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionActive')
-              : isTrialActive ? `Free trial · ${trialDaysLeft} days left (expires ${format(trialDate, 'MMM d, yyyy')})`
+              : isTrialActive ? t(lang, 'subscriptionTrial')
+                .replace('{days}', String(trialDaysLeft))
+                .replace('{date}', format(trialDate, 'd MMM yyyy', { locale: lang === 'AR' ? ar : lang === 'HE' ? he : enUS }))
               : t(lang, 'subscriptionExpired')}
           </div>
           {business.subscriptionStatus !== 'ACTIVE' && (
@@ -301,7 +304,7 @@ export default function SettingsPage() {
                 <textarea value={form[key as keyof typeof form]} rows={3}
                   onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                   className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink focus:outline-none focus:ring-2 focus:ring-coral resize-none"
-                  placeholder="Tell customers about your business..." />
+                  placeholder={t(lang, 'descriptionPlaceholder')} />
               ) : (
                 <input type={type} value={form[key as keyof typeof form]}
                   onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}

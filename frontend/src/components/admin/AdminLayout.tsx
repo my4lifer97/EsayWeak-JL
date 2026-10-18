@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import AdminSidebar from './AdminSidebar'
 import { useAuth } from '../../lib/auth'
+import { t } from '../../lib/i18n'
 import { useIsTouchPrimary } from '../../lib/useIsTouchPrimary'
 
 export default function AdminLayout() {
@@ -32,7 +33,7 @@ export default function AdminLayout() {
     <div className="min-h-screen bg-cream" dir={isRTL ? 'rtl' : 'ltr'}>
       <AdminSidebar businessName={user?.name ?? ''} isTouch open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 border-b border-line bg-surface">
-        <button onClick={() => setSidebarOpen(true)} className="text-ink hover:text-coral-dark text-xl" aria-label="Open menu">☰</button>
+        <button onClick={() => setSidebarOpen(true)} className="text-ink hover:text-coral-dark text-xl" aria-label={t(language, 'openMenu')}>☰</button>
         <div className="text-ink font-bold">EsayWeek</div>
       </div>
       <main className="p-4">

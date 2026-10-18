@@ -2,14 +2,20 @@ import { useState, type FormEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
-import ThemeToggle from '../../components/ThemeToggle'
+import { useAuth } from '../../lib/auth'
+import { t, type TKey } from '../../lib/i18n'
+import OwnerAuthShell from '../../components/admin/OwnerAuthShell'
 
-type BusinessType = { id: string; key: string; displayNameEn: string }
+type BusinessType = { id: string; key: string; displayNameEn: string; displayNameAr: string; displayNameHe: string }
+// A translation key, or the server's own message (which is not translated).
+type Message = { key: TKey } | { text: string }
 
 // First name / family name feed the auto-generated login username, so they must be English letters.
 const ENGLISH_NAME = /^[A-Za-z][A-Za-z '-]*$/
 
 export default function RequestBusinessAccountPage() {
+  // A prospective owner: same language preference as the owner sign-in pages.
+  const { language: lang } = useAuth()
   const [businessName, setBusinessName] = useState('')
   const [firstName, setFirstName] = useState('')
   const [familyName, setFamilyName] = useState('')
@@ -18,14 +24,14 @@ export default function RequestBusinessAccountPage() {
   const [businessTypeId, setBusinessTypeId] = useState('')
   const [description, setDescription] = useState('')
   const [systemNeeds, setSystemNeeds] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState<Message | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
 
   const [emailCode, setEmailCode] = useState('')
   const [codeSentForEmail, setCodeSentForEmail] = useState<string | null>(null)
   const [sendingCode, setSendingCode] = useState(false)
-  const [codeError, setCodeError] = useState('')
+  const [codeError, setCodeError] = useState<Message | null>(null)
   const [devCode, setDevCode] = useState<string | null>(null)
 
   const { data: businessTypes } = useQuery<BusinessType[]>({
@@ -42,8 +48,18 @@ export default function RequestBusinessAccountPage() {
   const emailLooksValid = /\S+@\S+\.\S+/.test(email)
   const codeSent = !!email && codeSentForEmail === email
 
+  function show(m: Message) {
+    return 'key' in m ? t(lang, m.key) : m.text
+  }
+
+  function typeName(bt: BusinessType) {
+    if (lang === 'AR') return bt.displayNameAr
+    if (lang === 'HE') return bt.displayNameHe
+    return bt.displayNameEn
+  }
+
   async function handleSendCode() {
-    setCodeError(''); setSendingCode(true)
+    setCodeError(null); setSendingCode(true)
     try {
       const { data } = await api.post('/business-owner-requests/send-email-code', { email })
       setCodeSentForEmail(email)
@@ -51,7 +67,8 @@ export default function RequestBusinessAccountPage() {
       if (data.devCode) { setDevCode(data.devCode); setEmailCode(data.devCode) }
     } catch (err: unknown) {
       const resp = (err as { response?: { status?: number; data?: { error?: string } } })?.response
-      setCodeError(resp?.status === 429 ? 'Please wait before requesting another code.' : (resp?.data?.error ?? 'Could not send the code.'))
+      if (resp?.status === 429) setCodeError({ key: 'reqWaitForCode' })
+      else setCodeError(resp?.data?.error ? { text: resp.data.error } : { key: 'reqSendCodeFailed' })
     } finally {
       setSendingCode(false)
     }
@@ -59,25 +76,25 @@ export default function RequestBusinessAccountPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setError('')
+    setError(null)
     if (!ENGLISH_NAME.test(firstName.trim()) || !ENGLISH_NAME.test(familyName.trim())) {
-      setError('First name and family name must be in English letters.')
+      setError({ key: 'reqNamesEnglish' })
       return
     }
     if (phoneDigitCount < 7 || phoneDigitCount > 15) {
-      setError('Please enter a valid phone number.')
+      setError({ key: 'reqPhoneInvalid' })
       return
     }
     if (!codeSent) {
-      setError('Please verify your email address first.')
+      setError({ key: 'reqVerifyEmailFirst' })
       return
     }
     if (emailCode.trim().length !== 6) {
-      setError('Please enter the 6-digit code sent to your email.')
+      setError({ key: 'reqEnterCode' })
       return
     }
     if (!businessTypeId) {
-      setError('Please choose a business type.')
+      setError({ key: 'reqChooseType' })
       return
     }
     setLoading(true)
@@ -96,8 +113,8 @@ export default function RequestBusinessAccountPage() {
       setSubmitted(true)
     } catch (err: unknown) {
       const resp = (err as { response?: { status?: number; data?: { error?: string } } })?.response
-      if (resp?.status === 409) setError('A request from this email is already pending review.')
-      else setError(resp?.data?.error ?? 'Could not submit your request. Please try again.')
+      if (resp?.status === 409) setError({ key: 'reqAlreadyPending' })
+      else setError(resp?.data?.error ? { text: resp.data.error } : { key: 'reqSubmitFailed' })
     } finally {
       setLoading(false)
     }
@@ -107,115 +124,108 @@ export default function RequestBusinessAccountPage() {
     'w-full bg-cream border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral'
 
   return (
-    <div className="min-h-screen bg-cream flex items-center justify-center p-4 relative">
-      <div className="absolute top-4 end-4"><ThemeToggle /></div>
-      <div className="w-full max-w-md py-10">
-        <h1 className="text-2xl font-bold text-ink mb-2 text-center">Request a business account</h1>
-        <p className="text-muted text-center mb-8">
-          Tell us about your business. We review every request and email your login once approved.
-        </p>
+    <OwnerAuthShell wide>
+      <h1 className="text-2xl font-bold text-ink mb-2 text-center">{t(lang, 'reqTitle')}</h1>
+      <p className="text-muted text-center mb-8">{t(lang, 'reqIntro')}</p>
 
-        {submitted ? (
-          <div className="bg-green-50 border border-green-200 dark:bg-green-900/40 dark:border-green-800/50 rounded-xl px-4 py-6 text-center">
-            <p className="text-green-700 dark:text-green-400 font-medium mb-2">Thanks — your request has been submitted.</p>
-            <p className="text-muted text-sm">
-              Once an admin approves it, you'll get an email with your username and a temporary password.
-            </p>
+      {submitted ? (
+        <div className="bg-green-50 border border-green-200 dark:bg-green-900/40 dark:border-green-800/50 rounded-xl px-4 py-6 text-center">
+          <p className="text-green-700 dark:text-green-400 font-medium mb-2">{t(lang, 'reqSubmittedTitle')}</p>
+          <p className="text-muted text-sm">{t(lang, 'reqSubmittedBody')}</p>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">{show(error)}</div>
+          )}
+
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">{t(lang, 'reqOwner')}</h2>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  required value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                  placeholder={t(lang, 'reqFirstName')} autoComplete="given-name" className={inputClass}
+                />
+                <input
+                  required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
+                  placeholder={t(lang, 'reqFamilyName')} autoComplete="family-name" className={inputClass}
+                />
+              </div>
+              <p className={`text-xs ${nameError ? 'text-red-600 dark:text-red-400' : 'text-muted'}`}>
+                {t(lang, 'reqEnglishNamesHint')}
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder={t(lang, 'reqEmail')} autoComplete="email" className={`flex-1 min-w-0 ${inputClass}`}
+                />
+                <button type="button" onClick={handleSendCode} disabled={!emailLooksValid || sendingCode}
+                  className="shrink-0 border border-line text-ink hover:bg-cream disabled:opacity-50 font-semibold text-sm px-4 rounded-xl transition-colors">
+                  {sendingCode ? '…' : codeSent ? t(lang, 'reqResend') : t(lang, 'reqSendCode')}
+                </button>
+              </div>
+              {codeError && <p className="text-xs text-red-600 dark:text-red-400">{show(codeError)}</p>}
+              {codeSent && (
+                <div>
+                  <input
+                    value={emailCode} onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder={t(lang, 'reqCodePlaceholder')} inputMode="numeric" className={inputClass}
+                  />
+                  {devCode && (
+                    <p className="text-xs text-muted mt-1">{t(lang, 'authDevCode')} <span className="font-mono font-bold">{devCode}</span></p>
+                  )}
+                </div>
+              )}
+              <input
+                type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)}
+                placeholder={t(lang, 'reqPhone')} autoComplete="tel" dir="ltr" className={inputClass}
+              />
+              {phoneError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{t(lang, 'reqPhoneInvalidHint')}</p>
+              )}
+            </div>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">{error}</div>
-            )}
 
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Owner</h2>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="First name" autoComplete="given-name" className={inputClass}
-                  />
-                  <input
-                    required value={familyName} onChange={(e) => setFamilyName(e.target.value)}
-                    placeholder="Family name" autoComplete="family-name" className={inputClass}
-                  />
-                </div>
-                <p className={`text-xs ${nameError ? 'text-red-600 dark:text-red-400' : 'text-muted'}`}>
-                  Enter both names in English — they're used to create your login username.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Active email address" autoComplete="email" className={`flex-1 ${inputClass}`}
-                  />
-                  <button type="button" onClick={handleSendCode} disabled={!emailLooksValid || sendingCode}
-                    className="shrink-0 border border-line text-ink hover:bg-cream disabled:opacity-50 font-semibold text-sm px-4 rounded-xl transition-colors">
-                    {sendingCode ? '…' : codeSent ? 'Resend' : 'Send code'}
-                  </button>
-                </div>
-                {codeError && <p className="text-xs text-red-600 dark:text-red-400">{codeError}</p>}
-                {codeSent && (
-                  <div>
-                    <input
-                      value={emailCode} onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="6-digit code from your email" inputMode="numeric" className={inputClass}
-                    />
-                    {devCode && (
-                      <p className="text-xs text-muted mt-1">Dev mode — your code is <span className="font-mono font-bold">{devCode}</span></p>
-                    )}
-                  </div>
-                )}
-                <input
-                  type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Phone number" autoComplete="tel" className={inputClass}
-                />
-                {phoneError && (
-                  <p className="text-xs text-red-600 dark:text-red-400">Enter a valid phone number (7–15 digits).</p>
-                )}
-              </div>
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">{t(lang, 'reqBusiness')}</h2>
+            <div className="space-y-3">
+              <input
+                required value={businessName} onChange={(e) => setBusinessName(e.target.value)}
+                placeholder={t(lang, 'reqBusinessName')} className={inputClass}
+              />
+              <select
+                required value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">{t(lang, 'authBusinessType')}</option>
+                {businessTypes?.map((bt) => (
+                  <option key={bt.id} value={bt.id}>{typeName(bt)}</option>
+                ))}
+              </select>
+              <textarea
+                value={description} onChange={(e) => setDescription(e.target.value)}
+                placeholder={t(lang, 'reqDescription')} rows={3} className={inputClass}
+              />
+              <textarea
+                value={systemNeeds} onChange={(e) => setSystemNeeds(e.target.value)}
+                placeholder={t(lang, 'reqSystemNeeds')} rows={3} className={inputClass}
+              />
             </div>
+          </div>
 
-            <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted mb-2">Business</h2>
-              <div className="space-y-3">
-                <input
-                  required value={businessName} onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="Business name" className={inputClass}
-                />
-                <select
-                  required value={businessTypeId} onChange={(e) => setBusinessTypeId(e.target.value)}
-                  className={inputClass}
-                >
-                  <option value="">Business type…</option>
-                  {businessTypes?.map((t) => (
-                    <option key={t.id} value={t.id}>{t.displayNameEn}</option>
-                  ))}
-                </select>
-                <textarea
-                  value={description} onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe your business" rows={3} className={inputClass}
-                />
-                <textarea
-                  value={systemNeeds} onChange={(e) => setSystemNeeds(e.target.value)}
-                  placeholder="What do you want to use the system for?" rows={3} className={inputClass}
-                />
-              </div>
-            </div>
+          <button
+            type="submit" disabled={loading || !!nameError}
+            className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
+          >
+            {loading ? '…' : t(lang, 'reqSubmit')}
+          </button>
+        </form>
+      )}
 
-            <button
-              type="submit" disabled={loading || !!nameError}
-              className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors"
-            >
-              {loading ? '…' : 'Submit request'}
-            </button>
-          </form>
-        )}
-
-        <p className="text-muted text-center mt-6 text-sm">
-          <Link to="/admin/login" className="text-coral-dark hover:underline">← Back to sign in</Link>
-        </p>
-      </div>
-    </div>
+      <p className="text-muted text-center mt-6 text-sm">
+        <Link to="/admin/login" className="text-coral-dark hover:underline">{t(lang, 'authBackToSignIn')}</Link>
+      </p>
+    </OwnerAuthShell>
   )
 }

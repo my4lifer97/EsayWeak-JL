@@ -96,7 +96,7 @@ function TouchSidebar({
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <button onClick={onClose} aria-label="Close menu"
+            <button onClick={onClose} aria-label={t(lang, 'closeMenu')}
               className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
           </div>
         </div>

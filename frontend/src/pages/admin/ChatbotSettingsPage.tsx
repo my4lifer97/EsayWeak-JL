@@ -38,25 +38,26 @@ type ChatbotForm = {
   inquiryWhatsAppNumber: string; inquiryEmail: string
 }
 
+type LangNameKey = 'langEnglish' | 'langArabic' | 'langHebrew'
 type MessageTypeId = 'welcome' | 'confirmation' | 'final'
 
 const MESSAGE_TYPES: {
   id: MessageTypeId
   labelKey: 'chatbotWelcomeMessage' | 'chatbotConfirmationMessage' | 'chatbotFinalMessage'
   hintKey: 'chatbotWelcomeMessageHint' | 'chatbotConfirmationMessageHint' | 'chatbotFinalMessageHint'
-  fields: [string, MessageFieldKey][]
+  fields: [LangNameKey, MessageFieldKey][]
 }[] = [
   {
     id: 'welcome', labelKey: 'chatbotWelcomeMessage', hintKey: 'chatbotWelcomeMessageHint',
-    fields: [['Welcome Message (English)', 'chatbotWelcomeMessageEn'], ['Welcome Message (Arabic)', 'chatbotWelcomeMessageAr'], ['Welcome Message (Hebrew)', 'chatbotWelcomeMessageHe']],
+    fields: [['langEnglish', 'chatbotWelcomeMessageEn'], ['langArabic', 'chatbotWelcomeMessageAr'], ['langHebrew', 'chatbotWelcomeMessageHe']],
   },
   {
     id: 'confirmation', labelKey: 'chatbotConfirmationMessage', hintKey: 'chatbotConfirmationMessageHint',
-    fields: [['Confirmation Message (English)', 'chatbotConfirmationMessageEn'], ['Confirmation Message (Arabic)', 'chatbotConfirmationMessageAr'], ['Confirmation Message (Hebrew)', 'chatbotConfirmationMessageHe']],
+    fields: [['langEnglish', 'chatbotConfirmationMessageEn'], ['langArabic', 'chatbotConfirmationMessageAr'], ['langHebrew', 'chatbotConfirmationMessageHe']],
   },
   {
     id: 'final', labelKey: 'chatbotFinalMessage', hintKey: 'chatbotFinalMessageHint',
-    fields: [['Final Message (English)', 'chatbotFinalMessageEn'], ['Final Message (Arabic)', 'chatbotFinalMessageAr'], ['Final Message (Hebrew)', 'chatbotFinalMessageHe']],
+    fields: [['langEnglish', 'chatbotFinalMessageEn'], ['langArabic', 'chatbotFinalMessageAr'], ['langHebrew', 'chatbotFinalMessageHe']],
   },
 ]
 
@@ -173,7 +174,7 @@ export default function ChatbotSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
     } catch (err) {
       const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error
-      setError(msg || 'Failed to save')
+      setError(msg || t(lang, 'failedToSave'))
     } finally { setSaving(false) }
   }
 
@@ -316,13 +317,13 @@ function MessageEditorModal({
           </div>
           <button onClick={onClose}
             className="absolute top-1/2 -translate-y-1/2 end-0 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream text-2xl leading-none transition-colors"
-            aria-label="Close">✕</button>
+            aria-label={t(lang, 'close')}>✕</button>
         </div>
 
         <div className="space-y-4">
-          {messageType.fields.map(([label, key]) => (
+          {messageType.fields.map(([langKey, key]) => (
             <div key={key}>
-              <label className="block text-xs text-muted mb-1">{label}</label>
+              <label className="block text-xs text-muted mb-1">{t(lang, messageType.labelKey)} ({t(lang, langKey)})</label>
               <textarea value={form[key]} rows={3} maxLength={1000}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                 placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
