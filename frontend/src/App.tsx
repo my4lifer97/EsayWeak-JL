@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createBrowserRouter, createRoutesFromElements, RouterProvider, Route, Navigate, Outlet } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './lib/theme'
@@ -9,14 +10,6 @@ import LoginPage from './pages/admin/LoginPage'
 import RegisterPage from './pages/admin/RegisterPage'
 import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
 import SetPasswordPage from './pages/admin/SetPasswordPage'
-import DashboardPage from './pages/admin/DashboardPage'
-import AppointmentsPage from './pages/admin/AppointmentsPage'
-import RecurringAppointmentsPage from './pages/admin/RecurringAppointmentsPage'
-import SchedulePage from './pages/admin/SchedulePage'
-import ServicesPage from './pages/admin/ServicesPage'
-import ReviewsPage from './pages/admin/ReviewsPage'
-import SettingsPage from './pages/admin/SettingsPage'
-import ChatbotSettingsPage from './pages/admin/ChatbotSettingsPage'
 import AdminLayout from './components/admin/AdminLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import CustomerProtectedRoute from './components/CustomerProtectedRoute'
@@ -33,11 +26,22 @@ import RequestBusinessAccountPage from './pages/public/RequestBusinessAccountPag
 import CustomerLoginPage from './pages/public/CustomerLoginPage'
 import HomePage from './pages/HomePage'
 import NotFoundPage from './pages/NotFoundPage'
-import PlatformAdminLoginPage from './pages/platform-admin/LoginPage'
-import PlatformAdminDashboardPage from './pages/platform-admin/DashboardPage'
-import PlatformAdminBusinessDetailPage from './pages/platform-admin/BusinessDetailPage'
-import PlatformAdminCustomerDetailPage from './pages/platform-admin/CustomerDetailPage'
-import PlatformAdminRequestsPage from './pages/platform-admin/RequestsPage'
+import { lazyPage } from './lib/lazyPage'
+
+// Owner dashboard and platform-admin pages load on demand (see lib/lazyPage).
+const DashboardPage = lazyPage(() => import('./pages/admin/DashboardPage'))
+const AppointmentsPage = lazyPage(() => import('./pages/admin/AppointmentsPage'))
+const RecurringAppointmentsPage = lazyPage(() => import('./pages/admin/RecurringAppointmentsPage'))
+const SchedulePage = lazyPage(() => import('./pages/admin/SchedulePage'))
+const ServicesPage = lazyPage(() => import('./pages/admin/ServicesPage'))
+const ReviewsPage = lazyPage(() => import('./pages/admin/ReviewsPage'))
+const SettingsPage = lazyPage(() => import('./pages/admin/SettingsPage'))
+const ChatbotSettingsPage = lazyPage(() => import('./pages/admin/ChatbotSettingsPage'))
+const PlatformAdminLoginPage = lazyPage(() => import('./pages/platform-admin/LoginPage'))
+const PlatformAdminDashboardPage = lazyPage(() => import('./pages/platform-admin/DashboardPage'))
+const PlatformAdminBusinessDetailPage = lazyPage(() => import('./pages/platform-admin/BusinessDetailPage'))
+const PlatformAdminCustomerDetailPage = lazyPage(() => import('./pages/platform-admin/CustomerDetailPage'))
+const PlatformAdminRequestsPage = lazyPage(() => import('./pages/platform-admin/RequestsPage'))
 
 // A 4xx (unknown slug, deleted record, no access) won't change on a retry -- the default 3 retries
 // with backoff kept "Loading..." on screen ~8s before a not-found message (QA run 2).
@@ -56,7 +60,7 @@ const queryClient = new QueryClient({
 // A data router (not <BrowserRouter>) so pages can use useBlocker -- the admin forms ask before
 // leaving with unsaved edits (components/admin/useUnsavedChangesGuard).
 const router = createBrowserRouter(createRoutesFromElements(
-  <Route element={<><ImpersonationBanner /><Outlet /></>}>
+  <Route element={<><ImpersonationBanner /><Suspense fallback={null}><Outlet /></Suspense></>}>
     <Route path="/" element={<HomePage />} />
     <Route path="/admin/login" element={<LoginPage />} />
     <Route path="/admin/register" element={<RegisterPage />} />

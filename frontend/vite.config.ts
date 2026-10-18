@@ -12,6 +12,17 @@ export default defineConfig({
     // ngrok's tunnel domains for local testing against Twilio, which needs a public HTTPS URL.
     allowedHosts: ['.ngrok-free.dev', '.ngrok-free.app'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Libraries change far less often than our code, so in their own file they stay cached
+        // across deploys. Owner/platform-admin pages are split off separately (App.tsx, lazyPage).
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query', 'axios', 'date-fns'],
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     globals: true,

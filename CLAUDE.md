@@ -380,6 +380,13 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
   at the end. Phone/OTP inputs get `dir="ltr"`.
 - **Backend**: `backend/Services/I18nService.cs` — static `T(lang, key, args)` for WhatsApp/reminder messages.
 
+### Code splitting
+Owner dashboard pages (inside `AdminLayout`) and all platform-admin pages are `lazyPage(() => import(...))`
+in `App.tsx` (`lib/lazyPage.ts`: `React.lazy` that reloads the tab once if a chunk from an older deploy is
+gone). Customer pages and the owner sign-in pages stay in the main bundle. `vite.config.ts` puts the
+libraries in a separate `vendor` chunk so it stays cached across deploys. `Suspense` boundaries: the root
+route's `Outlet` and `AdminLayout`'s.
+
 ### Back navigation (customer pages)
 `frontend/src/components/BackButton.tsx` — browser-history back (`navigate(-1)`), not a fixed
 route, so it works regardless of how the customer arrived. Used on every customer-facing page

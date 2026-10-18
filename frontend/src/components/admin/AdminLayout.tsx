@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import AdminSidebar from './AdminSidebar'
 import { useAuth } from '../../lib/auth'
@@ -18,7 +18,7 @@ export default function AdminLayout() {
       <div className="flex h-screen bg-cream overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
         <AdminSidebar businessName={user?.name ?? ''} isTouch={false} open={false} onClose={() => {}} />
         <main className="flex-1 overflow-y-auto p-8">
-          <Outlet />
+          <Suspense fallback={null}><Outlet /></Suspense>
         </main>
       </div>
     )
@@ -37,7 +37,7 @@ export default function AdminLayout() {
         <div className="text-ink font-bold">EsayWeek</div>
       </div>
       <main className="p-4">
-        <Outlet />
+        <Suspense fallback={null}><Outlet /></Suspense>
       </main>
     </div>
   )
