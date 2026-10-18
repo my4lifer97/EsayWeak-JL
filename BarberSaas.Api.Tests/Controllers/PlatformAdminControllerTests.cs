@@ -216,7 +216,24 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         await Client.PostAsync($"/api/platform-admin/businesses/{settings!.Id}/impersonate", null);
 
         var activity = await Client.GetFromJsonAsync<List<PlatformAdminActivityLogDto>>($"/api/platform-admin/businesses/{settings.Id}/activity");
-        Assert.Contains(activity!, a => a.Action.Contains("ImpersonateBusiness") && a.Impersonated);
+        Assert.Contains(activity!, a => a.Action.Contains("ImpersonateBusiness") && a.ByPlatformAdmin && !a.Impersonated);
+    }
+
+    [Fact]
+    public async Task AdminOwnAction_IsLabelledByPlatformAdmin_NotImpersonation()
+    {
+        var adminToken = await BootstrapAdmin();
+        var businessToken = await RegisterAndLoginBusiness("admin-action@example.com", "admin-action-shop");
+        Authorize(Client, businessToken);
+        var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
+
+        Authorize(Client, adminToken);
+        await Client.PostAsync($"/api/platform-admin/businesses/{settings!.Id}/disable", null);
+
+        var activity = await Client.GetFromJsonAsync<List<PlatformAdminActivityLogDto>>($"/api/platform-admin/businesses/{settings.Id}/activity");
+        var row = Assert.Single(activity!, a => a.Action.Contains("DisableBusiness"));
+        Assert.True(row.ByPlatformAdmin);
+        Assert.False(row.Impersonated);
     }
 
     // ─── WhatsApp linking ────────────────────────────────────────────────────

@@ -433,15 +433,24 @@ public class PlatformAdminController(
         return Ok(new { ok = true });
     }
 
+    // The platform admin's own actions (disable, password reset, emails, starting an impersonation,
+    // WhatsApp linking) also store its id in ImpersonatedByPlatformAdminId, so only the other rows
+    // were done with an impersonation token.
+    private static readonly System.Linq.Expressions.Expression<Func<ActivityLog, PlatformAdminActivityLogDto>> ActivityLogDto =
+        a => new PlatformAdminActivityLogDto(
+            a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.UserAgent, a.CreatedAt,
+            a.ImpersonatedByPlatformAdminId != null
+                && !a.Action.StartsWith("PlatformAdminController.") && !a.Action.StartsWith("WhatsAppLink."),
+            a.ImpersonatedByPlatformAdminId != null
+                && (a.Action.StartsWith("PlatformAdminController.") || a.Action.StartsWith("WhatsAppLink.")));
+
     [HttpGet("businesses/{id}/activity")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> GetBusinessActivity(string id)
     {
         var logs = await db.ActivityLogs.Where(a => a.BusinessId == id)
             .OrderByDescending(a => a.CreatedAt).Take(200)
-            .Select(a => new PlatformAdminActivityLogDto(
-                a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.UserAgent, a.CreatedAt,
-                a.ImpersonatedByPlatformAdminId != null))
+            .Select(ActivityLogDto)
             .ToListAsync();
         return Ok(logs);
     }
@@ -496,9 +505,7 @@ public class PlatformAdminController(
     {
         var logs = await db.ActivityLogs.Where(a => a.CustomerAccountId == id)
             .OrderByDescending(a => a.CreatedAt).Take(200)
-            .Select(a => new PlatformAdminActivityLogDto(
-                a.Id, a.Action, a.Description, a.Method, a.Path, a.StatusCode, a.IpAddress, a.UserAgent, a.CreatedAt,
-                a.ImpersonatedByPlatformAdminId != null))
+            .Select(ActivityLogDto)
             .ToListAsync();
         return Ok(logs);
     }

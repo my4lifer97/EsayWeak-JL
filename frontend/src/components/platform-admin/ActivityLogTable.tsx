@@ -3,6 +3,7 @@ import { Fragment, useState } from 'react'
 export type ActivityLogEntry = {
   id: string; action: string; description: string; method: string; path: string
   statusCode: number; ipAddress: string | null; userAgent: string | null; createdAt: string; impersonated: boolean
+  byPlatformAdmin: boolean
 }
 
 // "RecurringAppointmentsController.Delete" -> "Delete" -- same regex as the backend's
@@ -17,7 +18,7 @@ const selectClass = 'bg-cream border border-line rounded-lg px-3 py-1.5 text-ink
 export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | undefined }) {
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('')
-  const [impersonatedFilter, setImpersonatedFilter] = useState<'all' | 'impersonated' | 'direct'>('all')
+  const [impersonatedFilter, setImpersonatedFilter] = useState<'all' | 'impersonated' | 'admin' | 'direct'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   if (!entries) return <p className="text-muted text-sm">Loading...</p>
@@ -29,7 +30,8 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
     if (search && !e.description.toLowerCase().includes(search.toLowerCase())) return false
     if (actionFilter && e.action !== actionFilter) return false
     if (impersonatedFilter === 'impersonated' && !e.impersonated) return false
-    if (impersonatedFilter === 'direct' && e.impersonated) return false
+    if (impersonatedFilter === 'admin' && !e.byPlatformAdmin) return false
+    if (impersonatedFilter === 'direct' && (e.impersonated || e.byPlatformAdmin)) return false
     return true
   })
 
@@ -50,7 +52,8 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
         <select value={impersonatedFilter} onChange={(e) => setImpersonatedFilter(e.target.value as typeof impersonatedFilter)} className={selectClass}>
           <option value="all">All actors</option>
           <option value="impersonated">Via impersonation only</option>
-          <option value="direct">Direct only</option>
+          <option value="admin">Platform admin only</option>
+          <option value="direct">Owner/customer only</option>
         </select>
         {hasActiveFilters && (
           <button onClick={clearFilters} className="text-sm text-coral-dark hover:text-coral">Clear Filters</button>
@@ -81,6 +84,9 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
                         {e.description}
                         {e.impersonated && (
                           <span className="ml-2 text-xs text-yellow-700 dark:text-yellow-400">(via impersonation)</span>
+                        )}
+                        {e.byPlatformAdmin && (
+                          <span className="ml-2 text-xs text-muted">(by platform admin)</span>
                         )}
                       </td>
                       <td className="py-2 pr-4 text-muted">{e.method} {e.statusCode}</td>
