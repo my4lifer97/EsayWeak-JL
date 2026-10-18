@@ -823,7 +823,7 @@ public class AdminController(
         var query = db.Appointments
             .Include(a => a.Customer)
             .Include(a => a.Item)
-            .Where(a => a.BusinessId == BusinessId && !a.IsWaitlistCarrier);
+            .Where(a => a.BusinessId == BusinessId);
 
         query = filter switch
         {

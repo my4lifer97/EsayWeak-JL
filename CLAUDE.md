@@ -691,8 +691,7 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
     owner `PATCH /api/admin/appointments/{id}/reschedule`). The appointment row itself moves (keeps
     its Id/CancelToken so the customer's links still work); if anyone is waiting on it,
     `WaitlistService.DetachForReschedule` leaves a `CANCELLED` copy at the old date/time, re-points
-    the waiting entries to it, and the queue starts after the save succeeds. The copy has
-    `IsWaitlistCarrier = true` and is left out of the customer's and the owner's appointment lists.
+    the waiting entries to it, and the queue starts after the save succeeds.
   - A customer can't join the waitlist for **their own** appointment (400). On the booking page
     (`BookingWizard`) their own booked slot shows as "Your appointment" and opens their
     `AppointmentCard` (note / reschedule / cancel) instead of the waitlist modal.
@@ -748,7 +747,7 @@ Migrations run roughly: `InitialCreate` ... `AddPlatformAdminAndActivityLog` ...
 multi-vertical rename) → `AddBusinessOwnerRequests` → `AddReviews` (adds `Reviews` +
 `Businesses.RatingCount`/`RatingAverage`) → `AddBusinessDiscoveryFields` (adds
 `Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) → `AddCustomerOtp` (adds the
-`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
+`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
 `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel
 **before** the code push, not after (see [Deployment (Railway)](#deployment-railway)) — skipping
 that ordering has caused multiple prod outages.
