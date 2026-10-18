@@ -48,6 +48,10 @@ export default function RecurringAppointmentsPage() {
 
   const effectiveDate = dayOfWeek === null ? '' : nextDateForWeekday(dayOfWeek)
 
+  const { data: settings } = useQuery<{ whatsAppNumber: string | null }>({
+    queryKey: ['settings'],
+    queryFn: () => api.get('/admin/settings').then((r) => r.data),
+  })
   const { data: allItems = [] } = useQuery<Item[]>({
     queryKey: ['services'],
     queryFn: () => api.get('/admin/items').then((r) => r.data),
