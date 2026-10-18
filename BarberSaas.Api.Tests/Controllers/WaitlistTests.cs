@@ -453,6 +453,13 @@ public class WaitlistTests : IntegrationTestBase
         var oldSlot = db.Appointments.Single(a => a.Id == entry.AppointmentId);
         Assert.Equal(AppointmentStatus.CANCELLED, oldSlot.Status);
         Assert.Equal("10:00", oldSlot.StartTime);
+        Assert.True(oldSlot.IsWaitlistCarrier);
+
+        // QA run 2: that copy showed up in the customer's own list as a phantom "Cancelled" booking.
+        var mineReq = new HttpRequestMessage(HttpMethod.Get, "/api/customer/appointments");
+        mineReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bookerToken);
+        var mine = await (await Client.SendAsync(mineReq)).Content.ReadFromJsonAsync<List<System.Text.Json.JsonElement>>();
+        Assert.Equal([appt.AppointmentId], mine!.Select(a => a.GetProperty("id").GetString()));
 
         // 10:00 is bookable again.
         var rebook = await BookAs(waiterToken, "wl-resched-shop", itemId, dateStr, "10:00");
