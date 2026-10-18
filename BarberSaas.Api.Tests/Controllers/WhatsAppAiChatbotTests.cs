@@ -151,6 +151,61 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         Assert.Equal(0, state.InvalidAttempts); // reset by the successful tool call, not left at 2
     }
 
+    private async Task<List<string>> SeedUpcomingAppointments(string businessId, string itemId, string phone, int count)
+    {
+        using var db = Db();
+        var customer = new Customer { BusinessId = businessId, Phone = phone, Name = "Test", FamilyName = "Customer" };
+        db.Customers.Add(customer);
+        var ids = new List<string>();
+        for (var i = 1; i <= count; i++)
+        {
+            var appointment = new Appointment
+            {
+                BusinessId = businessId, CustomerId = customer.Id, ItemId = itemId,
+                Date = DateTime.Now.Date.AddDays(i), StartTime = "10:00", EndTime = "10:30",
+                Status = AppointmentStatus.CONFIRMED,
+            };
+            db.Appointments.Add(appointment);
+            ids.Add(appointment.Id);
+        }
+        await db.SaveChangesAsync();
+        return ids;
+    }
+
+    [Fact]
+    public async Task RepeatedCancelToolCalls_CancelOnlyOneAppointmentPerMessage()
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-6@example.com", "wa-ai-6");
+        var phone = "+15559991006";
+        var ids = await SeedUpcomingAppointments(businessId, itemId, phone, 3);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        Factory.OpenAi.ToolCallRepeat = 3;
+
+        await PostInbound(businessId, phone, "cancel");
+
+        using var db = Db();
+        var statuses = await db.Appointments.Where(a => ids.Contains(a.Id)).Select(a => a.Status).ToListAsync();
+        Assert.Equal(1, statuses.Count(s => s == AppointmentStatus.CANCELLED));
+    }
+
+    [Fact]
+    public async Task OpenAiFailsAfterACancel_RepliesWithTheCancellation_NotTheRuleBasedFlow()
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-7@example.com", "wa-ai-7");
+        var phone = "+15559991007";
+        var ids = await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        Factory.OpenAi.ThrowAfterTool = new InvalidOperationException("simulated OpenAI outage on the follow-up call");
+
+        var resp = await PostInbound(businessId, phone, "please cancel my appointment");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("cancelled", body!.Reply, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("1. Haircut", body.Reply);
+        using var db = Db();
+        Assert.Equal(AppointmentStatus.CANCELLED, (await db.Appointments.SingleAsync(a => a.Id == ids[0])).Status);
+    }
+
     [Fact]
     public async Task OpenAiThrows_FallsBackToRuleBasedReply()
     {

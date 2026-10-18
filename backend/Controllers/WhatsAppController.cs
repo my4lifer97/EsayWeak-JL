@@ -486,18 +486,43 @@ public class WhatsAppController(
         ];
 
         var toolCalled = false;
+        var cancelledThisTurn = false;
+        string? toolMessage = null; // text of the last tool that actually did something
         async Task<string> ExecuteTool(string name, string argsJson)
         {
             toolCalled = true;
-            return name switch
+            // The model can call a tool several times in one turn; one message cancels one
+            // appointment at most, or "cancel" could wipe out every upcoming booking (QA run 2).
+            if (name == "cancel_upcoming_appointment" && cancelledThisTurn)
+                return JsonSerializer.Serialize(new { found = false, error = "One appointment was already cancelled for this message. Ask the customer to send another message to cancel another one." });
+            var result = name switch
             {
                 "create_booking_link" => await ExecuteCreateBookingLink(business, appUrl, fromPhone, profileName, lang, argsJson),
                 "cancel_upcoming_appointment" => await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang),
                 _ => JsonSerializer.Serialize(new { error = "unknown tool" }),
             };
+            using var parsed = JsonDocument.Parse(result);
+            if (parsed.RootElement.TryGetProperty("message", out var message))
+            {
+                toolMessage = message.GetString();
+                if (name == "cancel_upcoming_appointment") cancelledThisTurn = true;
+            }
+            return result;
         }
 
-        var reply = await openAi.GetReplyAsync(systemPrompt, history, incomingMsg, tools, ExecuteTool);
+        string reply;
+        try
+        {
+            reply = await openAi.GetReplyAsync(systemPrompt, history, incomingMsg, tools, ExecuteTool);
+        }
+        catch (Exception ex) when (toolMessage is not null)
+        {
+            // A tool already acted (link issued or appointment cancelled) before OpenAI failed.
+            // Falling back to the rule-based path would answer as if nothing happened, so send the
+            // tool's own text, which is what the model was told to relay anyway.
+            logger.LogError(ex, "OpenAI failed after a tool ran for business {BusinessId}; sending the tool's message", business.Id);
+            reply = toolMessage;
+        }
 
         history.Add(new OpenAiTurn("user", incomingMsg));
         history.Add(new OpenAiTurn("assistant", reply));

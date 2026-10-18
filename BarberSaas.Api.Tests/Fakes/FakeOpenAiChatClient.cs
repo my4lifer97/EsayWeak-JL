@@ -13,6 +13,10 @@ public class FakeOpenAiChatClient : IOpenAiChatClient
     public string ToolCallArgsJson { get; set; } = "{}";
     public string? PlainTextReply { get; set; }
     public Exception? ThrowOnCall { get; set; }
+    // How many times the canned tool is called in one turn (the real model can repeat a call).
+    public int ToolCallRepeat { get; set; } = 1;
+    // Thrown after the tool calls ran, like an OpenAI failure on the follow-up request.
+    public Exception? ThrowAfterTool { get; set; }
 
     public List<(string SystemPrompt, IReadOnlyList<OpenAiTurn> History, string UserMessage)> Calls { get; } = [];
 
@@ -28,7 +32,10 @@ public class FakeOpenAiChatClient : IOpenAiChatClient
 
         if (ToolCallName is not null)
         {
-            var toolResult = await executeToolAsync(ToolCallName, ToolCallArgsJson);
+            var toolResult = "";
+            for (var i = 0; i < ToolCallRepeat; i++)
+                toolResult = await executeToolAsync(ToolCallName, ToolCallArgsJson);
+            if (ThrowAfterTool is not null) throw ThrowAfterTool;
             return $"AI: {toolResult}";
         }
 
