@@ -357,6 +357,12 @@ public class Appointment
     // before, no changes needed there) until the owner picks what happens to it.
     public bool PendingCancellationApproval { get; set; } = false;
 
+    // The CANCELLED copy WaitlistService.DetachForReschedule leaves at a rescheduled appointment's
+    // old time, only so the waiting entries have a freed slot to point at. Not a real booking:
+    // kept out of the customer's and the owner's appointment lists (QA run 2: it showed up there
+    // as a phantom "Cancelled" appointment next to the moved one).
+    public bool IsWaitlistCarrier { get; set; } = false;
+
     public Business Business { get; set; } = null!;
     public Customer Customer { get; set; } = null!;
     public Item Item { get; set; } = null!;

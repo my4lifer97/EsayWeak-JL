@@ -202,6 +202,7 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
             Status = AppointmentStatus.CANCELLED,
             ReminderSent = true,
             ReminderSentSoon = true,
+            IsWaitlistCarrier = true,
         };
         db.Appointments.Add(oldSlot);
         foreach (var entry in entries)

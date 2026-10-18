@@ -27,7 +27,7 @@ public class CustomerAppointmentsController(
         var query = db.Appointments
             .Include(a => a.Item).ThenInclude(s => s.GalleryPhotos)
             .Include(a => a.Business)
-            .Where(a => a.Customer.CustomerAccountId == AccountId);
+            .Where(a => a.Customer.CustomerAccountId == AccountId && !a.IsWaitlistCarrier);
 
         if (!string.IsNullOrEmpty(businessSlug))
             query = query.Where(a => a.Business.Slug == businessSlug);
