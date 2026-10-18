@@ -102,9 +102,6 @@ namespace BarberSaas.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsWaitlistCarrier")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("ItemId")
                         .IsRequired()
                         .HasColumnType("text");
