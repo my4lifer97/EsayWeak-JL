@@ -24,6 +24,12 @@ describe('api request interceptor', () => {
     const config = requestInterceptor()({ headers: {} }) as { headers: Record<string, string> }
     expect(config.headers.Authorization).toBeUndefined()
   })
+
+  it('sends the owner language as X-Lang, unless the call set its own', () => {
+    localStorage.setItem('lang', 'HE')
+    expect((requestInterceptor()({ headers: {} }) as { headers: Record<string, string> }).headers['X-Lang']).toBe('HE')
+    expect((requestInterceptor()({ headers: { 'X-Lang': 'AR' } }) as { headers: Record<string, string> }).headers['X-Lang']).toBe('AR')
+  })
 })
 
 describe('api response interceptor', () => {

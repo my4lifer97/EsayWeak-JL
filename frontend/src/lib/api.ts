@@ -9,6 +9,9 @@ export const api = axios.create({ baseURL: `${import.meta.env.VITE_API_URL ?? ''
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // The backend translates its `error` messages to this language (TranslateErrorFilter). A call
+  // made in another language (e.g. AppointmentPage, in the business's) passes its own header.
+  if (!config.headers['X-Lang']) config.headers['X-Lang'] = localStorage.getItem('lang') ?? 'EN'
   return config
 })
 

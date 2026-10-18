@@ -16,6 +16,7 @@ builder.Services.AddControllers(opt =>
     opt.Filters.Add<BlockDisabledBusinessFilter>();
     opt.Filters.Add<ValidateInputFilter>();
     opt.Filters.Add<DispatchNotificationsFilter>();
+    opt.Filters.Add<TranslateErrorFilter>();
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();

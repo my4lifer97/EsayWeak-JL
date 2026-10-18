@@ -368,8 +368,12 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
   same `useAuth().language` (`localStorage['lang']`, default English) through `components/admin/OwnerAuthShell.tsx`,
   which adds a HE/EN/AR picker (`components/LanguagePicker.tsx`, shared with the customer `LanguageSwitcher`)
   and the `dir`; signing in replaces it with the business's setting. Placeholders like `{email}` are filled
-  with `.replace()`, or `components/WithEmail.tsx` when the value needs a `<bdi>`. Server error messages
-  (`response.data.error`) are still English. The platform-admin panel is English only on purpose.
+  with `.replace()`, or `components/WithEmail.tsx` when the value needs a `<bdi>`. The platform-admin panel is English only on purpose.
+- **Server error messages**: controllers write English `{ error = "..." }`. `api.ts`/`customerApi.ts` send
+  `X-Lang` (owner `lang` / customer `customerLang`; `AppointmentPage` passes the business's language), and the
+  global `Filters/TranslateErrorFilter.cs` swaps the text via `Services/ApiErrorTranslations.cs` for AR/HE
+  (exact strings, plus regex patterns for messages with a number/name inside). A message missing there stays
+  English, so add its AR/HE line when adding a user-facing error.
   Every translated page sets `dir` on its root (`AR`/`HE` → `rtl`). Inside rtl text, wrap time
   ranges, phone numbers and counts in `<bdi dir="ltr">` (or a plain `<bdi>` for a generic
   label/value row): unwrapped, "09:00 – 10:00" displays as "10:00 – 09:00" and "+972…" puts the `+`

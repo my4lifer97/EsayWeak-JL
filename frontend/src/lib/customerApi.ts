@@ -9,6 +9,8 @@ export const customerApi = axios.create({ baseURL: `${import.meta.env.VITE_API_U
 customerApi.interceptors.request.use((config) => {
   const token = localStorage.getItem('customerToken')
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // Error messages come back in the customer's language (same default as customerAuth.tsx).
+  config.headers['X-Lang'] = localStorage.getItem('customerLang') ?? 'HE'
   return config
 })
 

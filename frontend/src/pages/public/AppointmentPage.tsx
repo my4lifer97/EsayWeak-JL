@@ -53,7 +53,7 @@ export default function AppointmentPage() {
   async function cancelAppointment() {
     setLoading(true); setCancelError('')
     try {
-      await api.delete(`/${slug}/appointments/${id}?token=${token}`)
+      await api.delete(`/${slug}/appointments/${id}?token=${token}`, { headers: { 'X-Lang': lang } })
       // Refetch rather than assume "cancelled": with owner approval on, it's only pending.
       await refetch()
       setConfirmingCancel(false)
@@ -75,7 +75,7 @@ export default function AppointmentPage() {
     setRescheduling(true)
     setRescheduleError('')
     try {
-      await api.patch(`/${slug}/appointments/${id}?token=${token}`, { date: rescheduleDate, startTime })
+      await api.patch(`/${slug}/appointments/${id}?token=${token}`, { date: rescheduleDate, startTime }, { headers: { 'X-Lang': lang } })
       setShowReschedule(false)
       setRescheduleDate('')
       await refetch()
