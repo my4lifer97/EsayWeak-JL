@@ -147,6 +147,7 @@ builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>
     opt.KnownProxies.Clear();
 });
 builder.Services.AddSingleton<LoginThrottle>();
+builder.Services.AddSingleton<AiUsageLimiter>();
 
 var app = builder.Build();
 

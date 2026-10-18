@@ -18,6 +18,7 @@ public class WhatsAppController(
     AppointmentCancellationService cancellationService,
     WhatsAppBookingTokenService bookingTokens,
     IOpenAiChatClient openAi,
+    AiUsageLimiter aiUsage,
     NotificationOutbox notifications,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
@@ -206,7 +207,8 @@ public class WhatsAppController(
             if (handled) return inquiryReply;
         }
 
-        if (!string.IsNullOrEmpty(config["OpenAI:ApiKey"]))
+        // Past the per-phone daily cap (AiUsageLimiter) the free rule-based flow answers instead.
+        if (!string.IsNullOrEmpty(config["OpenAI:ApiKey"]) && aiUsage.TryUse(business.Id, fromPhone, DateTime.UtcNow))
         {
             try
             {

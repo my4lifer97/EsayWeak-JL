@@ -894,6 +894,13 @@ instead of the AI being called at all, until the customer sends the literal `"$"
 conversation state entirely and replies with `whatsapp.aiConversationRestarted` — a fresh state row
 only gets created once the customer sends a real next message, same as the rule-based unlock.
 
+**Limits per turn and per phone (2026-10-19):** one message cancels at most one appointment (a repeated
+`cancel_upcoming_appointment` call in the same turn gets `found: false`); if OpenAI fails *after* a tool
+already acted, the tool's own `message` is sent instead of falling back to the rule-based path (which would
+answer as if nothing happened). `Services/AiUsageLimiter` (singleton, in memory) sends at most
+`OpenAI:MaxMessagesPerPhonePerDay` (default 50) messages per (business, phone) per rolling 24 h to OpenAI;
+past that the rule-based bot answers.
+
 `WhatsAppConversationState.HistoryJson` (nullable, added alongside this) holds the rolling chat
 history (last ~12 turns, `List<OpenAiTurn>` JSON) for this path — the same (BusinessId, Phone) +
 `ExpiresAt` row the rule-based path already used for its "awaiting numbered reply" flag, repurposed
