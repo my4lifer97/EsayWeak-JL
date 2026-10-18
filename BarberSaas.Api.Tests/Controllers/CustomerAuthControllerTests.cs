@@ -241,6 +241,30 @@ public class CustomerAuthControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task VerifyOtp_SameCodeSentTwiceAtOnce_OnlyOneSignsIn()
+    {
+        var phone = "+15558880011";
+        var request = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest(phone));
+        var code = (await request.Content.ReadFromJsonAsync<RequestOtpResponse>())!.DevOtp!;
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ =>
+            Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest(phone, code, "First", "Last"))));
+
+        Assert.Single(results, r => r.StatusCode == HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task OldHardCodedReviewerLogin_IsOffWithoutConfig()
+    {
+        var request = await Client.PostAsJsonAsync("/api/customer/auth/otp", new RequestCustomerOtpRequest("0501234567"));
+        Assert.NotEqual("123456", (await request.Content.ReadFromJsonAsync<RequestOtpResponse>())!.DevOtp);
+
+        var resp = await Client.PostAsJsonAsync("/api/customer/auth/verify", new VerifyCustomerOtpRequest("0501234567", "123456", "First", "Last"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task VerifyOtp_WrongCode_ReturnsBadRequest()
     {
         var phone = "+15558880005";

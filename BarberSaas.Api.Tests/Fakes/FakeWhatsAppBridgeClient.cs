@@ -19,7 +19,13 @@ public class FakeWhatsAppBridgeClient : IWhatsAppBridgeClient
         return Task.CompletedTask;
     }
 
-    public Task<WhatsAppLinkStatusDto> StartLinkAsync(string businessId) => Task.FromResult(StatusToReturn);
-    public Task<WhatsAppLinkStatusDto> GetStatusAsync(string businessId) => Task.FromResult(StatusToReturn);
-    public Task UnlinkAsync(string businessId) => Task.CompletedTask;
+    // Simulates the bridge being down for the linking calls.
+    public bool Unreachable { get; set; }
+    private Task<T> Linking<T>(T result) => Unreachable
+        ? Task.FromException<T>(new WhatsAppBridgeUnavailableException(new HttpRequestException("connection refused")))
+        : Task.FromResult(result);
+
+    public Task<WhatsAppLinkStatusDto> StartLinkAsync(string businessId) => Linking(StatusToReturn);
+    public Task<WhatsAppLinkStatusDto> GetStatusAsync(string businessId) => Linking(StatusToReturn);
+    public Task UnlinkAsync(string businessId) => Linking(true);
 }

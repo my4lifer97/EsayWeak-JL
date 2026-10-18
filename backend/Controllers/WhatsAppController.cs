@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using BarberSaas.Api.Data;
+using BarberSaas.Api.Filters;
 using BarberSaas.Api.Models;
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -112,13 +113,9 @@ public class WhatsAppController(
     public record BridgeInboundResponse(string? Reply);
 
     [HttpPost("bridge/inbound")]
+    [RequireBridgeSecret]
     public async Task<IActionResult> BridgeInbound([FromBody] BridgeInboundRequest req)
     {
-        var secret = config["WhatsAppBridge:Secret"];
-        var header = Request.Headers["X-Bridge-Secret"].FirstOrDefault();
-        if (string.IsNullOrEmpty(secret) || header != secret)
-            return Unauthorized();
-
         // The bridge names the business up front, so the per-customer lock (see ConversationLocks)
         // can cover this whole request, business lookup included.
         var fromPhone = PhoneNormalizer.Normalize(req.FromPhone);
@@ -177,6 +174,10 @@ public class WhatsAppController(
 
     private async Task<string?> ProcessMessageLockedAsync(Business business, string appUrl, string fromPhone, string profileName, string incomingMsg)
     {
+        // Postgres text columns can't hold a NUL character: one in a message or WhatsApp profile
+        // name failed the save below with a 500 and the customer got no reply (QA run 2).
+        incomingMsg = incomingMsg.Replace(" ", "");
+        profileName = profileName.Replace(" ", "");
 
         // The business wants to reply themselves instead of the automated flow -- send no message
         // at all, rather than a fixed "not available" reply.

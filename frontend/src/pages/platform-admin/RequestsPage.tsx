@@ -97,8 +97,9 @@ export default function PlatformAdminRequestsPage() {
       await platformAdminApi.post(`/platform-admin/business-owner-requests/${open.id}/reject`, { note: noteDraft || null })
       setOpenId(null)
       queryClient.invalidateQueries({ queryKey: ['platform-admin-requests'] })
-    } catch {
-      setRowError('Could not reject this request')
+    } catch (err: unknown) {
+      const resp = (err as { response?: { data?: { error?: string } } })?.response
+      setRowError(resp?.data?.error ?? 'Could not reject this request')
     } finally {
       setBusy(false)
     }

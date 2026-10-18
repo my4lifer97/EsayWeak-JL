@@ -221,6 +221,41 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Approve_TwiceAtOnce_OneWins_TheOtherGetsNoServerError()
+    {
+        var typeId = await SeedBusinessType();
+        var adminToken = await BootstrapAdmin();
+        var created = await (await Client.PostAsJsonAsync("/api/business-owner-requests",
+            await ValidRequest(typeId, email: "double-approve@example.com"))).Content.ReadFromJsonAsync<JsonRequestId>();
+
+        Authorize(Client, adminToken);
+        var results = await Task.WhenAll(new[] { "double-a", "double-b" }.Select(slug => Client.PostAsJsonAsync(
+            $"/api/platform-admin/business-owner-requests/{created!.Id}/approve", new ApproveBusinessOwnerRequestRequest(slug))));
+
+        Assert.Single(results, r => r.StatusCode == HttpStatusCode.OK);
+        Assert.DoesNotContain(results, r => (int)r.StatusCode >= 500);
+    }
+
+    [Fact]
+    public async Task Reject_IsRecordedInTheActivityLog()
+    {
+        var typeId = await SeedBusinessType();
+        var adminToken = await BootstrapAdmin();
+        var created = await (await Client.PostAsJsonAsync("/api/business-owner-requests",
+            await ValidRequest(typeId, email: "rejected-log@example.com"))).Content.ReadFromJsonAsync<JsonRequestId>();
+
+        Authorize(Client, adminToken);
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/business-owner-requests/{created!.Id}/reject",
+            new RejectBusinessOwnerRequestRequest("Not a fit"));
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var db = Db();
+        var log = Assert.Single(db.ActivityLogs.Where(a => a.Action.EndsWith("RejectBusinessOwnerRequest")));
+        Assert.Contains("rejected-log@example.com", log.Description);
+        Assert.NotNull(log.ImpersonatedByPlatformAdminId);
+    }
+
+    [Fact]
     public async Task Approve_DuplicateUsername_AppendsNumber()
     {
         var typeId = await SeedBusinessType();

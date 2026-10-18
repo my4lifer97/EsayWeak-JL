@@ -14,7 +14,7 @@ namespace BarberSaas.Api.Controllers;
 // customer already messaged us on WhatsApp") has a normal sign-in of its own.
 [ApiController]
 [Route("api/customer/auth")]
-public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, WhatsAppBookingTokenService bookingTokens, IOtpSender otpSender, IWebHostEnvironment env) : ControllerBase
+public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, WhatsAppBookingTokenService bookingTokens, IOtpSender otpSender, IWebHostEnvironment env, IConfiguration config) : ControllerBase
 {
     private const int OtpCooldownSeconds = 45;
     private const int OtpMaxPerHour = 5;
@@ -23,9 +23,12 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
 
     // Fixed phone/code pair that always succeeds without sending a real SMS -- needed for app
     // store reviewer logins once the mobile app exists (a reviewer can't receive a real SMS to an
-    // unknown number), same pattern as the old pre-WhatsApp OTP flow used.
-    private const string TestCustomerCode = "123456";
-    private static readonly string TestCustomerPhone = PhoneNormalizer.Normalize("0501234567");
+    // unknown number). Off unless both CustomerAuth:ReviewerPhone and ReviewerCode are set (QA
+    // run 2: a hard-coded 0501234567 / 123456 let anyone into that account in production).
+    private string? ReviewerPhone =>
+        string.IsNullOrWhiteSpace(config["CustomerAuth:ReviewerPhone"]) || string.IsNullOrWhiteSpace(config["CustomerAuth:ReviewerCode"])
+            ? null
+            : PhoneNormalizer.Normalize(config["CustomerAuth:ReviewerPhone"]!);
 
     [HttpPost("otp")]
     public async Task<IActionResult> RequestOtp([FromBody] RequestCustomerOtpRequest req)
@@ -52,8 +55,9 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
 
         var isNew = !await db.CustomerAccounts.AnyAsync(a => a.Phone == phone);
 
-        var code = phone == TestCustomerPhone
-            ? TestCustomerCode
+        var isReviewer = phone == ReviewerPhone;
+        var code = isReviewer
+            ? config["CustomerAuth:ReviewerCode"]!
             : Random.Shared.Next(100000, 999999).ToString();
         db.CustomerOtps.Add(new CustomerOtp
         {
@@ -63,10 +67,9 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         });
         await db.SaveChangesAsync();
 
-        // The fixed reviewer/test phone always resolves to the fixed TestCustomerCode above --
-        // sending it a real SMS on every request would text a real phone number that has nothing
-        // to do with app review/testing.
-        if (phone != TestCustomerPhone)
+        // The reviewer phone always gets the fixed ReviewerCode -- sending it a real SMS on every
+        // request would text a real phone number that has nothing to do with app review.
+        if (!isReviewer)
             await otpSender.SendAsync(phone, code);
 
         string? devOtp = env.IsDevelopment() ? code : null;
@@ -96,14 +99,21 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             return BadRequest(new { error = "Invalid or expired code" });
         }
 
-        entry.Consumed = true;
-
         var account = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == phone);
+        if (account is null && (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.FamilyName)))
+            return BadRequest(new { error = "Name and family name required for new customers" });
+
+        // Claim the code in one conditional UPDATE: two requests with the same code at the same
+        // moment both pass the check above, but only one of them flips Consumed (QA run 2).
+        var claimed = await db.CustomerOtps
+            .Where(o => o.Id == entry.Id && !o.Consumed)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.Consumed, true));
+        if (claimed == 0)
+            return BadRequest(new { error = "Invalid or expired code" });
+
         if (account is null)
         {
-            if (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.FamilyName))
-                return BadRequest(new { error = "Name and family name required for new customers" });
-            account = new CustomerAccount { Phone = phone, Name = req.Name, FamilyName = req.FamilyName };
+            account = new CustomerAccount { Phone = phone, Name = req.Name!, FamilyName = req.FamilyName! };
             db.CustomerAccounts.Add(account);
         }
 

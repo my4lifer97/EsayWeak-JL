@@ -12,12 +12,36 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHos
         logger.LogError(exception, "Unhandled exception processing {Method} {Path}",
             httpContext.Request.Method, httpContext.Request.Path);
 
-        httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
         httpContext.Response.ContentType = "application/json";
 
+        // A known outage gets its own status and a message written for the user, in every env.
+        if (exception is Services.WhatsAppBridgeUnavailableException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await httpContext.Response.WriteAsJsonAsync(new { error = exception.Message }, cancellationToken);
+            return true;
+        }
+
+        // Postgres refuses a NUL character in text (SQLSTATE 22021); any endpoint that gets one
+        // in user input answers with a 400 instead of a 500.
+        if (FindPostgresError(exception, "22021"))
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await httpContext.Response.WriteAsJsonAsync(new { error = "The text contains characters that aren't allowed." }, cancellationToken);
+            return true;
+        }
+
+        httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
         var message = env.IsDevelopment() ? exception.Message : "An unexpected error occurred.";
         await httpContext.Response.WriteAsJsonAsync(new { error = message }, cancellationToken);
 
         return true;
+    }
+
+    private static bool FindPostgresError(Exception? exception, string sqlState)
+    {
+        for (var e = exception; e is not null; e = e.InnerException)
+            if (e is Npgsql.PostgresException pg && pg.SqlState == sqlState) return true;
+        return false;
     }
 }

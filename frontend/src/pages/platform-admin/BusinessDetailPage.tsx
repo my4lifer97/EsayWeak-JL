@@ -67,8 +67,8 @@ export default function PlatformAdminBusinessDetailPage() {
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${business.id}/whatsapp/link`)
       setPolling(true)
-    } catch {
-      setLinkError('Could not start linking')
+    } catch (err: unknown) {
+      setLinkError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Could not start linking')
     } finally {
       setStarting(false)
     }
@@ -79,8 +79,10 @@ export default function PlatformAdminBusinessDetailPage() {
     if (!(await ask(`Unlink WhatsApp from ${business.name}? The chatbot stops answering customers until it's linked again with a new QR scan.`, { yesLabel: 'Unlink' }))) return
     setLinkError(''); setUnlinking(true)
     try {
-      await platformAdminApi.delete(`/platform-admin/businesses/${business.id}/whatsapp/link`)
+      const { data } = await platformAdminApi.delete(`/platform-admin/businesses/${business.id}/whatsapp/link`)
       setPolling(false)
+      if (data?.bridgeUnreachable)
+        setLinkError('Unlinked here, but the WhatsApp service was unreachable, so the phone may still show the device as linked. Unlink again once the service is back.')
       queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
     } catch {
       setLinkError('Could not unlink')

@@ -318,7 +318,16 @@ public class PlatformAdminController(
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
 
-        await whatsAppBridge.UnlinkAsync(id);
+        // A bridge outage must not block unlinking: clearing WhatsAppNumber alone already stops the
+        // bot (inbound messages are matched by it, sends need it). The stale bridge session is
+        // reported back so the admin can unlink again once the bridge is up.
+        var bridgeUnreachable = false;
+        try { await whatsAppBridge.UnlinkAsync(id); }
+        catch (WhatsAppBridgeUnavailableException ex)
+        {
+            logger.LogWarning(ex, "WhatsApp bridge unreachable while unlinking business {BusinessId}", id);
+            bridgeUnreachable = true;
+        }
 
         var old = b.WhatsAppNumber;
         b.WhatsAppNumber = null;
@@ -335,7 +344,7 @@ public class PlatformAdminController(
         });
         await db.SaveChangesAsync();
 
-        return Ok(new { b.Id, b.WhatsAppNumber });
+        return Ok(new { b.Id, b.WhatsAppNumber, bridgeUnreachable });
     }
 
     // Backs the platform-admin panel's owner-email composer: the admin picks exactly which pieces
@@ -611,7 +620,16 @@ public class PlatformAdminController(
         request.ReviewedAt = DateTime.UtcNow;
         request.ReviewedByPlatformAdminId = AdminId;
         request.CreatedBusinessId = business.Id;
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Two admins approving at once both pass the Pending check above; the second one's
+            // insert then hits the unique username/slug index (QA run 2: a raw 500).
+            return Conflict(new { error = "This request was just reviewed by someone else, or the URL was just taken. Reload and try again." });
+        }
 
         db.ActivityLogs.Add(new ActivityLog
         {
@@ -670,10 +688,31 @@ public class PlatformAdminController(
         if (request.Status != BusinessOwnerRequestStatus.Pending)
             return BadRequest(new { error = "This request has already been reviewed." });
 
-        request.Status = BusinessOwnerRequestStatus.Rejected;
-        request.RejectionNote = req.Note;
-        request.ReviewedAt = DateTime.UtcNow;
-        request.ReviewedByPlatformAdminId = AdminId;
+        // Conditional on still being Pending, so a reject racing an approve (or another reject)
+        // can't overwrite the decision that landed first.
+        var now = DateTime.UtcNow;
+        var rejected = await db.BusinessOwnerRequests
+            .Where(r => r.Id == id && r.Status == BusinessOwnerRequestStatus.Pending)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(r => r.Status, BusinessOwnerRequestStatus.Rejected)
+                .SetProperty(r => r.RejectionNote, req.Note)
+                .SetProperty(r => r.ReviewedAt, now)
+                .SetProperty(r => r.ReviewedByPlatformAdminId, AdminId));
+        if (rejected == 0)
+            return Conflict(new { error = "This request was just reviewed by someone else. Reload to see it." });
+
+        // No business exists for a rejected request, so this row has no BusinessId -- an audit
+        // trail only; the Requests page shows the decision from the request itself.
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            Action = $"{nameof(PlatformAdminController)}.{nameof(RejectBusinessOwnerRequest)}",
+            Description = $"Rejected request from {request.OwnerFirstName} {request.OwnerFamilyName} ({request.Email}) for \"{request.BusinessName}\"",
+            ImpersonatedByPlatformAdminId = AdminId,
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+        });
         await db.SaveChangesAsync();
 
         return Ok(new { ok = true });

@@ -293,6 +293,55 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         Assert.NotNull(log.ImpersonatedByPlatformAdminId);
     }
 
+    [Fact]
+    public async Task StartWhatsAppLink_BridgeDown_Returns503WithAReadableMessage()
+    {
+        var adminToken = await BootstrapAdmin();
+        var businessToken = await RegisterAndLoginBusiness("wa-bridge-down@example.com", "wa-bridge-down-shop");
+        Authorize(Client, businessToken);
+        var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
+
+        Authorize(Client, adminToken);
+        Factory.WhatsAppBridge.Unreachable = true;
+        try
+        {
+            var resp = await Client.PostAsync($"/api/platform-admin/businesses/{settings!.Id}/whatsapp/link", null);
+
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+            var body = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            Assert.Contains("WhatsApp service is unreachable", body!["error"]);
+        }
+        finally { Factory.WhatsAppBridge.Unreachable = false; }
+    }
+
+    [Fact]
+    public async Task UnlinkWhatsApp_BridgeDown_StillClearsTheNumber()
+    {
+        var adminToken = await BootstrapAdmin();
+        var businessToken = await RegisterAndLoginBusiness("wa-unlink-down@example.com", "wa-unlink-down-shop");
+        Authorize(Client, businessToken);
+        var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
+        using (var db = Db())
+        {
+            db.Businesses.Single(b => b.Id == settings!.Id).WhatsAppNumber = "+15550007777";
+            db.SaveChanges();
+        }
+
+        Authorize(Client, adminToken);
+        Factory.WhatsAppBridge.Unreachable = true;
+        try
+        {
+            var resp = await Client.DeleteAsync($"/api/platform-admin/businesses/{settings!.Id}/whatsapp/link");
+
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            var body = await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            Assert.True(body.GetProperty("bridgeUnreachable").GetBoolean());
+            using var db = Db();
+            Assert.Null(db.Businesses.Single(b => b.Id == settings.Id).WhatsAppNumber);
+        }
+        finally { Factory.WhatsAppBridge.Unreachable = false; }
+    }
+
     // ─── Generic activity logging ───────────────────────────────────────────
 
     [Fact]
