@@ -100,10 +100,15 @@ export default function RecurringAppointmentsPage() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   async function handleDelete(id: string) {
-    if (!(await ask(t(lang, 'deleteSeriesConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
+    let notifyCustomer = true
+    // Only offered when the business has a WhatsApp number to send from.
+    const checkbox = settings?.whatsAppNumber
+      ? { label: t(lang, 'notifyCustomerWhatsApp'), onChange: (checked: boolean) => { notifyCustomer = checked } }
+      : undefined
+    if (!(await ask(t(lang, 'deleteSeriesConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo'), checkbox }))) return
     setActionLoadingId(id); setActionError('')
     try {
-      await api.delete(`/admin/recurring/${id}`)
+      await api.delete(`/admin/recurring/${id}?notifyCustomer=${notifyCustomer}`)
       queryClient.invalidateQueries({ queryKey: ['recurring-series'] })
       // Deleting cancels the series' upcoming appointments server-side -- refresh the
       // calendar/table views too so those cancellations show up immediately.

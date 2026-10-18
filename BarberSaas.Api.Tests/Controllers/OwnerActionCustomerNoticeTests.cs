@@ -192,4 +192,41 @@ public class OwnerActionCustomerNoticeTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.Empty(MessagesTo(CustomerPhone, "had to cancel"));
     }
+
+    private async Task<(string SeriesId, List<string> Dates)> SeedSeries(string slug)
+    {
+        var (_, _, itemId, date, _) = await Seed(slug);
+        var day = (int)DateTime.Parse(date).DayOfWeek; // a working day (Seed opened it)
+        var created = await (await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
+            null, "Rana", OtherPhone, itemId, day, "11:00", null))).Content.ReadFromJsonAsync<RecurringSeriesDto>();
+        var appointments = await Client.GetFromJsonAsync<List<DashboardAppointmentDto>>("/api/admin/appointments?filter=all");
+        var dates = appointments!.Where(a => a.RecurringSeriesId == created!.Id).Select(a => a.Date).Order().ToList();
+        Assert.NotEmpty(dates);
+        return (created!.Id, dates);
+    }
+
+    [Fact]
+    public async Task DeleteSeries_TellsTheCustomerOnce_WithEveryCancelledDate()
+    {
+        var (seriesId, dates) = await SeedSeries("notice-series");
+
+        var resp = await Client.DeleteAsync($"/api/admin/recurring/{seriesId}");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var message = Assert.Single(MessagesTo(OtherPhone, "/notice-series"), m => m.Contains("ended your weekly"));
+        Assert.Contains("at 11:00", message);
+        Assert.Contains(string.Join(", ", dates), message);
+        Assert.EndsWith("/notice-series", message);
+    }
+
+    [Fact]
+    public async Task DeleteSeries_NotifyCustomerFalse_SendsNothing()
+    {
+        var (seriesId, _) = await SeedSeries("notice-series-quiet");
+
+        var resp = await Client.DeleteAsync($"/api/admin/recurring/{seriesId}?notifyCustomer=false");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.DoesNotContain(MessagesTo(OtherPhone, "ended your weekly"), m => m.EndsWith("/notice-series-quiet"));
+    }
 }

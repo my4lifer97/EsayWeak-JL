@@ -27,6 +27,12 @@ public class CustomerNotifier(AppDbContext db, NotificationOutbox notifications,
         Queue(appointment, "whatsapp.ownerRescheduled", AppointmentUrl, "owner-reschedule notice",
             new() { ["oldDate"] = oldDate, ["oldTime"] = oldStartTime });
 
+    // The owner deleted a recurring series: one message for all of its cancelled upcoming
+    // appointments (soonest first) rather than one per week.
+    public Task QueueSeriesCancelledByOwner(IReadOnlyList<Appointment> cancelled) =>
+        Queue(cancelled[0], "whatsapp.ownerCancelledSeries", StorefrontUrl, "series-cancel notice",
+            new() { ["dates"] = string.Join(", ", cancelled.Select(a => a.Date.ToString("yyyy-MM-dd"))) });
+
     // The owner booked for the customer (directly, or by giving them someone else's slot).
     public Task QueueBookedByOwner(Appointment appointment) =>
         Queue(appointment, "whatsapp.bookingConfirmed", null, "booking confirmation");

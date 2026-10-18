@@ -7,7 +7,9 @@ import { t } from '../lib/i18n'
 //   const [ask, confirmDialog] = useConfirmDialog(lang)
 //   if (!(await ask(t(lang, 'deleteConfirm'), { yesLabel: t(lang, 'confirmDeleteYes') }))) return
 //   ...and render {confirmDialog} somewhere in the component.
-type Options = { yesLabel?: string; noLabel?: string; danger?: boolean }
+// checkbox adds a ticked-by-default option under the message; onChange reports each toggle.
+type Checkbox = { label: string; onChange: (checked: boolean) => void }
+type Options = { yesLabel?: string; noLabel?: string; danger?: boolean; checkbox?: Checkbox }
 type Pending = Options & { message: string; resolve: (ok: boolean) => void }
 
 export function useConfirmDialog(lang: string): [(message: string, options?: Options) => Promise<boolean>, ReactNode, boolean] {
@@ -24,20 +26,21 @@ export function useConfirmDialog(lang: string): [(message: string, options?: Opt
 
   const dialog = pending && (
     <ConfirmDialog lang={lang} message={pending.message} danger={pending.danger ?? true}
-      yesLabel={pending.yesLabel} noLabel={pending.noLabel}
+      yesLabel={pending.yesLabel} noLabel={pending.noLabel} checkbox={pending.checkbox}
       onYes={() => answer(true)} onNo={() => answer(false)} />
   )
   return [ask, dialog, pending !== null]
 }
 
 function ConfirmDialog({
-  lang, message, yesLabel, noLabel, danger, onYes, onNo,
+  lang, message, yesLabel, noLabel, danger, checkbox, onYes, onNo,
 }: {
   lang: string
   message: string
   yesLabel?: string
   noLabel?: string
   danger: boolean
+  checkbox?: Checkbox
   onYes: () => void
   onNo: () => void
 }) {
@@ -47,6 +50,7 @@ function ConfirmDialog({
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onNo])
+  const [checked, setChecked] = useState(true)
 
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   return (
@@ -55,6 +59,14 @@ function ConfirmDialog({
       <div role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
         className="bg-surface rounded-2xl p-6 max-w-sm w-full border border-line">
         <p className="text-ink mb-5">{message}</p>
+        {checkbox && (
+          <label className="flex items-center gap-2 text-sm text-ink mb-5 cursor-pointer">
+            <input type="checkbox" checked={checked}
+              onChange={(e) => { setChecked(e.target.checked); checkbox.onChange(e.target.checked) }}
+              className="w-4 h-4 accent-coral" />
+            {checkbox.label}
+          </label>
+        )}
         <div className="flex gap-2">
           <button type="button" autoFocus onClick={onYes}
             className={`flex-1 text-white font-semibold py-2.5 rounded-xl transition-colors ${

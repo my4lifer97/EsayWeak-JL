@@ -14,7 +14,7 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/admin/recurring")]
 [Authorize(Policy = "BusinessOnly")]
-public class RecurringAppointmentsController(AppDbContext db, RecurringAppointmentService recurringAppointments, AppointmentCancellationService cancellationService) : ControllerBase
+public class RecurringAppointmentsController(AppDbContext db, RecurringAppointmentService recurringAppointments, AppointmentCancellationService cancellationService, CustomerNotifier customerNotifier) : ControllerBase
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -146,7 +146,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(string id)
+    public async Task<IActionResult> Delete(string id, [FromQuery] bool notifyCustomer = true)
     {
         var series = await db.RecurringSeries
             .Include(s => s.Customer).Include(s => s.Item)
@@ -162,12 +162,17 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         // effective "COMPLETED" status is computed from the passed end time, never stored).
         var linkedAppointments = await db.Appointments
             .Where(a => a.RecurringSeriesId == id && a.Status == AppointmentStatus.CONFIRMED)
+            .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
             .ToListAsync();
-        foreach (var appt in linkedAppointments)
-        {
-            if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED")
-                await cancellationService.CancelAsync(appt, notifyWaitlist: true);
-        }
+        var cancelled = linkedAppointments
+            .Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED")
+            .ToList();
+        foreach (var appt in cancelled)
+            await cancellationService.CancelAsync(appt, notifyWaitlist: true);
+
+        // QA run 2: deleting a series cancelled the customer's upcoming appointments silently.
+        if (notifyCustomer && cancelled.Count > 0)
+            await customerNotifier.QueueSeriesCancelledByOwner(cancelled);
 
         db.RecurringSeries.Remove(series);
         await db.SaveChangesAsync();
