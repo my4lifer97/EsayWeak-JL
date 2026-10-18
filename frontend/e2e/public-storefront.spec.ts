@@ -34,12 +34,14 @@ test('a logged-out visitor can view a storefront but not book', async ({ page })
   await expect(page.getByText('📍 Nazareth')).toBeVisible()
   await expect(page.getByText(/This link has expired or is invalid/)).not.toBeVisible()
 
-  // The Follow button is present but disabled for an anonymous visitor.
-  await expect(page.getByRole('button', { name: 'Follow' })).toBeDisabled()
+  // For an anonymous visitor, Follow leads to the phone sign-in and comes back here afterwards.
+  await page.getByRole('button', { name: 'Follow' }).click()
+  await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(`/${slug}`)}$`))
 
   // Booking still requires a session.
   await page.goto(`/${slug}/book`)
-  await expect(page.getByText(/This link has expired or is invalid/)).toBeVisible()
+  await expect(page.getByText('Please sign in to continue.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Sign In' })).toHaveAttribute('href', `/login?next=${encodeURIComponent(`/${slug}/book`)}`)
 })
 
 test('the browse directory lists a business and filters by its city', async ({ page }) => {
