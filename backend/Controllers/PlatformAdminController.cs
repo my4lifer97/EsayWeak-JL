@@ -16,7 +16,7 @@ public class PlatformAdminController(
     AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt,
     IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger,
     ReviewService reviews, IWhatsAppBridgeClient whatsAppBridge, WhatsAppLinkingService whatsAppLinking,
-    IOwnerEmailSender ownerEmailSender) : ControllerBase
+    IOwnerEmailSender ownerEmailSender, NotificationOutbox notifications) : ControllerBase
 {
     private string AdminId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -714,6 +714,15 @@ public class PlatformAdminController(
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
         });
         await db.SaveChangesAsync();
+
+        // Tell the requester (QA run 2: a rejection reached nobody). The rejection note is the
+        // admin's own and stays internal. Owner-facing, so via Gmail like the credentials email.
+        notifications.AddOwnerEmail(request.Email, "About your EsayWeek account request",
+            $"Hi {request.OwnerFirstName},\n\n" +
+            $"Thank you for your interest in EsayWeek. After reviewing your request for \"{request.BusinessName}\", " +
+            "we're unable to approve it at this time.\n\n" +
+            "If you think this was a mistake or your details have changed, you're welcome to reply to this email.\n",
+            $"rejection email for business-owner request {request.Id}");
 
         return Ok(new { ok = true });
     }

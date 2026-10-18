@@ -291,7 +291,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `POST /api/platform-admin/businesses/{id}/impersonate`, `POST .../customers/{id}/impersonate` — mint a real Business/Customer JWT on their behalf for support purposes; every action taken with it is logged with `ImpersonatedByPlatformAdminId` set
 - `GET /api/platform-admin/business-owner-requests?status=`, `GET .../{id}` — review queue for [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved) requests
 - `POST /api/platform-admin/business-owner-requests/{id}/approve` — `{ slug }`; creates the `Business` (system-generated `Username`, random temp password, `MustChangePassword = true`, `EmailVerified = true` since the admin already vetted it), emails the credentials best-effort, and **always returns the temp password in the response** so the admin can hand it over manually if the email failed
-- `POST /api/platform-admin/business-owner-requests/{id}/reject` — `{ note? }`
+- `POST /api/platform-admin/business-owner-requests/{id}/reject` — `{ note? }`; conditional on still `Pending` (409 otherwise, same for a racing approve); writes an `ActivityLog` row with no `BusinessId` and emails the requester via Gmail (`NotificationOutbox.AddOwnerEmail`) **without** the note, which stays internal
 - `GET /api/platform-admin/reviews?businessId=`, `POST .../reviews/{id}/hide|unhide` — moderation (toggles `Review.IsHidden`, recomputes the business's rating aggregate)
 
 **Integrations**
@@ -416,7 +416,9 @@ appointment that's already over sends nothing. Each request takes `notifyCustome
 `keep` takes it as a query parameter), the "Let the customer know on WhatsApp" checkbox in
 `CancelOptionsModal`/`RescheduleModal`, shown only when the business has a linked number. Language:
 the customer's `LastMessageLanguage` (account matched by phone too), else `ChatbotDefaultLanguage ?? Language`.
-Owner-booked confirmations go through it as well. Deleting a recurring series still tells no one.
+Owner-booked confirmations go through it as well. Deleting a recurring series sends one
+`whatsapp.ownerCancelledSeries` listing every cancelled upcoming date (`DELETE /api/admin/recurring/{id}?notifyCustomer=`,
+the checkbox in the delete confirm via `ConfirmDialog`'s `checkbox` option).
 
 ### No overlapping bookings (advisory lock)
 Every booking/reschedule write (public, customer, owner) saves through
@@ -789,7 +791,14 @@ via three endpoints that proxy the bridge:
 - `POST /api/platform-admin/businesses/{id}/whatsapp/link` — starts a session, bridge generates a QR.
 - `GET /api/platform-admin/businesses/{id}/whatsapp/status` — polled by the frontend every ~2s while
   linking; on `state: "connected"`, also writes the resolved phone number into `Business.WhatsAppNumber`.
-- `DELETE /api/platform-admin/businesses/{id}/whatsapp/link` — unlinks and clears `Business.WhatsAppNumber`.
+- `DELETE /api/platform-admin/businesses/{id}/whatsapp/link` — unlinks and clears `Business.WhatsAppNumber`. If the bridge is down it still clears the number (that alone stops the bot) and returns `bridgeUnreachable: true`.
+
+`WhatsAppBridgeClient`'s linking calls (start/status/unlink) turn any connection/HTTP failure into
+`WhatsAppBridgeUnavailableException` (a subclass of `HttpRequestException`), which
+`GlobalExceptionHandler` answers with a 503 and a readable message. `POST /api/whatsapp/bridge/inbound`
+checks `X-Bridge-Secret` in `Filters/RequireBridgeSecretAttribute` (an authorization filter, so it runs
+before body validation) and strips NUL characters from the message and profile name; any Postgres
+"NUL in text" error (SQLSTATE 22021) elsewhere is a 400.
 
 **Twilio's WhatsApp Business API integration is kept in the codebase, unregistered, as a dormant
 fallback** (`TwilioWhatsAppSender`, and `WhatsAppController`'s original `POST /api/whatsapp/webhook`
@@ -1067,9 +1076,11 @@ Flow: `POST /api/customer/auth/otp` `{ phone }` generates a 6-digit code (bcrypt
 business-side email codes), sends it via `IOtpSender` (`TwilioOtpSender` over Twilio's
 **Programmable SMS** API — not WhatsApp, since no business is identified yet at this point — when
 `Twilio:FromNumber` is configured, else `DevOtpSender` no-ops and the code comes back as `devOtp`
-in Development, matching `AuthController`'s `devCode` convention). A fixed test phone/code pair
-(`0501234567` / `123456`) always succeeds without sending a real SMS, for app-store reviewer
-logins once the mobile app exists. `POST /api/customer/auth/verify` `{ phone, otp, name?,
+in Development, matching `AuthController`'s `devCode` convention). A fixed reviewer phone/code
+pair (`CustomerAuth:ReviewerPhone` / `CustomerAuth:ReviewerCode`) always succeeds without sending a
+real SMS, for app-store reviewer logins once the mobile app exists. **Off unless both are set**
+(2026-10-18; it used to be a hard-coded `0501234567` / `123456`, live in production). The code is
+claimed with one conditional `ExecuteUpdateAsync`, so the same code sent twice at once signs in once. `POST /api/customer/auth/verify` `{ phone, otp, name?,
 familyName? }` checks the code (attempts/expiry enforced), upserts `CustomerAccount` (name/
 familyName required only for a brand-new account), backfills any pre-existing guest-booked
 `Customer.CustomerAccountId` row for that phone (same `ExecuteUpdateAsync` pattern the WhatsApp

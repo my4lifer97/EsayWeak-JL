@@ -256,6 +256,23 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Reject_EmailsTheRequester_WithoutTheInternalNote()
+    {
+        var typeId = await SeedBusinessType();
+        var adminToken = await BootstrapAdmin();
+        var created = await (await Client.PostAsJsonAsync("/api/business-owner-requests",
+            await ValidRequest(typeId, email: "rejected-mail@example.com"))).Content.ReadFromJsonAsync<JsonRequestId>();
+
+        Authorize(Client, adminToken);
+        await Client.PostAsJsonAsync($"/api/platform-admin/business-owner-requests/{created!.Id}/reject",
+            new RejectBusinessOwnerRequestRequest("internal: looks like spam"));
+
+        var sent = Assert.Single(Factory.OwnerEmail.Sent, e => e.Email == "rejected-mail@example.com");
+        Assert.Contains("unable to approve", sent.Body);
+        Assert.DoesNotContain("spam", sent.Body);
+    }
+
+    [Fact]
     public async Task Approve_DuplicateUsername_AppendsNumber()
     {
         var typeId = await SeedBusinessType();

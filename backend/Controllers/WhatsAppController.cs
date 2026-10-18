@@ -176,8 +176,8 @@ public class WhatsAppController(
     {
         // Postgres text columns can't hold a NUL character: one in a message or WhatsApp profile
         // name failed the save below with a 500 and the customer got no reply (QA run 2).
-        incomingMsg = incomingMsg.Replace(" ", "");
-        profileName = profileName.Replace(" ", "");
+        incomingMsg = incomingMsg.Replace("\0", "");
+        profileName = profileName.Replace("\0", "");
 
         // The business wants to reply themselves instead of the automated flow -- send no message
         // at all, rather than a fixed "not available" reply.
