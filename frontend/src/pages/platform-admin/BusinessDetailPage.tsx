@@ -33,6 +33,9 @@ export default function PlatformAdminBusinessDetailPage() {
   const [accountError, setAccountError] = useState('')
   const [resettingPassword, setResettingPassword] = useState(false)
   const [tempPassword, setTempPassword] = useState<string | null>(null)
+  const [tempPasswordEmailed, setTempPasswordEmailed] = useState(false)
+  const [passwordSetNotice, setPasswordSetNotice] = useState(false)
+  const [showCustomPassword, setShowCustomPassword] = useState(false)
   const [copied, setCopied] = useState(false)
   const [showCustomPasswordForm, setShowCustomPasswordForm] = useState(false)
   const [customPassword, setCustomPassword] = useState('')
@@ -130,10 +133,11 @@ export default function PlatformAdminBusinessDetailPage() {
   async function handleResetTempPassword() {
     if (!business) return
     if (!(await ask(`Reset ${business.name}'s password? Their current password stops working and they're signed out everywhere.`, { yesLabel: 'Reset password' }))) return
-    setAccountError(''); setTempPassword(null); setCopied(false); setResettingPassword(true)
+    setAccountError(''); setTempPassword(null); setCopied(false); setPasswordSetNotice(false); setResettingPassword(true)
     try {
       const { data } = await platformAdminApi.post(`/platform-admin/businesses/${business.id}/reset-password`, { temporary: true })
       setTempPassword(data.tempPassword)
+      setTempPasswordEmailed(!!data.emailSent)
     } catch {
       setAccountError('Could not reset the password')
     } finally {
@@ -145,11 +149,13 @@ export default function PlatformAdminBusinessDetailPage() {
     e.preventDefault()
     if (!business) return
     if (!(await ask(`Set a new password for ${business.name}? Their current password stops working and they're signed out everywhere.`, { yesLabel: 'Set password' }))) return
-    setAccountError(''); setResettingPassword(true)
+    setAccountError(''); setPasswordSetNotice(false); setResettingPassword(true)
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${business.id}/reset-password`, { temporary: false, newPassword: customPassword })
       setShowCustomPasswordForm(false)
       setCustomPassword('')
+      setShowCustomPassword(false)
+      setPasswordSetNotice(true)
     } catch (err: unknown) {
       const resp = (err as { response?: { data?: { error?: string } } })?.response
       setAccountError(resp?.data?.error ?? 'Could not set the password')
@@ -266,31 +272,43 @@ export default function PlatformAdminBusinessDetailPage() {
                     {copied ? 'Copied!' : 'Copy'}
                   </button>
                 </div>
+                {tempPasswordEmailed ? (
+                  <p className="text-green-700 dark:text-green-400 text-sm">Emailed to {business.email}.</p>
+                ) : (
+                  <p className="text-yellow-700 dark:text-yellow-400 text-sm">The email could not be sent. Give this password to the owner yourself.</p>
+                )}
                 <p className="text-muted text-xs">The owner must change this password the next time they sign in.</p>
                 <button onClick={() => setTempPassword(null)} className="text-muted hover:text-ink text-sm">Dismiss</button>
               </div>
             ) : showCustomPasswordForm ? (
               <form onSubmit={handleSetCustomPassword} className="flex items-center gap-2">
-                <input type="text" required minLength={6} value={customPassword} onChange={(e) => setCustomPassword(e.target.value)}
+                <input type={showCustomPassword ? 'text' : 'password'} required minLength={6} value={customPassword} onChange={(e) => setCustomPassword(e.target.value)}
                   placeholder="New password" autoComplete="new-password"
                   className="flex-1 bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
+                <button type="button" onClick={() => setShowCustomPassword((v) => !v)}
+                  className="text-muted hover:text-ink text-sm px-2">{showCustomPassword ? 'Hide' : 'Show'}</button>
                 <button type="submit" disabled={resettingPassword}
                   className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                   {resettingPassword ? 'Saving...' : 'Set password'}
                 </button>
-                <button type="button" onClick={() => { setShowCustomPasswordForm(false); setCustomPassword('') }}
+                <button type="button" onClick={() => { setShowCustomPasswordForm(false); setCustomPassword(''); setShowCustomPassword(false) }}
                   className="text-muted hover:text-ink text-sm px-2">Cancel</button>
               </form>
             ) : (
+              <div className="space-y-2">
+              {passwordSetNotice && (
+                <p className="text-green-700 dark:text-green-400 text-sm">Password set. The owner was signed out on every device.</p>
+              )}
               <div className="flex items-center gap-2">
                 <button onClick={handleResetTempPassword} disabled={resettingPassword}
                   className="bg-teal-tint hover:bg-teal-tint/70 disabled:opacity-50 text-ink font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
                   {resettingPassword ? 'Sending...' : 'Send temporary password'}
                 </button>
-                <button onClick={() => setShowCustomPasswordForm(true)}
+                <button onClick={() => { setShowCustomPasswordForm(true); setPasswordSetNotice(false) }}
                   className="border border-line text-ink hover:bg-cream font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
                   Set specific password
                 </button>
+              </div>
               </div>
             )}
           </div>
