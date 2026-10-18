@@ -326,6 +326,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             return BadRequest(new { error = "Current password is incorrect", currentPasswordIncorrect = true });
         }
         throttle.RecordSuccess("change-password", businessId, ip);
+        // Otherwise an admin-issued temporary password could just be kept.
+        if (req.NewPassword == req.CurrentPassword)
+            return BadRequest(new { error = "Choose a password different from your current one", samePassword = true });
 
         business.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
         business.MustChangePassword = false;

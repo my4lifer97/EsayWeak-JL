@@ -43,6 +43,9 @@ public class WhatsAppController(
     // customer answers (see TryHandleCancelConfirmation).
     private const string ConfirmCancelModePrefix = "ConfirmCancel:";
     private static readonly TimeSpan ConversationStateLifetime = TimeSpan.FromMinutes(10);
+    // An inquiry waits on the owner's answer, so it outlives the 10-minute booking prompt: a
+    // follow-up an hour later used to land on the opening gate and was never logged (QA).
+    private static readonly TimeSpan InquiryStateLifetime = TimeSpan.FromHours(24);
     // After this many consecutive non-numeric/out-of-range replies to a "which service?" prompt,
     // the rule-based bot stops replying to anything except the literal "$" unlock keyword -- see
     // the lockout gate at the top of ProcessMessageRuleBasedAsync.
@@ -233,9 +236,13 @@ public class WhatsAppController(
         // Normalized so a customer replying in Arabic-Indic digits (e.g. "١" for the gate, or "$١"
         // for the mode-switch command) matches just as well as ASCII -- same reasoning as
         // TryHandleServiceSelectionReply's own NormalizeDigits call below.
-        var trimmed = NormalizeDigits(incomingMsg.Trim());
+        var trimmed = NormalizeDollarCommand(NormalizeDigits(incomingMsg.Trim()));
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone);
         var isLive = state is not null && state.ExpiresAt > DateTime.UtcNow;
+
+        // Locked out: only "$" unlocks, which the booking paths below handle. "$2" used to
+        // escape the lockout here.
+        if (isLive && state!.InvalidAttempts >= MaxInvalidAttempts) return (false, null);
 
         if (trimmed == BookingModeCommand)
         {
@@ -246,7 +253,9 @@ public class WhatsAppController(
             // ClearConversationState call.
             // Also at the opening Book/Ask gate: left in place, the gate's state row made the
             // booking dispatch read "$1" as a service number and answer "didn't recognize" (QA).
-            if (isLive && (state!.ChatbotMode == InquiryMode || state.ChatbotMode == AwaitingModeChoiceMode))
+            // And on the service list itself, where the leftover row made "$1" an invalid service
+            // number that counted toward the lockout (QA). A pending booking link keeps its row.
+            if (isLive && !state!.AwaitingBookingCompletion)
                 await ClearConversationState(business.Id, fromPhone);
             // Falls through to the normal booking dispatch, which starts a fresh prompt for a
             // phone with no (or an expired) conversation state -- exactly what "back to booking"
@@ -277,7 +286,7 @@ public class WhatsAppController(
             // still notifies again.
             var shouldNotify = !state.InquiryNotified;
             state.InquiryNotified = true;
-            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+            state.ExpiresAt = DateTime.UtcNow.Add(InquiryStateLifetime);
             await db.SaveChangesAsync();
 
             if (shouldNotify)
@@ -321,6 +330,11 @@ public class WhatsAppController(
         return (false, null);
     }
 
+    // An RTL keyboard often puts the "$" after the digit ("1$"), which is also how "$1" used to
+    // display inside Hebrew/Arabic text, so both orders work.
+    private static string NormalizeDollarCommand(string message) =>
+        message.Length == 2 && message[1] == '$' && char.IsAsciiDigit(message[0]) ? $"${message[0]}" : message;
+
     private async Task EnterInquiryModeAsync(string businessId, string phone, string lang)
     {
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == businessId && s.Phone == phone);
@@ -332,7 +346,8 @@ public class WhatsAppController(
         state.ChatbotMode = InquiryMode;
         state.Language = lang;
         state.InquiryNotified = false;
-        state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        state.InvalidAttempts = 0;
+        state.ExpiresAt = DateTime.UtcNow.Add(InquiryStateLifetime);
         await db.SaveChangesAsync();
     }
 

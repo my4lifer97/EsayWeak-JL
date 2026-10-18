@@ -323,7 +323,7 @@ function MessageEditorModal({
           {messageType.fields.map(([label, key]) => (
             <div key={key}>
               <label className="block text-xs text-muted mb-1">{label}</label>
-              <textarea value={form[key]} rows={3}
+              <textarea value={form[key]} rows={3} maxLength={1000}
                 onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                 placeholder={t(lang, 'chatbotDefaultTextPlaceholder')}
                 className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />

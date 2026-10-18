@@ -6,4 +6,14 @@ namespace BarberSaas.Api.Services;
 public static class EmailAddress
 {
     public static string Normalize(string? email) => (email ?? "").Trim().ToLowerInvariant();
+
+    // Shape check only (one @, a dot in the domain, no spaces) -- delivery is the real test.
+    public static bool IsValid(string? email)
+    {
+        var e = (email ?? "").Trim();
+        var at = e.IndexOf('@');
+        return at > 0 && at == e.LastIndexOf('@') && e.IndexOf('.', at) > at + 1
+            && !e.EndsWith('.') && !e.Any(char.IsWhiteSpace)
+            && System.Net.Mail.MailAddress.TryCreate(e, out _);
+    }
 }

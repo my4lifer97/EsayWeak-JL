@@ -380,6 +380,17 @@ public class AuthControllerTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ChangePassword_RejectsKeepingTheSamePassword()
+    {
+        var token = await RegisterVerifyAndLogin("change-same@example.com", "change-same-shop");
+        Authorize(Client, token);
+
+        var same = await Client.PatchAsJsonAsync("/api/auth/change-password", new ChangePasswordRequest("password123", "password123"));
+        Assert.Equal(HttpStatusCode.BadRequest, same.StatusCode);
+        Assert.Contains("samePassword", await same.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task ChangePassword_EndsOtherLogins_ButReturnsAWorkingToken()
     {
         var otherDevice = await RegisterVerifyAndLogin("change-ends@example.com", "change-ends-shop");

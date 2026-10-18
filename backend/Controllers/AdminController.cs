@@ -81,6 +81,40 @@ public class AdminController(
         return Ok(new { logo = b.Logo });
     }
 
+    public const int MaxChatbotMessageLength = 1000;
+
+    // Everything here used to be accepted or silently dropped: negative booking limits, an unknown
+    // language (left the old one), notify contacts that could never be reached.
+    static string? SettingsInputError(UpdateSettingsRequest req, Func<string, bool> has)
+    {
+        if (has("maxBookingsPerDay") && req.MaxBookingsPerDay is < 1 or > 1000)
+            return "Max bookings per day must be between 1 and 1000, or empty for unlimited";
+        if (has("maxBookingsPerWeek") && req.MaxBookingsPerWeek is < 1 or > 1000)
+            return "Max bookings per week must be between 1 and 1000, or empty for unlimited";
+        if (req.Language is not null && !IsLanguage(req.Language))
+            return "Language must be EN, AR or HE";
+        if (has("chatbotDefaultLanguage") && !string.IsNullOrWhiteSpace(req.ChatbotDefaultLanguage) && !IsLanguage(req.ChatbotDefaultLanguage))
+            return "Chatbot default language must be EN, AR or HE";
+        string?[] messages = [
+            req.ChatbotWelcomeMessageEn, req.ChatbotWelcomeMessageAr, req.ChatbotWelcomeMessageHe,
+            req.ChatbotConfirmationMessageEn, req.ChatbotConfirmationMessageAr, req.ChatbotConfirmationMessageHe,
+            req.ChatbotFinalMessageEn, req.ChatbotFinalMessageAr, req.ChatbotFinalMessageHe];
+        if (messages.Any(m => m is not null && m.Trim().Length > MaxChatbotMessageLength))
+            return $"Chatbot messages can be at most {MaxChatbotMessageLength} characters";
+        if (has("inquiryWhatsAppNumber") && !string.IsNullOrWhiteSpace(req.InquiryWhatsAppNumber) && !PhoneNormalizer.IsValid(req.InquiryWhatsAppNumber))
+            return "The inquiry WhatsApp number isn't a valid phone number";
+        if (has("cancelApprovalWhatsAppNumber") && !string.IsNullOrWhiteSpace(req.CancelApprovalWhatsAppNumber) && !PhoneNormalizer.IsValid(req.CancelApprovalWhatsAppNumber))
+            return "The cancellation-approval WhatsApp number isn't a valid phone number";
+        if (has("inquiryEmail") && !string.IsNullOrWhiteSpace(req.InquiryEmail) && !EmailAddress.IsValid(req.InquiryEmail))
+            return "The inquiry email address isn't valid";
+        if (has("cancelApprovalEmail") && !string.IsNullOrWhiteSpace(req.CancelApprovalEmail) && !EmailAddress.IsValid(req.CancelApprovalEmail))
+            return "The cancellation-approval email address isn't valid";
+        return null;
+    }
+
+    // Enum.TryParse alone also takes "5" or "en".
+    static bool IsLanguage(string value) => Enum.GetNames<Language>().Contains(value);
+
     [HttpPatch("settings")]
     public async Task<IActionResult> UpdateSettings([FromBody] JsonElement body)
     {
@@ -103,6 +137,7 @@ public class AdminController(
             && !mapUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             && !mapUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = "Map link must start with http:// or https://" });
+        if (SettingsInputError(req, Has) is { } settingsError) return BadRequest(new { error = settingsError });
 
         // Captured before assignment so we can report only the fields that actually changed --
         // the settings form always submits every field on every save, so "field is present in
@@ -147,7 +182,7 @@ public class AdminController(
         }
         if (req.Phone is not null) b.Phone = req.Phone;
         if (req.Description is not null) b.Description = req.Description;
-        if (req.Language is not null && Enum.TryParse<Language>(req.Language, out var lang)) b.Language = lang;
+        if (req.Language is not null) b.Language = Enum.Parse<Language>(req.Language);
         // null is a real value for these two (unlimited), not "omitted" -- gated on key presence,
         // not "is req.X null", so a caller can still explicitly send null to clear a limit.
         if (Has("maxBookingsPerDay")) b.MaxBookingsPerDay = req.MaxBookingsPerDay;
@@ -155,23 +190,25 @@ public class AdminController(
         if (Has("waitlistEnabled")) b.WaitlistEnabled = req.WaitlistEnabled;
         if (Has("requireApprovalOnCustomerCancel")) b.RequireApprovalOnCustomerCancel = req.RequireApprovalOnCustomerCancel;
         if (Has("chatbotEnabled")) b.ChatbotEnabled = req.ChatbotEnabled;
-        if (Has("chatbotWelcomeMessageEn")) b.ChatbotWelcomeMessageEn = req.ChatbotWelcomeMessageEn;
-        if (Has("chatbotWelcomeMessageAr")) b.ChatbotWelcomeMessageAr = req.ChatbotWelcomeMessageAr;
-        if (Has("chatbotWelcomeMessageHe")) b.ChatbotWelcomeMessageHe = req.ChatbotWelcomeMessageHe;
-        if (Has("chatbotConfirmationMessageEn")) b.ChatbotConfirmationMessageEn = req.ChatbotConfirmationMessageEn;
-        if (Has("chatbotConfirmationMessageAr")) b.ChatbotConfirmationMessageAr = req.ChatbotConfirmationMessageAr;
-        if (Has("chatbotConfirmationMessageHe")) b.ChatbotConfirmationMessageHe = req.ChatbotConfirmationMessageHe;
-        if (Has("chatbotFinalMessageEn")) b.ChatbotFinalMessageEn = req.ChatbotFinalMessageEn;
-        if (Has("chatbotFinalMessageAr")) b.ChatbotFinalMessageAr = req.ChatbotFinalMessageAr;
-        if (Has("chatbotFinalMessageHe")) b.ChatbotFinalMessageHe = req.ChatbotFinalMessageHe;
+        // Whitespace-only counts as "no custom message", so the built-in default is used.
+        static string? Message(string? m) => string.IsNullOrWhiteSpace(m) ? null : m.Trim();
+        if (Has("chatbotWelcomeMessageEn")) b.ChatbotWelcomeMessageEn = Message(req.ChatbotWelcomeMessageEn);
+        if (Has("chatbotWelcomeMessageAr")) b.ChatbotWelcomeMessageAr = Message(req.ChatbotWelcomeMessageAr);
+        if (Has("chatbotWelcomeMessageHe")) b.ChatbotWelcomeMessageHe = Message(req.ChatbotWelcomeMessageHe);
+        if (Has("chatbotConfirmationMessageEn")) b.ChatbotConfirmationMessageEn = Message(req.ChatbotConfirmationMessageEn);
+        if (Has("chatbotConfirmationMessageAr")) b.ChatbotConfirmationMessageAr = Message(req.ChatbotConfirmationMessageAr);
+        if (Has("chatbotConfirmationMessageHe")) b.ChatbotConfirmationMessageHe = Message(req.ChatbotConfirmationMessageHe);
+        if (Has("chatbotFinalMessageEn")) b.ChatbotFinalMessageEn = Message(req.ChatbotFinalMessageEn);
+        if (Has("chatbotFinalMessageAr")) b.ChatbotFinalMessageAr = Message(req.ChatbotFinalMessageAr);
+        if (Has("chatbotFinalMessageHe")) b.ChatbotFinalMessageHe = Message(req.ChatbotFinalMessageHe);
         if (Has("chatbotDefaultLanguage"))
         {
-            b.ChatbotDefaultLanguage = !string.IsNullOrWhiteSpace(req.ChatbotDefaultLanguage)
-                && Enum.TryParse<Language>(req.ChatbotDefaultLanguage, out var cbLang) ? cbLang : null;
+            b.ChatbotDefaultLanguage = string.IsNullOrWhiteSpace(req.ChatbotDefaultLanguage)
+                ? null : Enum.Parse<Language>(req.ChatbotDefaultLanguage);
         }
         if (Has("chatbotInquiryEnabled")) b.ChatbotInquiryEnabled = req.ChatbotInquiryEnabled;
         if (Has("inquiryNotifyViaWhatsApp")) b.InquiryNotifyViaWhatsApp = req.InquiryNotifyViaWhatsApp;
-        if (Has("inquiryWhatsAppNumber")) b.InquiryWhatsAppNumber = string.IsNullOrWhiteSpace(req.InquiryWhatsAppNumber) ? null : req.InquiryWhatsAppNumber.Trim();
+        if (Has("inquiryWhatsAppNumber")) b.InquiryWhatsAppNumber = string.IsNullOrWhiteSpace(req.InquiryWhatsAppNumber) ? null : PhoneNormalizer.Normalize(req.InquiryWhatsAppNumber);
         if (Has("inquiryNotifyViaEmail")) b.InquiryNotifyViaEmail = req.InquiryNotifyViaEmail;
         if (Has("inquiryEmail")) b.InquiryEmail = string.IsNullOrWhiteSpace(req.InquiryEmail) ? null : req.InquiryEmail.Trim();
         // Discovery fields -- empty strings are still normalized to null (clearing the field),
@@ -181,7 +218,7 @@ public class AdminController(
         if (Has("mapUrl")) b.MapUrl = mapUrl;
         if (Has("isListed")) b.IsListed = req.IsListed;
         if (Has("cancelApprovalNotifyViaWhatsApp")) b.CancelApprovalNotifyViaWhatsApp = req.CancelApprovalNotifyViaWhatsApp;
-        if (Has("cancelApprovalWhatsAppNumber")) b.CancelApprovalWhatsAppNumber = string.IsNullOrWhiteSpace(req.CancelApprovalWhatsAppNumber) ? null : req.CancelApprovalWhatsAppNumber.Trim();
+        if (Has("cancelApprovalWhatsAppNumber")) b.CancelApprovalWhatsAppNumber = string.IsNullOrWhiteSpace(req.CancelApprovalWhatsAppNumber) ? null : PhoneNormalizer.Normalize(req.CancelApprovalWhatsAppNumber);
         if (Has("cancelApprovalNotifyViaEmail")) b.CancelApprovalNotifyViaEmail = req.CancelApprovalNotifyViaEmail;
         if (Has("cancelApprovalEmail")) b.CancelApprovalEmail = string.IsNullOrWhiteSpace(req.CancelApprovalEmail) ? null : req.CancelApprovalEmail.Trim();
 

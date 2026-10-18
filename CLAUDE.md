@@ -102,7 +102,7 @@ npx.cmd playwright test              # E2E — needs both dev servers already ru
 barber-saas/
 ├── backend/
 │   ├── Controllers/
-│   │   ├── AuthController.cs              # POST /api/auth/register|login|verify-email|resend-verification|forgot-password|reset-password|change-password (business owner accounts; login accepts email OR generated username)
+│   │   ├── AuthController.cs              # POST /api/auth/register|login|verify-email|resend-verification|forgot-password|reset-password, PATCH change-password (business owner accounts; login accepts email OR generated username)
 │   │   ├── AdminController.cs             # Protected admin CRUD (JWT required, BusinessOnly policy)
 │   │   ├── BusinessesController.cs        # GET /api/businesses/search|cities|followed|{slug}/reviews, POST/DELETE .../follow — public directory + reviews list (follow endpoints CustomerOnly)
 │   │   ├── BusinessOwnerRequestsController.cs # GET /api/business-types, POST /api/business-owner-requests — public submission side of the admin-approved onboarding flow
@@ -204,10 +204,10 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `POST /api/auth/resend-verification` — `{ email }`; 45s cooldown + 5/hour cap
 - `POST /api/auth/forgot-password` — `{ email }`; sends a 6-digit reset code (`devCode` in Development), same cooldown/cap as email verification. Always 200, even for an unknown or disabled email (sends nothing), so it can't reveal which emails have accounts
 - `POST /api/auth/reset-password` — `{ email, code, newPassword }`; verifies the code, updates the password, and returns a JWT (`LoginResponse`), logging them in directly. An unknown email gets the same 400 as a wrong code. Ends every other login (see Session rules)
-- `PATCH /api/auth/change-password` (`BusinessOnly`, `[AllowWithPendingPasswordChange]`) — `{ currentPassword, newPassword }`; a wrong `currentPassword` is 400 `{ currentPasswordIncorrect: true }`, throttled like login (`LoginThrottle` scope `change-password`). The only `BusinessOnly` action reachable while `MustChangePassword` is set (an admin-issued temp password) — clears the flag and returns a fresh token without the `mustChangePassword` claim
+- `PATCH /api/auth/change-password` (`BusinessOnly`, `[AllowWithPendingPasswordChange]`) — `{ currentPassword, newPassword }`; a wrong `currentPassword` is 400 `{ currentPasswordIncorrect: true }`, throttled like login (`LoginThrottle` scope `change-password`); a `newPassword` equal to the current one is 400 `{ samePassword: true }`, so a temp password can't just be kept. `/admin/set-password` also has a Sign out link. The only `BusinessOnly` action reachable while `MustChangePassword` is set (an admin-issued temp password) — clears the flag and returns a fresh token without the `mustChangePassword` claim
 
 **Admin (JWT required — business ID read from token claims, never from body, `BusinessOnly` policy)**
-- `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). WhatsApp number is read-only here — see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
+- `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). `AdminController.SettingsInputError` answers 400 (nothing saved) for a booking limit outside 1–1000, a `language`/`chatbotDefaultLanguage` other than exactly `EN`/`AR`/`HE`, a chatbot message over 1000 characters, or an inquiry/cancel-approval phone (`PhoneNormalizer.IsValid`) or email (`EmailAddress.IsValid`) that can't work; those phones are stored in E.164 and whitespace-only chatbot messages are stored as null (built-in default). WhatsApp number is read-only here — see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
 - `GET /api/admin/chatbot-inquiries?unreadOnly=` / `POST .../{id}/read` — the always-on in-app inbox for the chatbot's optional Inquiry mode, see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
@@ -236,7 +236,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/admin/dashboard?week=0` — weekly appointments (week offset from current)
 - `GET /api/admin/appointments?filter=today|upcoming|past` — appointment list (omit `filter` for all); `today`/`upcoming` sort soonest first, `past`/all newest first; each row includes `recurringSeriesId` (null for one-off bookings)
 - `PATCH /api/admin/appointments/{id}` — cancel only (`{ status: "CANCELLED" }`); any other status is rejected — see [Appointment status](#appointment-status-no-manual-complete)
-- `GET /api/admin/appointments/availability?date=&serviceId=` — same slot computation as the public `GET /api/{slug}/availability`, but scoped by the JWT's `BusinessId` instead of a slug (keeps `AdminController` self-contained); backs both the New Appointment modal's slot grid and the recurring-series form's slot grid
+- `GET /api/admin/appointments/availability?date=&itemId=` — same slot computation as the public `GET /api/{slug}/availability`, but scoped by the JWT's `BusinessId` instead of a slug (keeps `AdminController` self-contained); backs both the New Appointment modal's slot grid and the recurring-series form's slot grid
 - `GET /api/admin/customers/search?query=` — search this business's own `Customer` rows by name/phone (min 2 chars, top 20); backs `CustomerPicker`'s autocomplete
 - `POST /api/admin/appointments` — owner books directly on a customer's behalf (existing `customerId` or new `customerName`+`customerPhone`, upserted by phone same as public booking); `MaxBookingsPerDay/Week` limits are **not** enforced here (they exist to stop customers gaming self-service booking, not to restrict the owner). `force: true` skips the working-hours/breaks/blocked-slot check (for walk-ins) but still hard-rejects an exact overlap with an existing appointment — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
 - `GET /api/admin/recurring` — list this business's recurring series (active and inactive), each with its 5 most recent `RecurringSkip` entries and a computed `nextOccurrenceDate`
@@ -245,7 +245,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 
 **Public booking (no JWT — `{slug}` identifies the tenant)**
 - `GET /api/{slug}/info` — business name, items, active days (weekday template), `openDates` (the next 60 dates actually open per `GetEffectiveDay`, minus dates with a **full-day** `BlockedSlot` — what `BookingWizard`'s date picker filters on, so a scheduled preset range is honored and a closed day never appears; a partial block keeps the day listed), isRTL flag, plus `city`/`addressLine`/`mapUrl` and the rating aggregate (`ratingCount`, `ratingAverage`). Resolves by slug **regardless of `IsListed`** — unlisting only removes a business from the directory; a direct/shared link still works
-- `GET /api/{slug}/availability?date=&serviceId=` — available 30-min slots. For a reschedule, `&excludeAppointmentId=&token=` (its cancel token) leaves that appointment out, so it can move by less than its own length; the admin `appointments/availability` takes `excludeAppointmentId` alone, and every reschedule save excludes the row it moves
+- `GET /api/{slug}/availability?date=&itemId=` — available 30-min slots. For a reschedule, `&excludeAppointmentId=&token=` (its cancel token) leaves that appointment out, so it can move by less than its own length; the admin `appointments/availability` takes `excludeAppointmentId` alone, and every reschedule save excludes the row it moves
 - `POST /api/{slug}/appointments/photo` — upload a reference photo for a `CustomerUpload`-mode item (anonymous); returns `{ url }` to pass as `customerPhotoUrl` below
 - `POST /api/{slug}/appointments` — book appointment; **requires a customer session** (401 otherwise) and always books under the session's verified phone, ignoring `customerPhone` in the body; returns `{ appointmentId, cancelToken }`; auto-follows the business; if the item's `photoMode` is `OwnerGallery`/`CustomerUpload`, `galleryPhotoId`/`customerPhotoUrl` respectively is required
 - `GET /api/{slug}/appointments/{id}?token=` — view appointment details (used by the public magic-link page); requires the cancelToken like cancel/reschedule (404 without it — ids are public via `availability/full`, and this response includes the customer phone + token)
@@ -287,7 +287,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `POST /api/platform-admin/login` — email+password, returns a platform-admin JWT (`"type": "platform_admin"` claim, separate from Business/CustomerAccount tokens)
 - `GET /api/platform-admin/businesses?search=&page=&pageSize=`, `GET .../businesses/{id}` — search/detail across every tenant. This list and `GET .../customers?search=&page=&pageSize=` match case-insensitively and return `PagedResult` (default 50, max 100 a page); customer search also matches a local phone (050…) against the stored E.164
 - `POST /api/platform-admin/businesses/{id}/whatsapp/link`, `GET .../whatsapp/status`, `DELETE .../whatsapp/link` — link/poll/unlink a business's self-hosted WhatsApp chatbot session (see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge))
-- `GET /api/platform-admin/businesses/{id}/activity`, `GET .../customers/{id}/activity` — that entity's `ActivityLog` rows, newest first, flagged when the acting token was an impersonation
+- `GET /api/platform-admin/businesses/{id}/activity`, `GET .../customers/{id}/activity` — that entity's `ActivityLog` rows, newest first. `impersonated` = done with an impersonation token; `byPlatformAdmin` = the admin's own action (`PlatformAdminController.*`/`WhatsAppLink.*` rows, which also store the admin id in `ImpersonatedByPlatformAdminId`)
 - `POST /api/platform-admin/businesses/{id}/impersonate`, `POST .../customers/{id}/impersonate` — mint a real Business/Customer JWT on their behalf for support purposes; every action taken with it is logged with `ImpersonatedByPlatformAdminId` set
 - `GET /api/platform-admin/business-owner-requests?status=`, `GET .../{id}` — review queue for [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved) requests
 - `POST /api/platform-admin/business-owner-requests/{id}/approve` — `{ slug }`; creates the `Business` (system-generated `Username`, random temp password, `MustChangePassword = true`, `EmailVerified = true` since the admin already vetted it), emails the credentials best-effort, and **always returns the temp password in the response** so the admin can hand it over manually if the email failed
@@ -993,6 +993,12 @@ commands instead, checked ahead of the gate/service logic:
   reason.
 - `$2` — enters Inquiry mode (`WhatsAppConversationState.ChatbotMode = "Inquiry"`), same as the gate's
   `2` reply (both go through the shared `EnterInquiryModeAsync` helper).
+
+`1$`/`2$` work too (`NormalizeDollarCommand`: RTL keyboards, and how the command used to render in Hebrew/Arabic
+text; the AR/HE strings now wrap it in `\u200E` marks). `$1` also clears a live service-list row, so it never
+counts as an invalid reply. A locked-out conversation (`InvalidAttempts >= 3`) skips this method entirely, so
+only `$` unlocks it. An Inquiry-mode row lives 24 h (`InquiryStateLifetime`), not 10 min, so a later
+follow-up is still logged.
 
 While in Inquiry mode, every further message from that phone is logged as a `ChatbotInquiry` row
 (always-on "in-app" channel, an inbox inside Settings — see below) and acknowledged with a short

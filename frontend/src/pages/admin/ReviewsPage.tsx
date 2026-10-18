@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 import StarRating from '../../components/customer/StarRating'
+import { useConfirmDialog } from '../../components/ConfirmDialog'
 
 type AdminReview = {
   id: string; rating: number; comment: string | null; reviewerName: string; itemName: string | null
@@ -18,6 +19,7 @@ export default function ReviewsPage() {
   const [replyingId, setReplyingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  const [ask, confirmDialog] = useConfirmDialog(lang)
 
   const { data: reviews = [], isLoading } = useQuery<AdminReview[]>({
     queryKey: ['admin-reviews'],
@@ -40,6 +42,7 @@ export default function ReviewsPage() {
   }
 
   async function deleteReply(id: string) {
+    if (!(await ask(t(lang, 'confirmDeleteReply'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
     setBusy(true)
     try {
       await api.delete(`/admin/reviews/${id}/reply`)
@@ -50,6 +53,7 @@ export default function ReviewsPage() {
 
   return (
     <div>
+      {confirmDialog}
       <h1 className="text-2xl font-bold text-ink mb-6">{t(lang, 'reviews')}</h1>
 
       {isLoading ? (

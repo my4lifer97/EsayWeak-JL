@@ -4,7 +4,7 @@ import { format, addDays, parseISO, type Locale } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { t, itemName } from '../../lib/i18n'
+import { t, itemName, type TKey } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 import { presetForDate } from '../../lib/effectiveSchedule'
 import type { PresetSchedule, SchedulePreset } from './PresetEditorModal'
@@ -14,7 +14,7 @@ import RescheduleModal from './RescheduleModal'
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
   status: string; notes: string | null
-  customer: { name: string; phone: string }
+  customer: { name: string; familyName: string; phone: string }
   item: { id: string; nameEn: string; nameAr: string; nameHe: string; durationMinutes: number | null }
   price: number
   photoUrl: string | null
@@ -58,6 +58,12 @@ const STATUS_COLORS: Record<string, string> = {
   CONFIRMED: 'bg-blue-600',
   COMPLETED: 'bg-green-700',
   CANCELLED: 'bg-gray-700',
+}
+
+const STATUS_LABEL: Record<string, TKey> = {
+  CONFIRMED: 'statusConfirmed',
+  COMPLETED: 'statusCompleted',
+  CANCELLED: 'statusCancelled',
 }
 
 function timeToMinutes(t: string) {
@@ -335,7 +341,7 @@ export default function WeeklyCalendar({
           <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-line">
             <div className="relative mb-4">
               <div className="text-center px-11">
-                <h2 className="text-ink font-semibold text-lg">{selected.customer.name}</h2>
+                <h2 className="text-ink font-semibold text-lg">{`${selected.customer.name} ${selected.customer.familyName ?? ''}`.trim()}</h2>
                 {selected.pendingCancellationApproval && (
                   <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">⚠️ {t(lang, 'cancellationRequestedBadge')}</div>
                 )}
@@ -353,7 +359,7 @@ export default function WeeklyCalendar({
               <Row label={t(lang, 'time')} value={`${selected.startTime} – ${selected.endTime}`} />
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />
               {selected.notes && <Row label={t(lang, 'notes')} value={selected.notes} />}
-              <Row label={t(lang, 'status')} value={selected.status}
+              <Row label={t(lang, 'status')} value={t(lang, STATUS_LABEL[selected.status] ?? 'statusConfirmed')}
                 valueClass={selected.status === 'CONFIRMED' ? 'text-blue-700 dark:text-blue-400' : selected.status === 'COMPLETED' ? 'text-green-700 dark:text-green-400' : 'text-muted'} />
             </div>
             {selected.photoUrl && (

@@ -60,4 +60,44 @@ public class AdminSettingsTests : IntegrationTestBase
         var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
         Assert.Null(settings!.City);
     }
+
+    // QA run 2: negative limits, unknown languages and unreachable notify contacts were accepted.
+    [Theory]
+    [InlineData("{\"maxBookingsPerDay\": -1}")]
+    [InlineData("{\"maxBookingsPerWeek\": 0}")]
+    [InlineData("{\"language\": \"FR\"}")]
+    [InlineData("{\"language\": \"5\"}")]
+    [InlineData("{\"chatbotDefaultLanguage\": \"xx\"}")]
+    [InlineData("{\"inquiryWhatsAppNumber\": \"call me\"}")]
+    [InlineData("{\"cancelApprovalWhatsAppNumber\": \"12\"}")]
+    [InlineData("{\"inquiryEmail\": \"not-an-email\"}")]
+    [InlineData("{\"cancelApprovalEmail\": \"a@b\"}")]
+    public async Task InvalidSettings_Are400_AndChangeNothing(string json)
+    {
+        var token = await RegisterAndLoginBusiness($"settings-invalid-{Guid.NewGuid():N}@example.com", $"settings-invalid-{Guid.NewGuid():N}"[..30]);
+        Authorize(Client, token);
+        var before = await Client.GetStringAsync("/api/admin/settings");
+
+        var resp = await Client.PatchAsync("/api/admin/settings", new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(before, await Client.GetStringAsync("/api/admin/settings"));
+    }
+
+    [Fact]
+    public async Task ChatbotMessages_WhitespaceIsCleared_AndOverlongRejected()
+    {
+        var token = await RegisterAndLoginBusiness("settings-messages@example.com", "settings-messages-shop");
+        Authorize(Client, token);
+
+        var ok = await Client.PatchAsJsonAsync("/api/admin/settings", new { chatbotWelcomeMessageEn = "   ", chatbotDefaultLanguage = "AR", inquiryWhatsAppNumber = "050-123-4567" });
+        Assert.Equal(System.Net.HttpStatusCode.OK, ok.StatusCode);
+        var settings = await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings");
+        Assert.Null(settings!.ChatbotWelcomeMessageEn);
+        Assert.Equal("AR", settings.ChatbotDefaultLanguage);
+        Assert.Equal("+972501234567", settings.InquiryWhatsAppNumber);
+
+        var tooLong = await Client.PatchAsJsonAsync("/api/admin/settings", new { chatbotFinalMessageHe = new string('א', 1001) });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, tooLong.StatusCode);
+    }
 }

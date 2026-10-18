@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
+using BarberSaas.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -323,5 +324,86 @@ public class ChatbotInquiryTests : IntegrationTestBase
 
         var unreadOnly = await Client.GetFromJsonAsync<List<ChatbotInquiryDto>>("/api/admin/chatbot-inquiries?unreadOnly=true");
         Assert.Empty(unreadOnly!);
+    }
+
+    // QA run 2 chatbot minors.
+    private async Task<string?> Reply(string businessId, string phone, string message)
+    {
+        var resp = await PostInboundWithAuth(businessId, phone, message);
+        return (await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply;
+    }
+
+    [Fact]
+    public async Task DollarOne_OnTheServiceList_DoesNotCountTowardTheLockout()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-d1-lock@example.com", "inquiry-d1-lock");
+        await EnableInquiry(token);
+        await Reply(businessId, "+15550101", "hi");
+        await Reply(businessId, "+15550101", "1");
+
+        for (var i = 0; i < 3; i++)
+            Assert.Contains("1. Haircut", await Reply(businessId, "+15550101", "$1"));
+
+        using var db = Db();
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15550101");
+        Assert.Equal(0, state.InvalidAttempts);
+    }
+
+    [Fact]
+    public async Task DollarTwo_DoesNotEscapeTheLockout()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-d2-lock@example.com", "inquiry-d2-lock");
+        await EnableInquiry(token);
+        await Reply(businessId, "+15550102", "hi");
+        await Reply(businessId, "+15550102", "1");
+        for (var i = 0; i < 3; i++) await Reply(businessId, "+15550102", "banana");
+
+        var reply = await Reply(businessId, "+15550102", "$2");
+
+        Assert.DoesNotContain("chatting directly", reply);
+        Assert.Contains("$", reply);
+        using var db = Db();
+        Assert.False(await db.ChatbotInquiries.AnyAsync(i => i.BusinessId == businessId));
+    }
+
+    [Theory]
+    [InlineData("2$")]
+    [InlineData("$2")]
+    public async Task InquiryCommand_IsAcceptedInEitherOrder(string command)
+    {
+        var (businessId, token) = await SeedBusinessWithService($"inquiry-order-{command[0]}@example.com", $"inquiry-order-{(command[0] == '$' ? "a" : "b")}");
+        await EnableInquiry(token);
+        await Reply(businessId, "+15550103", "hi");
+        await Reply(businessId, "+15550103", "1");
+
+        Assert.Contains("chatting directly", await Reply(businessId, "+15550103", command));
+    }
+
+    [Fact]
+    public async Task InquiryFollowUp_AnHourLater_IsStillLogged()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-later@example.com", "inquiry-later");
+        await EnableInquiry(token);
+        await Reply(businessId, "+15550104", "hi");
+        await Reply(businessId, "+15550104", "2");
+        await Reply(businessId, "+15550104", "Do you do beards?");
+
+        using (var db = Db())
+        {
+            // An hour passes while waiting on the owner.
+            var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15550104");
+            Assert.True(state.ExpiresAt > DateTime.UtcNow.AddHours(1));
+        }
+
+        await Reply(businessId, "+15550104", "Also, are you open Friday?");
+        using var db2 = Db();
+        Assert.Equal(2, await db2.ChatbotInquiries.CountAsync(i => i.BusinessId == businessId));
+    }
+
+    [Fact]
+    public void RtlTexts_KeepDollarCommandsLeftToRight()
+    {
+        foreach (var lang in new[] { "AR", "HE" })
+            Assert.Contains("\u200E$1\u200E", I18nService.T(lang, "whatsapp.inquiryAck"));
     }
 }

@@ -4,7 +4,7 @@ import { useAuth } from '../../lib/auth'
 import ThemeToggle from '../../components/ThemeToggle'
 
 export default function SetPasswordPage() {
-  const { changePassword } = useAuth()
+  const { changePassword, logout } = useAuth()
   const navigate = useNavigate()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -23,13 +23,18 @@ export default function SetPasswordPage() {
       setError('Passwords do not match')
       return
     }
+    if (newPassword === currentPassword) {
+      setError('Choose a password different from the temporary one')
+      return
+    }
     setLoading(true)
     try {
       await changePassword(currentPassword, newPassword)
       navigate('/admin/dashboard')
     } catch (err: unknown) {
-      const res = (err as { response?: { status?: number; data?: { error?: string; currentPasswordIncorrect?: boolean } } })?.response
+      const res = (err as { response?: { status?: number; data?: { error?: string; currentPasswordIncorrect?: boolean; samePassword?: boolean } } })?.response
       if (res?.data?.currentPasswordIncorrect) setError('The temporary password is incorrect')
+      else if (res?.data?.samePassword) setError('Choose a password different from the temporary one')
       else if (res?.status === 429 && res.data?.error) setError(res.data.error)
       else setError('Could not set your password. Please try again.')
     } finally {
@@ -75,6 +80,10 @@ export default function SetPasswordPage() {
             {loading ? '...' : 'Set password & continue'}
           </button>
         </form>
+        <button type="button" onClick={() => { logout(); navigate('/admin/login') }}
+          className="w-full mt-4 text-muted hover:text-ink text-sm">
+          Sign out
+        </button>
       </div>
     </div>
   )

@@ -4,7 +4,7 @@ import { useUnsavedChangesGuard } from '../../components/admin/useUnsavedChanges
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
-import { t } from '../../lib/i18n'
+import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 
 type GalleryPhoto = { id: string; url: string }
@@ -132,13 +132,16 @@ export default function ServicesPage() {
           {services.map((s) => (
             <div key={s.id} className="bg-surface border border-line rounded-xl px-5 py-4 flex items-center justify-between">
               <div>
-                <div className="text-ink font-medium">{s.nameEn}</div>
-                <div className="text-muted text-sm mt-0.5">{s.nameAr} · {s.nameHe}</div>
+                {/* The dashboard's own language first, then the other two. */}
+                <div className="text-ink font-medium">{itemName(s, lang)}</div>
+                <div className="text-muted text-sm mt-0.5">
+                  {[s.nameEn, s.nameAr, s.nameHe].filter((n) => n && n !== itemName(s, lang)).join(' · ')}
+                </div>
                 <div className="text-muted text-xs mt-1">
-                  <span dir="ltr">
-                    {s.isBookable ? `${s.durationMinutes} min · ` : ''}
-                    {s.price !== null ? `₪${s.price}` : ''}
-                  </span>
+                  <bdi>
+                    {[s.isBookable && s.durationMinutes !== null ? `${s.durationMinutes} ${t(lang, 'min')}` : null,
+                      s.price !== null ? `₪${s.price}` : null].filter(Boolean).join(' · ')}
+                  </bdi>
                 </div>
                 {s.photoMode !== 'None' && (
                   <div className="text-xs text-teal mt-1">
@@ -222,7 +225,8 @@ export default function ServicesPage() {
                           <div key={p.id} className="relative group">
                             <img src={mediaUrl(p.url)} alt="" className="w-full aspect-square object-cover rounded-lg border border-line" />
                             <button type="button" onClick={() => handleGalleryDelete(p.id)}
-                              className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              aria-label={t(lang, 'delete')}
+                              className="absolute top-1 end-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded-full w-7 h-7 flex items-center justify-center transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100">
                               ✕
                             </button>
                           </div>
