@@ -10,7 +10,8 @@ export default function SetPasswordPage() {
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState<{ key: TKey } | null>(null)
+  // A key, or the server's 429 text (already in this language, says how long to wait).
+  const [error, setError] = useState<{ key: TKey } | { text: string } | null>(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
@@ -36,7 +37,7 @@ export default function SetPasswordPage() {
       const res = (err as { response?: { status?: number; data?: { error?: string; currentPasswordIncorrect?: boolean; samePassword?: boolean } } })?.response
       if (res?.data?.currentPasswordIncorrect) setError({ key: 'authTempPasswordWrong' })
       else if (res?.data?.samePassword) setError({ key: 'authSamePassword' })
-      else if (res?.status === 429) setError({ key: 'authTooManyAttempts' })
+      else if (res?.status === 429) setError(res.data?.error ? { text: res.data.error } : { key: 'authTooManyAttempts' })
       else setError({ key: 'authSetPasswordFailed' })
     } finally {
       setLoading(false)
@@ -51,7 +52,7 @@ export default function SetPasswordPage() {
       <form onSubmit={handleSubmit} className="space-y-4">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">
-            {t(lang, error.key)}
+            {'key' in error ? t(lang, error.key) : error.text}
           </div>
         )}
         <input

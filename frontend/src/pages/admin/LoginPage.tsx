@@ -16,14 +16,15 @@ export default function LoginPage() {
   const [code, setCode] = useState('')
   const [devCode, setDevCode] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
-  // Kept as a key, not text, so switching language re-renders the message too.
+  // A key where possible, so switching language re-renders the message; the 429 text comes from the
+  // server (already in this language) since it says how long to wait.
   // ?disabled=1: api.ts signed this owner out because the account was disabled mid-session.
-  const [error, setError] = useState<TKey | ''>(() => searchParams.get('disabled') ? 'authAccountDisabled' : '')
+  const [error, setError] = useState<{ key: TKey } | { text: string } | null>(() => searchParams.get('disabled') ? { key: 'authAccountDisabled' } : null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setError('')
+    setError(null)
     setLoading(true)
     try {
       const u = await login(email, password)
@@ -35,15 +36,15 @@ export default function LoginPage() {
           const data = await resendVerification(email)
           if (data.devCode) { setDevCode(data.devCode); setCode(data.devCode) }
         } catch {
-          setError('authCodeAlreadySent')
+          setError({ key: 'authCodeAlreadySent' })
         }
         setView('verify')
       } else if (resp?.status === 403 && resp.data?.accountDisabled) {
-        setError('authAccountDisabled')
+        setError({ key: 'authAccountDisabled' })
       } else if (resp?.status === 429) {
-        setError('authTooManyAttempts')
+        setError(resp.data?.error ? { text: resp.data.error } : { key: 'authTooManyAttempts' })
       } else {
-        setError('authInvalidCredentials')
+        setError({ key: 'authInvalidCredentials' })
       }
     } finally {
       setLoading(false)
@@ -52,27 +53,27 @@ export default function LoginPage() {
 
   async function handleVerify(e: FormEvent) {
     e.preventDefault()
-    setError('')
+    setError(null)
     setLoading(true)
     try {
       await verifyEmail(email, code)
       navigate('/admin/dashboard')
     } catch {
-      setError('authInvalidCode')
+      setError({ key: 'authInvalidCode' })
     } finally {
       setLoading(false)
     }
   }
 
   async function handleResend() {
-    setError('')
+    setError(null)
     setLoading(true)
     try {
       const data = await resendVerification(email)
       if (data.devCode) { setDevCode(data.devCode); setCode(data.devCode) }
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status
-      setError(status === 429 ? 'authWaitForCode' : 'authResendFailed')
+      setError({ key: status === 429 ? 'authWaitForCode' : 'authResendFailed' })
     } finally {
       setLoading(false)
     }
@@ -82,12 +83,12 @@ export default function LoginPage() {
     setView('login')
     setCode('')
     setDevCode(null)
-    setError('')
+    setError(null)
   }
 
   const errorBox = error && (
     <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3">
-      {t(lang, error)}
+      {'key' in error ? t(lang, error.key) : error.text}
     </div>
   )
 
