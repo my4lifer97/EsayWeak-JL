@@ -367,4 +367,48 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15559991211");
         Assert.True(state.HistoryJson!.Length < 2000);
     }
+
+    // QA run 3 AI-6: {"itemId":123} threw and the whole turn fell back to the rule-based bot.
+    [Fact]
+    public async Task NonStringToolArgument_DoesNotThrow()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-badargs@example.com", "wa-ai-badargs");
+        Factory.OpenAi.ToolCallName = "create_booking_link";
+        Factory.OpenAi.ToolCallArgsJson = """{"itemId":123}""";
+
+        var resp = await PostInbound(businessId, "+15559991220", "book me");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.StartsWith("AI:", body!.Reply); // the model's turn, not the rule-based fallback
+        Assert.Contains("unknown itemId", body.Reply);
+    }
+
+    // QA run 3 AI-8: a link the model wrote itself (not from a tool) is removed.
+    [Fact]
+    public async Task UrlTheModelMadeUp_IsStripped()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-url@example.com", "wa-ai-url");
+        Factory.OpenAi.PlainTextReply = "Book here: https://evil.example/pay now!";
+
+        var resp = await PostInbound(businessId, "+15559991221", "how do I book?");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.DoesNotContain("evil.example", body!.Reply);
+    }
+
+    // QA run 3 AI-7: the no-OpenAI 1/2 answer used up the daily allowance.
+    [Fact]
+    public async Task CancelAnswer_DoesNotCallOpenAi()
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-cap@example.com", "wa-ai-cap");
+        var phone = "+15559991222";
+        await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        await PostInbound(businessId, phone, "cancel");
+        var calls = Factory.OpenAi.Calls.Count;
+
+        await PostInbound(businessId, phone, "2");
+
+        Assert.Equal(calls, Factory.OpenAi.Calls.Count);
+    }
 }

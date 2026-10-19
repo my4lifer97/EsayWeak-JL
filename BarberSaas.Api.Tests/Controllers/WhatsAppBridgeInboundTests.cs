@@ -258,4 +258,81 @@ public class WhatsAppBridgeInboundTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    private async Task<string?> Reply(string businessId, string phone, string message, string? profileName = null) =>
+        (await (await PostInbound(businessId, phone, message, profileName)).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply;
+
+    private async Task AddAppointment(string businessId, string phone)
+    {
+        using var db = Db();
+        var item = await db.Items.FirstAsync(i => i.BusinessId == businessId);
+        var customer = new Customer { BusinessId = businessId, Name = "Dana", Phone = phone };
+        db.Customers.Add(customer);
+        db.Appointments.Add(new Appointment
+        {
+            BusinessId = businessId, CustomerId = customer.Id, ItemId = item.Id,
+            Date = DateTime.Now.Date.AddDays(2), StartTime = "10:00", EndTime = "10:30", Status = AppointmentStatus.CONFIRMED,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    // QA run 3 BOT-5: answering the cancel question ended the pending link's quiet mode.
+    [Fact]
+    public async Task KeepingTheAppointment_WhileALinkIsPending_StaysQuietAfterwards()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-quiet@example.com", "wa-bridge-quiet");
+        var phone = "+15559990021";
+        await PostInbound(businessId, phone, "hi");
+        await PostInbound(businessId, phone, "1"); // link issued
+        await AddAppointment(businessId, phone);
+
+        await PostInbound(businessId, phone, "cancel");
+        Assert.Contains("stays", await Reply(businessId, phone, "2"));
+
+        Assert.Null(await Reply(businessId, phone, "ok thanks"));
+        using var db = Db();
+        Assert.True((await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone)).AwaitingBookingCompletion);
+    }
+
+    // QA run 3 BOT-6: inflected and colloquial cancel words.
+    [Theory]
+    [InlineData("תבטל לי את התור")]
+    [InlineData("بدي الغي الموعد")]
+    public async Task InflectedCancelWords_AskTheCancelQuestion(string message)
+    {
+        var (businessId, _) = await SeedBusinessWithService($"wa-bridge-infl-{message.Length}@example.com", $"wa-bridge-infl-{message.Length}");
+        var phone = $"+155599900{message.Length:D2}";
+        await AddAppointment(businessId, phone);
+
+        var reply = await Reply(businessId, phone, message);
+
+        Assert.Contains("10:00", reply);
+        Assert.Contains("1", reply);
+    }
+
+    // QA run 3 BOT-8: a profile name over 200 characters failed the request, so no reply at all.
+    [Fact]
+    public async Task VeryLongProfileName_StillGetsAReply()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-longname@example.com", "wa-bridge-longname");
+
+        var resp = await PostInbound(businessId, "+15559990031", "hi", new string('n', 5000));
+
+        Assert.Equal(System.Net.HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.False(string.IsNullOrWhiteSpace(body!.Reply));
+    }
+
+    // QA run 3 BOT-7: an invalid reply's language wasn't saved, so a bare "1" switched back.
+    [Fact]
+    public async Task InvalidReplyInArabic_KeepsTheNextBareNumberInArabic()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-lang@example.com", "wa-bridge-lang");
+        var phone = "+15559990032";
+        await PostInbound(businessId, phone, "hi");
+        await PostInbound(businessId, phone, "٣"); // out of range, Arabic-Indic digit
+
+        using var db = Db();
+        Assert.Equal("AR", (await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone)).Language);
+    }
 }

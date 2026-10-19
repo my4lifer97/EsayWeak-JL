@@ -450,4 +450,19 @@ public class ChatbotInquiryTests : IntegrationTestBase
         foreach (var lang in new[] { "AR", "HE" })
             Assert.Contains("\u200E$1\u200E", I18nService.T(lang, "whatsapp.inquiryAck"));
     }
+
+    // QA run 3 BOT-9: a 100,000-character inquiry was stored and forwarded in full.
+    [Fact]
+    public async Task VeryLongInquiry_IsCapped()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-long@example.com", "inquiry-long");
+        await EnableInquiry(token);
+        await PostInboundWithAuth(businessId, "+15550099", "2");
+
+        await PostInboundWithAuth(businessId, "+15550099", new string('q', 100_000));
+
+        using var db = Db();
+        var inquiry = await db.ChatbotInquiries.SingleAsync(i => i.BusinessId == businessId);
+        Assert.Equal(4000, inquiry.Message.Length);
+    }
 }

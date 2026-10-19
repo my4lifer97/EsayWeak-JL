@@ -46,6 +46,7 @@ public class ValidateInputFilter : IActionFilter
         foreach (var prop in body.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (prop.PropertyType != typeof(string) || prop.GetIndexParameters().Length > 0) continue;
+            if (prop.GetCustomAttribute<SkipLengthCheckAttribute>() is not null) continue;
             if (Check(prop.Name, (string?)prop.GetValue(body)) is { } error) return error;
         }
         return null;
@@ -67,3 +68,8 @@ public class ValidateInputFilter : IActionFilter
         DateTime.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
         && d.Year is >= 2000 and <= 2100;
 }
+
+// Opts a DTO property out of ValidateInputFilter's checks, for a value the action shortens itself
+// instead (WhatsApp profile names: rejecting one meant the customer got no reply).
+[AttributeUsage(AttributeTargets.Property)]
+public sealed class SkipLengthCheckAttribute : Attribute;

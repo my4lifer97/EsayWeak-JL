@@ -38,7 +38,14 @@ public class WhatsAppController(
     // Matched as whole words only (see ContainsKeyword) -- a substring match cancelled real
     // appointments on ordinary sentences ("בטל" inside "בטלפון", "بطل" inside "بطلب"). "שנה" was
     // dropped from the reschedule list: on its own it far more often means "year" ("שנה טובה").
-    private static readonly string[] CancelKeywords = ["cancel", "ביטול", "בטל", "לבטל", "بطل", "إلغاء", "الغاء"];
+    // Whole words, so inflected forms are listed one by one (QA run 3: "תבטל לי את התור" and the
+    // colloquial "بدي الغي الموعد" weren't recognised).
+    private static readonly string[] CancelKeywords =
+    [
+        "cancel",
+        "ביטול", "בטל", "לבטל", "תבטל", "תבטלי", "תבטלו", "בטלו", "בטלי",
+        "بطل", "إلغاء", "الغاء", "والغاء", "وإلغاء", "الغي", "ألغي", "إلغي", "الغيه", "ألغيه", "الغيلي",
+    ];
     private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "לשנות", "تغيير"];
     // A cancel keyword never cancels on its own: it asks "reply 1 to cancel / 2 to keep" and parks
     // the appointment id in WhatsAppConversationState.ChatbotMode as "ConfirmCancel:{id}" until the
@@ -55,6 +62,9 @@ public class WhatsAppController(
     // What the AI path sends to OpenAI per message and keeps per history turn. A few very long
     // messages used to overflow the context window, and every later turn then failed (QA run 3).
     private const int MaxAiMessageChars = 1000;
+    // An inquiry is stored, shown in the inbox and forwarded to the owner; 100,000 characters
+    // went through in full (QA run 3).
+    private const int MaxInquiryMessageChars = 4000;
     // Natural answers to the "reply 1 to cancel / 2 to keep" question, as whole words. "yes" went
     // to the model, which had no tool to act on it (QA run 3).
     private static readonly string[] YesWords = ["yes", "yeah", "yep", "y", "כן", "נכון", "نعم", "ايوه", "أيوه", "اه"];
@@ -121,7 +131,9 @@ public class WhatsAppController(
     // there's no "To number" lookup -- it just tells us the BusinessId directly. Auth is a shared
     // secret (same pattern as CronSecret) instead of Twilio's per-request HMAC signature, since
     // this is a private server-to-server call, not a public webhook Twilio signs.
-    public record BridgeInboundRequest(string BusinessId, string FromPhone, string? ProfileName, string Message);
+    // ProfileName is the sender's WhatsApp display name: cut to length below rather than rejected,
+    // since a 400 here means the customer gets no reply at all (QA run 3).
+    public record BridgeInboundRequest(string BusinessId, string FromPhone, [property: Filters.SkipLengthCheck] string? ProfileName, string Message);
     public record BridgeInboundResponse(string? Reply);
 
     [HttpPost("bridge/inbound")]
@@ -141,7 +153,7 @@ public class WhatsAppController(
             var appUrl = config["AppUrl"] ?? "";
             var reply = fromPhone.Length == 0
                 ? null
-                : await ProcessMessageLockedAsync(business, appUrl, fromPhone, req.ProfileName ?? "", req.Message.Trim());
+                : await ProcessMessageLockedAsync(business, appUrl, fromPhone, TruncateName(req.ProfileName), req.Message.Trim());
             return Ok(new BridgeInboundResponse(reply));
         }
         finally
@@ -215,13 +227,15 @@ public class WhatsAppController(
             if (handled) return inquiryReply;
         }
 
-        // Past the per-phone daily cap (AiUsageLimiter) the free rule-based flow answers instead.
-        if (!string.IsNullOrEmpty(config["OpenAI:ApiKey"]) && aiUsage.TryUse(business.Id, fromPhone, DateTime.UtcNow))
+        // Past the per-phone daily cap (AiUsageLimiter, checked right before the OpenAI call) the
+        // free rule-based flow answers instead.
+        if (!string.IsNullOrEmpty(config["OpenAI:ApiKey"]))
         {
             try
             {
                 return await ProcessMessageWithAiAsync(business, appUrl, fromPhone, profileName, incomingMsg, lang);
             }
+            catch (AiDailyCapReachedException) { }
             catch (Exception ex)
             {
                 logger.LogError(ex, "OpenAI chatbot path failed for business {BusinessId}, falling back to rule-based", business.Id);
@@ -290,7 +304,7 @@ public class WhatsAppController(
                 BusinessId = business.Id,
                 CustomerPhone = fromPhone,
                 CustomerName = string.IsNullOrWhiteSpace(profileName) ? null : profileName,
-                Message = incomingMsg,
+                Message = incomingMsg.Length > MaxInquiryMessageChars ? incomingMsg[..MaxInquiryMessageChars] : incomingMsg,
             });
 
             // Only the first message of a session pings the owner -- InquiryNotified is reset
@@ -302,7 +316,8 @@ public class WhatsAppController(
             await db.SaveChangesAsync();
 
             if (shouldNotify)
-                QueueInquiryNotifications(business, fromPhone, profileName, incomingMsg);
+                QueueInquiryNotifications(business, fromPhone, profileName,
+                    incomingMsg.Length > MaxInquiryMessageChars ? incomingMsg[..MaxInquiryMessageChars] : incomingMsg);
 
             return (true, I18nService.T(lang, "whatsapp.inquiryAck"));
         }
@@ -447,6 +462,10 @@ public class WhatsAppController(
         {
             var confirmationReply = await TryHandleCancelConfirmation(business, conversationState, fromPhone, incomingMsg, lang, welcomeMessage);
             if (confirmationReply is not null) return confirmationReply;
+            // Not an answer, and a booking link is still pending: back to quiet mode.
+            if (conversationState.AwaitingBookingCompletion
+                && !ContainsKeyword(incomingMsg, CancelKeywords) && !ContainsKeyword(incomingMsg, RescheduleKeywords))
+                return null;
         }
 
         if (ContainsKeyword(incomingMsg, CancelKeywords))
@@ -531,6 +550,10 @@ public class WhatsAppController(
             }
         }
 
+        // Counted here, after the turns answered without OpenAI (lockout reminder, "$", the 1/2
+        // answer), which used to use up the daily allowance too (QA run 3).
+        if (!aiUsage.TryUse(business.Id, fromPhone, DateTime.UtcNow)) throw new AiDailyCapReachedException();
+
         var systemPrompt = await BuildAiSystemPrompt(business, lang);
         List<OpenAiToolDefinition> tools =
         [
@@ -548,6 +571,9 @@ public class WhatsAppController(
         var unclear = false;
         string? confirmCancelId = null; // set when the cancel tool asked its 1/2 question this turn
         string? toolMessage = null; // text of the last tool that actually did something
+        string? cancelQuestion = null; // the cancel tool's own text, which the customer must see as-is
+        var linkIssued = false;
+        var toolTexts = new List<string>(); // every tool result this turn, for the URL check below
         async Task<string> ExecuteTool(string name, string argsJson)
         {
             if (name == "mark_unclear")
@@ -556,8 +582,11 @@ public class WhatsAppController(
                 return JsonSerializer.Serialize(new { ok = true });
             }
             // The 1/2 question has to be the last thing the customer reads this turn.
-            if (name == "create_booking_link" && confirmCancelId is not null)
+            if (name == "create_booking_link" && cancelQuestion is not null)
                 return JsonSerializer.Serialize(new { error = "Wait until the customer confirms the cancellation before creating a booking link." });
+            // The other order: the forced 1/2 question would hide the link just issued (QA run 3).
+            if (name == "cancel_upcoming_appointment" && linkIssued)
+                return JsonSerializer.Serialize(new { error = "A booking link was just sent. Ask about cancelling in your next message." });
 
             string result;
             if (name == "cancel_upcoming_appointment")
@@ -565,6 +594,9 @@ public class WhatsAppController(
                 var (cancelResult, appointmentId) = await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang);
                 result = cancelResult;
                 confirmCancelId = appointmentId ?? confirmCancelId;
+                using var cancelParsed = JsonDocument.Parse(cancelResult);
+                // Also "already requested", which has a message but no id to park.
+                if (cancelParsed.RootElement.TryGetProperty("message", out var question)) cancelQuestion = question.GetString();
             }
             else
             {
@@ -574,7 +606,12 @@ public class WhatsAppController(
             }
             using var parsed = JsonDocument.Parse(result);
             if (parsed.RootElement.TryGetProperty("message", out var message))
+            {
                 toolMessage = message.GetString();
+                if (name == "create_booking_link") linkIssued = true;
+                toolTexts.Add(toolMessage ?? ""); // unescaped, unlike the JSON
+            }
+            toolTexts.Add(result);
             return result;
         }
 
@@ -593,8 +630,10 @@ public class WhatsAppController(
         }
 
         // Whatever the model wrote, the customer must see the exact 1/2 question.
-        if (confirmCancelId is not null && toolMessage is not null)
-            reply = toolMessage;
+        if (cancelQuestion is not null)
+            reply = cancelQuestion;
+        else
+            reply = StripUnknownUrls(reply, toolTexts);
 
         history.Add(new OpenAiTurn("user", incomingMsg));
         history.Add(new OpenAiTurn("assistant", reply.Length > MaxAiMessageChars ? reply[..MaxAiMessageChars] : reply));
@@ -614,7 +653,9 @@ public class WhatsAppController(
         if (confirmCancelId is not null)
             state.ChatbotMode = ConfirmCancelModePrefix + confirmCancelId;
 
-        if (!unclear)
+        // A turn where a tool really acted isn't an unclear one, even if the model also flagged it
+        // (QA run 3: the lockout text could replace a link that had just been issued).
+        if (!unclear || toolMessage is not null)
         {
             state.InvalidAttempts = 0;
         }
@@ -683,8 +724,16 @@ public class WhatsAppController(
 
     private async Task<string> ExecuteCreateBookingLink(Business business, string appUrl, string fromPhone, string profileName, string lang, string argsJson)
     {
-        var args = JsonSerializer.Deserialize<Dictionary<string, string>>(argsJson) ?? [];
-        var itemId = args.GetValueOrDefault("itemId", "");
+        // Read leniently: {"itemId":123} or null used to throw and drop the whole turn (QA run 3).
+        string itemId;
+        try
+        {
+            using var args = JsonDocument.Parse(string.IsNullOrWhiteSpace(argsJson) ? "{}" : argsJson);
+            itemId = args.RootElement.ValueKind == JsonValueKind.Object && args.RootElement.TryGetProperty("itemId", out var id)
+                ? (id.ValueKind == JsonValueKind.String ? id.GetString() ?? "" : id.ToString())
+                : "";
+        }
+        catch (JsonException) { itemId = ""; }
         var services = await ActiveServices(business.Id, lang);
         var chosen = services.FirstOrDefault(s => s.Id == itemId);
         if (chosen.Id is null)
@@ -808,8 +857,10 @@ public class WhatsAppController(
         state.ChatbotMode = ConfirmCancelModePrefix + upcoming.Id;
         state.Language = lang;
         state.InvalidAttempts = 0;
-        state.AwaitingBookingCompletion = false;
-        state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        // A pending booking link stays pending: the bot stays quiet after the question is answered
+        // (QA run 3: it re-sent the list and later chatter counted toward the lockout).
+        if (!state.AwaitingBookingCompletion)
+            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
         await db.SaveChangesAsync();
 
         var args = DateTimeArgs(upcoming);
@@ -823,7 +874,12 @@ public class WhatsAppController(
     {
         var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
         var answer = ConfirmationAnswer(incomingMsg);
-        await ClearConversationState(business.Id, fromPhone);
+        if (state.AwaitingBookingCompletion)
+        {
+            state.ChatbotMode = BookingMode;
+            await db.SaveChangesAsync();
+        }
+        else await ClearConversationState(business.Id, fromPhone);
 
         if (answer == "2") return I18nService.T(lang, "whatsapp.cancelKept");
         if (answer != "1") return null;
@@ -904,6 +960,16 @@ public class WhatsAppController(
         if (NoWords.Contains(words[0]) && !words.Any(YesWords.Contains)) return "2";
         return null;
     }
+
+    // Defence in depth: a link in the model's own text must be one a tool returned this turn, so a
+    // prompt-injected or made-up URL never reaches the customer (QA run 3).
+    private static string StripUnknownUrls(string reply, List<string> toolTexts) =>
+        Regex.Replace(reply, @"https?://[^\s)\]>""']+", m => toolTexts.Any(t => t.Contains(m.Value)) ? m.Value : "").Trim();
+
+    private sealed class AiDailyCapReachedException : Exception;
+
+    private static string TruncateName(string? name) =>
+        name is null ? "" : name.Length > Filters.ValidateInputFilter.MaxNameLength ? name[..Filters.ValidateInputFilter.MaxNameLength] : name;
 
     private static bool ContainsKeyword(string message, string[] keywords) =>
         Regex.Split(message.ToLowerInvariant(), @"[^\p{L}\p{Mn}\p{Nd}]+").Any(word => keywords.Contains(word));
@@ -999,6 +1065,8 @@ public class WhatsAppController(
         if (!int.TryParse(NormalizeDigits(message.Trim()), out var index) || index < 1 || index > shownIds.Count)
         {
             state.InvalidAttempts++;
+            // So a following bare "1" stays in the language this reply was answered in (QA run 3).
+            state.Language = lang;
             await db.SaveChangesAsync();
             return state.InvalidAttempts >= MaxInvalidAttempts
                 ? I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword })
