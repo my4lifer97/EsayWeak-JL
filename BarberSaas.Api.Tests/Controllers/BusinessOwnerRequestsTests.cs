@@ -238,7 +238,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
             new ApproveBusinessOwnerRequestRequest("double-b"));
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
     }
 
     [Fact]

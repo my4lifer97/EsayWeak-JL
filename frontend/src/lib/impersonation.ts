@@ -5,6 +5,9 @@
 export type Impersonation = { type: 'business' | 'customer'; name: string; returnPath: string }
 
 const KEY = 'impersonation'
+// The owner/customer login this browser already had before "Log in as" replaced it, put back when
+// the impersonation ends (QA run 3: it was overwritten, then deleted).
+const BACKUP_KEY = 'impersonationBackup'
 const SESSION_KEYS = {
   business: ['token', 'user'],
   customer: ['customerToken', 'customerUser'],
@@ -19,10 +22,36 @@ export function getImpersonation(): Impersonation | null {
   }
 }
 
-// Removes the impersonated login itself plus the marker; returns what was ended (null if none).
+// Stores the target's login in the normal slots, keeping whatever was there to restore later.
+export function startImpersonation(marker: Impersonation, session: Record<string, string>) {
+  const keys = SESSION_KEYS[marker.type]
+  // A second "Log in as" while one is running keeps the original backup, not the first target.
+  if (getImpersonation()?.type !== marker.type) {
+    const backup: Record<string, string> = {}
+    keys.forEach((k) => { const v = localStorage.getItem(k); if (v !== null) backup[k] = v })
+    localStorage.setItem(BACKUP_KEY, JSON.stringify({ type: marker.type, values: backup }))
+  }
+  Object.entries(session).forEach(([k, v]) => localStorage.setItem(k, v))
+  localStorage.setItem(KEY, JSON.stringify(marker))
+}
+
+function restoreBackup(type: Impersonation['type']) {
+  try {
+    const raw = localStorage.getItem(BACKUP_KEY)
+    const backup = raw ? JSON.parse(raw) as { type: string; values: Record<string, string> } : null
+    if (backup?.type === type) Object.entries(backup.values).forEach(([k, v]) => localStorage.setItem(k, v))
+    localStorage.removeItem(BACKUP_KEY)
+  } catch { /* storage blocked or bad JSON -- nothing to restore */ }
+}
+
+// Removes the impersonated login itself plus the marker, putting back the login this browser had
+// before; returns what was ended (null if none).
 export function endImpersonation(): Impersonation | null {
   const current = getImpersonation()
-  if (current) SESSION_KEYS[current.type]?.forEach((k) => localStorage.removeItem(k))
+  if (current) {
+    SESSION_KEYS[current.type]?.forEach((k) => localStorage.removeItem(k))
+    restoreBackup(current.type)
+  }
   try { localStorage.removeItem(KEY) } catch { /* storage blocked -- nothing stored either */ }
   return current
 }
@@ -30,5 +59,8 @@ export function endImpersonation(): Impersonation | null {
 // The owner/customer session of this type just ended on its own (logout, expired token) -- drop
 // the marker if it belonged to it, so the banner doesn't stay up over a signed-out page.
 export function clearImpersonationMarker(type: Impersonation['type']) {
-  if (getImpersonation()?.type === type) localStorage.removeItem(KEY)
+  if (getImpersonation()?.type === type) {
+    localStorage.removeItem(KEY)
+    restoreBackup(type)
+  }
 }

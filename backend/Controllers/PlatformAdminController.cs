@@ -110,7 +110,9 @@ public class PlatformAdminController(
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim().ToLower();
-            query = query.Where(b => b.Name.ToLower().Contains(term) || b.Email.ToLower().Contains(term) || b.Slug.ToLower().Contains(term));
+            // Username too: support usually hears the login name from the owner (QA run 3).
+            query = query.Where(b => b.Name.ToLower().Contains(term) || b.Email.ToLower().Contains(term) || b.Slug.ToLower().Contains(term)
+                || (b.Username != null && b.Username.ToLower().Contains(term)));
         }
 
         return Ok(await Page(query.OrderByDescending(b => b.CreatedAt)
@@ -146,6 +148,8 @@ public class PlatformAdminController(
     {
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
+        // Already disabled: nothing changes, so no second "enabled → disabled" row (QA run 3).
+        if (b.IsDisabled) return Ok(new { b.Id, b.IsDisabled });
 
         b.IsDisabled = true;
         db.ActivityLogs.Add(new ActivityLog
@@ -158,6 +162,7 @@ public class PlatformAdminController(
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
         });
         await db.SaveChangesAsync();
 
@@ -170,6 +175,7 @@ public class PlatformAdminController(
     {
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
+        if (!b.IsDisabled) return Ok(new { b.Id, b.IsDisabled });
 
         b.IsDisabled = false;
         db.ActivityLogs.Add(new ActivityLog
@@ -182,6 +188,7 @@ public class PlatformAdminController(
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
         });
         await db.SaveChangesAsync();
 
@@ -206,7 +213,7 @@ public class PlatformAdminController(
         {
             // A caller-supplied value is the composer's "Set password now" for a password it
             // already generated and showed (see GenerateTempPassword below).
-            if (req.NewPassword is not null && req.NewPassword.Length < 6)
+            if (req.NewPassword is not null && (req.NewPassword.Length < 6 || string.IsNullOrWhiteSpace(req.NewPassword)))
                 return BadRequest(new { error = "Password must be at least 6 characters" });
             tempPassword = req.NewPassword ?? GenerateTempPassword();
             b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword);
@@ -237,6 +244,7 @@ public class PlatformAdminController(
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
         });
         await db.SaveChangesAsync();
 
@@ -333,17 +341,23 @@ public class PlatformAdminController(
 
         var old = b.WhatsAppNumber;
         b.WhatsAppNumber = null;
-        db.ActivityLogs.Add(new ActivityLog
+        // Nothing was linked: the bridge call above still clears any stale session, but there's no
+        // change to log (it used to write "\"\" → (unlinked)", QA run 3).
+        if (old is not null)
         {
-            BusinessId = b.Id,
-            ImpersonatedByPlatformAdminId = AdminId,
-            Action = $"{nameof(PlatformAdminController)}.{nameof(UnlinkWhatsApp)}",
-            Description = $"WhatsApp number: \"{old}\" → (unlinked)",
-            Method = "DELETE",
-            Path = Request.Path.ToString(),
-            StatusCode = 200,
-            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
-        });
+            db.ActivityLogs.Add(new ActivityLog
+            {
+                BusinessId = b.Id,
+                ImpersonatedByPlatformAdminId = AdminId,
+                Action = $"{nameof(PlatformAdminController)}.{nameof(UnlinkWhatsApp)}",
+                Description = $"WhatsApp number: \"{old}\" → (unlinked)",
+                Method = "DELETE",
+                Path = Request.Path.ToString(),
+                StatusCode = 200,
+                IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+                UserAgent = AdminUserAgent,
+            });
+        }
         await db.SaveChangesAsync();
 
         return Ok(new { b.Id, b.WhatsAppNumber, bridgeUnreachable });
@@ -416,6 +430,7 @@ public class PlatformAdminController(
                 Path = Request.Path.ToString(),
                 StatusCode = 200,
                 IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
             });
         }
 
@@ -429,6 +444,7 @@ public class PlatformAdminController(
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
         });
         await db.SaveChangesAsync();
 
@@ -574,7 +590,7 @@ public class PlatformAdminController(
         var request = await db.BusinessOwnerRequests.FindAsync(id);
         if (request is null) return NotFound();
         if (request.Status != BusinessOwnerRequestStatus.Pending)
-            return BadRequest(new { error = "This request has already been reviewed." });
+            return Conflict(new { error = "This request has already been reviewed." });
 
         if (!SlugValidator.IsValidFormat(req.Slug))
             return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (min 3 chars)" });
@@ -650,6 +666,7 @@ public class PlatformAdminController(
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
         });
         await db.SaveChangesAsync();
 
@@ -695,7 +712,7 @@ public class PlatformAdminController(
         var request = await db.BusinessOwnerRequests.FindAsync(id);
         if (request is null) return NotFound();
         if (request.Status != BusinessOwnerRequestStatus.Pending)
-            return BadRequest(new { error = "This request has already been reviewed." });
+            return Conflict(new { error = "This request has already been reviewed." });
 
         // Conditional on still being Pending, so a reject racing an approve (or another reject)
         // can't overwrite the decision that landed first.
@@ -721,6 +738,7 @@ public class PlatformAdminController(
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
         });
         await db.SaveChangesAsync();
 
@@ -778,6 +796,19 @@ public class PlatformAdminController(
         if (review is null) return NotFound();
 
         review.IsHidden = hidden;
+        // Moderation was the one admin write with no trace in the activity log (QA run 3).
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = review.BusinessId,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{(hidden ? "HideReview" : "UnhideReview")}",
+            Description = $"{(hidden ? "Hid" : "Unhid")} a {review.Rating}★ review",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
+        });
         await db.SaveChangesAsync();
         await reviews.RecomputeAggregate(review.BusinessId);
 
@@ -794,6 +825,9 @@ public class PlatformAdminController(
         return new string(bytes.Select(b => alphabet[b % alphabet.Length]).ToArray());
     }
 
+    // The device for the admin's own activity rows (they showed "Device: —", QA run 3).
+    private string? AdminUserAgent => Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : null;
+
     private async Task LogImpersonation(string? businessId, string? customerAccountId, string action)
     {
         db.ActivityLogs.Add(new ActivityLog
@@ -807,6 +841,7 @@ public class PlatformAdminController(
             Path = Request.Path.ToString(),
             StatusCode = 200,
             IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
         });
         await db.SaveChangesAsync();
     }

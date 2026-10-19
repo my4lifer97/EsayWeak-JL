@@ -750,4 +750,54 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         var sent = Assert.Single(Factory.OwnerEmail.Sent, e => e.Email == email);
         Assert.Contains(resetBody.TempPassword!, sent.Body);
     }
+
+    // QA run 3 PA-3: six spaces worked as a temporary password.
+    [Fact]
+    public async Task ResetPassword_WhitespaceTemporaryPassword_IsRejected()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, _) = await RegisterAndVerifyBusiness("pa-spaces@example.com", "pa-spaces-shop");
+        Authorize(Client, adminToken);
+
+        var resp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/reset-password",
+            new PlatformAdminResetPasswordRequest(true, "      ", true));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    // QA run 3 PA-5/6: a repeated disable wrote a second "enabled → disabled" row; admin rows had no device.
+    [Fact]
+    public async Task DisableTwice_LogsOnce_WithTheDevice()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, _) = await RegisterAndVerifyBusiness("pa-twice@example.com", "pa-twice-shop");
+        Authorize(Client, adminToken);
+        Client.DefaultRequestHeaders.UserAgent.ParseAdd("QaBrowser/1.0");
+
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+        await Client.PostAsync($"/api/platform-admin/businesses/{businessId}/disable", null);
+
+        using var db = Db();
+        var rows = db.ActivityLogs.Where(l => l.BusinessId == businessId && l.Action.EndsWith("DisableBusiness")).ToList();
+        var row = Assert.Single(rows);
+        Assert.Contains("QaBrowser", row.UserAgent);
+    }
+
+    // QA run 3 PA-9: owners sign in with a generated username, which search didn't match.
+    [Fact]
+    public async Task BusinessSearch_MatchesTheUsername()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, _) = await RegisterAndVerifyBusiness("pa-user@example.com", "pa-user-shop");
+        using (var db = Db())
+        {
+            db.Businesses.First(b => b.Id == businessId).Username = "danaco";
+            db.SaveChanges();
+        }
+        Authorize(Client, adminToken);
+
+        var page = await Client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/platform-admin/businesses?search=DanaCo");
+
+        Assert.Equal(1, page.GetProperty("total").GetInt32());
+    }
 }

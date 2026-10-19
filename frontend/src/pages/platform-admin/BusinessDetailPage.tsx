@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
+import { startImpersonation } from '../../lib/impersonation'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
 import OwnerEmailComposer from '../../components/platform-admin/OwnerEmailComposer'
 import ThemeToggle from '../../components/ThemeToggle'
@@ -181,8 +182,14 @@ export default function PlatformAdminBusinessDetailPage() {
   })
 
   async function toggleHidden(reviewId: string, hidden: boolean) {
-    await platformAdminApi.post(`/platform-admin/reviews/${reviewId}/${hidden ? 'unhide' : 'hide'}`)
-    queryClient.invalidateQueries({ queryKey: ['platform-admin-business-reviews', id] })
+    setError('')
+    try {
+      await platformAdminApi.post(`/platform-admin/reviews/${reviewId}/${hidden ? 'unhide' : 'hide'}`)
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-business-reviews', id] })
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-business-activity', id] })
+    } catch {
+      setError(hidden ? 'Could not unhide the review' : 'Could not hide the review')
+    }
   }
 
   async function handleImpersonate() {
@@ -191,11 +198,9 @@ export default function PlatformAdminBusinessDetailPage() {
     setImpersonating(true)
     try {
       const { data } = await platformAdminApi.post(`/platform-admin/businesses/${business.id}/impersonate`)
-      localStorage.setItem('token', data.token)
-      localStorage.setItem('user', JSON.stringify({ id: business.id, name: business.name, email: business.email, slug: business.slug }))
-      localStorage.setItem('impersonation', JSON.stringify({
-        type: 'business', name: business.name, returnPath: `/platform-admin/businesses/${business.id}`,
-      }))
+      startImpersonation(
+        { type: 'business', name: business.name, returnPath: `/platform-admin/businesses/${business.id}` },
+        { token: data.token, user: JSON.stringify({ id: business.id, name: business.name, email: business.email, slug: business.slug }) })
       window.location.href = '/admin/dashboard'
     } catch {
       setError('Could not start impersonation')

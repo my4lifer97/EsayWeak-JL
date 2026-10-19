@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { usePlatformAdminAuth } from '../../lib/platformAdminAuth'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import ThemeToggle from '../../components/ThemeToggle'
 
 export default function PlatformAdminLoginPage() {
-  const { login, bootstrap } = usePlatformAdminAuth()
+  const { login, bootstrap, isAuthenticated } = usePlatformAdminAuth()
   const navigate = useNavigate()
   const [bootstrapAvailable, setBootstrapAvailable] = useState<boolean | null>(null)
   const [name, setName] = useState('')
@@ -31,12 +31,15 @@ export default function PlatformAdminLoginPage() {
     } catch (err: unknown) {
       const resp = (err as { response?: { status?: number; data?: { error?: string } } })?.response
       if (resp?.status === 429) setError(resp.data?.error ?? 'Too many sign-in attempts. Try again later.')
+      // Only a 401 means the details were wrong; a network error or a 500 used to say so too.
+      else if (!resp?.status || resp.status >= 500) setError('Could not reach the server. Try again.')
       else setError(bootstrapAvailable ? 'Could not create admin account' : 'Invalid email or password')
     } finally {
       setLoading(false)
     }
   }
 
+  if (isAuthenticated) return <Navigate to="/platform-admin" replace />
   if (bootstrapAvailable === null) return null
 
   return (

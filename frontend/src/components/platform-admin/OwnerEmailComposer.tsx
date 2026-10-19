@@ -93,7 +93,16 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [delivered, setDelivered] = useState(false)
   const [ask, confirmDialog] = useConfirmDialog('EN')
 
+  // Esc while editing the default template used to close the whole composer and lose the draft.
+  async function closeTemplateEditor() {
+    if (templateDraft !== template
+      && !(await ask('Discard your changes to the default template?', { yesLabel: 'Discard', noLabel: 'Keep editing' }))) return false
+    setEditingTemplate(false)
+    return true
+  }
+
   async function requestClose() {
+    if (editingTemplate && !(await closeTemplateEditor())) return
     if (password && passwordApplied && !delivered) {
       if (!(await ask("You haven't sent or copied the owner's login details. Once this closes, the password can't be shown again. Close anyway?",
         { yesLabel: 'Close anyway', noLabel: 'Keep open' }))) return
@@ -106,9 +115,17 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   // A latest-value ref, so the Escape listener below doesn't need re-adding on every keystroke.
   const requestCloseRef = useRef(requestClose)
   requestCloseRef.current = requestClose
+  const closeTemplateEditorRef = useRef(closeTemplateEditor)
+  closeTemplateEditorRef.current = closeTemplateEditor
+  const editingTemplateRef = useRef(editingTemplate)
+  editingTemplateRef.current = editingTemplate
   useEffect(() => {
     // ConfirmDialog catches Escape first (capture phase) while it's open.
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestCloseRef.current() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (editingTemplateRef.current) closeTemplateEditorRef.current()
+      else requestCloseRef.current()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])

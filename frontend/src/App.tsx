@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from './lib/theme'
 import { AuthProvider } from './lib/auth'
 import { CustomerAuthProvider } from './lib/customerAuth'
+import RouteErrorPage from './components/RouteErrorPage'
 import { PlatformAdminAuthProvider } from './lib/platformAdminAuth'
 
 import LoginPage from './pages/admin/LoginPage'
@@ -60,7 +61,7 @@ const queryClient = new QueryClient({
 // A data router (not <BrowserRouter>) so pages can use useBlocker -- the admin forms ask before
 // leaving with unsaved edits (components/admin/useUnsavedChangesGuard).
 const router = createBrowserRouter(createRoutesFromElements(
-  <Route element={<><ImpersonationBanner /><Suspense fallback={null}><Outlet /></Suspense></>}>
+  <Route errorElement={<RouteErrorPage />} element={<><ImpersonationBanner /><Suspense fallback={null}><Outlet /></Suspense></>}>
     <Route path="/" element={<HomePage />} />
     <Route path="/admin/login" element={<LoginPage />} />
     <Route path="/admin/register" element={<RegisterPage />} />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
+import { startImpersonation } from '../../lib/impersonation'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
 import ThemeToggle from '../../components/ThemeToggle'
 
@@ -28,13 +29,12 @@ export default function PlatformAdminCustomerDetailPage() {
     try {
       const { data } = await platformAdminApi.post(`/platform-admin/customers/${customer.id}/impersonate`)
       const name = `${customer.name} ${customer.familyName}`.trim()
-      localStorage.setItem('customerToken', data.token)
-      localStorage.setItem('customerUser', JSON.stringify({
-        id: customer.id, name: customer.name, familyName: customer.familyName, phone: customer.phone,
-      }))
-      localStorage.setItem('impersonation', JSON.stringify({
-        type: 'customer', name, returnPath: `/platform-admin/customers/${customer.id}`,
-      }))
+      startImpersonation(
+        { type: 'customer', name, returnPath: `/platform-admin/customers/${customer.id}` },
+        {
+          customerToken: data.token,
+          customerUser: JSON.stringify({ id: customer.id, name: customer.name, familyName: customer.familyName, phone: customer.phone }),
+        })
       window.location.href = '/account/bookings'
     } catch {
       setError('Could not start impersonation')
