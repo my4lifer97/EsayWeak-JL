@@ -116,6 +116,17 @@ public class AvailabilityServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SlotEndIsStartPlusTheServiceDuration()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db, "09:00", "11:00");
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 60);
+
+        Assert.Equal(["09:00-10:00", "09:30-10:30", "10:00-11:00"], slots.Select(s => $"{s.Start}-{s.End}"));
+    }
+
+    [Fact]
     public async Task ExcludesCandidateWhoseServiceDurationWouldExceedEndTime()
     {
         using var db = NewDb();

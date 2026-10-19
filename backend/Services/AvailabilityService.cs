@@ -78,11 +78,11 @@ public class AvailabilityService(AppDbContext db)
             })
             .Select(slot =>
             {
-                // slot.End here is the fixed 30-min generation interval, not serviceDuration's
-                // end — matches GetAvailableSlots' pre-existing (unchanged) output shape.
+                // Slots start every 30 minutes, but each one ends when the service would: the
+                // booking summary showed 13:00-13:30 for a 60-minute service (QA run 3).
                 var serviceEnd = AddMinutes(slot.Start, serviceDuration);
                 var booking = existingAppointments.FirstOrDefault(a => Overlaps(slot.Start, serviceEnd, a.StartTime, a.EndTime));
-                return new SlotWithBookingInfoDto(slot.Start, slot.End, booking is null, booking?.Id);
+                return new SlotWithBookingInfoDto(slot.Start, serviceEnd, booking is null, booking?.Id);
             })
             .ToList();
     }

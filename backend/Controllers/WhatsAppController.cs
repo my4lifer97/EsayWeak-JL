@@ -440,6 +440,16 @@ public class WhatsAppController(
         if (ContainsKeyword(incomingMsg, RescheduleKeywords))
         {
             await ClearConversationState(business.Id, fromPhone);
+            // An upcoming appointment is moved on its own page (the reminder link), not replaced by
+            // a second booking: the customer used to end up holding both slots (QA run 3).
+            var (toMove, _) = await FindUpcomingAppointments(business.Id, fromPhone);
+            if (toMove is not null)
+            {
+                var moveArgs = DateTimeArgs(toMove);
+                moveArgs["service"] = ItemName(toMove.Item, lang);
+                moveArgs["url"] = $"{appUrl}/{business.Slug}/appointments/{toMove.Id}?token={toMove.CancelToken}";
+                return I18nService.T(lang, "whatsapp.rescheduleLink", moveArgs);
+            }
             var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
             return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
         }

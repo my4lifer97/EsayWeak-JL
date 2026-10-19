@@ -54,13 +54,15 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
             q = q.Where(b => b.City != null && b.City.ToLower() == c);
         }
 
+        // Every sort ends on the unique Id: rows that tie (same name, same rating) have no stable
+        // order in Postgres, so "Load more" repeated some businesses and skipped others (QA run 3).
         q = sort switch
         {
-            "popular" => q.OrderByDescending(b => b.Follows.Count).ThenBy(b => b.Name),
-            "newest" => q.OrderByDescending(b => b.CreatedAt),
-            "name" => q.OrderBy(b => b.Name),
+            "popular" => q.OrderByDescending(b => b.Follows.Count).ThenBy(b => b.Name).ThenBy(b => b.Id),
+            "newest" => q.OrderByDescending(b => b.CreatedAt).ThenBy(b => b.Id),
+            "name" => q.OrderBy(b => b.Name).ThenBy(b => b.Id),
             // default: highest-rated first, then most-reviewed, then alphabetical.
-            _ => q.OrderByDescending(b => b.RatingAverage).ThenByDescending(b => b.RatingCount).ThenBy(b => b.Name),
+            _ => q.OrderByDescending(b => b.RatingAverage).ThenByDescending(b => b.RatingCount).ThenBy(b => b.Name).ThenBy(b => b.Id),
         };
 
         var total = await q.CountAsync();

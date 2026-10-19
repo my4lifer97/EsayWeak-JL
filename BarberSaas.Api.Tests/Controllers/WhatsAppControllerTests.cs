@@ -263,6 +263,34 @@ public class WhatsAppControllerTests : IntegrationTestBase
         Assert.False(await verifyDb.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone));
     }
 
+    // QA run 3: "reschedule" started a second booking and the old one stayed, so the customer
+    // held two slots. It now sends the existing appointment's own change-time link.
+    [Fact]
+    public async Task RescheduleKeyword_WithAnUpcomingAppointment_SendsItsChangeTimeLink()
+    {
+        var (businessId, slug, serviceIds) = await SeedBusinessWithServices("wa-resched@example.com", "wa-resched");
+        var phone = "+15558880090";
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+        var token = (await LoadAppointment(appointmentId)).CancelToken;
+
+        var reply = await SendWhatsAppMessage(phone, "I need to reschedule");
+
+        Assert.Contains($"/{slug}/appointments/{appointmentId}?token={token}", reply);
+        Assert.DoesNotContain("Service 1", reply); // no service list
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task RescheduleKeyword_WithNothingBooked_OffersANewBooking()
+    {
+        await SeedBusinessWithServices("wa-resched-none@example.com", "wa-resched-none");
+
+        var reply = await SendWhatsAppMessage("+15558880091", "reschedule");
+
+        Assert.Contains("book a new appointment", reply);
+        Assert.Contains("Service 1", reply);
+    }
+
     // WhatsApp always sends E.164; a booking the owner typed in locally ("050...") must still be
     // the same customer's, or "cancel" finds nothing.
     [Fact]

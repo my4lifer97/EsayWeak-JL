@@ -86,7 +86,8 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
 
-  async function fetchSlots(d: string, it: Item) {
+  // Returns the slots, or null when the request failed.
+  async function fetchSlots(d: string, it: Item): Promise<Slot[] | null> {
     setSlotsLoading(true); setSlotsError(false); setSlots([]); setIsBlocked(false); setBlockedReason(null)
     try {
     const [{ data }, mine] = await Promise.all([
@@ -101,9 +102,11 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     setSlots(data.slots ?? [])
     setIsBlocked(!!data.isBlocked)
     setBlockedReason(data.blockedReason ?? null)
+    return data.slots ?? []
     } catch {
       // A failed request used to leave "Loading times..." on screen for good (QA run 2).
       setSlotsError(true)
+      return null
     } finally { setSlotsLoading(false) }
   }
 
@@ -152,7 +155,8 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     const prefillTime = searchParams.get('time')
     if (!prefillItemId) return
 
-    const it = business.items.find((s) => s.id === prefillItemId)
+    // Bookable items only: a showcase item's times can't load (the API refuses it).
+    const it = bookableItems.find((s) => s.id === prefillItemId)
     if (!it) return
 
     setItem(it)
@@ -160,12 +164,10 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
     setDate(prefillDate)
     setStep(3)
-    customerApi.get(`/${business.slug}/availability/full?date=${prefillDate}&itemId=${it.id}`).then(({ data }) => {
-      const fetchedSlots: Slot[] = data.slots ?? []
-      setSlots(fetchedSlots)
-      setIsBlocked(!!data.isBlocked)
-      setBlockedReason(data.blockedReason ?? null)
-      const match = prefillTime && fetchedSlots.find((s) => s.start === prefillTime && s.available)
+    // The same fetch as picking a date by hand, so the customer's own booking shows as theirs (it
+    // showed as just "Booked", QA run 3) and a bad date shows the load error instead of throwing.
+    fetchSlots(prefillDate, it).then((fetchedSlots) => {
+      const match = prefillTime && fetchedSlots?.find((s) => s.start === prefillTime && s.available)
       if (match) { setSlot(match); setStep(4) }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -422,7 +424,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                 <div className="bg-surface border border-line rounded-xl p-4 text-sm space-y-1">
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'service')}</span><span className="text-ink">{itemName(item, lang)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'time')}</span><span className="text-ink">{slot.start} – {slot.end}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'time')}</span><bdi dir="ltr" className="text-ink">{slot.start} – {slot.end}</bdi></div>
                 </div>
               )}
               <button onClick={confirm} disabled={!name || !familyName || !phone || !photoSatisfied || confirmLoading}

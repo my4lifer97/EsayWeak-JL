@@ -9,6 +9,7 @@ import { t } from '../lib/i18n'
 // the way business/platform-admin auth has.
 export default function CustomerProtectedRoute() {
   const { isAuthenticated, language: lang } = useCustomerAuth()
+  // `next` keeps the query: a waitlist link's ?itemId=&date=&time= is the slot being offered.
   const location = useLocation()
 
   if (!isAuthenticated) {
@@ -17,7 +18,7 @@ export default function CustomerProtectedRoute() {
         <div className="text-center max-w-sm space-y-4">
           <p className="text-muted">{t(lang, 'signInToContinue')}</p>
           <Link
-            to={`/login?next=${encodeURIComponent(location.pathname)}`}
+            to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`}
             className="inline-block bg-coral hover:bg-coral-dark text-white font-semibold px-5 py-2.5 rounded-xl transition-colors"
           >
             {t(lang, 'navLogin')}
