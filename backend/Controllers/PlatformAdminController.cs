@@ -14,7 +14,7 @@ namespace BarberSaas.Api.Controllers;
 [Route("api/platform-admin")]
 public class PlatformAdminController(
     AppDbContext db, PlatformAdminJwtService adminJwt, JwtService businessJwt, CustomerJwtService customerJwt,
-    IEmailSender emailSender, IConfiguration config, ILogger<PlatformAdminController> logger,
+    IConfiguration config, ILogger<PlatformAdminController> logger,
     ReviewService reviews, IWhatsAppBridgeClient whatsAppBridge, WhatsAppLinkingService whatsAppLinking,
     IOwnerEmailSender ownerEmailSender, NotificationOutbox notifications) : ControllerBase
 {
@@ -251,7 +251,9 @@ public class PlatformAdminController(
         var loginUrl = string.IsNullOrEmpty(appUrl) ? "the EsayWeek sign-in page" : $"{appUrl}/admin/login";
         try
         {
-            await emailSender.SendAsync(business.Email, "Your EsayWeek password was reset",
+            // The owner Gmail sender, like every email to an owner: the system chain (Brevo) said
+            // "Emailed" while the Gmail health banner reported owner emails failing (QA run 3).
+            await ownerEmailSender.SendAsync(business.Email, "Your EsayWeek password was reset",
                 $"Hi {business.Name},\n\n" +
                 "Your password was reset by an administrator.\n\n" +
                 $"Sign in: {loginUrl}\n" +
@@ -670,7 +672,7 @@ public class PlatformAdminController(
         var loginUrl = string.IsNullOrEmpty(appUrl) ? "the EsayWeek sign-in page" : $"{appUrl}/admin/login";
         try
         {
-            await emailSender.SendAsync(request.Email, "Your EsayWeek account is ready",
+            await ownerEmailSender.SendAsync(request.Email, "Your EsayWeek account is ready",
                 $"Hi {request.OwnerFirstName},\n\n" +
                 $"Your business account for \"{request.BusinessName}\" has been approved.\n\n" +
                 $"Sign in: {loginUrl}\n" +

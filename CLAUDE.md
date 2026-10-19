@@ -290,7 +290,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/platform-admin/businesses/{id}/activity`, `GET .../customers/{id}/activity` — that entity's `ActivityLog` rows, newest first. `impersonated` = done with an impersonation token; `byPlatformAdmin` = the admin's own action (`PlatformAdminController.*`/`WhatsAppLink.*` rows, which also store the admin id in `ImpersonatedByPlatformAdminId`)
 - `POST /api/platform-admin/businesses/{id}/impersonate`, `POST .../customers/{id}/impersonate` — mint a real Business/Customer JWT on their behalf for support purposes; every action taken with it is logged with `ImpersonatedByPlatformAdminId` set
 - `GET /api/platform-admin/business-owner-requests?status=`, `GET .../{id}` — review queue for [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved) requests
-- `POST /api/platform-admin/business-owner-requests/{id}/approve` — `{ slug }`; creates the `Business` (system-generated `Username`, random temp password, `MustChangePassword = true`, `EmailVerified = true` since the admin already vetted it), emails the credentials best-effort, and **always returns the temp password in the response** so the admin can hand it over manually if the email failed
+- `POST /api/platform-admin/business-owner-requests/{id}/approve` — `{ slug }`; creates the `Business` (system-generated `Username`, random temp password, `MustChangePassword = true`, `EmailVerified = true` since the admin already vetted it), emails the credentials best-effort through the owner Gmail sender (`IOwnerEmailSender`, like the platform-admin reset-password email, 2026-10-20), and **always returns the temp password in the response** so the admin can hand it over manually if the email failed
 - `POST /api/platform-admin/business-owner-requests/{id}/reject` — `{ note? }`; conditional on still `Pending` (409 otherwise, same for a racing approve); writes an `ActivityLog` row with no `BusinessId` and emails the requester via Gmail (`NotificationOutbox.AddOwnerEmail`) **without** the note, which stays internal
 - `GET /api/platform-admin/reviews?businessId=`, `POST .../reviews/{id}/hide|unhide` — moderation (toggles `Review.IsHidden`, recomputes the business's rating aggregate)
 
@@ -671,9 +671,9 @@ failed Gmail send left the owner locked out with a password nobody received):
 `POST .../generate-temp-password` only returns a value; `POST .../email` takes it as
 `newTempPassword` (must appear in the body, else 400) and sets it + `MustChangePassword` only
 **after** the send succeeds (502 "password was NOT changed" otherwise). For copying it or reading it
-out on a call, the composer's "Set password now" calls `reset-password` with
+out on a call, the composer's "Set password now" (and "Copy to Clipboard" when the copied email includes a not-yet-active password, after asking) calls `reset-password` with
 `{ temporary: true, newPassword, silent: true }`. `Silent` (default `false`) skips reset-password's
-own system email; `POST .../business-owner-requests/{id}/approve` has the same `Silent` flag — the
+own credentials email (owner Gmail sender); `POST .../business-owner-requests/{id}/approve` has the same `Silent` flag — the
 composer opens right after approval, pre-filled with the new username and the (already applied)
 temp password.
 

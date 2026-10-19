@@ -733,4 +733,21 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         Assert.Contains(activity!, a => a.Action.Contains("ResetBusinessPassword"));
         Assert.DoesNotContain(activity!, a => a.Description.Contains("shouldNeverAppearInLogs1"));
     }
+
+    // QA run 3 PA-2: the reset email went through the system chain (Brevo), not the owner Gmail sender.
+    [Fact]
+    public async Task ResetPassword_EmailsThroughTheOwnerGmailSender()
+    {
+        var adminToken = await BootstrapAdmin();
+        var (businessId, email) = await RegisterAndVerifyBusiness("gmail-reset@example.com", "gmail-reset-shop");
+
+        Authorize(Client, adminToken);
+        var resetResp = await Client.PostAsJsonAsync($"/api/platform-admin/businesses/{businessId}/reset-password",
+            new PlatformAdminResetPasswordRequest(true, null));
+        var resetBody = await resetResp.Content.ReadFromJsonAsync<PlatformAdminResetPasswordResponse>();
+
+        Assert.True(resetBody!.EmailSent);
+        var sent = Assert.Single(Factory.OwnerEmail.Sent, e => e.Email == email);
+        Assert.Contains(resetBody.TempPassword!, sent.Body);
+    }
 }

@@ -175,16 +175,19 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
     }
   }
 
-  async function applyPasswordNow() {
-    if (!password) return
-    if (!(await ask("Change the owner's password now? Their current password stops working and they're signed out everywhere.",
-      { yesLabel: 'Set password' }))) return
+  // True once the password is the owner's real one.
+  async function applyPasswordNow(question = "Change the owner's password now? Their current password stops working and they're signed out everywhere.",
+    yesLabel = 'Set password'): Promise<boolean> {
+    if (!password) return false
+    if (!(await ask(question, { yesLabel }))) return false
     setGenError(''); setApplyingPassword(true)
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${businessId}/reset-password`, { temporary: true, newPassword: password, silent: true })
       setPasswordApplied(true)
+      return true
     } catch {
       setGenError('Could not set the password')
+      return false
     } finally {
       setApplyingPassword(false)
     }
@@ -221,6 +224,11 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   }
 
   async function copyToClipboard() {
+    // A generated password only becomes real on Send or "Set password now". Copied before that,
+    // the owner got a password that didn't work (QA run 3), so copying sets it first.
+    if (password && includePassword && !passwordApplied
+      && !(await applyPasswordNow("The temporary password in this email isn't active yet. Set it as the owner's password now and copy? Their current password stops working and they're signed out everywhere.",
+        'Set password and copy'))) return
     await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
     setCopied(true)
     setDelivered(true)
@@ -262,7 +270,7 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
             <div className="ms-6 text-xs text-muted">
               Not active yet — it becomes the owner's password when you click Send Email.
               Copying it or reading it out instead?{' '}
-              <button type="button" onClick={applyPasswordNow} disabled={applyingPassword}
+              <button type="button" onClick={() => applyPasswordNow()} disabled={applyingPassword}
                 className="text-coral-dark hover:underline disabled:opacity-50">
                 {applyingPassword ? 'Setting…' : 'Set password now'}
               </button>
