@@ -5,6 +5,7 @@ using BarberSaas.Api.Controllers;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
@@ -69,6 +70,37 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
         return Client.SendAsync(req);
+    }
+
+    // QA run 3: parallel cancel/keep/replace requests all passed their checks on their own
+    // snapshot. A cancel working from a row someone else changed since must do nothing.
+    [Fact]
+    public async Task Cancel_FromAStaleSnapshot_DoesNothing()
+    {
+        var token = await RegisterAndLoginBusiness("approval-stale@example.com", "approval-stale-shop");
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-stale-shop");
+        var customerToken = await GetCustomerToken("+15558880101");
+        var booked = await (await BookAs(customerToken, "approval-stale-shop", itemId, date.ToString("yyyy-MM-dd"), "10:00"))
+            .Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        using var scope = Factory.Services.CreateScope();
+        var scopedDb = scope.ServiceProvider.GetRequiredService<BarberSaas.Api.Data.AppDbContext>();
+        var cancellation = scope.ServiceProvider.GetRequiredService<BarberSaas.Api.Services.AppointmentCancellationService>();
+        var stale = await scopedDb.Appointments.FirstAsync(a => a.Id == booked!.AppointmentId);
+
+        // Another request (the customer asking to cancel) gets there first.
+        using (var other = Db())
+        {
+            other.Appointments.First(a => a.Id == booked!.AppointmentId).PendingCancellationApproval = true;
+            other.SaveChanges();
+        }
+
+        Assert.False(await cancellation.CancelAsync(stale, notifyWaitlist: true));
+        Assert.False(await cancellation.CancelFromCustomerAsync(stale));
+        using var check = Db();
+        var row = check.Appointments.First(a => a.Id == booked!.AppointmentId);
+        Assert.Equal(AppointmentStatus.CONFIRMED, row.Status);
+        Assert.True(row.PendingCancellationApproval);
     }
 
     [Fact]

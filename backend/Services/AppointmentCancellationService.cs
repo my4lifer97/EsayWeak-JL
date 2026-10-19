@@ -10,14 +10,34 @@ namespace BarberSaas.Api.Services;
 // series cancels every future occurrence in one save after the loop).
 public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, NotificationOutbox notifications, IConfiguration config)
 {
-    public async Task CancelAsync(Appointment appointment, bool notifyWaitlist)
+    // False when the appointment changed since the caller loaded it (another cancel, keep or
+    // replace got there first) -- the caller should answer 409 and send nothing.
+    public async Task<bool> CancelAsync(Appointment appointment, bool notifyWaitlist)
     {
+        if (appointment.Status == AppointmentStatus.CANCELLED
+            || !await TryClaimAsync(appointment, AppointmentStatus.CANCELLED, pendingApproval: false)) return false;
         appointment.Status = AppointmentStatus.CANCELLED;
         appointment.PendingCancellationApproval = false;
         if (notifyWaitlist) await waitlist.NotifyForCancellation(appointment);
         // The owner chose not to offer the slot ("cancel silently", a plain owner cancel, a
         // deleted series). Left WAITING, WaitlistQueueWorker messaged them anyway (QA run 3).
         else await waitlist.CloseQueue(appointment);
+        return true;
+    }
+
+    // Compare-and-set on the row as the caller loaded it. Simultaneous cancels (magic link, My
+    // Bookings, owner) all passed their status checks and each queued a "slot open" message to the
+    // same waitlist entry (QA run 3). The row lock makes the later UPDATE wait, then match nothing.
+    // Commits on its own; the caller's SaveChangesAsync then writes the same values again.
+    public async Task<bool> TryClaimAsync(Appointment appointment, AppointmentStatus status, bool pendingApproval)
+    {
+        var (loadedStatus, loadedPending) = (appointment.Status, appointment.PendingCancellationApproval);
+        var claimed = await db.Appointments
+            .Where(a => a.Id == appointment.Id && a.Status == loadedStatus && a.PendingCancellationApproval == loadedPending)
+            .ExecuteUpdateAsync(u => u
+                .SetProperty(a => a.Status, status)
+                .SetProperty(a => a.PendingCancellationApproval, pendingApproval));
+        return claimed == 1;
     }
 
     // Entry point for the 3 customer-initiated cancel paths (magic-link, logged-in "My
@@ -26,14 +46,12 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
     // owner), or freeze the slot and text the owner to decide instead of guessing on their
     // behalf. Status deliberately stays CONFIRMED while frozen -- the slot keeps blocking
     // availability/booking exactly as it already did, no changes needed to that logic at all.
-    public async Task CancelFromCustomerAsync(Appointment appointment)
+    // False when the appointment changed since the caller loaded it (see CancelAsync).
+    public async Task<bool> CancelFromCustomerAsync(Appointment appointment)
     {
         var business = await db.Businesses.FindAsync(appointment.BusinessId);
         if (business is null || !business.RequireApprovalOnCustomerCancel)
-        {
-            await CancelAsync(appointment, notifyWaitlist: true);
-            return;
-        }
+            return await CancelAsync(appointment, notifyWaitlist: true);
 
         // Each channel the owner turned on, if it can actually reach them. WhatsApp also needs the
         // business's own bot number to send from; a blank contact falls back to the business's
@@ -47,11 +65,9 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
 
         // Can't ask anyone -- don't freeze a slot the owner will never hear about.
         if (!viaWhatsApp && !viaEmail)
-        {
-            await CancelAsync(appointment, notifyWaitlist: true);
-            return;
-        }
+            return await CancelAsync(appointment, notifyWaitlist: true);
 
+        if (!await TryClaimAsync(appointment, AppointmentStatus.CONFIRMED, pendingApproval: true)) return false;
         appointment.PendingCancellationApproval = true;
 
         var customer = await db.Customers.FindAsync(appointment.CustomerId);
@@ -87,5 +103,6 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             notifications.AddOwnerEmail(ownerEmail!,
                 I18nService.T(lang, "email.ownerCancellationApprovalSubject", new() { ["businessName"] = business.Name }), message,
                 $"cancellation-approval email to the owner of business {business.Id} for appointment {appointment.Id}");
+        return true;
     }
 }

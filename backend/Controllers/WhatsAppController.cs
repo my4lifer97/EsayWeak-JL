@@ -800,7 +800,7 @@ public class WhatsAppController(
             || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return null;
 
-        await cancellationService.CancelFromCustomerAsync(appointment);
+        if (!await cancellationService.CancelFromCustomerAsync(appointment)) return null;
         await db.SaveChangesAsync();
         return CancelResultMessage(appointment, lang);
     }

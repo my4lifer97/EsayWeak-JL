@@ -1086,7 +1086,8 @@ public class AdminController(
         var wasPendingApproval = appt.PendingCancellationApproval;
         var stillConfirmed = AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED";
         var offeredToWaitlist = req.NotifyWaitlist && stillConfirmed;
-        await cancellationService.CancelAsync(appt, notifyWaitlist: offeredToWaitlist);
+        if (!await cancellationService.CancelAsync(appt, notifyWaitlist: offeredToWaitlist))
+            return Conflict(new { error = "This appointment can no longer be modified" });
         await db.SaveChangesAsync();
         // Not for a booking that's already over -- that's the owner correcting history.
         if (req.NotifyCustomer && stillConfirmed)
@@ -1134,6 +1135,10 @@ public class AdminController(
         if (!appt.PendingCancellationApproval)
             return Conflict(new { error = "This appointment has no cancellation request" });
 
+        // Claimed like a cancel: "keep" racing a "replace" both succeeded, and the customer was
+        // told both "still on" and "cancelled" (QA run 3).
+        if (!await cancellationService.TryClaimAsync(appt, AppointmentStatus.CONFIRMED, pendingApproval: false))
+            return Conflict(new { error = "This appointment can no longer be modified" });
         appt.PendingCancellationApproval = false;
         await db.SaveChangesAsync();
         if (notifyCustomer) await customerNotifier.QueueCancellationDeclined(appt);
@@ -1199,7 +1204,7 @@ public class AdminController(
             // at once both passed the CONFIRMED check above, and the second insert hit the unique
             // index as a 500 (QA run 3). The row lock makes the second UPDATE wait, then match nothing.
             var claimed = await db.Appointments
-                .Where(a => a.Id == appt.Id && a.Status == AppointmentStatus.CONFIRMED)
+                .Where(a => a.Id == appt.Id && a.Status == AppointmentStatus.CONFIRMED && a.PendingCancellationApproval == wasPendingApproval)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(a => a.Status, AppointmentStatus.CANCELLED)
                     .SetProperty(a => a.PendingCancellationApproval, false));

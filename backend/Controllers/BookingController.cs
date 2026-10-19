@@ -170,8 +170,16 @@ public class BookingController(
 
         // Per-customer limits (matched by phone, not account, so a guest booking can't dodge
         // them by simply not logging in). Counts CONFIRMED bookings with this business only.
-        if (business.MaxBookingsPerDay is not null || business.MaxBookingsPerWeek is not null)
+        var hasLimits = business.MaxBookingsPerDay is not null || business.MaxBookingsPerWeek is not null;
+        // Held until the booking commits, so one customer's parallel requests count each other:
+        // limit 1/day with 4 requests at once used to give 3 bookings (QA run 3). This lock is
+        // always taken before TrySaveOrDetectConflict's per-date lock, never after, so no deadlock.
+        await using var limitTx = hasLimits ? await db.Database.BeginTransactionAsync() : null;
+        if (hasLimits)
         {
+            if (db.Database.IsNpgsql())
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_xact_lock(hashtext({"booking-limit:" + business.Id + ":" + phone}))");
             var existingDates = await db.Appointments
                 .Where(a => a.BusinessId == business.Id && a.Customer.Phone == phone && a.Status == AppointmentStatus.CONFIRMED)
                 .Select(a => a.Date)
@@ -239,6 +247,7 @@ public class BookingController(
         await waitlist.ResolveForRebooking(business.Id, requestedDate, req.StartTime, endTime);
         if (!await availability.TrySaveOrDetectConflict(business.Id, req.Date, req.StartTime, endTime))
             return Conflict(new { error = "Slot no longer available", slotTaken = true });
+        if (limitTx is not null) await limitTx.CommitAsync();
 
         this.SetActivityDetail($"Booked appointment: {item.NameEn} with {business.Name} on {req.Date} at {req.StartTime}");
 
@@ -336,7 +345,8 @@ public class BookingController(
         if (appointment.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        await cancellationService.CancelFromCustomerAsync(appointment);
+        if (!await cancellationService.CancelFromCustomerAsync(appointment))
+            return Conflict(new { error = "This appointment can no longer be modified" });
         await db.SaveChangesAsync();
 
         // See the equivalent note in CustomerAppointmentsController.Cancel -- this doesn't always

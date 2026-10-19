@@ -164,11 +164,9 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             .Where(a => a.RecurringSeriesId == id && a.Status == AppointmentStatus.CONFIRMED)
             .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
             .ToListAsync();
-        var cancelled = linkedAppointments
-            .Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED")
-            .ToList();
-        foreach (var appt in cancelled)
-            await cancellationService.CancelAsync(appt, notifyWaitlist: true);
+        var cancelled = new List<Appointment>();
+        foreach (var appt in linkedAppointments.Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED"))
+            if (await cancellationService.CancelAsync(appt, notifyWaitlist: true)) cancelled.Add(appt);
 
         // QA run 2: deleting a series cancelled the customer's upcoming appointments silently.
         if (notifyCustomer && cancelled.Count > 0)

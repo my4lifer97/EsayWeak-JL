@@ -62,7 +62,8 @@ public class CustomerAppointmentsController(
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        await cancellationService.CancelFromCustomerAsync(appt);
+        if (!await cancellationService.CancelFromCustomerAsync(appt))
+            return Conflict(new { error = "This appointment can no longer be modified" });
         await db.SaveChangesAsync();
 
         // CancelFromCustomerAsync doesn't always finalize the cancellation -- if the business

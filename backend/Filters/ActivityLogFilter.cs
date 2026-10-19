@@ -69,6 +69,10 @@ public class ActivityLogFilter(AppDbContext db) : IAsyncResultFilter
 
         log.ImpersonatedByPlatformAdminId = user.FindFirst("impersonatedBy")?.Value;
 
+        // A failed request must not persist what the action changed in memory before bailing out:
+        // this save used to write it anyway, e.g. a "replace customer" that lost a race returned
+        // 409 but still saved the original as CANCELLED, undoing the owner's "keep" (QA run 3).
+        if (log.StatusCode >= 400) db.ChangeTracker.Clear();
         db.ActivityLogs.Add(log);
         await db.SaveChangesAsync();
     }
