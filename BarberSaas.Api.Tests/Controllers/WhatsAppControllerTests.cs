@@ -582,4 +582,37 @@ public class WhatsAppControllerTests : IntegrationTestBase
 
         Assert.Equal((HttpStatusCode)403, resp.StatusCode);
     }
+
+    [Theory]
+    [InlineData("כן")]
+    [InlineData("yes")]
+    public async Task CancelQuestion_YesWord_Cancels(string answer)
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices($"wa-yes-{answer.Length}@example.com", $"wa-yes-{answer.Length}");
+        var phone = $"+1555888012{answer.Length}";
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+        await SendWhatsAppMessage(phone, "cancel");
+
+        await SendWhatsAppMessage(phone, answer);
+
+        Assert.Equal(AppointmentStatus.CANCELLED, (await LoadAppointment(appointmentId)).Status);
+    }
+
+    // QA run 3 BOT-2: with Inquiry on, "cancel" as the first message got the Book/Ask gate.
+    [Fact]
+    public async Task InquiryEnabled_CancelAsFirstMessage_AsksTheCancelQuestion()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-gate-cancel@example.com", "wa-gate-cancel");
+        using (var db = Db())
+        {
+            (await db.Businesses.FirstAsync(b => b.Id == businessId)).ChatbotInquiryEnabled = true;
+            await db.SaveChangesAsync();
+        }
+        var phone = "+15558880130";
+        await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+
+        var reply = await SendWhatsAppMessage(phone, "I want to cancel my appointment");
+
+        Assert.Contains("Reply 1 to cancel", reply);
+    }
 }

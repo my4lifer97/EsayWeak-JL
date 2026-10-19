@@ -19,6 +19,7 @@ public class WhatsAppController(
     WhatsAppBookingTokenService bookingTokens,
     IOpenAiChatClient openAi,
     AiUsageLimiter aiUsage,
+    AvailabilityService availability,
     NotificationOutbox notifications,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
@@ -51,6 +52,13 @@ public class WhatsAppController(
     // the rule-based bot stops replying to anything except the literal "$" unlock keyword -- see
     // the lockout gate at the top of ProcessMessageRuleBasedAsync.
     private const int MaxInvalidAttempts = 3;
+    // What the AI path sends to OpenAI per message and keeps per history turn. A few very long
+    // messages used to overflow the context window, and every later turn then failed (QA run 3).
+    private const int MaxAiMessageChars = 1000;
+    // Natural answers to the "reply 1 to cancel / 2 to keep" question, as whole words. "yes" went
+    // to the model, which had no tool to act on it (QA run 3).
+    private static readonly string[] YesWords = ["yes", "yeah", "yep", "y", "כן", "נכון", "نعم", "ايوه", "أيوه", "اه"];
+    private static readonly string[] NoWords = ["no", "nope", "n", "לא", "لا", "keep", "להשאיר", "השאר"];
     private const string UnlockKeyword = "$";
     // Matches WhatsAppBookingTokenService's own token lifetime -- the "stay quiet" window should
     // never outlast the link it's protecting.
@@ -305,6 +313,13 @@ public class WhatsAppController(
         // including plain numeric service-selection replies.
         if (!isLive || state!.ChatbotMode == AwaitingModeChoiceMode)
         {
+            // Cancelling or rescheduling isn't "booking" or "asking": the gate used to stand in the
+            // way until the customer picked "Book a service" (QA run 3).
+            if (ContainsKeyword(incomingMsg, CancelKeywords) || ContainsKeyword(incomingMsg, RescheduleKeywords))
+            {
+                if (isLive) await ClearConversationState(business.Id, fromPhone);
+                return (false, null);
+            }
             if (trimmed == "1")
             {
                 // Cleared, not just flipped to Booking -- same reasoning as the $1 branch above:
@@ -488,6 +503,7 @@ public class WhatsAppController(
         var history = state?.HistoryJson is not null
             ? JsonSerializer.Deserialize<List<OpenAiTurn>>(state.HistoryJson) ?? []
             : [];
+        if (incomingMsg.Length > MaxAiMessageChars) incomingMsg = incomingMsg[..MaxAiMessageChars];
 
         // The answer to a "reply 1 to cancel / 2 to keep" question the cancel tool asked last turn.
         // Handled here without OpenAI, like the rule-based path; any other reply drops the question
@@ -497,7 +513,7 @@ public class WhatsAppController(
         {
             var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
             state.ChatbotMode = BookingMode;
-            var answer = NormalizeDigits(incomingMsg.Trim());
+            var answer = ConfirmationAnswer(incomingMsg);
             if (answer is "1" or "2")
             {
                 var confirmReply = answer == "2"
@@ -581,7 +597,7 @@ public class WhatsAppController(
             reply = toolMessage;
 
         history.Add(new OpenAiTurn("user", incomingMsg));
-        history.Add(new OpenAiTurn("assistant", reply));
+        history.Add(new OpenAiTurn("assistant", reply.Length > MaxAiMessageChars ? reply[..MaxAiMessageChars] : reply));
         if (history.Count > 12) history = history[^12..];
 
         if (state is null)
@@ -617,9 +633,23 @@ public class WhatsAppController(
     private async Task<string> BuildAiSystemPrompt(Business business, string lang)
     {
         var services = await ActiveServices(business.Id, lang);
+        // Price and length too: without them every price question was refused or made up (QA run 3).
+        var details = await db.Items.Where(i => i.BusinessId == business.Id && i.IsActive && i.IsBookable)
+            .ToDictionaryAsync(i => i.Id, i => (i.Price, i.DurationMinutes));
         var itemsList = services.Count == 0
             ? "(no bookable services configured yet)"
-            : string.Join("\n", services.Select(s => $"- id={s.Id}: {s.Name}"));
+            : string.Join("\n", services.Select(s =>
+            {
+                var (price, minutes) = details.GetValueOrDefault(s.Id);
+                var priceText = price is null ? "price on request" : $"₪{price:0.##}";
+                return $"- id={s.Id}: {s.Name} ({priceText}{(minutes is null ? "" : $", {minutes} min")})";
+            }));
+        var hours = await availability.GetUpcomingHours(business.Id, 7);
+        var hoursList = string.Join("\n", hours.Select(h =>
+            $"- {h.Date} ({(DayOfWeek)h.DayOfWeek}): {(h.StartTime is null ? "closed" : $"{h.StartTime}-{h.EndTime}")}"));
+        var address = string.Join(", ", new[] { business.AddressLine, business.City }.Where(x => !string.IsNullOrWhiteSpace(x)));
+        var locationText = address.Length == 0 && business.MapUrl is null ? "(not provided)"
+            : $"{(address.Length == 0 ? "" : address)}{(business.MapUrl is null ? "" : $" {business.MapUrl}")}".Trim();
         var languageName = lang switch { "AR" => "Arabic", "HE" => "Hebrew", _ => "English" };
         // The literal $2 command itself is intercepted before this path ever runs (see
         // HandleInquiryModeAsync) -- the model never needs to act on it, just know to mention it
@@ -635,13 +665,19 @@ public class WhatsAppController(
             Bookable services (use the id when calling create_booking_link):
             {itemsList}
 
+            Opening hours, next 7 days (exact free times are chosen on the booking page):
+            {hoursList}
+
+            Address: {locationText}
+
             Tools:
             - create_booking_link(itemId): call this once the customer has picked a specific service. Its result includes a "message" field -- output that text to the customer VERBATIM, do not reword it or invent your own link, price, or service name.
             - cancel_upcoming_appointment(): call this when the customer wants to cancel their appointment. It doesn't cancel anything yet: it asks the customer to reply 1 to cancel or 2 to keep it. If the result's "found" field is true, it also has a "message" field -- output that text VERBATIM. If "found" is false, tell the customer yourself that you couldn't find an upcoming appointment and offer to help them book one.
             - mark_unclear(): call this only when you can't understand the message or it has nothing to do with this business, then ask the customer to rephrase. Don't call it for questions you can answer.
             To reschedule: call cancel_upcoming_appointment first; once the customer has confirmed, help them book a new time via create_booking_link.
 
-            Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.{inquiryNote}
+            Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.
+            Never say an appointment was cancelled, booked or changed unless a tool's message in this turn says so. A cancellation only happens when the customer replies 1 to the confirmation question; if they answer it any other way, ask them to reply 1 or 2.{inquiryNote}
             """;
     }
 
@@ -786,7 +822,7 @@ public class WhatsAppController(
     private async Task<string?> TryHandleCancelConfirmation(Business business, WhatsAppConversationState state, string fromPhone, string incomingMsg, string lang, string? welcomeMessage)
     {
         var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
-        var answer = NormalizeDigits(incomingMsg.Trim());
+        var answer = ConfirmationAnswer(incomingMsg);
         await ClearConversationState(business.Id, fromPhone);
 
         if (answer == "2") return I18nService.T(lang, "whatsapp.cancelKept");
@@ -854,6 +890,19 @@ public class WhatsAppController(
             .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
             .ToList();
         return (upcoming.FirstOrDefault(a => !a.PendingCancellationApproval), upcoming.FirstOrDefault(a => a.PendingCancellationApproval));
+    }
+
+    // "1"/"2" for an answer to the cancel question: the digit itself, or a yes/no word (alone or
+    // with a cancel word, "כן, תבטל"). Null for anything else.
+    private static string? ConfirmationAnswer(string message)
+    {
+        var answer = NormalizeDigits(message.Trim());
+        if (answer is "1" or "2") return answer;
+        var words = Regex.Split(answer.ToLowerInvariant(), @"[^\p{L}\p{Mn}\p{Nd}]+").Where(w => w.Length > 0).ToList();
+        if (words.Count == 0 || words.Count > 4) return null;
+        if (YesWords.Contains(words[0]) && !words.Any(NoWords.Contains)) return "1";
+        if (NoWords.Contains(words[0]) && !words.Any(YesWords.Contains)) return "2";
+        return null;
     }
 
     private static bool ContainsKeyword(string message, string[] keywords) =>

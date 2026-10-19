@@ -317,4 +317,54 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         using var db = Db();
         Assert.True(await db.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == "+15559991003"));
     }
+
+    // QA run 3 AI-2: "yes" went to the model, which could only claim a cancellation it never did.
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("כן, תבטל")]
+    [InlineData("نعم")]
+    public async Task CancelQuestion_YesWord_CancelsWithoutAskingTheModel(string answer)
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService($"wa-ai-yes-{answer.Length}@example.com", $"wa-ai-yes-{answer.Length}");
+        var phone = $"+1555999120{answer.Length % 10}";
+        var ids = await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        await PostInbound(businessId, phone, "cancel please");
+        var callsBefore = Factory.OpenAi.Calls.Count;
+
+        await PostInbound(businessId, phone, answer);
+
+        Assert.Equal(callsBefore, Factory.OpenAi.Calls.Count);
+        using var db = Db();
+        Assert.Equal(AppointmentStatus.CANCELLED, (await db.Appointments.SingleAsync(a => a.Id == ids[0])).Status);
+    }
+
+    // QA run 3 AI-3: the prompt had only service names.
+    [Fact]
+    public async Task SystemPrompt_HasPricesDurationsAndHours()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-prompt@example.com", "wa-ai-prompt");
+        Factory.OpenAi.PlainTextReply = "ok";
+
+        await PostInbound(businessId, "+15559991210", "how much is a haircut?");
+
+        var prompt = Factory.OpenAi.Calls[^1].SystemPrompt;
+        Assert.Contains("Haircut (₪50, 30 min)", prompt);
+        Assert.Contains("09:00-18:00", prompt);
+    }
+
+    // QA run 3 AI-4: no cap, so a few huge messages broke every later turn.
+    [Fact]
+    public async Task LongMessage_IsCappedBeforeOpenAiAndInHistory()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-long@example.com", "wa-ai-long");
+        Factory.OpenAi.PlainTextReply = "ok";
+
+        await PostInbound(businessId, "+15559991211", new string('x', 60_000));
+
+        Assert.Equal(1000, Factory.OpenAi.Calls[^1].UserMessage.Length);
+        using var db = Db();
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15559991211");
+        Assert.True(state.HistoryJson!.Length < 2000);
+    }
 }
