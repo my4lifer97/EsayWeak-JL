@@ -1040,6 +1040,12 @@ public class AdminController(
         var oldDate = appt.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appt.StartTime;
 
+        // Held from here until the move commits: parallel reschedules of one appointment (or one
+        // racing a cancel) all returned 200 and the last writer won, with notices for times that
+        // never stuck (QA run 3).
+        await using var moveTx = await db.Database.BeginTransactionAsync();
+        if (!await cancellationService.TryClaimAsync(appt, appt.Status, appt.PendingCancellationApproval))
+            return Conflict(new { error = "This appointment can no longer be modified" });
         var freedSlot = await waitlist.DetachForReschedule(appt);
 
         appt.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
@@ -1052,6 +1058,7 @@ public class AdminController(
         await waitlist.ResolveForRebooking(BusinessId, appt.Date, appt.StartTime, appt.EndTime);
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
+        await moveTx.CommitAsync();
         if (freedSlot is not null)
         {
             await waitlist.NotifyForCancellation(freedSlot);
@@ -1178,6 +1185,11 @@ public class AdminController(
             customer = resolved!;
         }
 
+        // "Replacing" them with themselves cancelled the magic link they already had and sent no
+        // new one (QA run 3).
+        if (customer.Id == appt.CustomerId)
+            return BadRequest(new { error = "This customer already has this appointment" });
+
         var wasPendingApproval = appt.PendingCancellationApproval;
         // The original customer keeps their own row, cancelled, and the new customer gets a fresh
         // one. Reassigning the row instead made it vanish from the original customer's list, and
@@ -1224,8 +1236,7 @@ public class AdminController(
             await tx.CommitAsync();
         }
 
-        // Giving the slot back to the same customer isn't news to them.
-        if (req.NotifyCustomer && customer.Id != appt.CustomerId)
+        if (req.NotifyCustomer)
         {
             if (wasPendingApproval) await customerNotifier.QueueCancellationApproved(appt);
             else await customerNotifier.QueueCancelledByOwner(appt);

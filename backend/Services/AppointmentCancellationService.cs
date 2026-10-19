@@ -8,7 +8,7 @@ namespace BarberSaas.Api.Services;
 // hook is written once instead of duplicated at every call site. Caller still owns
 // SaveChangesAsync -- keeps this composable with bulk-cancel loops (e.g. deleting a recurring
 // series cancels every future occurrence in one save after the loop).
-public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, NotificationOutbox notifications, IConfiguration config)
+public class AppointmentCancellationService(AppDbContext db, WaitlistService waitlist, NotificationOutbox notifications, IConfiguration config, OwnerEmailHealth ownerEmailHealth)
 {
     // False when the appointment changed since the caller loaded it (another cancel, keep or
     // replace got there first) -- the caller should answer 409 and send nothing.
@@ -28,12 +28,17 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
     // Compare-and-set on the row as the caller loaded it. Simultaneous cancels (magic link, My
     // Bookings, owner) all passed their status checks and each queued a "slot open" message to the
     // same waitlist entry (QA run 3). The row lock makes the later UPDATE wait, then match nothing.
-    // Commits on its own; the caller's SaveChangesAsync then writes the same values again.
+    // The date and time are compared too, so a request working from a row that was moved meanwhile
+    // also loses. Commits on its own unless the caller opened a transaction (a reschedule claims
+    // with the same status, just to hold the row until its move commits); the caller's
+    // SaveChangesAsync then writes the same values again.
     public async Task<bool> TryClaimAsync(Appointment appointment, AppointmentStatus status, bool pendingApproval)
     {
         var (loadedStatus, loadedPending) = (appointment.Status, appointment.PendingCancellationApproval);
+        var (loadedDate, loadedStart) = (appointment.Date, appointment.StartTime);
         var claimed = await db.Appointments
-            .Where(a => a.Id == appointment.Id && a.Status == loadedStatus && a.PendingCancellationApproval == loadedPending)
+            .Where(a => a.Id == appointment.Id && a.Status == loadedStatus && a.PendingCancellationApproval == loadedPending
+                && a.Date == loadedDate && a.StartTime == loadedStart)
             .ExecuteUpdateAsync(u => u
                 .SetProperty(a => a.Status, status)
                 .SetProperty(a => a.PendingCancellationApproval, pendingApproval));
@@ -61,7 +66,10 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
             && business.WhatsAppNumber is not null
             && !string.IsNullOrWhiteSpace(ownerWhatsApp);
         var ownerEmail = business.CancelApprovalEmail ?? business.Email;
-        var viaEmail = business.CancelApprovalNotifyViaEmail && !string.IsNullOrWhiteSpace(ownerEmail);
+        // A Gmail channel known to be broken can't reach the owner either (QA run 3: the slot froze
+        // while every approval email failed).
+        var viaEmail = business.CancelApprovalNotifyViaEmail && !string.IsNullOrWhiteSpace(ownerEmail)
+            && ownerEmailHealth.GetSnapshot().Status != "failing";
 
         // Can't ask anyone -- don't freeze a slot the owner will never hear about.
         if (!viaWhatsApp && !viaEmail)

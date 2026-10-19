@@ -95,6 +95,12 @@ public class CustomerAppointmentsController(
         var oldDate = appt.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appt.StartTime;
 
+        // Held from here until the move commits: parallel reschedules of one appointment (or one
+        // racing a cancel) all returned 200 and the last writer won, with notices for times that
+        // never stuck (QA run 3).
+        await using var moveTx = await db.Database.BeginTransactionAsync();
+        if (!await cancellationService.TryClaimAsync(appt, appt.Status, appt.PendingCancellationApproval))
+            return Conflict(new { error = "This appointment can no longer be modified" });
         var freedSlot = await waitlist.DetachForReschedule(appt);
 
         appt.Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
@@ -107,6 +113,7 @@ public class CustomerAppointmentsController(
         await waitlist.ResolveForRebooking(appt.BusinessId, appt.Date, appt.StartTime, appt.EndTime);
         if (!await availability.TrySaveOrDetectConflict(appt.BusinessId, req.Date, req.StartTime, appt.EndTime))
             return Conflict(new { error = "Slot not available" });
+        await moveTx.CommitAsync();
         if (freedSlot is not null)
         {
             await waitlist.NotifyForCancellation(freedSlot);

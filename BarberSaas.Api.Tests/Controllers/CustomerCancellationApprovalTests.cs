@@ -415,4 +415,47 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         Assert.Equal(AppointmentStatus.CANCELLED, stored.Status);
         Assert.False(stored.PendingCancellationApproval);
     }
+
+    // QA run 3 ST-7: "replacing" a customer with themselves cancelled their magic link.
+    [Fact]
+    public async Task ReplaceWithTheSameCustomer_IsRejectedAndChangesNothing()
+    {
+        var token = await RegisterAndLoginBusiness("approval-same@example.com", "approval-same-shop");
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-same-shop");
+        var customerToken = await GetCustomerToken("+15551110031");
+        var appt = await (await BookAs(customerToken, "approval-same-shop", itemId, date.ToString("yyyy-MM-dd"), "09:00"))
+            .Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        string customerId;
+        using (var db = Db()) customerId = db.Appointments.First(a => a.Id == appt!.AppointmentId).CustomerId;
+
+        Authorize(Client, token);
+        var replace = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt!.AppointmentId}/customer",
+            new ReplaceCustomerRequest(customerId, null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, replace.StatusCode);
+        using var check = Db();
+        Assert.Equal(AppointmentStatus.CONFIRMED, check.Appointments.First(a => a.Id == appt.AppointmentId).Status);
+    }
+
+    // QA run 3 ST-8: email-only approval froze the slot while every Gmail send failed.
+    [Fact]
+    public async Task EmailOnlyApproval_WithGmailKnownBroken_CancelsRightAway()
+    {
+        var token = await RegisterAndLoginBusiness("approval-gmail@example.com", "approval-gmail-shop");
+        var (_, itemId, date) = await SeedApprovalBusiness(token, "approval-gmail-shop", configureTwilio: false);
+        Authorize(Client, token);
+        await Client.PatchAsJsonAsync("/api/admin/settings", new { cancelApprovalNotifyViaEmail = true, cancelApprovalNotifyViaWhatsApp = false });
+        Client.DefaultRequestHeaders.Authorization = null;
+        Factory.Services.GetRequiredService<BarberSaas.Api.Services.OwnerEmailHealth>().RecordFailure("invalid_grant");
+
+        var customerToken = await GetCustomerToken("+15551110032");
+        var appt = await (await BookAs(customerToken, "approval-gmail-shop", itemId, date.ToString("yyyy-MM-dd"), "09:00"))
+            .Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        var cancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt!.AppointmentId}/cancel");
+        cancelReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        Assert.Equal(HttpStatusCode.OK, (await Client.SendAsync(cancelReq)).StatusCode);
+
+        using var db = Db();
+        Assert.Equal(AppointmentStatus.CANCELLED, db.Appointments.First(a => a.Id == appt.AppointmentId).Status);
+    }
 }

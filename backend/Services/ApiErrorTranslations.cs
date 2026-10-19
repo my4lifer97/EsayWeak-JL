@@ -20,6 +20,7 @@ public static class ApiErrorTranslations
         ["Invalid date"] = ("تاريخ غير صالح", "תאריך לא תקין"),
         ["Invalid date. Use the format YYYY-MM-DD."] = ("تاريخ غير صالح. استخدم الصيغة YYYY-MM-DD.", "תאריך לא תקין. יש להשתמש בפורמט YYYY-MM-DD."),
         ["Invalid request"] = ("طلب غير صالح", "בקשה לא תקינה"),
+        ["This customer already has this appointment"] = ("هذا العميل لديه هذا الموعد بالفعل", "ללקוח הזה כבר יש את התור הזה"),
         ["The text contains characters that aren't allowed."] = ("يحتوي النص على أحرف غير مسموح بها.", "הטקסט מכיל תווים שאינם מותרים."),
         ["Invalid time"] = ("وقت غير صالح", "שעה לא תקינה"),
         ["Invalid start time"] = ("وقت البدء غير صالح", "שעת התחלה לא תקינה"),
