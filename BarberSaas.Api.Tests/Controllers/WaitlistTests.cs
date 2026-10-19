@@ -486,10 +486,13 @@ public class WaitlistTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, cancelResp.StatusCode);
 
         // The booker is told their appointment was cancelled (OwnerActionCustomerNoticeTests);
-        // nobody on the waitlist hears anything.
+        // nobody on the waitlist hears anything -- not later from the queue worker either, which
+        // used to pick the still-WAITING entry up within one poll (QA run 3).
+        Client.DefaultRequestHeaders.Authorization = null;
+        await AdvanceQueues();
         Assert.DoesNotContain(Factory.WhatsAppSender.Sent, s => s.Phone == "+15551000013");
         using var db = Db();
-        Assert.All(db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId), e => Assert.Equal(WaitlistEntryStatus.WAITING, e.Status));
+        Assert.All(db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId), e => Assert.Equal(WaitlistEntryStatus.RESOLVED, e.Status));
     }
 
     [Fact]

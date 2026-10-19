@@ -136,6 +136,16 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
         });
     }
 
+    // Ends the queue for a slot the owner freed without offering it: every still-WAITING entry is
+    // RESOLVED, so AdvanceQueues never picks it up. Does not call SaveChangesAsync.
+    public async Task CloseQueue(Appointment appointment)
+    {
+        var entries = await db.WaitlistEntries
+            .Where(w => w.AppointmentId == appointment.Id && w.Status == WaitlistEntryStatus.WAITING)
+            .ToListAsync();
+        foreach (var entry in entries) entry.Status = WaitlistEntryStatus.RESOLVED;
+    }
+
     // Moves every open queue forward one step where it's due: a cancelled appointment that still
     // has WAITING entries gets its next entry notified if nobody has been notified yet (the first
     // send failed, or the owner's cancel happened while the bridge was down) or if the last

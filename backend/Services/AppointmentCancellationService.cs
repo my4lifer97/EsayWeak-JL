@@ -15,6 +15,9 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
         appointment.Status = AppointmentStatus.CANCELLED;
         appointment.PendingCancellationApproval = false;
         if (notifyWaitlist) await waitlist.NotifyForCancellation(appointment);
+        // The owner chose not to offer the slot ("cancel silently", a plain owner cancel, a
+        // deleted series). Left WAITING, WaitlistQueueWorker messaged them anyway (QA run 3).
+        else await waitlist.CloseQueue(appointment);
     }
 
     // Entry point for the 3 customer-initiated cancel paths (magic-link, logged-in "My

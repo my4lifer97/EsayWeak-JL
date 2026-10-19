@@ -1166,6 +1166,19 @@ public class AdminController(
         // start time, so the original must be cancelled before the replacement is inserted.
         await using (var tx = await db.Database.BeginTransactionAsync())
         {
+            // Claimed with one conditional UPDATE: a double-click or two staff members replacing
+            // at once both passed the CONFIRMED check above, and the second insert hit the unique
+            // index as a 500 (QA run 3). The row lock makes the second UPDATE wait, then match nothing.
+            var claimed = await db.Appointments
+                .Where(a => a.Id == appt.Id && a.Status == AppointmentStatus.CONFIRMED)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(a => a.Status, AppointmentStatus.CANCELLED)
+                    .SetProperty(a => a.PendingCancellationApproval, false));
+            if (claimed == 0)
+            {
+                await tx.RollbackAsync();
+                return Conflict(new { error = "This appointment can no longer be modified" });
+            }
             await db.SaveChangesAsync();
             db.Appointments.Add(replacement);
             // Whoever is still waiting for this slot keeps waiting -- on the new appointment.
