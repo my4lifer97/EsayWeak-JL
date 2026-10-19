@@ -411,4 +411,21 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         Assert.Equal(calls, Factory.OpenAi.Calls.Count);
     }
+
+    [Fact]
+    public async Task TheBusinessesOwnMapLink_IsKept()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-map@example.com", "wa-ai-map");
+        using (var db = Db())
+        {
+            (await db.Businesses.FirstAsync(b => b.Id == businessId)).MapUrl = "https://maps.example/shop";
+            await db.SaveChangesAsync();
+        }
+        Factory.OpenAi.PlainTextReply = "We're here: https://maps.example/shop.";
+
+        var resp = await PostInbound(businessId, "+15559991223", "where are you?");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("https://maps.example/shop", body!.Reply);
+    }
 }

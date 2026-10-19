@@ -573,7 +573,10 @@ public class WhatsAppController(
         string? toolMessage = null; // text of the last tool that actually did something
         string? cancelQuestion = null; // the cancel tool's own text, which the customer must see as-is
         var linkIssued = false;
-        var toolTexts = new List<string>(); // every tool result this turn, for the URL check below
+        // Every tool result this turn, for the URL check below, plus the business's own links the
+        // prompt gives the model (map, storefront).
+        var toolTexts = new List<string> { $"{appUrl}/{business.Slug}" };
+        if (business.MapUrl is not null) toolTexts.Add(business.MapUrl);
         async Task<string> ExecuteTool(string name, string argsJson)
         {
             if (name == "mark_unclear")
@@ -964,7 +967,7 @@ public class WhatsAppController(
     // Defence in depth: a link in the model's own text must be one a tool returned this turn, so a
     // prompt-injected or made-up URL never reaches the customer (QA run 3).
     private static string StripUnknownUrls(string reply, List<string> toolTexts) =>
-        Regex.Replace(reply, @"https?://[^\s)\]>""']+", m => toolTexts.Any(t => t.Contains(m.Value)) ? m.Value : "").Trim();
+        Regex.Replace(reply, @"https?://[^\s)\]>""']*[^\s)\]>""'.,!?:;]", m => toolTexts.Any(t => t.Contains(m.Value)) ? m.Value : "").Trim();
 
     private sealed class AiDailyCapReachedException : Exception;
 
