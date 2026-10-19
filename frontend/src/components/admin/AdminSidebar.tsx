@@ -56,7 +56,7 @@ function DesktopSidebar({ businessName }: { businessName: string }) {
           <div className="text-ink font-bold text-lg">EsayWeek</div>
           <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
         </div>
-        <ThemeToggle />
+        <ThemeToggle lang={lang} />
       </div>
       <NavContent lang={lang} />
       <button
@@ -95,7 +95,7 @@ function TouchSidebar({
             <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
           </div>
           <div className="flex items-center gap-2">
-            <ThemeToggle />
+            <ThemeToggle lang={lang} />
             <button onClick={onClose} aria-label={t(lang, 'closeMenu')}
               className="text-muted hover:text-ink w-11 h-11 -m-2 flex items-center justify-center rounded-lg hover:bg-cream text-2xl leading-none transition-colors">✕</button>
           </div>

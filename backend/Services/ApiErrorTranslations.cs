@@ -20,6 +20,7 @@ public static class ApiErrorTranslations
         ["Invalid date"] = ("تاريخ غير صالح", "תאריך לא תקין"),
         ["Invalid date. Use the format YYYY-MM-DD."] = ("تاريخ غير صالح. استخدم الصيغة YYYY-MM-DD.", "תאריך לא תקין. יש להשתמש בפורמט YYYY-MM-DD."),
         ["Invalid request"] = ("طلب غير صالح", "בקשה לא תקינה"),
+        ["The text contains characters that aren't allowed."] = ("يحتوي النص على أحرف غير مسموح بها.", "הטקסט מכיל תווים שאינם מותרים."),
         ["Invalid time"] = ("وقت غير صالح", "שעה לא תקינה"),
         ["Invalid start time"] = ("وقت البدء غير صالح", "שעת התחלה לא תקינה"),
         ["Invalid day of week"] = ("يوم غير صالح", "יום לא תקין"),
@@ -138,8 +139,6 @@ public static class ApiErrorTranslations
     // Messages with a value inside. Each pattern captures the value as group 1; {0} marks where it goes.
     private static readonly (Regex En, string Ar, string He)[] Patterns =
     [
-        (new(@"^Too many sign-in attempts\. Try again in (\d+) minute\(s\)\.$"),
-            "محاولات تسجيل دخول كثيرة جدًا. حاول مرة أخرى بعد {0} دقيقة.", "יותר מדי ניסיונות התחברות. נסו שוב בעוד {0} דקות."),
         (new(@"^Names can be at most (\d+) characters\.$"),
             "يمكن أن تتكون الأسماء من {0} حرفًا كحد أقصى.", "שמות יכולים להכיל עד {0} תווים."),
         (new(@"^Notes can be at most (\d+) characters\.$"),
@@ -152,10 +151,22 @@ public static class ApiErrorTranslations
             "رقم الهاتف هذا يخص {0} بالفعل. ابحث عنه في حقل العميل بدلًا من ذلك.", "מספר הטלפון הזה כבר שייך ל-{0}. חפשו אותו בשדה הלקוח."),
     ];
 
+    // The lockout wait needs real plural forms (QA run 3: "بعد 8 دقيقة", "בעוד 1 דקות").
+    private static readonly Regex SignInLockout = new(@"^Too many sign-in attempts\. Try again in (\d+) minutes?\.$");
+
+    private static string Minutes(string lang, int n) => lang == "AR"
+        ? n switch { 1 => "دقيقة واحدة", 2 => "دقيقتين", >= 3 and <= 10 => $"{n} دقائق", _ => $"{n} دقيقة" }
+        : n switch { 1 => "דקה", 2 => "שתי דקות", _ => $"{n} דקות" };
+
     public static string Translate(string? lang, string message)
     {
         if (lang is not ("AR" or "HE")) return message;
         if (Exact.TryGetValue(message, out var t)) return lang == "AR" ? t.Ar : t.He;
+        if (SignInLockout.Match(message) is { Success: true } lockout)
+        {
+            var wait = Minutes(lang, int.Parse(lockout.Groups[1].Value));
+            return lang == "AR" ? $"محاولات تسجيل دخول كثيرة جدًا. حاول مرة أخرى بعد {wait}." : $"יותר מדי ניסיונות התחברות. נסו שוב בעוד {wait}.";
+        }
         foreach (var (en, ar, he) in Patterns)
         {
             var m = en.Match(message);

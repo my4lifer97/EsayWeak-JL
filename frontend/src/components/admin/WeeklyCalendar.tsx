@@ -355,7 +355,7 @@ export default function WeeklyCalendar({
             </div>
             <div className="space-y-2 text-sm mb-6">
               <Row label={t(lang, 'service')} value={itemName(selected.item, lang)} />
-              <Row label={t(lang, 'date')} value={selected.date.slice(0, 10)} />
+              <Row label={t(lang, 'date')} value={format(parseISO(selected.date.slice(0, 10)), 'EEE, MMM d, yyyy', { locale: dateLocale })} />
               <Row label={t(lang, 'time')} value={`${selected.startTime} – ${selected.endTime}`} />
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />
               {selected.notes && <Row label={t(lang, 'notes')} value={selected.notes} />}

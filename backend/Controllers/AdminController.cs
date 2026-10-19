@@ -1316,12 +1316,14 @@ public class AdminController(
                 r.Id, r.Rating, r.Comment, r.CreatedAt, r.UpdatedAt, r.IsHidden, r.OwnerReply, r.OwnerRepliedAt,
                 r.CustomerAccount.Name, r.CustomerAccount.FamilyName,
                 ItemName = r.Appointment.Item.NameEn,
+                ItemNameAr = r.Appointment.Item.NameAr,
+                ItemNameHe = r.Appointment.Item.NameHe,
             })
             .ToListAsync();
 
         var dtos = rows.Select(r => new AdminReviewDto(
             r.Id, r.Rating, r.Comment, $"{r.Name} {r.FamilyName}".Trim(), r.ItemName,
-            r.CreatedAt, r.UpdatedAt, r.IsHidden, r.OwnerReply, r.OwnerRepliedAt));
+            r.CreatedAt, r.UpdatedAt, r.IsHidden, r.OwnerReply, r.OwnerRepliedAt, r.ItemNameAr, r.ItemNameHe));
 
         return Ok(dtos);
     }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams, Link, Navigate } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
+import { apiError } from '../../lib/apiError'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
 import ThemeToggle from '../../components/ThemeToggle'
@@ -32,9 +33,10 @@ export default function CustomerLoginPage() {
       if (data.devOtp) { setDevOtp(data.devOtp); setOtp(data.devOtp) }
       setView('otp')
     } catch (err: unknown) {
+      // The server's own (translated) reason: an invalid phone, or "please wait" during the 45 s
+      // cooldown, which the generic "too many requests" text made sound much worse (QA run 3).
       const status = (err as { response?: { status?: number } })?.response?.status
-      if (status === 429) setError(t(lang, 'otpRateLimitError'))
-      else setError('Could not send code. Check your phone number.')
+      setError(apiError(err) ?? t(lang, status === 429 ? 'otpRateLimitError' : 'otpSendFailed'))
     } finally { setLoading(false) }
   }
 
@@ -43,8 +45,8 @@ export default function CustomerLoginPage() {
     try {
       await verifyOtp(phone, otp, isNewCustomer ? name : undefined, isNewCustomer ? familyName : undefined)
       navigate(next)
-    } catch {
-      setError(t(lang, 'invalidOtp'))
+    } catch (err: unknown) {
+      setError(apiError(err) ?? t(lang, 'invalidOtp'))
     } finally { setLoading(false) }
   }
 
@@ -58,7 +60,7 @@ export default function CustomerLoginPage() {
           <BackButton lang={lang} />
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
-            <ThemeToggle />
+            <ThemeToggle lang={lang} />
           </div>
         </div>
         <div className="text-center mb-8">

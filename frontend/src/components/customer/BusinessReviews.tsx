@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { t } from '../../lib/i18n'
+import { apiError } from '../../lib/apiError'
 import StarRating from './StarRating'
 import InlineConfirm from './InlineConfirm'
 
@@ -86,8 +87,8 @@ export default function BusinessReviews({
       else await customerApi.post('/reviews', { businessSlug: slug, rating, comment: comment.trim() || null })
       setEditing(false)
       refresh()
-    } catch {
-      setError(t(lang, 'reviewSubmitError'))
+    } catch (err: unknown) {
+      setError(apiError(err) ?? t(lang, 'reviewSubmitError'))
     } finally { setBusy(false) }
   }
 
@@ -112,7 +113,7 @@ export default function BusinessReviews({
         <h2 className="text-lg font-bold text-ink">{t(lang, 'reviews')}</h2>
         {agg.count > 0 && (
           <span className="flex items-center gap-1.5 text-sm text-muted">
-            <StarRating value={agg.average} size="sm" />
+            <StarRating value={agg.average} size="sm" lang={lang} />
             {agg.average.toFixed(1)} · {agg.count} {t(lang, agg.count === 1 ? 'reviewsCountSuffixSingular' : 'reviewsCountSuffix')}
           </span>
         )}
@@ -132,7 +133,7 @@ export default function BusinessReviews({
       {own && !editing && (
         <div className="bg-surface border border-coral/30 rounded-2xl p-4 mb-4">
           <div className="text-xs text-muted mb-1">{t(lang, 'yourReview')}</div>
-          <StarRating value={own.rating} size="sm" />
+          <StarRating value={own.rating} size="sm" lang={lang} />
           {own.comment && <p className="text-ink text-sm mt-2">{own.comment}</p>}
           {own.ownerReply && (
             <div className="mt-3 border-s-2 border-line ps-3">
@@ -165,7 +166,7 @@ export default function BusinessReviews({
         <div className="bg-surface border border-line rounded-2xl p-4 mb-4 space-y-3">
           <div>
             <div className="text-sm text-muted mb-1">{t(lang, 'yourRating')}</div>
-            <StarRating value={rating} onChange={setRating} size="lg" />
+            <StarRating value={rating} onChange={setRating} size="lg" lang={lang} />
           </div>
           <textarea
             value={comment} onChange={(e) => setComment(e.target.value)} rows={3} maxLength={1000}
@@ -197,7 +198,7 @@ export default function BusinessReviews({
                 <span className="text-ink text-sm font-medium">{r.reviewerName}</span>
                 <span className="text-muted text-xs">{format(parseISO(r.createdAt), 'MMM d, yyyy', { locale })}</span>
               </div>
-              <div className="mt-1"><StarRating value={r.rating} size="sm" /></div>
+              <div className="mt-1"><StarRating value={r.rating} size="sm" lang={lang} /></div>
               {r.comment && <p className="text-ink text-sm mt-2">{r.comment}</p>}
               {r.ownerReply && (
                 <div className="mt-3 border-s-2 border-line ps-3">

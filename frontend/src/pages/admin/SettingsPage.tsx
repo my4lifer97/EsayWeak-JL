@@ -241,7 +241,7 @@ export default function SettingsPage() {
               <div className="text-sm font-medium text-ink">{t(lang, theme === 'dark' ? 'darkMode' : 'lightMode')}</div>
               <div className="text-muted text-sm mt-0.5">{t(lang, 'appearanceHint')}</div>
             </div>
-            <ThemeToggle />
+            <ThemeToggle lang={lang} />
           </div>
         </div>
 

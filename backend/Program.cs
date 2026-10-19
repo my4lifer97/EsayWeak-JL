@@ -17,6 +17,17 @@ builder.Services.AddControllers(opt =>
     opt.Filters.Add<ValidateInputFilter>();
     opt.Filters.Add<DispatchNotificationsFilter>();
     opt.Filters.Add<TranslateErrorFilter>();
+}).ConfigureApiBehaviorOptions(opt =>
+{
+    // A missing field, a missing file or a wrong JSON type used to come back as English
+    // ProblemDetails with no `error` key, which neither the frontend nor TranslateErrorFilter
+    // reads (QA run 3). `errors` keeps the per-field detail.
+    opt.InvalidModelStateResponseFactory = ctx => new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new
+    {
+        error = "Invalid request",
+        errors = ctx.ModelState.Where(e => e.Value?.Errors.Count > 0)
+            .ToDictionary(e => e.Key, e => e.Value!.Errors.Select(x => x.ErrorMessage).ToArray()),
+    });
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();

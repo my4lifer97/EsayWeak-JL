@@ -1,4 +1,5 @@
 import { useTheme } from '../lib/theme'
+import { t } from '../lib/i18n'
 
 // Plain SVG icons, not emoji -- the moon emoji renders as an odd yellow crescent blob (easily
 // mistaken for a banana) in some system emoji fonts, so a drawn icon is used for a consistent
@@ -20,14 +21,14 @@ function MoonIcon() {
   )
 }
 
-export default function ThemeToggle() {
+export default function ThemeToggle({ lang = 'EN' }: { lang?: string }) {
   const { theme, toggleTheme } = useTheme()
 
   return (
     <button
       type="button"
       onClick={toggleTheme}
-      aria-label="Toggle dark mode"
+      aria-label={t(lang, 'toggleDarkMode')}
       className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface border border-line text-ink hover:bg-cream transition-colors shrink-0"
     >
       {theme === 'dark' ? <SunIcon /> : <MoonIcon />}

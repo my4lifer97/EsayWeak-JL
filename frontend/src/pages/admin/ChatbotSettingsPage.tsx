@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
+import { dateLocale } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
@@ -391,7 +392,7 @@ function ChatbotInquiriesInbox({ lang }: { lang: string }) {
                     <span className="text-xs px-2 py-0.5 rounded-full bg-coral/15 text-coral-dark shrink-0">{t(lang, 'unread')}</span>
                   )}
                 </div>
-                <span className="text-muted text-xs shrink-0">{format(parseISO(i.createdAt), 'MMM d · HH:mm')}</span>
+                <span className="text-muted text-xs shrink-0">{format(parseISO(i.createdAt), 'MMM d · HH:mm', { locale: dateLocale(lang) })}</span>
               </div>
               <p className="text-ink text-sm mt-1.5 whitespace-pre-wrap">{i.message}</p>
               {!i.isRead && (

@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { t, itemName } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
 import InlineConfirm from '../../components/customer/InlineConfirm'
+import { useCustomerAuth } from '../../lib/customerAuth'
 
 type AppointmentDetail = {
   id: string; date: string; startTime: string; endTime: string; status: string; notes: string | null; cancelToken: string
@@ -27,6 +28,8 @@ export default function AppointmentPage() {
   const [justRescheduled, setJustRescheduled] = useState(false)
   const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [cancelError, setCancelError] = useState('')
+  // Until the appointment (and its business's language) loads, or when it can't: the customer's own.
+  const { language: customerLang } = useCustomerAuth()
 
   const { data: appt, isLoading, refetch } = useQuery<AppointmentDetail>({
     queryKey: ['appointment', id],
@@ -41,8 +44,20 @@ export default function AppointmentPage() {
       api.get(`/${slug}/availability?date=${rescheduleDate}&itemId=${appt!.item.id}&excludeAppointmentId=${id}&token=${token}`).then((r) => r.data.slots),
   })
 
-  if (isLoading) return <div className="min-h-screen bg-cream flex items-center justify-center"><div className="text-muted">{t('EN', 'loading')}</div></div>
-  if (!appt) return <div className="min-h-screen bg-cream flex items-center justify-center"><div className="text-muted">{t('EN', 'appointmentNotFound')}</div></div>
+  const fallbackDir = customerLang === 'AR' || customerLang === 'HE' ? 'rtl' : 'ltr'
+  if (isLoading) return <div className="min-h-screen bg-cream flex items-center justify-center" dir={fallbackDir}><div className="text-muted">{t(customerLang, 'loading')}</div></div>
+  // Opened from an old or mangled WhatsApp link, so give a way on rather than a dead end.
+  if (!appt) return (
+    <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4" dir={fallbackDir}>
+      <div className="text-center space-y-4">
+        <p className="text-muted">{t(customerLang, 'appointmentNotFound')}</p>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Link to={`/${slug}`} className="bg-coral hover:bg-coral-dark text-white font-semibold px-5 py-2.5 rounded-xl transition-colors">{t(customerLang, 'viewBusinessPage')}</Link>
+          <Link to="/" className="border border-line px-5 py-2.5 rounded-xl text-ink">{t(customerLang, 'goHome')}</Link>
+        </div>
+      </div>
+    </div>
+  )
 
   const lang = appt.business.language
   const isRTL = lang === 'AR' || lang === 'HE'

@@ -227,4 +227,5 @@ public record OwnerReplyRequest(string Reply);
 // Owner-facing (admin) and platform-admin moderation view.
 public record AdminReviewDto(
     string Id, int Rating, string? Comment, string ReviewerName, string? ItemName,
-    DateTime CreatedAt, DateTime UpdatedAt, bool IsHidden, string? OwnerReply, DateTime? OwnerRepliedAt);
+    DateTime CreatedAt, DateTime UpdatedAt, bool IsHidden, string? OwnerReply, DateTime? OwnerRepliedAt,
+    string? ItemNameAr = null, string? ItemNameHe = null);

@@ -56,4 +56,33 @@ public class ErrorTranslationTests : IntegrationTestBase
             ApiErrorTranslations.Translate("HE", LoginThrottle.TooManyAttemptsMessage(TimeSpan.FromMinutes(7))));
         Assert.Equal("Something brand new", ApiErrorTranslations.Translate("AR", "Something brand new"));
     }
+
+    // QA run 3: "بعد 8 دقيقة", "בעוד 1 דקות" and "15 minute(s)".
+    [Theory]
+    [InlineData(1, "Too many sign-in attempts. Try again in 1 minute.", "دقيقة واحدة", "בעוד דקה.")]
+    [InlineData(2, "Too many sign-in attempts. Try again in 2 minutes.", "دقيقتين", "בעוד שתי דקות.")]
+    [InlineData(8, "Too many sign-in attempts. Try again in 8 minutes.", "8 دقائق", "בעוד 8 דקות.")]
+    [InlineData(15, "Too many sign-in attempts. Try again in 15 minutes.", "15 دقيقة", "בעוד 15 דקות.")]
+    public void LockoutWait_UsesPluralForms(int minutes, string en, string arWait, string heEnd)
+    {
+        var message = LoginThrottle.TooManyAttemptsMessage(TimeSpan.FromMinutes(minutes));
+        Assert.Equal(en, message);
+        Assert.EndsWith($"بعد {arWait}.", ApiErrorTranslations.Translate("AR", message));
+        Assert.EndsWith(heEnd, ApiErrorTranslations.Translate("HE", message));
+    }
+
+    // QA run 3: model-binding failures were English ProblemDetails with no `error` key.
+    [Fact]
+    public async Task MissingRequiredQueryValue_IsATranslatedError()
+    {
+        var req = new HttpRequestMessage(HttpMethod.Delete, "/api/some-shop/appointments/some-id");
+        req.Headers.Add("X-Lang", "AR");
+
+        var resp = await Client.SendAsync(req);
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("طلب غير صالح", body.GetProperty("error").GetString());
+        Assert.True(body.GetProperty("errors").TryGetProperty("token", out _));
+    }
 }

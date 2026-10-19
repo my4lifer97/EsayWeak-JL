@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { t, itemName } from '../../lib/i18n'
+import { apiError } from '../../lib/apiError'
 import { mediaUrl } from '../../lib/media'
 import InlineConfirm from './InlineConfirm'
 
@@ -104,8 +105,8 @@ export default function AppointmentCard({
       await customerApi.patch(`/customer/appointments/${appt.id}/photo`, { galleryPhotoId: photoId })
       setExpandedPhoto(false)
       onChanged()
-    } catch {
-      setPhotoError(t(lang, 'photoUploadError'))
+    } catch (err: unknown) {
+      setPhotoError(apiError(err) ?? t(lang, 'photoUploadError'))
     } finally { setBusy(false) }
   }
 
@@ -118,8 +119,8 @@ export default function AppointmentCard({
       await customerApi.patch(`/customer/appointments/${appt.id}/photo`, { customerPhotoUrl: data.url })
       setExpandedPhoto(false)
       onChanged()
-    } catch {
-      setPhotoError(t(lang, 'photoUploadError'))
+    } catch (err: unknown) {
+      setPhotoError(apiError(err) ?? t(lang, 'photoUploadError'))
     } finally { setPhotoUploading(false) }
   }
 

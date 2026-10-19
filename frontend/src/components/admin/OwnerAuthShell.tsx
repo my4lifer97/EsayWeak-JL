@@ -13,7 +13,7 @@ export default function OwnerAuthShell({ children, wide }: { children: ReactNode
     <div className="relative min-h-screen bg-cream flex items-center justify-center p-4" dir={rtl ? 'rtl' : 'ltr'}>
       <div className="absolute top-4 end-4 flex items-center gap-2">
         <LanguagePicker value={language} onChange={setLang} />
-        <ThemeToggle />
+        <ThemeToggle lang={language} />
       </div>
       <div className={wide ? 'w-full max-w-md py-16' : 'w-full max-w-sm py-16'}>{children}</div>
     </div>

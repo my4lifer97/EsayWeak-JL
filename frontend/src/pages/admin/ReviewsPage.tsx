@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
+import { dateLocale } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
@@ -8,7 +9,7 @@ import StarRating from '../../components/customer/StarRating'
 import { useConfirmDialog } from '../../components/ConfirmDialog'
 
 type AdminReview = {
-  id: string; rating: number; comment: string | null; reviewerName: string; itemName: string | null
+  id: string; rating: number; comment: string | null; reviewerName: string; itemName: string | null; itemNameAr: string | null; itemNameHe: string | null
   createdAt: string; updatedAt: string; isHidden: boolean
   ownerReply: string | null; ownerRepliedAt: string | null
 }
@@ -73,11 +74,11 @@ export default function ReviewsPage() {
                     </span>
                   )}
                 </div>
-                <span className="text-muted text-xs">{format(parseISO(r.createdAt), 'MMM d, yyyy')}</span>
+                <span className="text-muted text-xs">{format(parseISO(r.createdAt), 'MMM d, yyyy', { locale: dateLocale(lang) })}</span>
               </div>
               <div className="mt-1 flex items-center gap-2">
-                <StarRating value={r.rating} size="sm" />
-                {r.itemName && <span className="text-muted text-xs">· {r.itemName}</span>}
+                <StarRating value={r.rating} size="sm" lang={lang} />
+                {r.itemName && <span className="text-muted text-xs">· {(lang === 'AR' ? r.itemNameAr : lang === 'HE' ? r.itemNameHe : null) || r.itemName}</span>}
               </div>
               {r.comment && <p className="text-ink text-sm mt-2">{r.comment}</p>}
 

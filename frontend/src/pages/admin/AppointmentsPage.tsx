@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
+import { dateLocale } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t, itemName, type TKey } from '../../lib/i18n'
@@ -157,7 +158,7 @@ export default function AppointmentsPage() {
             <tbody>
               {filtered.map((a) => (
                 <tr key={a.id} className="border-b border-line hover:bg-cream">
-                  <td className="px-4 py-3 text-ink">{format(parseISO(a.date.slice(0, 10)), 'MMM d, yyyy')}</td>
+                  <td className="px-4 py-3 text-ink">{format(parseISO(a.date.slice(0, 10)), 'MMM d, yyyy', { locale: dateLocale(lang) })}</td>
                   <td className="px-4 py-3 text-muted"><bdi dir="ltr">{a.startTime}–{a.endTime}</bdi></td>
                   <td className="px-4 py-3 text-ink font-medium">
                     {a.recurringSeriesId && <span title={t(lang, 'partOfSeries')}>🔁 </span>}{a.customer.name}

@@ -247,7 +247,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           </div>
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
-            <ThemeToggle />
+            <ThemeToggle lang={lang} />
           </div>
         </div>
 

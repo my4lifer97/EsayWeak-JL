@@ -43,7 +43,7 @@ export default function CustomerAccountNav() {
             </Link>
           )}
           <LanguageSwitcher />
-          <ThemeToggle />
+          <ThemeToggle lang={lang} />
         </div>
       </div>
     </nav>

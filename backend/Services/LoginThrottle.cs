@@ -68,5 +68,7 @@ public class LoginThrottle(IConfiguration config)
     }
 
     public static string TooManyAttemptsMessage(TimeSpan retryAfter) =>
-        $"Too many sign-in attempts. Try again in {Math.Max(1, (int)Math.Ceiling(retryAfter.TotalMinutes))} minute(s).";
+        Math.Max(1, (int)Math.Ceiling(retryAfter.TotalMinutes)) is var minutes && minutes == 1
+            ? "Too many sign-in attempts. Try again in 1 minute."
+            : $"Too many sign-in attempts. Try again in {minutes} minutes.";
 }

@@ -171,7 +171,7 @@ export default function BrowseBusinessesPage() {
                           {b.followerCount > 0 && <span>· {b.followerCount} {t(lang, 'followerCountSuffix')}</span>}
                         </div>
                         {b.ratingCount > 0 && (
-                          <div className="mt-1"><StarRating value={b.ratingAverage} count={b.ratingCount} size="sm" /></div>
+                          <div className="mt-1"><StarRating value={b.ratingAverage} count={b.ratingCount} size="sm" lang={lang} /></div>
                         )}
                         {b.description && <div className="text-muted text-sm truncate mt-1">{b.description}</div>}
                       </Link>

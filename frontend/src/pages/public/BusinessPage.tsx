@@ -86,7 +86,7 @@ export default function BusinessPage() {
           <BackButton lang={lang} />
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
-            <ThemeToggle />
+            <ThemeToggle lang={lang} />
           </div>
         </div>
         <div className="text-center mb-8">
@@ -99,7 +99,7 @@ export default function BusinessPage() {
           <h1 className="text-3xl font-bold text-ink">{business.name}</h1>
           {business.ratingCount > 0 && (
             <div className="flex justify-center mt-2">
-              <StarRating value={business.ratingAverage} count={business.ratingCount} size="sm" />
+              <StarRating value={business.ratingAverage} count={business.ratingCount} size="sm" lang={lang} />
             </div>
           )}
           {business.description && (

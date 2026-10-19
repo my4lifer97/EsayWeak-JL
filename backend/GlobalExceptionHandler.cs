@@ -13,6 +13,8 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHos
             httpContext.Request.Method, httpContext.Request.Path);
 
         httpContext.Response.ContentType = "application/json";
+        // Written here directly, so TranslateErrorFilter (an MVC filter) never sees these.
+        var lang = httpContext.Request.Headers["X-Lang"].ToString().ToUpperInvariant();
 
         // A known outage gets its own status and a message written for the user, in every env.
         if (exception is Services.WhatsAppBridgeUnavailableException)
@@ -27,12 +29,12 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHos
         if (FindPostgresError(exception, "22021"))
         {
             httpContext.Response.StatusCode = StatusCodes.Status400BadRequest;
-            await httpContext.Response.WriteAsJsonAsync(new { error = "The text contains characters that aren't allowed." }, cancellationToken);
+            await httpContext.Response.WriteAsJsonAsync(new { error = Services.ApiErrorTranslations.Translate(lang, "The text contains characters that aren't allowed.") }, cancellationToken);
             return true;
         }
 
         httpContext.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        var message = env.IsDevelopment() ? exception.Message : "An unexpected error occurred.";
+        var message = env.IsDevelopment() ? exception.Message : Services.ApiErrorTranslations.Translate(lang, "An unexpected error occurred.");
         await httpContext.Response.WriteAsJsonAsync(new { error = message }, cancellationToken);
 
         return true;
