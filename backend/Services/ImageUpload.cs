@@ -6,6 +6,9 @@ namespace BarberSaas.Api.Services;
 public static class ImageUpload
 {
     public const long MaxBytes = 5 * 1024 * 1024;
+    // For [RequestSizeLimit]: the whole multipart body, so the file itself can be up to MaxBytes
+    // (a 5,242,830-byte image was refused at exactly MaxBytes, QA run 3).
+    public const long MaxRequestBytes = MaxBytes + 64 * 1024;
     public const string Error = "Please upload a JPG, PNG, or WEBP image up to 5MB.";
 
     private static readonly Dictionary<string, string> AllowedTypes = new()

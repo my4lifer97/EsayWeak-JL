@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { imageTooLarge } from '../../lib/imageFile'
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
@@ -111,6 +112,7 @@ export default function AppointmentCard({
   }
 
   async function uploadAndSetPhoto(file: File) {
+    if (imageTooLarge(file)) { setPhotoError(t(lang, 'photoUploadError')); return }
     setPhotoUploading(true); setPhotoError('')
     try {
       const formData = new FormData()

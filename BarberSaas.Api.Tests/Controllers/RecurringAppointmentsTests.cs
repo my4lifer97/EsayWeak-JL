@@ -23,7 +23,26 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m));
         var service = await resp.Content.ReadFromJsonAsync<ItemDto>();
+        // Open every day: a series without "custom time" has to fit the opening hours, and these
+        // tests use Sundays, which a new business has closed.
+        await Client.PostAsJsonAsync("/api/admin/schedule",
+            Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", true)).ToList());
         return service!.Id;
+    }
+
+    // QA run 3 OWN-8: an impossible time or a closed day was saved and then skipped every week.
+    [Fact]
+    public async Task Create_BadTimeOrClosedDay_WithoutForce_IsRejected()
+    {
+        var token = await RegisterAndLoginBusiness("recurring-closed@example.com", "recurring-closed");
+        Authorize(Client, token);
+        var item = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m))).Content.ReadFromJsonAsync<ItemDto>();
+
+        var badTime = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(null, "Dana", "+15551113333", item!.Id, 1, "99:00", null));
+        var closedDay = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(null, "Dana", "+15551113333", item.Id, 6, "10:00", null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, badTime.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, closedDay.StatusCode);
     }
 
     [Fact]

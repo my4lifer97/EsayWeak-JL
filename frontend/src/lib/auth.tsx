@@ -39,9 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // other admin page fell back to whatever was last in localStorage (default English) until
   // then. Sync it on login and on session restore so it's correct everywhere from the start.
   useEffect(() => {
-    if (!user) return
+    // Not while a temp password must be changed: every call is a 403 then (QA run 3).
+    if (!user || user.mustChangePassword) return
     api.get('/admin/settings').then(({ data }) => setLang(data.language)).catch(() => {})
-  }, [user?.id])
+  }, [user?.id, user?.mustChangePassword])
 
   // Every query cached so far belongs to whoever was signed in before (or nobody) -- drop it, or
   // the next owner on a shared tablet sees the previous one's customers and Settings could save

@@ -140,4 +140,50 @@ public class InputValidationTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, edit.StatusCode);
     }
+
+    // QA run 3 OWN-9.
+    [Fact]
+    public async Task Settings_RejectsOverlongTextAndAnInvalidPhone()
+    {
+        var (token, _) = await SetUpBusiness("input-own9@example.com", "input-own9-shop");
+        Authorize(Client, token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PatchAsJsonAsync("/api/admin/settings", new { name = new string('n', 300) })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PatchAsJsonAsync("/api/admin/settings", new { description = new string('d', 20_000) })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PatchAsJsonAsync("/api/admin/settings", new { city = new string('c', 5_000) })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PatchAsJsonAsync("/api/admin/settings", new { phone = "<b>x" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest(new string('x', 600), "Cut", "Cut", 30, 20m))).StatusCode);
+    }
+
+    [Fact]
+    public async Task BlockedDates_PastAndDuplicateFullDay_AreRejected()
+    {
+        var (token, _) = await SetUpBusiness("input-block@example.com", "input-block-shop");
+        Authorize(Client, token);
+
+        var past = await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest("2020-01-01", null, null, null));
+        var first = await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest("2030-06-03", null, null, null));
+        var again = await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest("2030-06-03", null, null, null));
+        var range = await Client.PostAsJsonAsync("/api/admin/schedule/blocked/range", new CreateBlockedRangeRequest("2030-06-02", "2030-06-04", null, null, null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, past.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, range.StatusCode);
+        using var db = Db();
+        var businessId = db.Businesses.Single(b => b.Slug == "input-block-shop").Id;
+        Assert.Equal(3, db.BlockedSlots.Count(b => b.BusinessId == businessId)); // 06-03 not duplicated
+    }
+
+    [Fact]
+    public async Task Preset_CannotBeNamedDefault()
+    {
+        var (token, _) = await SetUpBusiness("input-default@example.com", "input-default-shop");
+        Authorize(Client, token);
+        var days = Enumerable.Range(0, 7).Select(d => new SchedulePresetDayDto(d, "09:00", "18:00", d is >= 1 and <= 5)).ToList();
+
+        var resp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest(" default ", days));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 }

@@ -4,6 +4,8 @@ import { useUnsavedChangesGuard } from '../../components/admin/useUnsavedChanges
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
+import { imageTooLarge } from '../../lib/imageFile'
+import { apiError } from '../../lib/apiError'
 import { t, itemName } from '../../lib/i18n'
 import { mediaUrl } from '../../lib/media'
 
@@ -95,21 +97,28 @@ export default function ServicesPage() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file || !editing) return
+    if (imageTooLarge(file)) { setGalleryError(t(lang, 'photoUploadError')); return }
     setUploadingGallery(true); setGalleryError('')
     try {
       const formData = new FormData()
       formData.append('file', file)
       await api.post(`/admin/items/${editing.id}/gallery`, formData)
       queryClient.invalidateQueries({ queryKey: ['services'] })
-    } catch {
-      setGalleryError(t(lang, 'photoUploadError'))
+    } catch (err: unknown) {
+      setGalleryError(apiError(err) ?? t(lang, 'photoUploadError'))
     } finally { setUploadingGallery(false) }
   }
 
   async function handleGalleryDelete(photoId: string) {
     if (!editing || !(await ask(t(lang, 'deletePhotoConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
-    await api.delete(`/admin/items/${editing.id}/gallery/${photoId}`)
-    queryClient.invalidateQueries({ queryKey: ['services'] })
+    setGalleryError('')
+    // A failed delete used to be an unhandled rejection with no message (QA run 3).
+    try {
+      await api.delete(`/admin/items/${editing.id}/gallery/${photoId}`)
+      queryClient.invalidateQueries({ queryKey: ['services'] })
+    } catch (err: unknown) {
+      setGalleryError(apiError(err) ?? t(lang, 'somethingWentWrong'))
+    }
   }
 
   return (

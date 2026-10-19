@@ -96,4 +96,21 @@ public class LoginThrottleTests : IntegrationTestBase
         Assert.NotNull(throttle.RetryAfter("owner", "A@example.com ", "1.1.1.1", start.AddMinutes(14)));
         Assert.Null(throttle.RetryAfter("owner", "a@example.com", "1.1.1.1", start.AddMinutes(16)));
     }
+
+    // QA run 3 OWN-11: the email and the username each had their own 5 guesses.
+    [Fact]
+    public async Task EmailAndUsername_ShareOneCount()
+    {
+        await RegisterVerified("throttle-user@example.com", "throttle-user");
+        using (var db = Db())
+        {
+            db.Businesses.First(b => b.Slug == "throttle-user").Username = "throttleuser";
+            db.SaveChanges();
+        }
+        for (var i = 0; i < 5; i++) await Login("throttle-user@example.com", "wrong-password");
+
+        var byUsername = await Login("throttleuser", "wrong-password");
+
+        Assert.Equal((System.Net.HttpStatusCode)429, byUsername.StatusCode);
+    }
 }

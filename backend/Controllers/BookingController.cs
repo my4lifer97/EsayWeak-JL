@@ -287,7 +287,7 @@ public class BookingController(
     }
 
     [HttpPost("appointments/photo")]
-    [RequestSizeLimit(ImageUpload.MaxBytes)]
+    [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
     public async Task<IActionResult> UploadAppointmentPhoto(string slug, IFormFile file)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);

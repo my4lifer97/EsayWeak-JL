@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { imageTooLarge } from '../../lib/imageFile'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
@@ -185,6 +186,7 @@ export default function SettingsPage() {
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (imageTooLarge(file)) { setLogoError(t(lang, 'photoUploadError')); return }
     setLogoFile(file)
     setLogoPreview(URL.createObjectURL(file))
     setLogoError('')

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { imageTooLarge } from '../../lib/imageFile'
 import { format, addDays } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
@@ -174,6 +175,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   }, [])
 
   async function uploadPhoto(file: File) {
+    if (imageTooLarge(file)) { setPhotoError(t(lang, 'photoUploadError')); return }
     setPhotoUploading(true); setPhotoError('')
     try {
       const formData = new FormData()

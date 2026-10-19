@@ -254,13 +254,17 @@ public class AuthControllerTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task ForgotPassword_ImmediateSecondRequest_IsRateLimited()
+    public async Task ForgotPassword_ImmediateSecondRequest_IsSilentlySkipped()
     {
         await RegisterVerifyAndGetResetCode("forgot-cooldown@example.com", "forgot-cooldown-shop");
 
         var resp = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("forgot-cooldown@example.com"));
 
-        Assert.Equal((HttpStatusCode)429, resp.StatusCode);
+        // QA run 3 OWN-10: a 429 only for real accounts told which emails are registered. Same 200
+        // as an unknown email; no second code is issued.
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var db = Db();
+        Assert.Equal(1, db.BusinessPasswordResetOtps.Count(o => o.Email == "forgot-cooldown@example.com"));
     }
 
     [Fact]

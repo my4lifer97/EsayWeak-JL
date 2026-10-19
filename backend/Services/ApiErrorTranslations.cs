@@ -20,6 +20,10 @@ public static class ApiErrorTranslations
         ["Invalid date"] = ("تاريخ غير صالح", "תאריך לא תקין"),
         ["Invalid date. Use the format YYYY-MM-DD."] = ("تاريخ غير صالح. استخدم الصيغة YYYY-MM-DD.", "תאריך לא תקין. יש להשתמש בפורמט YYYY-MM-DD."),
         ["Invalid request"] = ("طلب غير صالح", "בקשה לא תקינה"),
+        ["You can't block a date in the past"] = ("لا يمكن حجب تاريخ في الماضي", "אי אפשר לחסום תאריך שכבר עבר"),
+        ["This date is already blocked"] = ("هذا التاريخ محجوب بالفعل", "התאריך הזה כבר חסום"),
+        ["That name is reserved for the Default schedule"] = ("هذا الاسم محجوز للجدول الافتراضي", "השם הזה שמור ללוח הזמנים המוגדר כברירת מחדל"),
+        ["This time is outside your working hours"] = ("هذا الوقت خارج ساعات عملك", "השעה הזו מחוץ לשעות הפעילות שלך"),
         ["This customer already has this appointment"] = ("هذا العميل لديه هذا الموعد بالفعل", "ללקוח הזה כבר יש את התור הזה"),
         ["The text contains characters that aren't allowed."] = ("يحتوي النص على أحرف غير مسموح بها.", "הטקסט מכיל תווים שאינם מותרים."),
         ["Invalid time"] = ("وقت غير صالح", "שעה לא תקינה"),
@@ -140,6 +144,12 @@ public static class ApiErrorTranslations
     // Messages with a value inside. Each pattern captures the value as group 1; {0} marks where it goes.
     private static readonly (Regex En, string Ar, string He)[] Patterns =
     [
+        (new(@"^Description can be at most (\d+) characters$"),
+            "يمكن أن يتكون الوصف من {0} حرفًا كحد أقصى", "התיאור יכול להכיל עד {0} תווים"),
+        (new(@"^City and address can be at most (\d+) characters$"),
+            "يمكن أن تتكون المدينة والعنوان من {0} حرفًا كحد أقصى", "העיר והכתובת יכולות להכיל עד {0} תווים"),
+        (new(@"^Reason can be at most (\d+) characters$"),
+            "يمكن أن يتكون السبب من {0} حرفًا كحد أقصى", "הסיבה יכולה להכיל עד {0} תווים"),
         (new(@"^Names can be at most (\d+) characters\.$"),
             "يمكن أن تتكون الأسماء من {0} حرفًا كحد أقصى.", "שמות יכולים להכיל עד {0} תווים."),
         (new(@"^Notes can be at most (\d+) characters\.$"),

@@ -51,7 +51,7 @@ public class AdminController(
     }
 
     [HttpPost("settings/logo")]
-    [RequestSizeLimit(ImageUpload.MaxBytes)]
+    [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
     public async Task<IActionResult> UploadLogo(IFormFile file)
     {
         var b = await db.Businesses.FindAsync(BusinessId);
@@ -109,8 +109,22 @@ public class AdminController(
             return "The inquiry email address isn't valid";
         if (has("cancelApprovalEmail") && !string.IsNullOrWhiteSpace(req.CancelApprovalEmail) && !EmailAddress.IsValid(req.CancelApprovalEmail))
             return "The cancellation-approval email address isn't valid";
+        // The body is a JsonElement, so ValidateInputFilter's length rules never saw these (QA run 3:
+        // a 300-character name, a 20,000-character description and "<b>x" as the phone all saved).
+        if (req.Name is { Length: > ValidateInputFilter.MaxNameLength })
+            return $"Names can be at most {ValidateInputFilter.MaxNameLength} characters.";
+        if (req.Description is { Length: > MaxDescriptionLength })
+            return $"Description can be at most {MaxDescriptionLength} characters";
+        if (req.City is { Length: > MaxLocationLength } || req.AddressLine is { Length: > MaxLocationLength })
+            return $"City and address can be at most {MaxLocationLength} characters";
+        if (has("phone") && !string.IsNullOrWhiteSpace(req.Phone) && !PhoneNormalizer.IsValid(req.Phone))
+            return "Please enter a valid phone number";
         return null;
     }
+
+    private const int MaxDescriptionLength = 2000;
+    private const int MaxLocationLength = 200;
+    private const int MaxReasonLength = 200;
 
     // Enum.TryParse alone also takes "5" or "en".
     static bool IsLanguage(string value) => Enum.GetNames<Language>().Contains(value);
@@ -320,6 +334,9 @@ public class AdminController(
     {
         if (string.IsNullOrWhiteSpace(req.NameEn) || string.IsNullOrWhiteSpace(req.NameAr) || string.IsNullOrWhiteSpace(req.NameHe))
             return "All name fields are required";
+        // NameEn/Ar/He don't end in "Name", so the global *Name length rule skipped them.
+        if (new[] { req.NameEn, req.NameAr, req.NameHe }.Any(n => n.Length > ValidateInputFilter.MaxNameLength))
+            return $"Names can be at most {ValidateInputFilter.MaxNameLength} characters.";
         if (req.IsBookable && (req.DurationMinutes is null || req.DurationMinutes < 15 || req.DurationMinutes % 15 != 0))
             return "Duration must be a multiple of 15 (min 15)";
         if (req.IsBookable && req.DurationMinutes > 24 * 60)
@@ -428,7 +445,7 @@ public class AdminController(
     // ─── Item gallery photos ────────────────────────────────────────────────
 
     [HttpPost("items/{id}/gallery")]
-    [RequestSizeLimit(ImageUpload.MaxBytes)]
+    [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
     public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
     {
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
@@ -554,10 +571,16 @@ public class AdminController(
     public async Task<IActionResult> AddBlockedSlot([FromBody] CreateBlockedSlotRequest req)
     {
         if (BlockedTimesError(req.StartTime, req.EndTime) is { } timesError) return BadRequest(new { error = timesError });
+        if (BlockedReasonError(req.Reason) is { } reasonError) return BadRequest(new { error = reasonError });
+        var date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
+        // QA run 3: a past date could be blocked, and the same full day twice (duplicate rows).
+        if (date.Date < DateTime.Now.Date) return BadRequest(new { error = "You can't block a date in the past" });
+        if (req.StartTime is null && await db.BlockedSlots.AnyAsync(b => b.BusinessId == BusinessId && b.Date == date && b.StartTime == null))
+            return Conflict(new { error = "This date is already blocked" });
         var slot = new BlockedSlot
         {
             BusinessId = BusinessId,
-            Date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime(),
+            Date = date,
             StartTime = req.StartTime,
             EndTime = req.EndTime,
             Reason = req.Reason,
@@ -585,12 +608,20 @@ public class AdminController(
         var end = DateTime.Parse(req.EndDate + "T00:00:00Z").ToUniversalTime();
         if (end < start) return BadRequest(new { error = "End date cannot be before start date" });
         if (BlockedTimesError(req.StartTime, req.EndTime) is { } timesError) return BadRequest(new { error = timesError });
+        if (BlockedReasonError(req.Reason) is { } reasonError) return BadRequest(new { error = reasonError });
+        if (start.Date < DateTime.Now.Date) return BadRequest(new { error = "You can't block a date in the past" });
         if ((end - start).Days > 366) return BadRequest(new { error = "Range too large (max 366 days)" });
 
         await using var tx = await db.Database.BeginTransactionAsync();
         var created = new List<BlockedSlot>();
+        // A full-day range skips dates that are already blocked for the whole day.
+        var alreadyFullDay = req.StartTime is null
+            ? (await db.BlockedSlots.Where(b => b.BusinessId == BusinessId && b.StartTime == null && b.Date >= start && b.Date <= end)
+                .Select(b => b.Date).ToListAsync()).ToHashSet()
+            : [];
         for (var d = start; d <= end; d = d.AddDays(1))
         {
+            if (alreadyFullDay.Contains(d)) continue;
             var slot = new BlockedSlot { BusinessId = BusinessId, Date = d, StartTime = req.StartTime, EndTime = req.EndTime, Reason = req.Reason };
             db.BlockedSlots.Add(slot);
             created.Add(slot);
@@ -610,6 +641,9 @@ public class AdminController(
     // A partial block needs both times, in order. Null/null is a full-day block. One missing time
     // used to quietly become a full-day block, and 15:00-10:00 was accepted.
     private const string TimePattern = @"^([01]\d|2[0-3]):[0-5]\d$";
+
+    private static string? BlockedReasonError(string? reason) =>
+        reason is { Length: > MaxReasonLength } ? $"Reason can be at most {MaxReasonLength} characters" : null;
 
     private static string? BlockedTimesError(string? startTime, string? endTime)
     {
@@ -667,6 +701,9 @@ public class AdminController(
         p.Days.OrderBy(d => d.DayOfWeek).Select(d => new SchedulePresetDayDto(d.DayOfWeek, d.StartTime, d.EndTime, d.IsActive)).ToList(),
         p.Breaks.OrderBy(b => b.DayOfWeek).ThenBy(b => b.StartTime).Select(b => new SchedulePresetBreakDto(b.DayOfWeek, b.StartTime, b.EndTime)).ToList());
 
+    // A second preset called "Default" next to the real one was confusing (QA run 3).
+    private static bool IsReservedPresetName(string name) => name.Trim().Equals("Default", StringComparison.OrdinalIgnoreCase);
+
     private static void ValidateDays(List<SchedulePresetDayDto> days)
     {
         if (days.Count != 7 || days.Select(d => d.DayOfWeek).Distinct().Count() != 7 || days.Any(d => d.DayOfWeek is < 0 or > 6))
@@ -689,6 +726,7 @@ public class AdminController(
     public async Task<IActionResult> SaveSchedulePreset([FromBody] SaveSchedulePresetRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
+        if (IsReservedPresetName(req.Name)) return BadRequest(new { error = "That name is reserved for the Default schedule" });
         var breaks = req.Breaks ?? [];
         try
         {
@@ -731,6 +769,7 @@ public class AdminController(
         if (!preset.IsDefault)
         {
             if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
+            if (IsReservedPresetName(req.Name)) return BadRequest(new { error = "That name is reserved for the Default schedule" });
             preset.Name = req.Name.Trim();
         }
         foreach (var d in req.Days)

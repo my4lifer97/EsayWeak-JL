@@ -14,7 +14,7 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/admin/recurring")]
 [Authorize(Policy = "BusinessOnly")]
-public class RecurringAppointmentsController(AppDbContext db, RecurringAppointmentService recurringAppointments, AppointmentCancellationService cancellationService, CustomerNotifier customerNotifier) : ControllerBase
+public class RecurringAppointmentsController(AppDbContext db, RecurringAppointmentService recurringAppointments, AppointmentCancellationService cancellationService, CustomerNotifier customerNotifier, AvailabilityService availability) : ControllerBase
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -52,7 +52,8 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == BusinessId && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
-        if (req.Force && AvailabilityService.SlotTimeError(req.StartTime, item.DurationMinutes.Value) is { } timeError)
+        // Every series, not only a forced one: "99:00" was saved and then skipped every week.
+        if (AvailabilityService.SlotTimeError(req.StartTime, item.DurationMinutes.Value) is { } timeError)
             return BadRequest(new { error = timeError });
 
         if (req.DayOfWeek < 0 || req.DayOfWeek > 6)
@@ -107,6 +108,16 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         {
             startDate = DateTime.Parse(req.StartDate + "T00:00:00Z").ToUniversalTime();
             if (startDate.Date < today) return BadRequest(new { error = "Start date cannot be in the past" });
+        }
+
+        // Without "custom time" the series has to fit the opening hours of its first date. A closed
+        // day used to be accepted and then logged a slot_unavailable skip every week (QA run 3).
+        if (!req.Force)
+        {
+            var day = await availability.GetEffectiveDay(BusinessId, startDate.Date);
+            var end = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
+            if (!day.IsActive || string.CompareOrdinal(req.StartTime, day.StartTime) < 0 || string.CompareOrdinal(end, day.EndTime) > 0)
+                return BadRequest(new { error = "This time is outside your working hours" });
         }
 
         DateTime? endDate = null;

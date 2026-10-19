@@ -102,11 +102,6 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     public async Task<IActionResult> Login([FromBody] LoginRequest req, [FromServices] LoginThrottle throttle)
     {
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString();
-        if (throttle.RetryAfter("owner", req.Email ?? "", ip, DateTime.UtcNow) is { } wait)
-        {
-            Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString();
-            return StatusCode(429, new { error = LoginThrottle.TooManyAttemptsMessage(wait) });
-        }
 
         // The `Email` field carries either an email or a system-generated username (approved
         // accounts get one — see PlatformAdminController.ApproveBusinessOwnerRequest). Match on
@@ -115,12 +110,21 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         var identifier = EmailAddress.Normalize(req.Email);
         var business = await db.Businesses.FirstOrDefaultAsync(b =>
             b.Email.ToLower() == identifier || (b.Username != null && b.Username.ToLower() == identifier));
+
+        // One count per account, whichever of its email or username was typed: counted per
+        // identifier, an approved account got 5 guesses for each (QA run 3).
+        var throttleKey = business?.Id ?? identifier;
+        if (throttle.RetryAfter("owner", throttleKey, ip, DateTime.UtcNow) is { } wait)
+        {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString();
+            return StatusCode(429, new { error = LoginThrottle.TooManyAttemptsMessage(wait) });
+        }
         if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
         {
-            throttle.RecordFailure("owner", req.Email ?? "", ip, DateTime.UtcNow);
+            throttle.RecordFailure("owner", throttleKey, ip, DateTime.UtcNow);
             return Unauthorized(new { error = "Invalid email or password" });
         }
-        throttle.RecordSuccess("owner", req.Email ?? "", ip);
+        throttle.RecordSuccess("owner", throttleKey, ip);
 
         if (business.IsDisabled) return AccountDisabled();
 
@@ -225,7 +229,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     }
 
     [HttpPost("forgot-password")]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req)
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req, [FromServices] NotificationOutbox notifications)
     {
         // Same 200 whether or not the email has an account, so this can't be used to find out
         // which emails are registered. A disabled account gets the same silent answer -- resetting
@@ -240,24 +244,26 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             .OrderByDescending(o => o.CreatedAt)
             .ToListAsync();
 
+        // The cooldown and hourly cap answer with the same silent 200 too (nothing is sent; the
+        // last code still works): a 429 only for real accounts gave them away (QA run 3).
         var last = recent.FirstOrDefault();
-        if (last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < EmailOtpCooldownSeconds)
-            return StatusCode(429, new { error = "Please wait before requesting another code" });
+        if ((last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < EmailOtpCooldownSeconds)
+            || recent.Count >= EmailOtpMaxPerHour)
+            return Ok(new { devCode = (string?)null });
 
-        if (recent.Count >= EmailOtpMaxPerHour)
-            return StatusCode(429, new { error = "Too many requests. Try again later" });
-
-        string code;
-        try
+        var code = Random.Shared.Next(100000, 999999).ToString();
+        db.BusinessPasswordResetOtps.Add(new BusinessPasswordResetOtp
         {
-            code = await IssuePasswordResetCode(email);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to send password reset email to {Email}", email);
-            return StatusCode(502, new { error = "Could not send the reset email. Please try again shortly." });
-        }
+            Email = email,
+            CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(EmailOtpExpiryMinutes),
+        });
         await db.SaveChangesAsync();
+        // Sent after the response, so a real account doesn't answer seconds slower than an unknown
+        // email (the timing gave accounts away too). A failed send is logged by the queue.
+        var body = $"Your password reset code is {code}. It expires in {EmailOtpExpiryMinutes} minutes. If you didn't request this, you can ignore this email.";
+        notifications.Add($"password reset code email to {email}",
+            sp => sp.GetRequiredService<IEmailSender>().SendAsync(email, "Reset your EsayWeek password", body));
 
         string? devCode = env.IsDevelopment() ? code : null;
         return Ok(new { devCode });
@@ -344,22 +350,6 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         // login of this account.
         var token = jwt.Generate(business.Id, business.Email, business.Name, business.Slug, business.PasswordHash);
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
-    }
-
-    private async Task<string> IssuePasswordResetCode(string email)
-    {
-        var code = Random.Shared.Next(100000, 999999).ToString();
-        db.BusinessPasswordResetOtps.Add(new BusinessPasswordResetOtp
-        {
-            Email = email,
-            CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
-            ExpiresAt = DateTime.UtcNow.AddMinutes(EmailOtpExpiryMinutes),
-        });
-
-        await emailSender.SendAsync(email, "Reset your EsayWeek password",
-            $"Your password reset code is {code}. It expires in {EmailOtpExpiryMinutes} minutes. If you didn't request this, you can ignore this email.");
-
-        return code;
     }
 
     private async Task<string> IssueVerificationCode(string email)

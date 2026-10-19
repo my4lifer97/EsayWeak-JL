@@ -358,7 +358,7 @@ export default function WeeklyCalendar({
               <Row label={t(lang, 'date')} value={format(parseISO(selected.date.slice(0, 10)), 'EEE, MMM d, yyyy', { locale: dateLocale })} />
               <Row label={t(lang, 'time')} value={`${selected.startTime} – ${selected.endTime}`} />
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />
-              {selected.notes && <Row label={t(lang, 'notes')} value={selected.notes} />}
+              {selected.notes && <Row label={t(lang, 'notesLabel')} value={selected.notes} />}
               <Row label={t(lang, 'status')} value={t(lang, STATUS_LABEL[selected.status] ?? 'statusConfirmed')}
                 valueClass={selected.status === 'CONFIRMED' ? 'text-blue-700 dark:text-blue-400' : selected.status === 'COMPLETED' ? 'text-green-700 dark:text-green-400' : 'text-muted'} />
             </div>
