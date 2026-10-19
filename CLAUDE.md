@@ -1024,7 +1024,8 @@ commands instead, checked ahead of the gate/service logic:
 
 `1$`/`2$` work too (`NormalizeDollarCommand`: RTL keyboards, and how the command used to render in Hebrew/Arabic
 text; the AR/HE strings now wrap it in `\u200E` marks). `$1` also clears a live service-list row, so it never
-counts as an invalid reply. A locked-out conversation (`InvalidAttempts >= 3`) skips this method entirely, so
+counts as an invalid reply, and a row with a booking link pending (it used to be kept, so `$1` after a link +
+`$2` got silence and Inquiry mode stuck for 24 h); entering Inquiry mode clears `AwaitingBookingCompletion`. A locked-out conversation (`InvalidAttempts >= 3`) skips this method entirely, so
 only `$` unlocks it. An Inquiry-mode row lives 24 h (`InquiryStateLifetime`), not 10 min, so a later
 follow-up is still logged.
 
@@ -1068,7 +1069,7 @@ The primary way a customer session starts: redeeming a link the WhatsApp bot sen
 sign-up/sign-in step at all). Phone+OTP (below) is a second, parallel path — both just mint the
 same kind of `CustomerAccount`-backed JWT. Flow (`WhatsAppController` + `CustomerAuthController`):
 1. Any message from a phone with no pending selection (or the `book` keyword) gets a numbered list
-   of the business's active items (`whatsapp.selectService`, alphabetical in the reply language since 2026-10-13; it used to be `Item.Id` order). The shown ids are saved in `WhatsAppConversationState.ShownItemIds` (migration `AddConversationShownItemIds`), so a reply number means what the customer saw even if the owner changed the services since. A service turned off in the meantime gets `whatsapp.serviceNoLongerAvailable` plus the current list
+   of the business's active items (`whatsapp.selectService`, alphabetical in the reply language since 2026-10-13; it used to be `Item.Id` order). The shown ids are saved in `WhatsAppConversationState.ShownItemIds` (migration `AddConversationShownItemIds`), so a reply number means what the customer saw even if the owner changed the services since. Only a `Booking`-mode row **with** `ShownItemIds` counts as waiting for a number (`TryHandleServiceSelectionReply`); an AI-path row (the AI path clears `ShownItemIds` every turn), the gate or a leftover Inquiry row gets a fresh list instead — they used to be read as one, so a bare number booked an unseen service and free text counted toward the lockout (QA run 3). A service turned off in the meantime gets `whatsapp.serviceNoLongerAvailable` plus the current list
    and opens a `WhatsAppConversationState` row (`BusinessId`+`Phone`, 10-minute expiry) remembering
    the bot is waiting on a reply — Twilio webhooks are stateless per-message, so this is the only
    way to connect the "which item?" prompt to the customer's numeric reply that follows.

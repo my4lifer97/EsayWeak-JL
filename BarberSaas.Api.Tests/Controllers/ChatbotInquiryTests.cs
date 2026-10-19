@@ -401,6 +401,50 @@ public class ChatbotInquiryTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task DollarOne_AfterABookingLinkAndInquiry_ReturnsToBooking()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-after-link@example.com", "inquiry-after-link");
+        await EnableInquiry(token);
+        var phone = "+15550110";
+        await PostInboundWithAuth(businessId, phone, "hi");
+        await PostInboundWithAuth(businessId, phone, "1");
+        var link = await (await PostInboundWithAuth(businessId, phone, "1")).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("/w/", link!.Reply);
+        await PostInboundWithAuth(businessId, phone, "$2");
+        await PostInboundWithAuth(businessId, phone, "a question");
+
+        // Used to get no reply and leave the customer in Inquiry mode for 24 h (QA run 3).
+        var resp = await PostInboundWithAuth(businessId, phone, "$1");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("1. Haircut", body!.Reply);
+        await PostInboundWithAuth(businessId, phone, "1");
+        using var db = Db();
+        Assert.Equal(1, await db.ChatbotInquiries.CountAsync(i => i.BusinessId == businessId));
+    }
+
+    [Fact]
+    public async Task InquiryTurnedOffMidConversation_LeftoverRowIsNotReadAsAServiceReply()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-turned-off@example.com", "inquiry-turned-off");
+        await EnableInquiry(token);
+        var phone = "+15550111";
+        await PostInboundWithAuth(businessId, phone, "hi");
+        await PostInboundWithAuth(businessId, phone, "$2");
+        Authorize(Client, token);
+        await Client.PatchAsJsonAsync("/api/admin/settings", new { chatbotInquiryEnabled = false });
+        Client.DefaultRequestHeaders.Authorization = null;
+
+        var resp = await PostInboundWithAuth(businessId, phone, "1");
+
+        // The customer never saw a service list, so "1" shows it instead of issuing a link.
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("1. Haircut", body!.Reply);
+        using var db = Db();
+        Assert.False(await db.WhatsAppBookingTokens.AnyAsync(t => t.BusinessId == businessId && t.Phone == phone));
+    }
+
+    [Fact]
     public void RtlTexts_KeepDollarCommandsLeftToRight()
     {
         foreach (var lang in new[] { "AR", "HE" })

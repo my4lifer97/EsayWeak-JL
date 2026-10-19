@@ -283,6 +283,26 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task FallbackAfterAnAiTurn_DoesNotReadABareNumberAsAServiceChoice()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-11@example.com", "wa-ai-11");
+        var phone = "+15559991011";
+        Factory.OpenAi.PlainTextReply = "How many people are coming?";
+        await PostInbound(businessId, phone, "I want to book for my kids");
+
+        // OpenAI goes down: the AI conversation row must not look like an open service list.
+        Factory.OpenAi.ThrowOnCall = new InvalidOperationException("simulated OpenAI outage");
+        var resp = await PostInbound(businessId, phone, "1");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("1. Haircut", body!.Reply);
+        using var db = Db();
+        Assert.False(await db.WhatsAppBookingTokens.AnyAsync(t => t.BusinessId == businessId && t.Phone == phone));
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+        Assert.Equal(0, state.InvalidAttempts);
+    }
+
+    [Fact]
     public async Task OpenAiThrows_FallsBackToRuleBasedReply()
     {
         var (businessId, _, _) = await SeedBusinessWithService("wa-ai-3@example.com", "wa-ai-3");

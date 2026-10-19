@@ -256,8 +256,10 @@ public class WhatsAppController(
             // Also at the opening Book/Ask gate: left in place, the gate's state row made the
             // booking dispatch read "$1" as a service number and answer "didn't recognize" (QA).
             // And on the service list itself, where the leftover row made "$1" an invalid service
-            // number that counted toward the lockout (QA). A pending booking link keeps its row.
-            if (isLive && !state!.AwaitingBookingCompletion)
+            // number that counted toward the lockout (QA). Also with a booking link pending: that
+            // row used to be kept, so "$1" got silence and a customer who had gone into Inquiry
+            // mode after the link stayed there for 24 h (QA run 3). The link itself still works.
+            if (isLive)
                 await ClearConversationState(business.Id, fromPhone);
             // Falls through to the normal booking dispatch, which starts a fresh prompt for a
             // phone with no (or an expired) conversation state -- exactly what "back to booking"
@@ -349,6 +351,7 @@ public class WhatsAppController(
         state.Language = lang;
         state.InquiryNotified = false;
         state.InvalidAttempts = 0;
+        state.AwaitingBookingCompletion = false;
         state.ExpiresAt = DateTime.UtcNow.Add(InquiryStateLifetime);
         await db.SaveChangesAsync();
     }
@@ -579,6 +582,9 @@ public class WhatsAppController(
         state.Language = lang;
         state.HistoryJson = JsonSerializer.Serialize(history);
         state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        // A list the rule-based fallback showed earlier is no longer what the customer is looking
+        // at, so a later fallback must not read a bare number against it.
+        state.ShownItemIds = null;
         if (confirmCancelId is not null)
             state.ChatbotMode = ConfirmCancelModePrefix + confirmCancelId;
 
@@ -920,15 +926,17 @@ public class WhatsAppController(
     private async Task<string?> TryHandleServiceSelectionReply(string businessId, string slug, string appUrl, string phone, string profileName, string lang, string message, string? confirmationMessage)
     {
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == businessId && s.Phone == phone && s.ExpiresAt > DateTime.UtcNow);
-        if (state is null) return null;
+        // Only a row that actually showed a service list is waiting for a number. An AI
+        // conversation (daily cap reached or OpenAI down), the Book/Ask gate or Inquiry mode
+        // (the owner turned Inquiry off meanwhile) used to be read as one: free text counted
+        // toward the lockout and a bare "2" booked a service the customer never saw (QA run 3).
+        // Returning null starts a fresh list instead.
+        if (state is null || state.ChatbotMode != BookingMode || string.IsNullOrEmpty(state.ShownItemIds)) return null;
 
         var services = await ActiveServices(businessId, lang);
         // The number refers to the list this customer was shown (QA: after the owner turned off
-        // "Kids Cut", replying "2" for Haircut booked Beard Trim). Older rows fall back to the
-        // current list.
-        var shownIds = string.IsNullOrEmpty(state.ShownItemIds)
-            ? services.Select(s => s.Id).ToList()
-            : state.ShownItemIds.Split(',').ToList();
+        // "Kids Cut", replying "2" for Haircut booked Beard Trim).
+        var shownIds = state.ShownItemIds.Split(',').ToList();
         if (!int.TryParse(NormalizeDigits(message.Trim()), out var index) || index < 1 || index > shownIds.Count)
         {
             state.InvalidAttempts++;
