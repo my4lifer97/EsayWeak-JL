@@ -114,6 +114,8 @@ public class AdminController(
 
     // Enum.TryParse alone also takes "5" or "en".
     static bool IsLanguage(string value) => Enum.GetNames<Language>().Contains(value);
+    // Same for photo mode: "99" parsed and was stored as an undefined value.
+    static bool IsPhotoMode(string? value) => value is not null && Enum.GetNames<ItemPhotoMode>().Contains(value);
 
     [HttpPatch("settings")]
     public async Task<IActionResult> UpdateSettings([FromBody] JsonElement body)
@@ -121,8 +123,16 @@ public class AdminController(
         var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
 
-        var req = JsonSerializer.Deserialize<UpdateSettingsRequest>(body.GetRawText(),
-            new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!;
+        // A null/array body or a wrong value type ("abc" for a number) used to be a 500 that
+        // echoed internal type names.
+        if (body.ValueKind != JsonValueKind.Object) return BadRequest(new { error = "Invalid request" });
+        UpdateSettingsRequest req;
+        try
+        {
+            req = JsonSerializer.Deserialize<UpdateSettingsRequest>(body.GetRawText(),
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })!;
+        }
+        catch (JsonException) { return BadRequest(new { error = "Invalid request" }); }
         // A key genuinely absent from the request body must leave that field untouched, not reset
         // it to the DTO's default -- the settings form always sends every key today, but a caller
         // sending a true partial update (e.g. just { "waitlistEnabled": true }) previously wiped
@@ -324,7 +334,7 @@ public class AdminController(
     {
         if (ItemInputError(req) is { } inputError)
             return BadRequest(new { error = inputError });
-        if (!Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
+        if (!IsPhotoMode(req.PhotoMode) || !Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
             return BadRequest(new { error = "Invalid photo mode" });
 
         var item = new Item
@@ -349,7 +359,7 @@ public class AdminController(
     {
         if (ItemInputError(req) is { } inputError)
             return BadRequest(new { error = inputError });
-        if (!Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
+        if (!IsPhotoMode(req.PhotoMode) || !Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
             return BadRequest(new { error = "Invalid photo mode" });
 
         var item = await db.Items.Include(s => s.GalleryPhotos)
@@ -486,6 +496,10 @@ public class AdminController(
     [HttpPost("schedule")]
     public async Task<IActionResult> SaveWorkingHours([FromBody] List<WorkingHoursDto> hours)
     {
+        if (hours.Any(h => h.DayOfWeek is < 0 or > 6)) return BadRequest(new { error = "Invalid day of week" });
+        if (hours.Where(h => h.IsActive).Select(h => TimeRangeError(h.StartTime, h.EndTime)).FirstOrDefault(e => e is not null) is { } hoursError)
+            return BadRequest(new { error = hoursError });
+
         // Captured before assignment so we can report only the days that actually changed --
         // the schedule form always submits all 7 days on every save, mirroring UpdateSettings.
         var oldByDay = await db.WorkingHours.Where(w => w.BusinessId == BusinessId)
@@ -516,6 +530,8 @@ public class AdminController(
     [HttpPost("schedule/breaks")]
     public async Task<IActionResult> AddBreak([FromBody] CreateBreakRequest req)
     {
+        if (req.DayOfWeek is < 0 or > 6) return BadRequest(new { error = "Invalid day of week" });
+        if (TimeRangeError(req.StartTime, req.EndTime) is { } breakError) return BadRequest(new { error = breakError });
         var br = new Break { BusinessId = BusinessId, DayOfWeek = req.DayOfWeek, StartTime = req.StartTime, EndTime = req.EndTime };
         db.Breaks.Add(br);
         await db.SaveChangesAsync();
@@ -600,7 +616,15 @@ public class AdminController(
         if (startTime is null && endTime is null) return null;
         if (string.IsNullOrWhiteSpace(startTime) || string.IsNullOrWhiteSpace(endTime))
             return "Enter both a start and an end time, or block the full day";
-        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime, TimePattern) || !System.Text.RegularExpressions.Regex.IsMatch(endTime, TimePattern))
+        return TimeRangeError(startTime, endTime);
+    }
+
+    // Working hours, breaks and preset days. Availability parses these with TimeSpan.Parse, so one
+    // bad value ("ab", "25:00") used to make every availability request for the business a 500.
+    private static string? TimeRangeError(string? startTime, string? endTime)
+    {
+        if (startTime is null || endTime is null
+            || !System.Text.RegularExpressions.Regex.IsMatch(startTime, TimePattern) || !System.Text.RegularExpressions.Regex.IsMatch(endTime, TimePattern))
             return "Invalid time";
         // "HH:MM" is zero-padded, so ordinal comparison is time order.
         return string.CompareOrdinal(endTime, startTime) <= 0 ? "End time must be after start time" : null;
@@ -647,6 +671,9 @@ public class AdminController(
     {
         if (days.Count != 7 || days.Select(d => d.DayOfWeek).Distinct().Count() != 7 || days.Any(d => d.DayOfWeek is < 0 or > 6))
             throw new ArgumentException("Days must cover all 7 days of the week exactly once");
+        // A closed day's times are never used, so only open days are checked.
+        if (days.Where(d => d.IsActive).Select(d => TimeRangeError(d.StartTime, d.EndTime)).FirstOrDefault(e => e is not null) is { } error)
+            throw new ArgumentException(error);
     }
 
     // Unlike Days there's no fixed count -- zero or many breaks per day, same as the live Break table.
@@ -654,6 +681,8 @@ public class AdminController(
     {
         if (breaks.Any(b => b.DayOfWeek is < 0 or > 6))
             throw new ArgumentException("Break day must be between 0 and 6");
+        if (breaks.Select(b => TimeRangeError(b.StartTime, b.EndTime)).FirstOrDefault(e => e is not null) is { } error)
+            throw new ArgumentException(error);
     }
 
     [HttpPost("schedule/presets")]

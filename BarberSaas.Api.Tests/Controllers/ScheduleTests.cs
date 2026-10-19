@@ -61,6 +61,42 @@ public class ScheduleTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, (await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest("2030-12-25", "10:00", "12:30", null))).StatusCode);
     }
 
+    // QA run 3: "ab", "25:00" and end-before-start all saved, and once applied every availability
+    // request for the business returned 500.
+    [Theory]
+    [InlineData("ab", "cd")]
+    [InlineData("25:00", "26:00")]
+    [InlineData("18:00", "09:00")]
+    public async Task ScheduleTimes_InvalidOrBackwards_AreRejectedEverywhere(string start, string end)
+    {
+        var slug = $"sched-times-{start}-{end}".Replace(":", "");
+        var token = await RegisterAndLoginBusiness($"{slug}@example.com", slug);
+        Authorize(Client, token);
+
+        var hours = Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, d == 1 ? start : "09:00", d == 1 ? end : "18:00", true)).ToList();
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsJsonAsync("/api/admin/schedule", hours)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsJsonAsync("/api/admin/schedule/breaks", new CreateBreakRequest(1, start, end))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Bad", PresetDays(1, start, end)))).StatusCode);
+        var badBreak = new SaveSchedulePresetRequest("Bad break", PresetDays(1, "09:00", "18:00"), [new SchedulePresetBreakDto(1, start, end)]);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Client.PostAsJsonAsync("/api/admin/schedule/presets", badBreak)).StatusCode);
+
+        using var db = Db();
+        var businessId = db.Businesses.Single(b => b.Slug == slug).Id;
+        Assert.DoesNotContain(db.WorkingHours.Where(w => w.BusinessId == businessId), w => w.StartTime == start);
+        Assert.Empty(db.Breaks.Where(b => b.BusinessId == businessId));
+    }
+
+    [Fact]
+    public async Task PresetDays_ClosedDayTimesAreNotChecked()
+    {
+        var token = await RegisterAndLoginBusiness("schedule-closedday@example.com", "sched-closed-day");
+        Authorize(Client, token);
+
+        var days = PresetDays(1, "09:00", "18:00").Select(d => d.IsActive ? d : d with { StartTime = "", EndTime = "" }).ToList();
+        var resp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Closed days blank", days));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
     // QA run 2: a range that had already ended was treated as starting now and replaced the live hours.
     [Fact]
     public async Task SchedulePreset_RangeAlreadyOver_IsRejectedAndLiveHoursUnchanged()

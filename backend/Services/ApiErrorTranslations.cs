@@ -19,6 +19,7 @@ public static class ApiErrorTranslations
         ["Too many requests. Try again later"] = ("طلبات كثيرة جدًا. حاول لاحقًا", "יותר מדי בקשות. נסו שוב מאוחר יותר"),
         ["Invalid date"] = ("تاريخ غير صالح", "תאריך לא תקין"),
         ["Invalid date. Use the format YYYY-MM-DD."] = ("تاريخ غير صالح. استخدم الصيغة YYYY-MM-DD.", "תאריך לא תקין. יש להשתמש בפורמט YYYY-MM-DD."),
+        ["Invalid request"] = ("طلب غير صالح", "בקשה לא תקינה"),
         ["Invalid time"] = ("وقت غير صالح", "שעה לא תקינה"),
         ["Invalid start time"] = ("وقت البدء غير صالح", "שעת התחלה לא תקינה"),
         ["Invalid day of week"] = ("يوم غير صالح", "יום לא תקין"),

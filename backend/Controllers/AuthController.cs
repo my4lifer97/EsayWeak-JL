@@ -39,6 +39,11 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (await db.Businesses.AnyAsync(b => b.Slug == req.Slug))
             return BadRequest(new { error = "URL already taken" });
 
+        // Checked before anything is sent: an unknown id used to fail the save with a 500 after
+        // the verification email had already gone out.
+        if (req.BusinessTypeId is not null && !await db.BusinessTypeDefinitions.AnyAsync(t => t.Id == req.BusinessTypeId && t.IsActive))
+            return BadRequest(new { error = "Invalid business type" });
+
         var business = new Business
         {
             Name = req.Name,

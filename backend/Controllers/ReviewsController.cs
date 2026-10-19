@@ -59,7 +59,16 @@ public class ReviewsController(AppDbContext db, ReviewService reviews) : Control
             Comment = comment,
         };
         db.Reviews.Add(review);
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // A double-tap passes the exists-check above twice; the unique index on
+            // (CustomerAccountId, BusinessId) stops the second insert.
+            return Conflict(new { error = "You've already reviewed this business" });
+        }
         await reviews.RecomputeAggregate(business.Id);
 
         this.SetActivityDetail($"Reviewed {business.Name}: {req.Rating}★");

@@ -97,4 +97,47 @@ public class InputValidationTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
+
+    // QA run 3: these were 500s (OWN-2/3/4).
+    [Theory]
+    [InlineData("{\"maxBookingsPerDay\":\"abc\"}")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    public async Task Settings_MalformedBody_Returns400(string json)
+    {
+        var (token, _) = await SetUpBusiness($"input-json-{Guid.NewGuid():N}@example.com", $"input-json-{Guid.NewGuid():N}"[..20]);
+        Authorize(Client, token);
+
+        var resp = await Client.PatchAsync("/api/admin/settings", new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal("Invalid request", (await resp.Content.ReadFromJsonAsync<ErrorResponse>())!.Error);
+    }
+
+    [Fact]
+    public async Task Register_UnknownBusinessType_Returns400AndCreatesNothing()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "input-type@example.com", "password123", "input-type-shop", "nonexistent"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        using var db = Db();
+        Assert.False(db.Businesses.Any(b => b.Slug == "input-type-shop"));
+        Assert.False(db.BusinessEmailOtps.Any(c => c.Email == "input-type@example.com"));
+    }
+
+    [Theory]
+    [InlineData("99")]
+    [InlineData("1")]
+    [InlineData("gallery")]
+    public async Task Item_PhotoModeMustBeAName(string photoMode)
+    {
+        var (token, itemId) = await SetUpBusiness($"input-photo-{Guid.NewGuid():N}@example.com", $"input-photo-{Guid.NewGuid():N}"[..20]);
+        Authorize(Client, token);
+
+        var create = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m, photoMode));
+        var edit = await Client.PatchAsJsonAsync($"/api/admin/items/{itemId}", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m, photoMode));
+
+        Assert.Equal(HttpStatusCode.BadRequest, create.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, edit.StatusCode);
+    }
 }
