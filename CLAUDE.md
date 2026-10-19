@@ -172,7 +172,7 @@ barber-saas/
         │   ├── BackButton.tsx           # Browser-history back button, used on all customer pages
         │   ├── ProtectedRoute.tsx       # Guards /admin/* routes (business owner auth)
         │   ├── PlatformAdminProtectedRoute.tsx  # Guards /platform-admin/* routes
-        │   └── CustomerProtectedRoute.tsx  # Guards customer routes; renders an inline "message us on WhatsApp" notice when unauthenticated (no login page to redirect to)
+        │   └── CustomerProtectedRoute.tsx  # Guards customer routes; renders an inline "Please sign in to continue" notice with a link to `/login?next=<path + query>` when unauthenticated
         ├── lib/
         │   ├── api.ts          # Axios instance — baseURL /api, JWT request interceptor, 401 auto-logout
         │   ├── auth.tsx        # AuthContext + AuthProvider + useAuth hook (business owner/admin auth)
@@ -277,7 +277,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `POST /api/{slug}/waitlist/{appointmentId}` — join the waitlist for a currently-CONFIRMED appointment; 400 if the business hasn't turned `WaitlistEnabled` on; idempotent (a repeat join for the same customer+appointment is a no-op 200, not a duplicate row)
 
 **Customer account (customer JWT required, `CustomerOnly` policy)**
-- `GET /api/customer/appointments?filter=` — this customer's appointment history across all businesses, matched by phone
+- `GET /api/customer/appointments?filter=` — this customer's appointment history across all businesses (rows whose `Customer.CustomerAccountId` is this account); `upcoming`/`today` soonest first, others newest first
 - `POST /api/customer/appointments/{id}/cancel`, `PATCH /api/customer/appointments/{id}/reschedule`, `PATCH /api/customer/appointments/{id}/notes`
 - `PATCH /api/customer/appointments/{id}/photo` — change a CONFIRMED appointment's reference photo (only for items with `photoMode != None`); same `galleryPhotoId`/`customerPhotoUrl` shape as booking
 
@@ -327,9 +327,9 @@ cron-job.org's dashboard (not tracked in this repo).
 - `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle + notification contacts, and the `ChatbotInquiriesInbox` — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
 - `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), booking limits, waitlist + cancellation-approval toggles, read-only assigned WhatsApp number
 - `/browse` — public discovery directory (`BrowseBusinessesPage`): category chips (`GET /api/business-types`), city + sort filters, a default top-rated list (no "type first" gate), "Load more" paging, rich cards linking to `/:slug`; the authenticated-only "Businesses You Follow" list stays below
-- `/:slug` — **public** business storefront (`BusinessPage`) — viewable logged-out (stars, location, reviews); the Follow button is disabled with a WhatsApp-only tooltip for anonymous visitors
-- `/:slug/book` — booking wizard (item → date → time → details) — **requires a customer session**; `?serviceId=` alone (from a WhatsApp booking link) skips item selection straight to date selection, `?serviceId=&date=&time=` (from a waitlist notification) skips straight to the confirm step if the slot's still open
-- `/:slug/w/:token` — WhatsApp booking-link landing point (`WhatsAppLandingPage`); redeems the token itself and establishes the session, then redirects into `/:slug/book?serviceId=`; public, not guarded
+- `/:slug` — **public** business storefront (`BusinessPage`) — viewable logged-out (stars, location, reviews); for anonymous visitors the Follow button goes to `/login?next=/:slug`; an unknown slug shows the 404 page
+- `/:slug/book` — booking wizard (item → date → time → details) — **requires a customer session**; `?itemId=` alone (from a WhatsApp booking link) skips item selection straight to date selection, `?itemId=&date=&time=` (from a waitlist notification) skips straight to the confirm step if the slot's still open
+- `/:slug/w/:token` — WhatsApp booking-link landing point (`WhatsAppLandingPage`); redeems the token itself and establishes the session, then redirects into `/:slug/book?itemId=`; public, not guarded
 - `/:slug/appointments/:id?token=<cancelToken>` — view/cancel/reschedule appointment — public, token-secured, no login (opened directly from a WhatsApp/SMS reminder)
 - `/platform-admin/login` — separate login, its own auth context (`lib/platformAdminAuth.tsx`), not the business/customer one
 - `/platform-admin`, `/platform-admin/businesses/:id`, `/platform-admin/customers/:id`, `/platform-admin/requests` — dashboard, entity detail (activity log + impersonate), business-owner-request review queue; guarded by `PlatformAdminProtectedRoute`
@@ -347,9 +347,9 @@ JWT Bearer token stored in `localStorage`. `api.ts` adds it automatically via re
 - **Impersonation** ("Log in as") stores the target's token in the normal owner/customer slots plus an `impersonation` marker; `lib/impersonation.ts` owns it. Platform-admin logout or expiry calls `endImpersonation()` (removes that login, full reload), and an owner/customer logout or 401 calls `clearImpersonationMarker(type)` so the yellow banner never outlives the impersonated session.
 - **Login throttling** (`Services/LoginThrottle.cs`, in memory): owner and platform-admin password logins return 429 + `Retry-After` after too many failures in 15 min: 5 per account per IP (so a stranger can't lock the real owner out), 20 per account across IPs, 50 per IP. A success clears that account+IP count. The client IP comes from `app.UseForwardedHeaders()` reading **`X-Real-IP`**. Railway overwrites it, so clients can't spoof it. Don't use `X-Forwarded-For`'s last entry: on Railway it's `<client>, <edge>`, and that last entry is the edge. Before that, `RemoteIpAddress`, and so every activity-log IP, was the proxy's.
 
-**Customer routes**: `/:slug/book` and `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor to a guarded route sees an inline "message us on WhatsApp" notice **plus** a link into `/login?next=<path>` (phone+OTP, see [Customer login via phone+OTP](#customer-login-via-phoneotp)), not a hard redirect, since there's no single canonical sign-in page the way business/platform-admin auth has. As of the Discovery phase, **`/:slug` and `/browse` are public** (read-only storefront + directory) — moved out of the guard so a logged-out visitor who finds a business can view it; booking still needs a customer session (from either login path). `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are also outside the guard. `CustomerAccountNav` (shown on customer pages) links to `/login` when logged out, same as the guard's fallback.
+**Customer routes**: `/:slug/book` and `/account/bookings` are wrapped in `CustomerProtectedRoute` (`frontend/src/components/CustomerProtectedRoute.tsx`) — an anonymous visitor to a guarded route sees an inline "Please sign in to continue" notice with a link into `/login?next=<path + query>` (the query keeps a waitlist link's slot) (phone+OTP, see [Customer login via phone+OTP](#customer-login-via-phoneotp)), not a hard redirect, since there's no single canonical sign-in page the way business/platform-admin auth has. As of the Discovery phase, **`/:slug` and `/browse` are public** (read-only storefront + directory) — moved out of the guard so a logged-out visitor who finds a business can view it; booking still needs a customer session (from either login path). `/:slug/appointments/:id` (the magic-link view) and `/:slug/w/:token` (the WhatsApp landing point, which establishes the session itself) are also outside the guard. `CustomerAccountNav` (shown on customer pages) links to `/login` when logged out, same as the guard's fallback.
 
-**Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBusinessesPage` (`/browse`) fetches `GET /api/businesses/followed` itself and renders a "Businesses You Follow" list below the directory results (authenticated only). A customer is auto-followed to a business the moment they book an appointment (`BookingController.BookAppointment`, which requires a customer session), not just via an explicit Follow click. The Follow button on `/:slug` and on browse cards is rendered **disabled** (with a WhatsApp-only tooltip) for anonymous visitors, since there's no sign-in page to send them to.
+**Following** has no dedicated page/route (`/account/following` was removed) — `BrowseBusinessesPage` (`/browse`) fetches `GET /api/businesses/followed` itself and renders a "Businesses You Follow" list below the directory results (authenticated only). A customer is auto-followed to a business the moment they book an appointment (`BookingController.BookAppointment`, which requires a customer session), not just via an explicit Follow click. The Follow button on `/:slug` and on browse cards sends an anonymous visitor to `/login?next=...`.
 
 ### i18n (Translations)
 - **Frontend**: `frontend/src/lib/i18n.ts` — typed `const` object with EN/AR/HE strings (every new key must be added to all three).  
@@ -1084,7 +1084,7 @@ same kind of `CustomerAccount`-backed JWT. Flow (`WhatsAppController` + `Custome
    field (the sender's WhatsApp display name) into `Name`/`FamilyName` on the first space, falling
    back to a generic name if WhatsApp didn't supply one — and returns a normal customer JWT via
    `CustomerJwtService.Generate` (same call the phone+OTP verify action below uses) plus
-   `{ businessSlug, itemId }`. The frontend then redirects into `/:slug/book?serviceId=`, which
+   `{ businessSlug, itemId }`. The frontend then redirects into `/:slug/book?itemId=`, which
    skips straight to date selection (`BookingWizard`'s deep-link `useEffect`) — no sign-up/sign-in
    step, no item list to pick from again.
 

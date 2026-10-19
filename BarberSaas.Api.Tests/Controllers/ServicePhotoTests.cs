@@ -454,4 +454,18 @@ public class ServicePhotoTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.BadRequest, changeResp.StatusCode);
     }
+
+    // QA run 3 PUB-14: a prefix check let "../" paths through.
+    [Fact]
+    public async Task BookAppointment_CustomerUploadMode_RejectsAPathTraversalUrl()
+    {
+        var (businessToken, slug) = await RegisterAndLoginBusiness("book-upload-dots@example.com", "book-upload-dots-shop");
+        var service = await CreateService(businessToken, "CustomerUpload");
+        var slot = await FirstAvailableSlot(slug, service.Id);
+
+        var resp = await BookAsCustomerAsync(slug,
+            new BookAppointmentRequest(service.Id, TestDate, slot, "Customer", "+15559990007", null, CustomerPhotoUrl: "/api/uploads/appointment-photos/../../../secret"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 }

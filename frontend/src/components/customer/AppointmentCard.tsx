@@ -7,6 +7,7 @@ import { ar, he, enUS } from 'date-fns/locale'
 import { customerApi } from '../../lib/customerApi'
 import { t, itemName } from '../../lib/i18n'
 import { apiError } from '../../lib/apiError'
+import { localToday } from '../../lib/localDate'
 import { mediaUrl } from '../../lib/media'
 import InlineConfirm from './InlineConfirm'
 
@@ -23,6 +24,7 @@ export type Appointment = {
 }
 
 type Slot = { start: string; end: string }
+type SlotsResponse = { slots: Slot[]; isBlocked?: boolean; blockedReason?: string | null }
 
 const STATUS_COLORS: Record<string, string> = {
   CONFIRMED: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-400 dark:border-blue-800/50',
@@ -52,15 +54,16 @@ export default function AppointmentCard({
   const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [actionError, setActionError] = useState('')
 
-  const { data: slots = [], isFetching: loadingSlots } = useQuery<Slot[]>({
+  const { data: availability, isFetching: loadingSlots, isError: slotsFailed, refetch: refetchSlots } = useQuery<SlotsResponse>({
     queryKey: ['reschedule-slots', appt.id, rescheduleDate],
     enabled: expandedReschedule && !!rescheduleDate,
     queryFn: () =>
       customerApi
         // Excluding this appointment (proved by its token), so it doesn't block its own neighbouring slots.
         .get(`/${appt.businessSlug}/availability?date=${rescheduleDate}&itemId=${appt.item.id}&excludeAppointmentId=${appt.id}&token=${appt.cancelToken}`)
-        .then((r) => r.data.slots),
+        .then((r) => r.data),
   })
+  const slots = availability?.slots ?? []
 
   function errorText(err: unknown) {
     return (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? t(lang, 'somethingWentWrong')
@@ -243,15 +246,24 @@ export default function AppointmentCard({
           <p className="text-muted text-sm">{t(lang, 'selectNewTime')}</p>
           <input
             type="date" value={rescheduleDate}
-            min={new Date().toISOString().slice(0, 10)}
+            min={localToday()}
             onChange={(e) => setRescheduleDate(e.target.value)}
             className="w-full bg-cream border border-line rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral"
           />
           {rescheduleDate && (
             loadingSlots ? (
               <div className="text-center text-muted text-sm py-3">{t(lang, 'loadingTimes')}</div>
+            ) : slotsFailed ? (
+              <div className="text-center text-muted text-sm py-3">
+                <p className="mb-2">{t(lang, 'timesLoadFailed')}</p>
+                <button type="button" onClick={() => refetchSlots()} className="text-coral-dark hover:text-coral font-medium">{t(lang, 'retry')}</button>
+              </div>
             ) : slots.length === 0 ? (
-              <div className="text-center text-muted text-sm py-3">{t(lang, 'noTimes')}</div>
+              // Like the booking wizard: a day the owner closed says so, with their reason (QA run 3).
+              <div className="text-center text-muted text-sm py-3">
+                <p>{availability?.isBlocked ? t(lang, 'closedByOwner') : t(lang, 'noTimes')}</p>
+                {availability?.isBlocked && availability.blockedReason && <p className="text-xs mt-1">{availability.blockedReason}</p>}
+              </div>
             ) : (
               <div className="grid grid-cols-4 gap-2">
                 {slots.map((s) => (

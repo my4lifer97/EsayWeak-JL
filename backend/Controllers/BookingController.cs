@@ -121,7 +121,7 @@ public class BookingController(
         }
         else if (item.PhotoMode == ItemPhotoMode.CustomerUpload)
         {
-            if (string.IsNullOrWhiteSpace(req.CustomerPhotoUrl) || !req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+            if (string.IsNullOrWhiteSpace(req.CustomerPhotoUrl) || !ImageUpload.IsCustomerPhotoUrl(req.CustomerPhotoUrl))
                 return BadRequest(new { error = "Please upload a photo for this service." });
             photoUrl = req.CustomerPhotoUrl;
         }
@@ -135,7 +135,7 @@ public class BookingController(
             }
             else if (!string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
             {
-                if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+                if (!ImageUpload.IsCustomerPhotoUrl(req.CustomerPhotoUrl))
                     return BadRequest(new { error = "Invalid photo reference." });
                 photoUrl = req.CustomerPhotoUrl;
             }

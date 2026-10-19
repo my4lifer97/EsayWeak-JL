@@ -1005,7 +1005,7 @@ public class AdminController(
         }
         else if ((item.PhotoMode == ItemPhotoMode.CustomerUpload || item.PhotoMode == ItemPhotoMode.Both) && !string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
         {
-            if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+            if (!ImageUpload.IsCustomerPhotoUrl(req.CustomerPhotoUrl))
                 return BadRequest(new { error = "Invalid photo reference." });
             photoUrl = req.CustomerPhotoUrl;
         }

@@ -11,6 +11,8 @@ import ThemeToggle from '../../components/ThemeToggle'
 import AppointmentCard, { type Appointment } from '../../components/customer/AppointmentCard'
 import BusinessReviews from '../../components/customer/BusinessReviews'
 import StarRating from '../../components/customer/StarRating'
+import NotFoundPage from '../NotFoundPage'
+import RouteErrorPage from '../../components/RouteErrorPage'
 
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
@@ -32,7 +34,7 @@ export default function BusinessPage() {
   const [followLoading, setFollowLoading] = useState(false)
   const [showAppointments, setShowAppointments] = useState(false)
 
-  const { data: business, isLoading } = useQuery<BusinessInfo>({
+  const { data: business, isLoading, error: businessError } = useQuery<BusinessInfo>({
     queryKey: ['business', slug],
     queryFn: () => customerApi.get(`/${slug}/info`).then((r) => r.data),
   })
@@ -71,13 +73,8 @@ export default function BusinessPage() {
       </div>
     )
   }
-  if (!business) {
-    return (
-      <div className="min-h-screen bg-cream flex items-center justify-center">
-        <div className="text-muted">{t(lang, 'businessNotFound')}</div>
-      </div>
-    )
-  }
+  // An unknown slug gets the real 404 page; any other failure (500, offline) isn't "not found".
+  if (!business) return (businessError as { response?: { status?: number } } | null)?.response?.status === 404 ? <NotFoundPage /> : <RouteErrorPage />
 
   return (
     <div className="min-h-screen bg-cream text-ink" dir={dir}>
@@ -108,7 +105,7 @@ export default function BusinessPage() {
           {(business.city || business.addressLine || business.mapUrl) && (
             <div className="text-muted text-sm mt-3 space-y-0.5">
               {(business.city || business.addressLine) && (
-                <div>📍 {[business.addressLine, business.city].filter(Boolean).join(', ')}</div>
+                <div>📍 <bdi>{[business.addressLine, business.city].filter(Boolean).join(', ')}</bdi></div>
               )}
               {business.mapUrl && (
                 <a href={business.mapUrl} target="_blank" rel="noopener noreferrer"

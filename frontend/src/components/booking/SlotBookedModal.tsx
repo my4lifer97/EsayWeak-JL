@@ -1,4 +1,5 @@
 import { t } from '../../lib/i18n'
+import { useEscapeKey } from '../useEscapeKey'
 
 export default function SlotBookedModal({
   lang, dir, waitlistEnabled, joining, joined, error, onJoinWaitlist, onClose,
@@ -12,6 +13,7 @@ export default function SlotBookedModal({
   onJoinWaitlist: () => void
   onClose: () => void
 }) {
+  useEscapeKey(onClose)
   return (
     <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" dir={dir}>
       <div onClick={(e) => e.stopPropagation()} className="bg-surface rounded-2xl p-6 max-w-sm w-full border border-line">

@@ -17,6 +17,11 @@ public static class ImageUpload
     };
 
     // Returns the lowercase extension to save the file under, or null if it isn't a real JPG/PNG/WEBP.
+    // Exactly what POST /{slug}/appointments/photo returns. A prefix check let
+    // "/api/uploads/appointment-photos/../../secret" through (QA run 3).
+    public static bool IsCustomerPhotoUrl(string? url) =>
+        url is not null && System.Text.RegularExpressions.Regex.IsMatch(url, @"^/api/uploads/appointment-photos/[0-9a-f]{32}\.(jpg|jpeg|png|webp)$");
+
     public static async Task<string?> ValidateAsync(IFormFile file)
     {
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();

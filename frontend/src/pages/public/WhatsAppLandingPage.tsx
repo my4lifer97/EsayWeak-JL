@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
 
@@ -13,7 +13,7 @@ function browserLanguage(): string | null {
 }
 
 export default function WhatsAppLandingPage() {
-  const { token } = useParams<{ token: string }>()
+  const { slug, token } = useParams<{ slug: string; token: string }>()
   const { loginWithWhatsAppToken, language: lang, setLang } = useCustomerAuth()
   const navigate = useNavigate()
   const [error, setError] = useState(false)
@@ -37,7 +37,14 @@ export default function WhatsAppLandingPage() {
     <div className="min-h-screen bg-cream text-ink flex items-center justify-center px-4" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
       <div className="text-center max-w-sm">
         {error ? (
-          <p className="text-muted">{t(lang, 'whatsappLinkExpired')}</p>
+          <>
+            <p className="text-muted mb-4">{t(lang, 'whatsappLinkExpired')}</p>
+            {/* Not a dead end (QA run 3): the business page, or sign in with the phone instead. */}
+            <div className="flex flex-wrap justify-center gap-3">
+              {slug && <Link to={`/${slug}`} className="bg-coral hover:bg-coral-dark text-white font-semibold px-5 py-2.5 rounded-xl transition-colors">{t(lang, 'viewBusinessPage')}</Link>}
+              <Link to={slug ? `/login?next=${encodeURIComponent(`/${slug}/book`)}` : '/login'} className="border border-line px-5 py-2.5 rounded-xl text-ink">{t(lang, 'navLogin')}</Link>
+            </div>
+          </>
         ) : (
           <p className="text-muted">{t(lang, 'loading')}</p>
         )}

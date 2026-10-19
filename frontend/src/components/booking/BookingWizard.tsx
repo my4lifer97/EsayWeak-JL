@@ -13,6 +13,7 @@ import ThemeToggle from '../ThemeToggle'
 import SlotBookedModal from './SlotBookedModal'
 import BookingSuccessModal from './BookingSuccessModal'
 import AppointmentCard, { type Appointment } from '../customer/AppointmentCard'
+import { useEscapeKey } from '../useEscapeKey'
 
 type GalleryPhoto = { id: string; url: string }
 type Item = {
@@ -141,6 +142,8 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     } finally { setJoiningWaitlist(false) }
   }
 
+  useEscapeKey(() => setMyOpenAppointment(null), !!myOpenAppointment)
+
   // Deep-link prefill from a WhatsApp notification or booking link (?itemId=&date=&time=):
   // jump straight past whichever steps are already decided instead of making the customer re-pick
   // from scratch.
@@ -242,9 +245,10 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           ) : (
             <BackButton lang={lang} />
           )}
-          <div className="flex gap-1 mx-auto">
+          {/* min-w-0 + shrinking bars: at 360 px in English the row was 5 px too wide (QA run 3). */}
+          <div className="flex gap-1 mx-auto min-w-0">
             {[1, 2, 3, 4].map((s) => (
-              <div key={s} className={`h-1.5 w-5 sm:w-8 rounded-full transition-colors ${s <= step ? 'bg-coral' : 'bg-line'}`} />
+              <div key={s} className={`h-1.5 w-3 min-[400px]:w-5 sm:w-8 shrink rounded-full transition-colors ${s <= step ? 'bg-coral' : 'bg-line'}`} />
             ))}
           </div>
           <div className="flex items-center gap-2">
@@ -309,7 +313,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
         {step === 3 && (
           <div>
             <p className="text-muted mb-1">{t(lang, 'selectTime')}</p>
-            <p className="text-sm text-muted mb-5">{date}</p>
+            <p className="text-sm text-muted mb-5">{date && format(new Date(`${date}T00:00:00`), 'EEEE, MMM d', { locale: dateLocale })}</p>
             {slotTakenNotice && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800/50 dark:text-amber-300 text-sm rounded-lg px-4 py-3 mb-4">{t(lang, 'slotJustTaken')}</div>
             )}
@@ -425,7 +429,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
               {item && slot && (
                 <div className="bg-surface border border-line rounded-xl p-4 text-sm space-y-1">
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'service')}</span><span className="text-ink">{itemName(item, lang)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date && format(new Date(`${date}T00:00:00`), 'EEE, MMM d, yyyy', { locale: dateLocale })}</span></div>
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'time')}</span><bdi dir="ltr" className="text-ink">{slot.start} – {slot.end}</bdi></div>
                 </div>
               )}

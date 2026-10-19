@@ -23,7 +23,7 @@ export default function StarRating({ value, count, onChange, size = 'md', lang =
 
   return (
     <span className={`inline-flex items-center gap-1 ${SIZE[size]}`}>
-      <span className="inline-flex" aria-label={t(lang, 'starsOutOf5').replace('{n}', String(value))}>
+      <span className="inline-flex" aria-label={t(lang, 'starsOutOf5').replace('{n}', String(Math.round(value * 10) / 10))}>
         {[1, 2, 3, 4, 5].map((n) => {
           const filled = n <= (editable ? value : rounded)
           const star = (

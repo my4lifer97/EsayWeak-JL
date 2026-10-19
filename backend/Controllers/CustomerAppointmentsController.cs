@@ -40,7 +40,12 @@ public class CustomerAppointmentsController(
             _ => query
         };
 
-        var appointments = await query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime).ToListAsync();
+        // Upcoming and today soonest first, like the owner's lists; past and all newest first.
+        // Upcoming was farthest-first (QA run 3).
+        var ordered = filter is "upcoming" or "today"
+            ? query.OrderBy(a => a.Date).ThenBy(a => a.StartTime)
+            : query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime);
+        var appointments = await ordered.ToListAsync();
 
         var dtos = appointments.Select(a => new CustomerAppointmentDto(
             a.Id, a.Business.Slug, a.Business.Name, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
@@ -146,7 +151,7 @@ public class CustomerAppointmentsController(
         }
         else if (appt.Item.PhotoMode == ItemPhotoMode.CustomerUpload)
         {
-            if (string.IsNullOrWhiteSpace(req.CustomerPhotoUrl) || !req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+            if (string.IsNullOrWhiteSpace(req.CustomerPhotoUrl) || !ImageUpload.IsCustomerPhotoUrl(req.CustomerPhotoUrl))
                 return BadRequest(new { error = "Please upload a photo for this service." });
             appt.PhotoUrl = req.CustomerPhotoUrl;
         }
@@ -160,7 +165,7 @@ public class CustomerAppointmentsController(
             }
             else if (!string.IsNullOrWhiteSpace(req.CustomerPhotoUrl))
             {
-                if (!req.CustomerPhotoUrl.StartsWith("/api/uploads/appointment-photos/"))
+                if (!ImageUpload.IsCustomerPhotoUrl(req.CustomerPhotoUrl))
                     return BadRequest(new { error = "Invalid photo reference." });
                 appt.PhotoUrl = req.CustomerPhotoUrl;
             }

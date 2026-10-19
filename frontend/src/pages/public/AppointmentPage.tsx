@@ -5,6 +5,9 @@ import { api } from '../../lib/api'
 import { t, itemName } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
 import InlineConfirm from '../../components/customer/InlineConfirm'
+import { localToday } from '../../lib/localDate'
+import { format, parseISO } from 'date-fns'
+import { dateLocale } from '../../lib/dateLocale'
 import { useCustomerAuth } from '../../lib/customerAuth'
 
 type AppointmentDetail = {
@@ -15,6 +18,7 @@ type AppointmentDetail = {
 }
 
 type Slot = { start: string; end: string }
+type SlotsResponse = { slots: Slot[]; isBlocked?: boolean; blockedReason?: string | null }
 
 export default function AppointmentPage() {
   const { slug, id } = useParams<{ slug: string; id: string }>()
@@ -36,13 +40,14 @@ export default function AppointmentPage() {
     queryFn: () => api.get(`/${slug}/appointments/${id}?token=${token}`).then((r) => r.data),
   })
 
-  const { data: slots = [], isFetching: loadingSlots } = useQuery<Slot[]>({
+  const { data: availability, isFetching: loadingSlots, isError: slotsFailed, refetch: refetchSlots } = useQuery<SlotsResponse>({
     queryKey: ['reschedule-slots', id, rescheduleDate],
     enabled: showReschedule && !!rescheduleDate,
     queryFn: () =>
       // Excluding this appointment, so it doesn't block its own neighbouring slots.
-      api.get(`/${slug}/availability?date=${rescheduleDate}&itemId=${appt!.item.id}&excludeAppointmentId=${id}&token=${token}`).then((r) => r.data.slots),
+      api.get(`/${slug}/availability?date=${rescheduleDate}&itemId=${appt!.item.id}&excludeAppointmentId=${id}&token=${token}`).then((r) => r.data),
   })
+  const slots = availability?.slots ?? []
 
   const fallbackDir = customerLang === 'AR' || customerLang === 'HE' ? 'rtl' : 'ltr'
   if (isLoading) return <div className="min-h-screen bg-cream flex items-center justify-center" dir={fallbackDir}><div className="text-muted">{t(customerLang, 'loading')}</div></div>
@@ -114,7 +119,7 @@ export default function AppointmentPage() {
 
   const rows = [
     { label: t(lang, 'service'), value: itemName(appt.item, lang) },
-    { label: t(lang, 'date'), value: appt.date.slice(0, 10) },
+    { label: t(lang, 'date'), value: format(parseISO(appt.date.slice(0, 10)), 'EEE, MMM d, yyyy', { locale: dateLocale(lang) }) },
     { label: t(lang, 'time'), value: `${appt.startTime} – ${appt.endTime}` },
     { label: t(lang, 'name'), value: appt.customer.name },
   ]
@@ -135,7 +140,7 @@ export default function AppointmentPage() {
           ))}
           {appt.notes && (
             <div className="text-sm pt-2 border-t border-line">
-              <span className="text-muted block mb-1">{t(lang, 'notes')}</span>
+              <span className="text-muted block mb-1">{t(lang, 'notesLabel')}</span>
               <span className="text-ink">{appt.notes}</span>
             </div>
           )}
@@ -175,15 +180,24 @@ export default function AppointmentPage() {
             <p className="text-muted text-sm">{t(lang, 'selectNewTime')}</p>
             <input
               type="date" value={rescheduleDate}
-              min={new Date().toISOString().slice(0, 10)}
+              min={localToday()}
               onChange={(e) => { setRescheduleDate(e.target.value); setRescheduleError('') }}
               className="w-full bg-cream border border-line rounded-xl px-3 py-2 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-coral"
             />
             {rescheduleDate && (
               loadingSlots ? (
                 <div className="text-center text-muted text-sm py-3">{t(lang, 'loadingTimes')}</div>
+              ) : slotsFailed ? (
+                <div className="text-center text-muted text-sm py-3">
+                  <p className="mb-2">{t(lang, 'timesLoadFailed')}</p>
+                  <button type="button" onClick={() => refetchSlots()} className="text-coral-dark hover:text-coral font-medium">{t(lang, 'retry')}</button>
+                </div>
               ) : slots.length === 0 ? (
-                <div className="text-center text-muted text-sm py-3">{t(lang, 'noTimes')}</div>
+                // Like the booking wizard: a day the owner closed says so, with their reason (QA run 3).
+                <div className="text-center text-muted text-sm py-3">
+                  <p>{availability?.isBlocked ? t(lang, 'closedByOwner') : t(lang, 'noTimes')}</p>
+                  {availability?.isBlocked && availability.blockedReason && <p className="text-xs mt-1">{availability.blockedReason}</p>}
+                </div>
               ) : (
                 <div className="grid grid-cols-4 gap-2">
                   {slots.map((s) => (
