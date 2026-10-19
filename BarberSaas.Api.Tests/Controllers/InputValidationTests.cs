@@ -186,4 +186,28 @@ public class InputValidationTests : IntegrationTestBase
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
+
+    // QA run 3 PUB-21: a reschedule got around "1 booking per day".
+    [Fact]
+    public async Task Reschedule_IntoADayAtTheLimit_IsRefused()
+    {
+        var (token, itemId) = await SetUpBusiness("input-limit-move@example.com", "input-limit-move");
+        Authorize(Client, token);
+        await Client.PatchAsJsonAsync("/api/admin/settings", new { maxBookingsPerDay = 1 });
+        Client.DefaultRequestHeaders.Authorization = null;
+        var day1 = NextWeekday(2);
+        var day2 = NextWeekday(DateTime.Parse(day1).Subtract(DateTime.Now.Date).Days + 1);
+
+        await BookAsCustomerAsync("input-limit-move", new BookAppointmentRequest(itemId, day1, "09:00", "Dana", "+15550001101", null));
+        var second = await (await BookAsCustomerAsync("input-limit-move", new BookAppointmentRequest(itemId, day2, "09:00", "Dana", "+15550001101", null)))
+            .Content.ReadFromJsonAsync<BookAppointmentResponse>();
+
+        var move = await Client.PatchAsJsonAsync($"/api/input-limit-move/appointments/{second!.AppointmentId}?token={second.CancelToken}",
+            new BarberSaas.Api.Controllers.RescheduleRequest(day1, "11:00"));
+        var sameDay = await Client.PatchAsJsonAsync($"/api/input-limit-move/appointments/{second.AppointmentId}?token={second.CancelToken}",
+            new BarberSaas.Api.Controllers.RescheduleRequest(day2, "11:00"));
+
+        Assert.Equal(HttpStatusCode.Conflict, move.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, sameDay.StatusCode); // moving within its own day doesn't count against itself
+    }
 }

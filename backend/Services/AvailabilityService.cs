@@ -250,6 +250,30 @@ public class AvailabilityService(AppDbContext db)
         }
     }
 
+    // Per-customer limits (Business.MaxBookingsPerDay/Week), matched by phone: CONFIRMED bookings
+    // with this business on the requested day and its Sun-Sat week. A reschedule passes the row it
+    // moves, which doesn't count against itself. Null when the booking is within the limits.
+    public async Task<string?> BookingLimitError(Business business, string phone, DateTime requestedDate, string? excludeAppointmentId = null)
+    {
+        if (business.MaxBookingsPerDay is null && business.MaxBookingsPerWeek is null) return null;
+        var existingDates = await db.Appointments
+            .Where(a => a.BusinessId == business.Id && a.Customer.Phone == phone && a.Status == AppointmentStatus.CONFIRMED
+                && a.Id != excludeAppointmentId)
+            .Select(a => a.Date)
+            .ToListAsync();
+
+        if (business.MaxBookingsPerDay is not null && existingDates.Count(d => d == requestedDate) >= business.MaxBookingsPerDay)
+            return "You've reached the maximum number of bookings allowed per day.";
+        if (business.MaxBookingsPerWeek is not null)
+        {
+            var weekStart = requestedDate.AddDays(-(int)requestedDate.DayOfWeek);
+            var weekEnd = weekStart.AddDays(6);
+            if (existingDates.Count(d => d >= weekStart && d <= weekEnd) >= business.MaxBookingsPerWeek)
+                return "You've reached the maximum number of bookings allowed per week.";
+        }
+        return null;
+    }
+
     // A forced (walk-in) booking skips GetAvailableSlots, and with it the checks that come for free
     // there: a real "HH:MM" time, ending by midnight, and not already in the past. Without them an
     // owner could save "23:30" + 60 min as ending "24:30", or a past-dated booking that counts as

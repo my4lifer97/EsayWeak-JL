@@ -180,22 +180,8 @@ public class BookingController(
             if (db.Database.IsNpgsql())
                 await db.Database.ExecuteSqlInterpolatedAsync(
                     $"SELECT pg_advisory_xact_lock(hashtext({"booking-limit:" + business.Id + ":" + phone}))");
-            var existingDates = await db.Appointments
-                .Where(a => a.BusinessId == business.Id && a.Customer.Phone == phone && a.Status == AppointmentStatus.CONFIRMED)
-                .Select(a => a.Date)
-                .ToListAsync();
-
-            if (business.MaxBookingsPerDay is not null &&
-                existingDates.Count(d => d == requestedDate) >= business.MaxBookingsPerDay)
-                return StatusCode(409, new { error = "You've reached the maximum number of bookings allowed per day." });
-
-            if (business.MaxBookingsPerWeek is not null)
-            {
-                var weekStart = requestedDate.AddDays(-(int)requestedDate.DayOfWeek);
-                var weekEnd = weekStart.AddDays(6);
-                if (existingDates.Count(d => d >= weekStart && d <= weekEnd) >= business.MaxBookingsPerWeek)
-                    return StatusCode(409, new { error = "You've reached the maximum number of bookings allowed per week." });
-            }
+            if (await availability.BookingLimitError(business, phone, requestedDate) is { } limitError)
+                return StatusCode(409, new { error = limitError });
         }
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == business.Id && c.Phone == phone);
@@ -376,6 +362,13 @@ public class BookingController(
         var slots = await availability.GetAvailableSlots(appointment.BusinessId, req.Date, appointment.Item.DurationMinutes.Value, appointment.Id);
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
+
+        // Moving into a day or week that's already at the customer's limit counts like booking
+        // there (QA run 3: a reschedule got around "1 per day").
+        var limitDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
+        var customerPhone = await db.Customers.Where(c => c.Id == appointment.CustomerId).Select(c => c.Phone).FirstAsync();
+        if (await availability.BookingLimitError(appointment.Business, customerPhone, limitDate, appointment.Id) is { } limitError)
+            return StatusCode(409, new { error = limitError });
 
         var oldDate = appointment.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appointment.StartTime;

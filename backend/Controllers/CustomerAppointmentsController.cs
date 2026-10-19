@@ -97,6 +97,12 @@ public class CustomerAppointmentsController(
         if (!slots.Any(s => s.Start == req.StartTime))
             return Conflict(new { error = "Slot not available" });
 
+        // Same limits as a new booking (QA run 3: a reschedule got around "1 per day").
+        var limitDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
+        var customerPhone = await db.Customers.Where(c => c.Id == appt.CustomerId).Select(c => c.Phone).FirstAsync();
+        if (await availability.BookingLimitError(appt.Business, customerPhone, limitDate, appt.Id) is { } limitError)
+            return StatusCode(409, new { error = limitError });
+
         var oldDate = appt.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appt.StartTime;
 

@@ -407,7 +407,8 @@ login for the same number, e.g. phone OTP next to the WhatsApp link, still count
 `Business.MaxBookingsPerDay` / `MaxBookingsPerWeek` (nullable int, `null` = unlimited), set via
 `Settings > Booking Limits`. Enforced in `BookingController.BookAppointment` before creating the
 appointment — "per week" means the fixed Sun–Sat calendar week containing the requested date.
-Reschedules are not currently checked against the limit (only new bookings).
+A customer's reschedule (magic link or My Bookings) is checked too, not counting the appointment
+being moved (2026-10-20); the owner's own reschedule isn't.
 
 ### Background sends (NotificationQueue)
 Best-effort WhatsApp/email sends no longer run inside the request (QA run 2: an owner cancel that
