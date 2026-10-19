@@ -89,35 +89,66 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         var resp = await PostInbound(businessId, phone, "actually I can't make it, please cancel");
 
+        // Asks 1/2 first, like the rule-based path; nothing is cancelled yet.
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Contains("cancelled", body!.Reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reply 1 to cancel", body!.Reply);
+        using (var db = Db())
+            Assert.Equal(AppointmentStatus.CONFIRMED, (await db.Appointments.SingleAsync(a => a.Id == appointmentId)).Status);
+
+        var callsBefore = Factory.OpenAi.Calls.Count;
+        var confirmResp = await PostInbound(businessId, phone, "1");
+
+        var confirmBody = await confirmResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("cancelled", confirmBody!.Reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(callsBefore, Factory.OpenAi.Calls.Count); // answered without OpenAI
         using var verifyDb = Db();
         var appt = await verifyDb.Appointments.SingleAsync(a => a.Id == appointmentId);
         Assert.Equal(AppointmentStatus.CANCELLED, appt.Status);
+        var state = await verifyDb.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+        Assert.Equal("Booking", state.ChatbotMode);
     }
 
     [Fact]
-    public async Task ThreeNonCompletingRepliesInARow_LocksOutUntilUnlockKeyword()
+    public async Task AnsweredQuestions_DoNotCountTowardTheLockout()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-8@example.com", "wa-ai-8");
+        var phone = "+15559991008";
+        Factory.OpenAi.PlainTextReply = "Sure, we're open 9-6 Mon-Fri.";
+
+        for (var i = 0; i < 4; i++)
+        {
+            var resp = await PostInbound(businessId, phone, $"question {i}");
+            var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+            Assert.Contains("9-6", body!.Reply);
+        }
+
+        using var db = Db();
+        var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+        Assert.Equal(0, state.InvalidAttempts);
+    }
+
+    [Fact]
+    public async Task ThreeUnclearMessagesInARow_LocksOutUntilUnlockKeyword()
     {
         var (businessId, _, _) = await SeedBusinessWithService("wa-ai-4@example.com", "wa-ai-4");
         var phone = "+15559991004";
-        Factory.OpenAi.PlainTextReply = "Sure, we're open 9-6 Mon-Fri.";
+        Factory.OpenAi.ToolCallName = "mark_unclear";
 
-        await PostInbound(businessId, phone, "what are your hours?");
-        await PostInbound(businessId, phone, "and do you take walk-ins?");
-        var thirdResp = await PostInbound(businessId, phone, "cool, one more question");
+        await PostInbound(businessId, phone, "asdkjh");
+        await PostInbound(businessId, phone, "qwpoe");
+        var thirdResp = await PostInbound(businessId, phone, "zzzz");
         var thirdBody = await thirdResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
 
-        // The 3rd non-completing reply is replaced with the lockout message, not the AI's own text.
+        // The 3rd unclear reply is replaced with the lockout message, not the AI's own text.
         Assert.Contains("$", thirdBody!.Reply);
-        Assert.DoesNotContain("9-6", thirdBody.Reply);
+        Assert.DoesNotContain("AI:", thirdBody.Reply);
 
         var fourthResp = await PostInbound(businessId, phone, "hello?");
         var fourthBody = await fourthResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
         // Re-sent, not silently ignored -- not the literal "$" -- so a customer who missed the
         // first lockout message still gets told how to unlock, instead of the bot going quiet.
         Assert.Contains("$", fourthBody!.Reply);
-        Assert.DoesNotContain("9-6", fourthBody.Reply);
+        Assert.DoesNotContain("AI:", fourthBody.Reply);
 
         var unlockResp = await PostInbound(businessId, phone, "$");
         var unlockBody = await unlockResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
@@ -130,16 +161,15 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task SuccessfulToolCall_ResetsInvalidAttemptCounter()
+    public async Task UnderstoodMessage_ResetsInvalidAttemptCounter()
     {
         var (businessId, slug, itemId) = await SeedBusinessWithService("wa-ai-5@example.com", "wa-ai-5");
         var phone = "+15559991005";
-        Factory.OpenAi.PlainTextReply = "Not sure I follow.";
+        Factory.OpenAi.ToolCallName = "mark_unclear";
 
         await PostInbound(businessId, phone, "random message one");
         await PostInbound(businessId, phone, "random message two");
 
-        Factory.OpenAi.PlainTextReply = null;
         Factory.OpenAi.ToolCallName = "create_booking_link";
         Factory.OpenAi.ToolCallArgsJson = JsonSerializer.Serialize(new { itemId });
         var bookingResp = await PostInbound(businessId, phone, "ok let's book a haircut");
@@ -173,7 +203,7 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task RepeatedCancelToolCalls_CancelOnlyOneAppointmentPerMessage()
+    public async Task RepeatedCancelToolCalls_CancelNothing_ThenOneOnConfirm()
     {
         var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-6@example.com", "wa-ai-6");
         var phone = "+15559991006";
@@ -183,13 +213,56 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         await PostInbound(businessId, phone, "cancel");
 
-        using var db = Db();
-        var statuses = await db.Appointments.Where(a => ids.Contains(a.Id)).Select(a => a.Status).ToListAsync();
-        Assert.Equal(1, statuses.Count(s => s == AppointmentStatus.CANCELLED));
+        using (var db = Db())
+            Assert.DoesNotContain(AppointmentStatus.CANCELLED, await db.Appointments.Where(a => ids.Contains(a.Id)).Select(a => a.Status).ToListAsync());
+
+        await PostInbound(businessId, phone, "1");
+
+        using var verifyDb = Db();
+        var rows = await verifyDb.Appointments.Where(a => ids.Contains(a.Id)).Select(a => new { a.Id, a.Status }).ToListAsync();
+        Assert.Equal(ids[0], rows.Single(r => r.Status == AppointmentStatus.CANCELLED).Id); // the nearest one
     }
 
     [Fact]
-    public async Task OpenAiFailsAfterACancel_RepliesWithTheCancellation_NotTheRuleBasedFlow()
+    public async Task CancelQuestion_ReplyTwo_KeepsTheAppointment()
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-9@example.com", "wa-ai-9");
+        var phone = "+15559991009";
+        var ids = await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        await PostInbound(businessId, phone, "cancel please");
+
+        var resp = await PostInbound(businessId, phone, "2");
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Contains("stays", body!.Reply);
+        using var db = Db();
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await db.Appointments.SingleAsync(a => a.Id == ids[0])).Status);
+    }
+
+    [Fact]
+    public async Task CancelQuestion_OtherReply_DropsTheQuestionAndAsksTheModel()
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-10@example.com", "wa-ai-10");
+        var phone = "+15559991010";
+        var ids = await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        await PostInbound(businessId, phone, "cancel please");
+
+        Factory.OpenAi.ToolCallName = null;
+        Factory.OpenAi.PlainTextReply = "No problem, anything else?";
+        var resp = await PostInbound(businessId, phone, "actually never mind");
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.Equal("No problem, anything else?", body!.Reply);
+
+        // A later "1" is no longer an answer to the dropped question.
+        await PostInbound(businessId, phone, "1");
+        using var db = Db();
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await db.Appointments.SingleAsync(a => a.Id == ids[0])).Status);
+    }
+
+    [Fact]
+    public async Task OpenAiFailsAfterTheCancelTool_StillAsksTheQuestion_NotTheRuleBasedFlow()
     {
         var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-7@example.com", "wa-ai-7");
         var phone = "+15559991007";
@@ -200,8 +273,11 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         var resp = await PostInbound(businessId, phone, "please cancel my appointment");
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Contains("cancelled", body!.Reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reply 1 to cancel", body!.Reply);
         Assert.DoesNotContain("1. Haircut", body.Reply);
+
+        Factory.OpenAi.ThrowAfterTool = null;
+        await PostInbound(businessId, phone, "1");
         using var db = Db();
         Assert.Equal(AppointmentStatus.CANCELLED, (await db.Appointments.SingleAsync(a => a.Id == ids[0])).Status);
     }

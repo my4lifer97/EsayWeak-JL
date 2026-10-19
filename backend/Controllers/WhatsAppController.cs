@@ -461,9 +461,9 @@ public class WhatsAppController(
 
         // Same "$"-unlock lockout the rule-based path uses (see ProcessMessageRuleBasedAsync) --
         // reuses the same InvalidAttempts field, just counted differently: here a turn counts as
-        // "invalid" when the model replies without ever completing a booking or cancellation (no
-        // tool call), so someone chatting without actually booking anything doesn't burn OpenAI
-        // calls indefinitely.
+        // "invalid" only when the model flags the message as one it couldn't understand (the
+        // mark_unclear tool). Questions it answers don't count (QA: three plain questions locked
+        // the customer out); AiUsageLimiter caps the cost of chatting instead.
         if (state is not null && state.InvalidAttempts >= MaxInvalidAttempts)
         {
             if (incomingMsg.Trim() != UnlockKeyword)
@@ -476,6 +476,32 @@ public class WhatsAppController(
             ? JsonSerializer.Deserialize<List<OpenAiTurn>>(state.HistoryJson) ?? []
             : [];
 
+        // The answer to a "reply 1 to cancel / 2 to keep" question the cancel tool asked last turn.
+        // Handled here without OpenAI, like the rule-based path; any other reply drops the question
+        // (nothing cancelled) and goes to the model as a normal message. The row and its history
+        // are kept, unlike the rule-based path's ClearConversationState.
+        if (state is not null && state.ChatbotMode.StartsWith(ConfirmCancelModePrefix))
+        {
+            var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
+            state.ChatbotMode = BookingMode;
+            var answer = NormalizeDigits(incomingMsg.Trim());
+            if (answer is "1" or "2")
+            {
+                var confirmReply = answer == "2"
+                    ? I18nService.T(lang, "whatsapp.cancelKept")
+                    : await CancelConfirmedAppointment(business.Id, appointmentId, fromPhone, lang)
+                        ?? I18nService.T(lang, "whatsapp.noAppointment");
+                history.Add(new OpenAiTurn("user", incomingMsg));
+                history.Add(new OpenAiTurn("assistant", confirmReply));
+                if (history.Count > 12) history = history[^12..];
+                state.HistoryJson = JsonSerializer.Serialize(history);
+                state.InvalidAttempts = 0;
+                state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+                await db.SaveChangesAsync();
+                return confirmReply;
+            }
+        }
+
         var systemPrompt = await BuildAiSystemPrompt(business, lang);
         List<OpenAiToolDefinition> tools =
         [
@@ -483,32 +509,43 @@ public class WhatsAppController(
                 "Create a booking link once the customer has chosen a specific service.",
                 """{"type":"object","properties":{"itemId":{"type":"string"}},"required":["itemId"]}"""),
             new("cancel_upcoming_appointment",
-                "Cancel the customer's next upcoming appointment with this business.",
+                "Ask the customer to confirm cancelling their next upcoming appointment with this business. Nothing is cancelled until they reply 1.",
+                """{"type":"object","properties":{}}"""),
+            new("mark_unclear",
+                "Call this when you can't understand the customer's message or it has nothing to do with this business, then ask them to rephrase.",
                 """{"type":"object","properties":{}}"""),
         ];
 
-        var toolCalled = false;
-        var cancelledThisTurn = false;
+        var unclear = false;
+        string? confirmCancelId = null; // set when the cancel tool asked its 1/2 question this turn
         string? toolMessage = null; // text of the last tool that actually did something
         async Task<string> ExecuteTool(string name, string argsJson)
         {
-            toolCalled = true;
-            // The model can call a tool several times in one turn; one message cancels one
-            // appointment at most, or "cancel" could wipe out every upcoming booking (QA run 2).
-            if (name == "cancel_upcoming_appointment" && cancelledThisTurn)
-                return JsonSerializer.Serialize(new { found = false, error = "One appointment was already cancelled for this message. Ask the customer to send another message to cancel another one." });
-            var result = name switch
+            if (name == "mark_unclear")
             {
-                "create_booking_link" => await ExecuteCreateBookingLink(business, appUrl, fromPhone, profileName, lang, argsJson),
-                "cancel_upcoming_appointment" => await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang),
-                _ => JsonSerializer.Serialize(new { error = "unknown tool" }),
-            };
+                unclear = true;
+                return JsonSerializer.Serialize(new { ok = true });
+            }
+            // The 1/2 question has to be the last thing the customer reads this turn.
+            if (name == "create_booking_link" && confirmCancelId is not null)
+                return JsonSerializer.Serialize(new { error = "Wait until the customer confirms the cancellation before creating a booking link." });
+
+            string result;
+            if (name == "cancel_upcoming_appointment")
+            {
+                var (cancelResult, appointmentId) = await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang);
+                result = cancelResult;
+                confirmCancelId = appointmentId ?? confirmCancelId;
+            }
+            else
+            {
+                result = name == "create_booking_link"
+                    ? await ExecuteCreateBookingLink(business, appUrl, fromPhone, profileName, lang, argsJson)
+                    : JsonSerializer.Serialize(new { error = "unknown tool" });
+            }
             using var parsed = JsonDocument.Parse(result);
             if (parsed.RootElement.TryGetProperty("message", out var message))
-            {
                 toolMessage = message.GetString();
-                if (name == "cancel_upcoming_appointment") cancelledThisTurn = true;
-            }
             return result;
         }
 
@@ -526,6 +563,10 @@ public class WhatsAppController(
             reply = toolMessage;
         }
 
+        // Whatever the model wrote, the customer must see the exact 1/2 question.
+        if (confirmCancelId is not null && toolMessage is not null)
+            reply = toolMessage;
+
         history.Add(new OpenAiTurn("user", incomingMsg));
         history.Add(new OpenAiTurn("assistant", reply));
         if (history.Count > 12) history = history[^12..];
@@ -538,8 +579,10 @@ public class WhatsAppController(
         state.Language = lang;
         state.HistoryJson = JsonSerializer.Serialize(history);
         state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        if (confirmCancelId is not null)
+            state.ChatbotMode = ConfirmCancelModePrefix + confirmCancelId;
 
-        if (toolCalled)
+        if (!unclear)
         {
             state.InvalidAttempts = 0;
         }
@@ -578,8 +621,9 @@ public class WhatsAppController(
 
             Tools:
             - create_booking_link(itemId): call this once the customer has picked a specific service. Its result includes a "message" field -- output that text to the customer VERBATIM, do not reword it or invent your own link, price, or service name.
-            - cancel_upcoming_appointment(): call this when the customer wants to cancel their appointment. If the result's "found" field is true, it also has a "message" field -- output that text VERBATIM. If "found" is false, tell the customer yourself that you couldn't find an upcoming appointment and offer to help them book one.
-            To reschedule: call cancel_upcoming_appointment first, then help the customer book a new time via create_booking_link.
+            - cancel_upcoming_appointment(): call this when the customer wants to cancel their appointment. It doesn't cancel anything yet: it asks the customer to reply 1 to cancel or 2 to keep it. If the result's "found" field is true, it also has a "message" field -- output that text VERBATIM. If "found" is false, tell the customer yourself that you couldn't find an upcoming appointment and offer to help them book one.
+            - mark_unclear(): call this only when you can't understand the message or it has nothing to do with this business, then ask the customer to rephrase. Don't call it for questions you can answer.
+            To reschedule: call cancel_upcoming_appointment first; once the customer has confirmed, help them book a new time via create_booking_link.
 
             Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.{inquiryNote}
             """;
@@ -598,14 +642,22 @@ public class WhatsAppController(
         return JsonSerializer.Serialize(new { message });
     }
 
-    private async Task<string> ExecuteCancelUpcomingAppointment(string businessId, string fromPhone, string lang)
+    // Names the appointment and asks 1/2 (same text as the rule-based HandleCancel); the caller
+    // parks the returned id in ChatbotMode for the answer. Cancels nothing itself.
+    private async Task<(string Result, string? AppointmentId)> ExecuteCancelUpcomingAppointment(string businessId, string fromPhone, string lang)
     {
-        var cancelled = await FindAndCancelUpcomingAppointment(businessId, fromPhone);
-        if (cancelled is null)
-            return JsonSerializer.Serialize(new { found = false });
+        var (upcoming, pending) = await FindUpcomingAppointments(businessId, fromPhone);
+        if (upcoming is null)
+        {
+            // Everything left is already waiting on the owner -- say so instead of "no appointment".
+            return pending is null
+                ? (JsonSerializer.Serialize(new { found = false }), null)
+                : (JsonSerializer.Serialize(new { found = true, message = I18nService.T(lang, "whatsapp.cancellationAlreadyRequested", DateTimeArgs(pending)) }), null);
+        }
 
-        var message = CancelResultMessage(cancelled, lang);
-        return JsonSerializer.Serialize(new { found = true, message });
+        var args = DateTimeArgs(upcoming);
+        args["service"] = ItemName(upcoming.Item, lang);
+        return (JsonSerializer.Serialize(new { found = true, message = I18nService.T(lang, "whatsapp.confirmCancel", args) }), upcoming.Id);
     }
 
     // Detects the language from the incoming message's script (Hebrew/Arabic Unicode blocks --
@@ -724,17 +776,23 @@ public class WhatsAppController(
         if (answer == "2") return I18nService.T(lang, "whatsapp.cancelKept");
         if (answer != "1") return null;
 
+        var cancelReply = await CancelConfirmedAppointment(business.Id, appointmentId, fromPhone, lang);
+        if (cancelReply is not null) return cancelReply;
+        var intro = I18nService.T(lang, "whatsapp.noAppointment");
+        return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
+    }
+
+    // A "1" to the cancel question, shared by both paths. Null when the appointment changed since
+    // the question was asked (already cancelled, moved into the past, or already waiting on the
+    // owner) -- nothing left to cancel.
+    private async Task<string?> CancelConfirmedAppointment(string businessId, string appointmentId, string fromPhone, string lang)
+    {
         var appointment = await db.Appointments
             .Include(a => a.Customer)
-            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == business.Id && a.Customer.Phone == fromPhone);
-        // Changed since the question was asked (already cancelled, moved into the past, or
-        // already waiting on the owner) -- nothing left to cancel.
+            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == businessId && a.Customer.Phone == fromPhone);
         if (appointment is null || appointment.Status != AppointmentStatus.CONFIRMED || appointment.PendingCancellationApproval
             || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
-        {
-            var intro = I18nService.T(lang, "whatsapp.noAppointment");
-            return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
-        }
+            return null;
 
         await cancellationService.CancelFromCustomerAsync(appointment);
         await db.SaveChangesAsync();
@@ -780,19 +838,6 @@ public class WhatsAppController(
             .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
             .ToList();
         return (upcoming.FirstOrDefault(a => !a.PendingCancellationApproval), upcoming.FirstOrDefault(a => a.PendingCancellationApproval));
-    }
-
-    // AI path's cancel_upcoming_appointment tool. Deliberately does NOT touch
-    // WhatsAppConversationState -- the AI path's conversation history in that row must survive a
-    // cancellation instead of being wiped.
-    private async Task<Appointment?> FindAndCancelUpcomingAppointment(string businessId, string fromPhone)
-    {
-        var (upcoming, _) = await FindUpcomingAppointments(businessId, fromPhone);
-        if (upcoming is null) return null;
-
-        await cancellationService.CancelFromCustomerAsync(upcoming);
-        await db.SaveChangesAsync();
-        return upcoming;
     }
 
     private static bool ContainsKeyword(string message, string[] keywords) =>

@@ -840,7 +840,7 @@ to WhatsApp).
   after the first reminder read as the bot being broken/spammed, since a customer who missed or
   forgot that one message had no way to know the conversation could still be recovered). Prevents
   the bot replying forever to someone sending random text, while still telling them how to unlock it.
-- **Cancel keyword asks first** (rule-based path only, added 2026-10-11): cancel/reschedule
+- **Cancel keyword asks first** (rule-based path 2026-10-11; the AI path asks too since 2026-10-19, see below): cancel/reschedule
   keywords match **whole words only** (`ContainsKeyword`) — the old substring match cancelled real
   appointments on ordinary sentences like "אני בטלפון עכשיו" ("בטל" inside "בטלפון"); "שנה" was
   dropped from the reschedule list since it usually means "year". A cancel keyword then names the
@@ -871,31 +871,35 @@ bot. This lets the bot understand free-form messages ("actually can we move it t
 instead of only exact keywords/numbers.
 
 **Guardrail — the model never composes text for a completed action itself.** It only decides *when*
-to call one of two tools (`create_booking_link`, `cancel_upcoming_appointment`); the tool
-implementations build the exact same `I18nService`-templated text the rule-based path already uses
-(shared via `IssueBookingLink`/`FindAndCancelUpcomingAppointment`), and the system prompt instructs
+to call a tool (`create_booking_link`, `cancel_upcoming_appointment`, plus `mark_unclear` for the
+lockout); the tool implementations build the exact same `I18nService`-templated text the rule-based path already uses
+(shared via `IssueBookingLink`/`FindUpcomingAppointments`), and the system prompt instructs
 the model to relay a tool's `message` field verbatim rather than reword it. This is what prevents a
 hallucinated URL, price, or date reaching a customer — the model only freely composes text for
 open-ended Q&A (hours, prices, greetings) grounded in the business data (name, active items,
 language) injected into its system prompt each turn. Rescheduling isn't a separate tool — the
 system prompt tells the model to call `cancel_upcoming_appointment` then `create_booking_link`.
 
-**Lockout after repeated non-completing replies (added 2026-09-21)**: mirrors the rule-based path's
+**Lockout after repeated unclear messages** (2026-09-21, changed 2026-10-19): mirrors the rule-based path's
 `"$"`-unlock lockout above, reusing the same `WhatsAppConversationState.InvalidAttempts` field and
 `MaxInvalidAttempts`/`UnlockKeyword` constants, but counted differently here — a turn counts as
-"invalid" when the model replies without the AI ever calling `create_booking_link` or
-`cancel_upcoming_appointment` (tracked via a local `toolCalled` flag set inside the `executeToolAsync`
-closure passed to `IOpenAiChatClient.GetReplyAsync`), so a customer chatting without ever completing
-a booking/cancellation doesn't keep burning paid OpenAI calls indefinitely. A successful tool call
-resets the counter to 0. On the 3rd non-completing reply in a row, the AI's own reply text is
+"invalid" only when the model calls the third tool, `mark_unclear` (a message it can't understand or
+that has nothing to do with the business). Questions it answers don't count (QA: three plain
+questions used to lock the customer out, when any turn without a booking/cancel tool counted);
+`AiUsageLimiter` limits the cost instead. Any other turn resets the counter to 0. On the 3rd unclear message in a row, the AI's own reply text is
 replaced with the `whatsapp.tooManyInvalidReplies` message (same as rule-based); every message after
 that gets the same reminder re-sent (fixed 2026-09-22, mirroring the rule-based path — see above)
 instead of the AI being called at all, until the customer sends the literal `"$"`, which clears the
 conversation state entirely and replies with `whatsapp.aiConversationRestarted` — a fresh state row
 only gets created once the customer sends a real next message, same as the rule-based unlock.
 
-**Limits per turn and per phone (2026-10-19):** one message cancels at most one appointment (a repeated
-`cancel_upcoming_appointment` call in the same turn gets `found: false`); if OpenAI fails *after* a tool
+**Cancel asks 1/2 first (2026-10-19), like the rule-based path:** `cancel_upcoming_appointment` cancels
+nothing; it returns the `whatsapp.confirmCancel` question for the nearest cancellable appointment
+(or `cancellationAlreadyRequested`), that text replaces the model's reply, and the id is parked in
+`ChatbotMode` as `ConfirmCancel:{id}`. The next message's `1`/`2` is answered at the top of
+`ProcessMessageWithAiAsync` without OpenAI (`CancelConfirmedAppointment`, shared with the rule-based
+path); anything else drops the question and goes to the model. The row and its history are kept.
+`create_booking_link` is refused in the same turn as the question. If OpenAI fails *after* a tool
 already acted, the tool's own `message` is sent instead of falling back to the rule-based path (which would
 answer as if nothing happened). `Services/AiUsageLimiter` (singleton, in memory) sends at most
 `OpenAI:MaxMessagesPerPhonePerDay` (default 50) messages per (business, phone) per rolling 24 h to OpenAI;
