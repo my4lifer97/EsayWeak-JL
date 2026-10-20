@@ -45,6 +45,23 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.BadRequest, closedDay.StatusCode);
     }
 
+    // The hours check read StartDate's weekday, not the series' own day: a Monday series starting on
+    // a (closed) Saturday was rejected.
+    [Fact]
+    public async Task Create_StartDateOnAnotherWeekday_ChecksTheSeriesOwnDay()
+    {
+        var token = await RegisterAndLoginBusiness("recurring-weekday@example.com", "recurring-weekday");
+        Authorize(Client, token);
+        var item = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m))).Content.ReadFromJsonAsync<ItemDto>();
+        var today = DateTime.Now.Date;
+        var saturday = today.AddDays(((int)DayOfWeek.Saturday - (int)today.DayOfWeek + 7) % 7 + 7);
+
+        var mondaySeries = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
+            null, "Dana", "+15551114444", item!.Id, 1, "10:00", null, saturday.ToString("yyyy-MM-dd")));
+
+        Assert.Equal(HttpStatusCode.Created, mondaySeries.StatusCode);
+    }
+
     [Fact]
     public async Task Create_NewCustomer_CreatesActiveSeries()
     {

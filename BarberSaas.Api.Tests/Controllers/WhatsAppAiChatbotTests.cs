@@ -45,6 +45,9 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         return Client.SendAsync(req);
     }
 
+    private async Task<string?> Reply(string businessId, string phone, string message) =>
+        (await (await PostInbound(businessId, phone, message)).Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply;
+
     [Fact]
     public async Task FreeFormBookingRequest_ResolvesViaCreateBookingLinkTool()
     {
@@ -427,5 +430,77 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
         Assert.Contains("https://maps.example/shop", body!.Reply);
+    }
+    // An emoji right after a real link made the whole match unknown, and the link was removed.
+    [Fact]
+    public async Task ALinkFollowedByAnEmoji_IsKept()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-emoji@example.com", "wa-ai-emoji");
+        using (var db = Db())
+        {
+            (await db.Businesses.FirstAsync(b => b.Id == businessId)).MapUrl = "https://maps.example/shop";
+            await db.SaveChangesAsync();
+        }
+        Factory.OpenAi.PlainTextReply = "We're here: https://maps.example/shop🙂";
+
+        var reply = await Reply(businessId, "+15559991231", "where are you?");
+
+        Assert.Contains("https://maps.example/shop🙂", reply);
+    }
+
+    // A reply that was only a made-up link used to go out empty.
+    [Fact]
+    public async Task AReplyThatWasOnlyAnUnknownLink_FallsBackToTheRuleBasedBot()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-onlyurl@example.com", "wa-ai-onlyurl");
+        Factory.OpenAi.PlainTextReply = "https://evil.example/phish";
+
+        var reply = await Reply(businessId, "+15559991232", "hi");
+
+        Assert.False(string.IsNullOrWhiteSpace(reply));
+        Assert.DoesNotContain("evil.example", reply);
+    }
+
+    // Expired rows are never deleted; the AI path skipped them and inserted a second row for the
+    // same phone, which hit the unique index.
+    [Fact]
+    public async Task AnExpiredConversation_IsReused_NotDuplicated()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-expired@example.com", "wa-ai-expired");
+        var phone = "+15559991233";
+        Factory.OpenAi.PlainTextReply = "Hello!";
+        await PostInbound(businessId, phone, "hi");
+        using (var db = Db())
+        {
+            var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+            state.ExpiresAt = DateTime.UtcNow.AddDays(-1);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal("Hello!", await Reply(businessId, phone, "hi again"));
+
+        using var check = Db();
+        var row = await check.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+        Assert.True(row.ExpiresAt > DateTime.UtcNow);
+    }
+
+    // "Already requested" has nothing to confirm, so it no longer blocks a booking link in the same turn.
+    [Fact]
+    public async Task AlreadyRequestedCancel_DoesNotBlockABookingLink()
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-pendingcancel@example.com", "wa-ai-pendingcancel");
+        var phone = "+15559991234";
+        await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        using (var db = Db())
+        {
+            (await db.Appointments.SingleAsync(a => a.BusinessId == businessId)).PendingCancellationApproval = true;
+            await db.SaveChangesAsync();
+        }
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        Factory.OpenAi.ThenToolCalls.Add(("create_booking_link", JsonSerializer.Serialize(new { itemId })));
+
+        var reply = await Reply(businessId, phone, "cancel it and book me a haircut");
+
+        Assert.Contains("/w/", reply);
     }
 }

@@ -175,14 +175,8 @@ public class BookingController(
         // limit 1/day with 4 requests at once used to give 3 bookings (QA run 3). This lock is
         // always taken before TrySaveOrDetectConflict's per-date lock, never after, so no deadlock.
         await using var limitTx = hasLimits ? await db.Database.BeginTransactionAsync() : null;
-        if (hasLimits)
-        {
-            if (db.Database.IsNpgsql())
-                await db.Database.ExecuteSqlInterpolatedAsync(
-                    $"SELECT pg_advisory_xact_lock(hashtext({"booking-limit:" + business.Id + ":" + phone}))");
-            if (await availability.BookingLimitError(business, phone, requestedDate) is { } limitError)
-                return StatusCode(409, new { error = limitError });
-        }
+        if (await availability.LockedBookingLimitError(business, phone, requestedDate) is { } limitError)
+            return StatusCode(409, new { error = limitError });
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == business.Id && c.Phone == phone);
         if (customer is null)
@@ -367,8 +361,6 @@ public class BookingController(
         // there (QA run 3: a reschedule got around "1 per day").
         var limitDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         var customerPhone = await db.Customers.Where(c => c.Id == appointment.CustomerId).Select(c => c.Phone).FirstAsync();
-        if (await availability.BookingLimitError(appointment.Business, customerPhone, limitDate, appointment.Id) is { } limitError)
-            return StatusCode(409, new { error = limitError });
 
         var oldDate = appointment.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appointment.StartTime;
@@ -377,6 +369,8 @@ public class BookingController(
         // racing a cancel) all returned 200 and the last writer won, with notices for times that
         // never stuck (QA run 3).
         await using var moveTx = await db.Database.BeginTransactionAsync();
+        if (await availability.LockedBookingLimitError(appointment.Business, customerPhone, limitDate, appointment.Id) is { } limitError)
+            return StatusCode(409, new { error = limitError });
         if (!await cancellationService.TryClaimAsync(appointment, appointment.Status, appointment.PendingCancellationApproval))
             return Conflict(new { error = "This appointment can no longer be modified" });
         var freedSlot = await waitlist.DetachForReschedule(appointment);

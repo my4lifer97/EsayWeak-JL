@@ -246,7 +246,15 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
     if (password && includePassword && !passwordApplied
       && !(await applyPasswordNow("The temporary password in this email isn't active yet. Set it as the owner's password now and copy? Their current password stops working and they're signed out everywhere.",
         'Set password and copy'))) return
-    await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+    try {
+      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+    } catch {
+      // After the dialog and the reset call the browser may no longer count this as a click.
+      setGenError(password && includePassword
+        ? "Couldn't copy. The password is set now: click Copy to Clipboard again or copy the text below by hand."
+        : "Couldn't copy. Click Copy to Clipboard again or copy the text below by hand.")
+      return
+    }
     setCopied(true)
     setDelivered(true)
     setTimeout(() => setCopied(false), 2000)

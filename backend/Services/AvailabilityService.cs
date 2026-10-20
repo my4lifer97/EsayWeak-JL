@@ -256,22 +256,33 @@ public class AvailabilityService(AppDbContext db)
     public async Task<string?> BookingLimitError(Business business, string phone, DateTime requestedDate, string? excludeAppointmentId = null)
     {
         if (business.MaxBookingsPerDay is null && business.MaxBookingsPerWeek is null) return null;
+        // The day is inside its Sun-Sat week, so that week's rows answer both limits.
+        var weekStart = requestedDate.AddDays(-(int)requestedDate.DayOfWeek);
+        var weekEnd = weekStart.AddDays(6);
         var existingDates = await db.Appointments
             .Where(a => a.BusinessId == business.Id && a.Customer.Phone == phone && a.Status == AppointmentStatus.CONFIRMED
-                && a.Id != excludeAppointmentId)
+                && a.Id != excludeAppointmentId && a.Date >= weekStart && a.Date <= weekEnd)
             .Select(a => a.Date)
             .ToListAsync();
 
         if (business.MaxBookingsPerDay is not null && existingDates.Count(d => d == requestedDate) >= business.MaxBookingsPerDay)
             return "You've reached the maximum number of bookings allowed per day.";
-        if (business.MaxBookingsPerWeek is not null)
-        {
-            var weekStart = requestedDate.AddDays(-(int)requestedDate.DayOfWeek);
-            var weekEnd = weekStart.AddDays(6);
-            if (existingDates.Count(d => d >= weekStart && d <= weekEnd) >= business.MaxBookingsPerWeek)
-                return "You've reached the maximum number of bookings allowed per week.";
-        }
+        if (business.MaxBookingsPerWeek is not null && existingDates.Count >= business.MaxBookingsPerWeek)
+            return "You've reached the maximum number of bookings allowed per week.";
         return null;
+    }
+
+    // BookingLimitError under the per-customer lock, for a caller already inside a transaction:
+    // the lock is held until it commits, so that customer's parallel bookings and reschedules count
+    // each other (QA run 3: 4 requests at once against "1 per day" gave 3 bookings). Take it before
+    // TrySaveOrDetectConflict's per-date lock, never after, so no deadlock.
+    public async Task<string?> LockedBookingLimitError(Business business, string phone, DateTime requestedDate, string? excludeAppointmentId = null)
+    {
+        if (business.MaxBookingsPerDay is null && business.MaxBookingsPerWeek is null) return null;
+        if (db.Database.IsNpgsql())
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtext({"booking-limit:" + business.Id + ":" + phone}))");
+        return await BookingLimitError(business, phone, requestedDate, excludeAppointmentId);
     }
 
     // A forced (walk-in) booking skips GetAvailableSlots, and with it the checks that come for free

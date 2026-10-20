@@ -25,7 +25,12 @@ export function getImpersonation(): Impersonation | null {
 // Stores the target's login in the normal slots, keeping whatever was there to restore later.
 export function startImpersonation(marker: Impersonation, session: Record<string, string>) {
   const keys = SESSION_KEYS[marker.type]
-  // A second "Log in as" while one is running keeps the original backup, not the first target.
+  // One impersonation at a time: switching from a business to a customer (or back) ends the first,
+  // which puts its backup back. There's only one backup and one marker, so the first backup used
+  // to be overwritten and the business slot kept the target's token with no banner.
+  const current = getImpersonation()
+  if (current && current.type !== marker.type) endImpersonation()
+  // A second "Log in as" of the same type keeps the original backup, not the first target.
   if (getImpersonation()?.type !== marker.type) {
     const backup: Record<string, string> = {}
     keys.forEach((k) => { const v = localStorage.getItem(k); if (v !== null) backup[k] = v })

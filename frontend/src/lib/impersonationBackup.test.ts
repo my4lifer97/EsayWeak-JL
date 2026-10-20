@@ -33,4 +33,14 @@ describe('impersonation', () => {
     endImpersonation()
     expect(localStorage.getItem('token')).toBe('own-token')
   })
+
+  it('ends a business impersonation before starting a customer one', () => {
+    localStorage.setItem('token', 'own-token')
+    startImpersonation({ type: 'business', name: 'A', returnPath: '/a' }, { token: 'a' })
+    startImpersonation({ type: 'customer', name: 'C', returnPath: '/c' }, { customerToken: 'c' })
+    expect(localStorage.getItem('token')).toBe('own-token')
+    endImpersonation()
+    expect(localStorage.getItem('customerToken')).toBeNull()
+    expect(localStorage.getItem('token')).toBe('own-token')
+  })
 })

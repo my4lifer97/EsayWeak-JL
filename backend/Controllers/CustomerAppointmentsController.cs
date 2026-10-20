@@ -100,8 +100,6 @@ public class CustomerAppointmentsController(
         // Same limits as a new booking (QA run 3: a reschedule got around "1 per day").
         var limitDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         var customerPhone = await db.Customers.Where(c => c.Id == appt.CustomerId).Select(c => c.Phone).FirstAsync();
-        if (await availability.BookingLimitError(appt.Business, customerPhone, limitDate, appt.Id) is { } limitError)
-            return StatusCode(409, new { error = limitError });
 
         var oldDate = appt.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appt.StartTime;
@@ -110,6 +108,8 @@ public class CustomerAppointmentsController(
         // racing a cancel) all returned 200 and the last writer won, with notices for times that
         // never stuck (QA run 3).
         await using var moveTx = await db.Database.BeginTransactionAsync();
+        if (await availability.LockedBookingLimitError(appt.Business, customerPhone, limitDate, appt.Id) is { } limitError)
+            return StatusCode(409, new { error = limitError });
         if (!await cancellationService.TryClaimAsync(appt, appt.Status, appt.PendingCancellationApproval))
             return Conflict(new { error = "This appointment can no longer be modified" });
         var freedSlot = await waitlist.DetachForReschedule(appt);

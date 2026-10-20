@@ -17,6 +17,8 @@ public class FakeOpenAiChatClient : IOpenAiChatClient
     public int ToolCallRepeat { get; set; } = 1;
     // Thrown after the tool calls ran, like an OpenAI failure on the follow-up request.
     public Exception? ThrowAfterTool { get; set; }
+    // Further tool calls in the same turn, after ToolCallName's (the real model can call several).
+    public List<(string Name, string ArgsJson)> ThenToolCalls { get; } = [];
 
     public List<(string SystemPrompt, IReadOnlyList<OpenAiTurn> History, string UserMessage)> Calls { get; } = [];
 
@@ -35,6 +37,8 @@ public class FakeOpenAiChatClient : IOpenAiChatClient
             var toolResult = "";
             for (var i = 0; i < ToolCallRepeat; i++)
                 toolResult = await executeToolAsync(ToolCallName, ToolCallArgsJson);
+            foreach (var (name, args) in ThenToolCalls)
+                toolResult = await executeToolAsync(name, args);
             if (ThrowAfterTool is not null) throw ThrowAfterTool;
             return $"AI: {toolResult}";
         }

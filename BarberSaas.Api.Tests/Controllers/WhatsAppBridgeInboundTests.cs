@@ -335,4 +335,44 @@ public class WhatsAppBridgeInboundTests : IntegrationTestBase
         using var db = Db();
         Assert.Equal("AR", (await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone)).Language);
     }
+    // Review of QA run 3 fixes: "cancel" after a booking link had expired parked the question on the
+    // expired row, so the "1" answer was read as a new conversation and nothing was cancelled.
+    [Fact]
+    public async Task Cancel_AfterTheBookingLinkExpired_StillCancelsOnOne()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-expired@example.com", "wa-bridge-expired");
+        var phone = "+15559990041";
+        await PostInbound(businessId, phone, "hi");
+        await PostInbound(businessId, phone, "1"); // link issued
+        await AddAppointment(businessId, phone);
+        using (var db = Db())
+        {
+            var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+            state.ExpiresAt = DateTime.UtcNow.AddDays(-1);
+            await db.SaveChangesAsync();
+        }
+
+        await PostInbound(businessId, phone, "cancel");
+        await PostInbound(businessId, phone, "1");
+
+        using var check = Db();
+        Assert.Equal(AppointmentStatus.CANCELLED, (await check.Appointments.SingleAsync(a => a.BusinessId == businessId)).Status);
+        // The stale link's quiet mode is gone with the old conversation.
+        Assert.False(await check.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone && s.AwaitingBookingCompletion));
+    }
+
+    // Cutting a long name in the middle of an emoji left half of it, which Postgres refuses to save.
+    [Fact]
+    public async Task LongProfileName_IsNotCutInsideAnEmoji()
+    {
+        var (businessId, _) = await SeedBusinessWithService("wa-bridge-emoji@example.com", "wa-bridge-emoji");
+        var phone = "+15559990042";
+        var name = new string('n', 199) + "🙂" + "tail";
+        await PostInbound(businessId, phone, "hi", name);
+        await PostInbound(businessId, phone, "1", name);
+
+        using var db = Db();
+        var stored = (await db.WhatsAppBookingTokens.SingleAsync(t => t.BusinessId == businessId && t.Phone == phone)).ProfileName!;
+        Assert.Equal(new string('n', 199), stored);
+    }
 }

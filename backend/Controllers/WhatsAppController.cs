@@ -304,7 +304,7 @@ public class WhatsAppController(
                 BusinessId = business.Id,
                 CustomerPhone = fromPhone,
                 CustomerName = string.IsNullOrWhiteSpace(profileName) ? null : profileName,
-                Message = incomingMsg.Length > MaxInquiryMessageChars ? incomingMsg[..MaxInquiryMessageChars] : incomingMsg,
+                Message = Cut(incomingMsg, MaxInquiryMessageChars),
             });
 
             // Only the first message of a session pings the owner -- InquiryNotified is reset
@@ -317,7 +317,7 @@ public class WhatsAppController(
 
             if (shouldNotify)
                 QueueInquiryNotifications(business, fromPhone, profileName,
-                    incomingMsg.Length > MaxInquiryMessageChars ? incomingMsg[..MaxInquiryMessageChars] : incomingMsg);
+                    Cut(incomingMsg, MaxInquiryMessageChars));
 
             return (true, I18nService.T(lang, "whatsapp.inquiryAck"));
         }
@@ -522,12 +522,15 @@ public class WhatsAppController(
         var history = state?.HistoryJson is not null
             ? JsonSerializer.Deserialize<List<OpenAiTurn>>(state.HistoryJson) ?? []
             : [];
-        if (incomingMsg.Length > MaxAiMessageChars) incomingMsg = incomingMsg[..MaxAiMessageChars];
+        incomingMsg = Cut(incomingMsg, MaxAiMessageChars);
 
         // The answer to a "reply 1 to cancel / 2 to keep" question the cancel tool asked last turn.
         // Handled here without OpenAI, like the rule-based path; any other reply drops the question
         // (nothing cancelled) and goes to the model as a normal message. The row and its history
         // are kept, unlike the rule-based path's ClearConversationState.
+        // Restored if the daily cap hands this message to the rule-based path, which answers the
+        // open question itself (it would otherwise read a bare number against an old service list).
+        var modeBeforeTurn = state?.ChatbotMode;
         if (state is not null && state.ChatbotMode.StartsWith(ConfirmCancelModePrefix))
         {
             var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
@@ -552,7 +555,11 @@ public class WhatsAppController(
 
         // Counted here, after the turns answered without OpenAI (lockout reminder, "$", the 1/2
         // answer), which used to use up the daily allowance too (QA run 3).
-        if (!aiUsage.TryUse(business.Id, fromPhone, DateTime.UtcNow)) throw new AiDailyCapReachedException();
+        if (!aiUsage.TryUse(business.Id, fromPhone, DateTime.UtcNow))
+        {
+            if (state is not null) state.ChatbotMode = modeBeforeTurn!;
+            throw new AiDailyCapReachedException();
+        }
 
         var systemPrompt = await BuildAiSystemPrompt(business, lang);
         List<OpenAiToolDefinition> tools =
@@ -571,7 +578,8 @@ public class WhatsAppController(
         var unclear = false;
         string? confirmCancelId = null; // set when the cancel tool asked its 1/2 question this turn
         string? toolMessage = null; // text of the last tool that actually did something
-        string? cancelQuestion = null; // the cancel tool's own text, which the customer must see as-is
+        string? cancelQuestion = null; // the cancel tool's 1/2 question, which the customer must see as-is
+        string? cancelNotice = null; // its "already requested" text: nothing to confirm, so a link may follow
         var linkIssued = false;
         // Every tool result this turn, for the URL check below, plus the business's own links the
         // prompt gives the model (map, storefront).
@@ -598,8 +606,12 @@ public class WhatsAppController(
                 result = cancelResult;
                 confirmCancelId = appointmentId ?? confirmCancelId;
                 using var cancelParsed = JsonDocument.Parse(cancelResult);
-                // Also "already requested", which has a message but no id to park.
-                if (cancelParsed.RootElement.TryGetProperty("message", out var question)) cancelQuestion = question.GetString();
+                // "Already requested" has a message but no id to park, so it doesn't block a booking link.
+                if (cancelParsed.RootElement.TryGetProperty("message", out var question))
+                {
+                    if (appointmentId is not null) cancelQuestion = question.GetString();
+                    else cancelNotice = question.GetString();
+                }
             }
             else
             {
@@ -635,17 +647,29 @@ public class WhatsAppController(
         // Whatever the model wrote, the customer must see the exact 1/2 question.
         if (cancelQuestion is not null)
             reply = cancelQuestion;
+        else if (cancelNotice is not null && !linkIssued)
+            reply = cancelNotice;
         else
             reply = StripUnknownUrls(reply, toolTexts);
+        // A reply that was nothing but a made-up link: the tool's own text, else the rule-based bot.
+        if (reply.Length == 0)
+            reply = toolMessage ?? throw new InvalidOperationException("The AI reply was empty once unknown links were removed");
 
         history.Add(new OpenAiTurn("user", incomingMsg));
-        history.Add(new OpenAiTurn("assistant", reply.Length > MaxAiMessageChars ? reply[..MaxAiMessageChars] : reply));
+        history.Add(new OpenAiTurn("assistant", Cut(reply, MaxAiMessageChars)));
         if (history.Count > 12) history = history[^12..];
 
         if (state is null)
         {
-            state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
-            db.WhatsAppConversationStates.Add(state);
+            // The lookup above skips expired rows, but they are never deleted, so reuse one rather
+            // than inserting a second row for this phone (unique index).
+            state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == fromPhone);
+            if (state is null)
+            {
+                state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
+                db.WhatsAppConversationStates.Add(state);
+            }
+            else ResetIfExpired(state);
         }
         state.Language = lang;
         state.HistoryJson = JsonSerializer.Serialize(history);
@@ -857,18 +881,35 @@ public class WhatsAppController(
             state = new WhatsAppConversationState { BusinessId = businessId, Phone = fromPhone };
             db.WhatsAppConversationStates.Add(state);
         }
+        else ResetIfExpired(state);
         state.ChatbotMode = ConfirmCancelModePrefix + upcoming.Id;
         state.Language = lang;
         state.InvalidAttempts = 0;
         // A pending booking link stays pending: the bot stays quiet after the question is answered
-        // (QA run 3: it re-sent the list and later chatter counted toward the lockout).
-        if (!state.AwaitingBookingCompletion)
-            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        // (QA run 3: it re-sent the list and later chatter counted toward the lockout). The question
+        // itself still gets its full lifetime, even when the link is about to expire.
+        var questionExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        if (!state.AwaitingBookingCompletion || state.ExpiresAt < questionExpiresAt)
+            state.ExpiresAt = questionExpiresAt;
         await db.SaveChangesAsync();
 
         var args = DateTimeArgs(upcoming);
         args["service"] = ItemName(upcoming.Item, lang);
         return I18nService.T(lang, "whatsapp.confirmCancel", args);
+    }
+
+    // Expired rows stay in the table, so one found without the ExpiresAt filter must not carry its
+    // old conversation into a new one (a stale pending link would keep the bot quiet, an old
+    // question or list would be answered).
+    private static void ResetIfExpired(WhatsAppConversationState state)
+    {
+        if (state.ExpiresAt > DateTime.UtcNow) return;
+        state.ChatbotMode = BookingMode;
+        state.AwaitingBookingCompletion = false;
+        state.InquiryNotified = false;
+        state.InvalidAttempts = 0;
+        state.ShownItemIds = null;
+        state.HistoryJson = null;
     }
 
     // Answers an open "reply 1 to cancel / 2 to keep" question. Returns null for any other reply:
@@ -966,13 +1007,22 @@ public class WhatsAppController(
 
     // Defence in depth: a link in the model's own text must be one a tool returned this turn, so a
     // prompt-injected or made-up URL never reaches the customer (QA run 3).
+    // ASCII only (\P{IsBasicLatin} excluded): an emoji or a Hebrew/Arabic word written right after a
+    // real link used to make the whole match unknown, and the valid link was removed.
     private static string StripUnknownUrls(string reply, List<string> toolTexts) =>
-        Regex.Replace(reply, @"https?://[^\s)\]>""']*[^\s)\]>""'.,!?:;]", m => toolTexts.Any(t => t.Contains(m.Value)) ? m.Value : "").Trim();
+        Regex.Replace(reply, @"https?://[^\s)\]>""'\P{IsBasicLatin}]*[^\s)\]>""'.,!?:;\P{IsBasicLatin}]", m => toolTexts.Any(t => t.Contains(m.Value)) ? m.Value : "").Trim();
 
     private sealed class AiDailyCapReachedException : Exception;
 
-    private static string TruncateName(string? name) =>
-        name is null ? "" : name.Length > Filters.ValidateInputFilter.MaxNameLength ? name[..Filters.ValidateInputFilter.MaxNameLength] : name;
+    private static string TruncateName(string? name) => name is null ? "" : Cut(name, Filters.ValidateInputFilter.MaxNameLength);
+
+    // Never splits an emoji (surrogate pair): Npgsql refuses to save a lone surrogate, so the
+    // message would 500 and the customer get no reply.
+    private static string Cut(string text, int max)
+    {
+        if (text.Length <= max) return text;
+        return char.IsHighSurrogate(text[max - 1]) ? text[..(max - 1)] : text[..max];
+    }
 
     private static bool ContainsKeyword(string message, string[] keywords) =>
         Regex.Split(message.ToLowerInvariant(), @"[^\p{L}\p{Mn}\p{Nd}]+").Any(word => keywords.Contains(word));

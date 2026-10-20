@@ -112,9 +112,11 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
 
         // Without "custom time" the series has to fit the opening hours of its first date. A closed
         // day used to be accepted and then logged a slot_unavailable skip every week (QA run 3).
+        // That's the first DayOfWeek on or after StartDate, which can be a different weekday.
         if (!req.Force)
         {
-            var day = await availability.GetEffectiveDay(BusinessId, startDate.Date);
+            var firstDate = startDate.Date.AddDays(((req.DayOfWeek - (int)startDate.DayOfWeek) + 7) % 7);
+            var day = await availability.GetEffectiveDay(BusinessId, firstDate);
             var end = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
             if (!day.IsActive || string.CompareOrdinal(req.StartTime, day.StartTime) < 0 || string.CompareOrdinal(end, day.EndTime) > 0)
                 return BadRequest(new { error = "This time is outside your working hours" });
