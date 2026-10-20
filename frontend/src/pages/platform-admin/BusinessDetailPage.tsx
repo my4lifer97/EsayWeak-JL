@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { platformAdminApi } from '../../lib/platformAdminApi'
@@ -27,6 +27,7 @@ export default function PlatformAdminBusinessDetailPage() {
   const [error, setError] = useState('')
   const [impersonating, setImpersonating] = useState(false)
   const [polling, setPolling] = useState(false)
+  const qrShown = useRef(false)
   const [starting, setStarting] = useState(false)
   const [unlinking, setUnlinking] = useState(false)
   const [linkError, setLinkError] = useState('')
@@ -59,15 +60,22 @@ export default function PlatformAdminBusinessDetailPage() {
   })
 
   useEffect(() => {
-    if (polling && linkStatus?.state === 'connected') {
+    if (!polling) return
+    if (linkStatus?.state === 'qr') qrShown.current = true
+    if (linkStatus?.state === 'connected') {
       setPolling(false)
       queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
+    } else if (linkStatus?.state === 'disconnected' && qrShown.current) {
+      // The bridge stops a QR that wasn't scanned in time instead of showing new ones forever.
+      setPolling(false)
+      setLinkError('The QR code expired before it was scanned. Click Link WhatsApp for a new one.')
     }
   }, [polling, linkStatus?.state, queryClient, id])
 
   async function handleStartLink() {
     if (!business) return
     setLinkError(''); setStarting(true)
+    qrShown.current = false
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${business.id}/whatsapp/link`)
       setPolling(true)

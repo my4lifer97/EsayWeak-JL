@@ -12,6 +12,8 @@ const BRIDGE_SECRET = process.env.BRIDGE_SECRET
 // One process, many sockets -- Baileys sessions are just websocket connections, not separate OS
 // processes, so this comfortably holds every business's linked number.
 const sessions = new Map()
+// businessId -> reconnect attempts since the last successful open, for the backoff below.
+const failures = new Map()
 
 export function statusDto(businessId) {
   const s = sessions.get(businessId)
@@ -29,8 +31,24 @@ export function getSocket(businessId) {
 export async function restoreSessions() {
   const dirs = await fs.readdir(SESSIONS_DIR).catch(() => [])
   for (const businessId of dirs) {
+    // A folder without linked creds is a QR that was never scanned: restoring it just shows a QR
+    // nobody is looking at, again and again (production looped like that every 3 s).
+    if (!(await hasLinkedCreds(businessId))) {
+      console.log(`Skipping business ${businessId}: never linked, removing its empty session folder`)
+      await fs.rm(path.join(SESSIONS_DIR, businessId), { recursive: true, force: true }).catch(() => {})
+      continue
+    }
     console.log(`Restoring WhatsApp session for business ${businessId}`)
     await startSession(businessId).catch((err) => console.error(`Failed to restore session ${businessId}:`, err.message))
+  }
+}
+
+async function hasLinkedCreds(businessId) {
+  try {
+    const creds = JSON.parse(await fs.readFile(path.join(SESSIONS_DIR, businessId, 'creds.json'), 'utf8'))
+    return !!creds.me
+  } catch {
+    return false
   }
 }
 
@@ -63,6 +81,7 @@ export async function startSession(businessId) {
     }
 
     if (connection === 'open') {
+      failures.delete(businessId)
       session.status = 'connected'
       session.qr = null
       session.phoneNumber = sock.user?.id ? `+${sock.user.id.split(':')[0]}` : null
@@ -72,9 +91,14 @@ export async function startSession(businessId) {
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode
       const loggedOut = statusCode === DisconnectReason.loggedOut
-      if (loggedOut) {
-        console.log(`[${businessId}] logged out -- clearing saved session`)
+      // Never linked (no `me` in the creds) and not the restart WhatsApp asks for right after a
+      // scan: the QR expired unscanned ("QR refs attempts ended", 408). Reconnecting would start
+      // a fresh QR every 3 s forever; stop instead, and the admin clicks Link again.
+      const unlinkedQrExpired = !state.creds.me && statusCode !== DisconnectReason.restartRequired
+      if (loggedOut || unlinkedQrExpired) {
+        console.log(`[${businessId}] ${loggedOut ? 'logged out' : 'QR code not scanned in time'} -- clearing saved session`)
         sessions.delete(businessId)
+        failures.delete(businessId)
         await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
       } else {
         session.status = 'disconnected'
@@ -85,9 +109,16 @@ export async function startSession(businessId) {
         // otherwise back off a full minute rather than guessing low.
         const forbidden = statusCode === DisconnectReason.forbidden
         const expireAt = lastDisconnect?.error?.data?.expire
-        const delayMs = forbidden ? Math.max((expireAt ? expireAt * 1000 - Date.now() : 60_000), 60_000) : 3000
+        // Otherwise 3 s, doubling on each failure in a row up to 5 minutes, so a number that
+        // can't connect doesn't hammer WhatsApp from the IP every linked business shares.
+        // The restart WhatsApp asks for right after a scan isn't a failure.
+        const attempt = failures.get(businessId) ?? 0
+        if (statusCode !== DisconnectReason.restartRequired) failures.set(businessId, attempt + 1)
+        const retryMs = statusCode === DisconnectReason.restartRequired ? 3000 : Math.min(3000 * 2 ** attempt, 5 * 60_000)
+        const delayMs = forbidden ? Math.max((expireAt ? expireAt * 1000 - Date.now() : 60_000), 60_000) : retryMs
         console.log(`[${businessId}] connection closed, reconnecting in ${Math.round(delayMs / 1000)}s (code ${statusCode}${forbidden ? ', WhatsApp temporary block' : ''})`)
-        setTimeout(() => startSession(businessId), delayMs)
+        // Skipped if it was unlinked or restarted meanwhile (that session handles itself).
+        setTimeout(() => { if (sessions.get(businessId) === session) startSession(businessId) }, delayMs)
       }
     }
   })
@@ -151,6 +182,7 @@ async function handleInboundMessage(businessId, sock, msg) {
 }
 
 export async function unlinkSession(businessId) {
+  failures.delete(businessId)
   const session = sessions.get(businessId)
   if (session) {
     await session.sock.logout().catch(() => {})
