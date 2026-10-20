@@ -20,7 +20,7 @@ public class AvailabilityServiceTests : IDisposable
 
     private static string NextMonday()
     {
-        var d = DateTime.Now.Date.AddDays(1);
+        var d = AppClock.Now.Date.AddDays(1);
         while (d.DayOfWeek != DayOfWeek.Monday) d = d.AddDays(1);
         return d.ToString("yyyy-MM-dd");
     }
@@ -235,19 +235,19 @@ public class AvailabilityServiceTests : IDisposable
         // WorkingHours/slot times are the business's local wall-clock hours (never UTC —
         // see AvailabilityService), so "today"/"now" here must be local server time too,
         // matching what the service itself compares against.
-        var todayStr = DateTime.Now.ToString("yyyy-MM-dd");
+        var todayStr = AppClock.Now.ToString("yyyy-MM-dd");
         var business = new Business { Name = "Today Business", Email = "today@example.com", Slug = "today-business" };
         db.Businesses.Add(business);
         db.WorkingHours.Add(new WorkingHours
         {
-            BusinessId = business.Id, DayOfWeek = (int)DateTime.Now.DayOfWeek,
+            BusinessId = business.Id, DayOfWeek = (int)AppClock.Now.DayOfWeek,
             StartTime = "00:00", EndTime = "23:30", IsActive = true,
         });
         await db.SaveChangesAsync();
 
         var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, todayStr, 30);
 
-        var nowTime = DateTime.Now.ToString("HH:mm");
+        var nowTime = AppClock.Now.ToString("HH:mm");
         Assert.All(slots, s => Assert.True(string.Compare(s.Start, nowTime, StringComparison.Ordinal) > 0,
             $"slot {s.Start} should be after current time {nowTime}"));
     }
@@ -257,7 +257,7 @@ public class AvailabilityServiceTests : IDisposable
     {
         using var db = NewDb();
         var business = SeedBusiness(db, "09:00", "12:00");
-        var yesterday = DateTime.Now.AddDays(-1);
+        var yesterday = AppClock.Now.AddDays(-1);
         // Give "yesterday"'s day-of-week real working hours too, so an empty result here is
         // actually the past-date guard and not just "no hours configured for that weekday".
         // Skipped when yesterday happens to land on MondayDayOfWeek -- SeedBusiness already
@@ -335,7 +335,7 @@ public class AvailabilityServiceTests : IDisposable
         db.PresetSchedules.Add(new PresetSchedule
         {
             BusinessId = business.Id, PresetId = holiday.Id, RevertToPresetId = defaultPreset.Id,
-            StartDate = DateTime.Now.Date, EndDate = monday.AddDays(-1), Applied = true,
+            StartDate = AppClock.Now.Date, EndDate = monday.AddDays(-1), Applied = true,
         });
         await db.SaveChangesAsync();
 

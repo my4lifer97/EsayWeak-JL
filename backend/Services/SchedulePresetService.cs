@@ -111,7 +111,7 @@ public class SchedulePresetService(AppDbContext db)
             throw new InvalidOperationException("The default schedule is always the baseline -- it can't be scheduled for a date range.");
 
         var defaultPreset = await GetOrCreateDefaultPreset(businessId);
-        var startsNow = startDate <= DateTime.Now.Date;
+        var startsNow = startDate <= AppClock.Now.Date;
 
         var existing = await db.PresetSchedules.Where(s => s.BusinessId == businessId && !s.Reverted).ToListAsync();
         // A replaced range that's already running must hand the live hours back to Default -- unless
@@ -205,7 +205,7 @@ public class SchedulePresetService(AppDbContext db)
     // and reverts any applied schedule whose end date has passed.
     public async Task<(int Applied, int Reverted)> ApplyDueScheduledPresets()
     {
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         int applied = 0, reverted = 0;
 
         var toApply = await db.PresetSchedules.Where(s => !s.Applied && s.StartDate <= today).ToListAsync();

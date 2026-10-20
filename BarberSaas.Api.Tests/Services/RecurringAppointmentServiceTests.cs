@@ -58,7 +58,7 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task CreatesOccurrence_WhenSlotIsAvailable()
     {
         using var db = NewDb();
-        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
         var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         var series = new RecurringSeries
         {
@@ -81,7 +81,7 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task SkipsAndLogsRecurringSkip_WhenBlockedSlotCoversIt()
     {
         using var db = NewDb();
-        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
         var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         db.BlockedSlots.Add(new BlockedSlot { BusinessId = business.Id, Date = target, StartTime = null, EndTime = null, Reason = "Day off" });
         var series = new RecurringSeries
@@ -105,7 +105,7 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task Force_CreatesOccurrence_EvenWithNoWorkingHoursConfiguredForThatDay()
     {
         using var db = NewDb();
-        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
         // Deliberately no WorkingHours row for this day (not calling SeedBusinessServiceCustomer,
         // which always adds one) -- Force must bypass that gate entirely, the same problem the
         // "New Recurring Series" form's day-of-week grid otherwise gets permanently stuck on.
@@ -136,7 +136,7 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task Force_StillBlocksOnExactConflictingAppointment()
     {
         using var db = NewDb();
-        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
         var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         var otherCustomer = new Customer { BusinessId = business.Id, Name = "Other", Phone = "+15551110001" };
         db.Customers.Add(otherCustomer);
@@ -165,7 +165,7 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task SecondRun_DoesNotDuplicateAlreadyGeneratedOccurrence()
     {
         using var db = NewDb();
-        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
         var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         var series = new RecurringSeries
         {
@@ -187,7 +187,7 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task AutoPausesSeries_WhenLinkedServiceIsDeactivated()
     {
         using var db = NewDb();
-        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
         var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         item.IsActive = false;
         var series = new RecurringSeries
@@ -212,9 +212,9 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task DoesNotBackfillPastDates_WhenSeriesStartedWeeksAgo()
     {
         using var db = NewDb();
-        var tomorrow = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
-        var pastStart = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1 - 21)));
-        var endDate = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1 + 7)));
+        var tomorrow = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
+        var pastStart = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1 - 21)));
+        var endDate = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1 + 7)));
         var (business, item, customer) = SeedBusinessServiceCustomer(db, tomorrow.DayOfWeek);
         var series = new RecurringSeries
         {
@@ -227,7 +227,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
 
         var appointments = db.Appointments.Where(a => a.RecurringSeriesId == series.Id).ToList();
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         Assert.All(appointments, a => Assert.True(a.Date >= today, $"appointment on {a.Date:yyyy-MM-dd} should not be in the past"));
         Assert.Contains(appointments, a => a.Date == tomorrow);
     }
@@ -236,8 +236,8 @@ public class RecurringAppointmentServiceTests : IDisposable
     public async Task RespectsEndDate_StopsGeneratingAndDeactivatesOncePassed()
     {
         using var db = NewDb();
-        var target = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(1)));
-        var pastEnd = AsStoredDate(DateStr(DateTime.Now.Date.AddDays(-1)));
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
+        var pastEnd = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(-1)));
         var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
         var series = new RecurringSeries
         {

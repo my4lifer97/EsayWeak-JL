@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.DTOs;
@@ -25,7 +26,7 @@ public class InputValidationTests : IntegrationTestBase
 
     private static string NextWeekday(int minDaysAhead)
     {
-        var d = DateTime.Now.Date.AddDays(minDaysAhead);
+        var d = AppClock.Now.Date.AddDays(minDaysAhead);
         while (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) d = d.AddDays(1);
         return d.ToString("yyyy-MM-dd");
     }
@@ -196,7 +197,7 @@ public class InputValidationTests : IntegrationTestBase
         await Client.PatchAsJsonAsync("/api/admin/settings", new { maxBookingsPerDay = 1 });
         Client.DefaultRequestHeaders.Authorization = null;
         var day1 = NextWeekday(2);
-        var day2 = NextWeekday(DateTime.Parse(day1).Subtract(DateTime.Now.Date).Days + 1);
+        var day2 = NextWeekday(DateTime.Parse(day1).Subtract(AppClock.Now.Date).Days + 1);
 
         await BookAsCustomerAsync("input-limit-move", new BookAppointmentRequest(itemId, day1, "09:00", "Dana", "+15550001101", null));
         var second = await (await BookAsCustomerAsync("input-limit-move", new BookAppointmentRequest(itemId, day2, "09:00", "Dana", "+15550001101", null)))

@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
@@ -25,7 +26,7 @@ public class OwnerActionCustomerNoticeTests : IntegrationTestBase
         var token = (await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code))).Content.ReadFromJsonAsync<LoginResponse>())!.Token;
         Authorize(Client, token);
         var item = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m))).Content.ReadFromJsonAsync<ItemDto>();
-        var date = DateTime.Now.Date.AddDays(1);
+        var date = AppClock.Now.Date.AddDays(1);
         await Client.PostAsJsonAsync("/api/admin/schedule", new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
         using (var db = Db())
         {

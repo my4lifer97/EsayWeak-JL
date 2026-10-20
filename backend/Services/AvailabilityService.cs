@@ -27,9 +27,9 @@ public class AvailabilityService(AppDbContext db)
         // check further down) must never offer any slots at all -- otherwise it's booking-able,
         // and the resulting appointment reads back as already COMPLETED, letting anyone fabricate
         // an instant "verified visit" and leave a review for a business they never went to.
-        if (DateTime.Parse(dateStr).Date < DateTime.Now.Date) return [];
+        if (DateTime.Parse(dateStr).Date < AppClock.Now.Date) return [];
         // Nor more than a year ahead -- QA booked 14 months out, past any schedule the owner keeps.
-        if (DateTime.Parse(dateStr).Date > DateTime.Now.Date.AddDays(MaxDaysAhead)) return [];
+        if (DateTime.Parse(dateStr).Date > AppClock.Now.Date.AddDays(MaxDaysAhead)) return [];
 
         var date = DateTime.Parse(dateStr + "T00:00:00Z").ToUniversalTime();
         var day = await GetEffectiveDay(businessId, DateTime.Parse(dateStr).Date);
@@ -64,7 +64,7 @@ public class AvailabilityService(AppDbContext db)
         // time too, not DateTime.UtcNow, or the comparison is off by the UTC offset (e.g. a
         // business/customer 3 hours ahead of UTC would still see slots hours after they'd
         // actually passed).
-        var now = DateTime.Now;
+        var now = AppClock.Now;
         var isToday = DateTime.Parse(dateStr).Date == now.Date;
         var nowTime = now.ToString("HH:mm");
 
@@ -102,7 +102,7 @@ public class AvailabilityService(AppDbContext db)
     public async Task<List<string>> GetOpenDates(string businessId, int days)
     {
         var ctx = await LoadScheduleContext(businessId);
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
 
         // A date the owner closed entirely (full-day BlockedSlot, StartTime null) isn't offered in
         // the date picker at all -- the customer would only find "closed" after tapping it. A
@@ -132,7 +132,7 @@ public class AvailabilityService(AppDbContext db)
     {
         var ctx = await LoadScheduleContext(businessId);
         var open = (await GetOpenDates(businessId, days)).ToHashSet();
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         return Enumerable.Range(0, days).Select(i =>
         {
             var date = today.AddDays(i);
@@ -295,7 +295,7 @@ public class AvailabilityService(AppDbContext db)
                 System.Globalization.DateTimeStyles.None, out var day))
             return "Invalid date";
         if (SlotTimeError(startTime, durationMinutes) is { } timeError) return timeError;
-        if (day.AddMinutes(int.Parse(startTime[..2]) * 60 + int.Parse(startTime[3..])) <= DateTime.Now)
+        if (day.AddMinutes(int.Parse(startTime[..2]) * 60 + int.Parse(startTime[3..])) <= AppClock.Now)
             return "This time has already passed";
         return null;
     }

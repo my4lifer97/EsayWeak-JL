@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -81,7 +82,7 @@ public class CronControllerTests : IntegrationTestBase
     [Fact]
     public async Task Reminders_AppointmentTomorrow_SendsDayBeforeReminderAndSetsFlag()
     {
-        var tomorrow = DateTime.Now.AddDays(1).Date;
+        var tomorrow = AppClock.Now.AddDays(1).Date;
         var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
             "cron-reminder-tomorrow@example.com", "cron-reminder-tomorrow-shop", tomorrow, "10:00");
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
@@ -100,7 +101,7 @@ public class CronControllerTests : IntegrationTestBase
     [Fact]
     public async Task Reminders_AppointmentStartingWithinThreeHours_SendsSoonReminderAndSetsFlag()
     {
-        var soon = DateTime.Now.AddHours(2);
+        var soon = AppClock.Now.AddHours(2);
         var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
             "cron-reminder-soon@example.com", "cron-reminder-soon-shop", soon.Date, soon.ToString("HH:mm"));
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
@@ -118,7 +119,7 @@ public class CronControllerTests : IntegrationTestBase
     [Fact]
     public async Task Reminders_AppointmentMoreThanThreeHoursAway_DoesNotSendSoonReminder()
     {
-        var later = DateTime.Now.AddHours(5);
+        var later = AppClock.Now.AddHours(5);
         var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
             "cron-reminder-later@example.com", "cron-reminder-later-shop", later.Date, later.ToString("HH:mm"));
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
@@ -141,7 +142,7 @@ public class CronControllerTests : IntegrationTestBase
     [Fact]
     public async Task Reminders_SkipAppointmentsWaitingForCancelApproval()
     {
-        var soon = DateTime.Now.AddHours(2);
+        var soon = AppClock.Now.AddHours(2);
         var (businessId, phone, appointmentId) = await SeedConfirmedAppointment(
             "cron-reminder-pending@example.com", "cron-reminder-pending-shop", soon.Date, soon.ToString("HH:mm"));
         using (var db = Db())

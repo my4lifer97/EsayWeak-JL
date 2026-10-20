@@ -23,7 +23,7 @@ public class CustomerAppointmentsController(
     {
         // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — filter by local "now" or this drifts a day near midnight.
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         var query = db.Appointments
             .Include(a => a.Item).ThenInclude(s => s.GalleryPhotos)
             .Include(a => a.Business)

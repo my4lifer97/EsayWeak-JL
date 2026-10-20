@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -21,7 +22,7 @@ public class ChatbotFinalMessageTests : IntegrationTestBase
         Authorize(Client, login!.Token);
 
         var item = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Haircut", "Haircut", "Haircut", 30, 20m))).Content.ReadFromJsonAsync<ItemDto>();
-        var date = DateTime.Now.Date.AddDays(1);
+        var date = AppClock.Now.Date.AddDays(1);
         await Client.PostAsJsonAsync("/api/admin/schedule", new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
         await Client.PatchAsJsonAsync("/api/admin/settings", new
         {

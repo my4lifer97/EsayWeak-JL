@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
@@ -156,7 +157,7 @@ public class WhatsAppBridgeInboundTests : IntegrationTestBase
             var appt = new Appointment
             {
                 BusinessId = businessId, CustomerId = customer.Id, ItemId = item.Id,
-                Date = DateTime.Now.Date.AddDays(2), StartTime = "10:00", EndTime = "10:30", Status = AppointmentStatus.CONFIRMED,
+                Date = AppClock.Now.Date.AddDays(2), StartTime = "10:00", EndTime = "10:30", Status = AppointmentStatus.CONFIRMED,
             };
             db.Customers.Add(customer);
             db.Appointments.Add(appt);
@@ -271,7 +272,7 @@ public class WhatsAppBridgeInboundTests : IntegrationTestBase
         db.Appointments.Add(new Appointment
         {
             BusinessId = businessId, CustomerId = customer.Id, ItemId = item.Id,
-            Date = DateTime.Now.Date.AddDays(2), StartTime = "10:00", EndTime = "10:30", Status = AppointmentStatus.CONFIRMED,
+            Date = AppClock.Now.Date.AddDays(2), StartTime = "10:00", EndTime = "10:30", Status = AppointmentStatus.CONFIRMED,
         });
         await db.SaveChangesAsync();
     }

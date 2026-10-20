@@ -12,7 +12,7 @@ public class ReviewService(AppDbContext db)
     // The end-time math must use local wall-clock time, never UTC (see AvailabilityService).
     public async Task<Appointment?> MostRecentCompletedAppointment(string customerAccountId, string businessId)
     {
-        var now = DateTime.Now;
+        var now = AppClock.Now;
         var candidates = await db.Appointments
             .Where(a => a.Customer.CustomerAccountId == customerAccountId
                      && a.BusinessId == businessId

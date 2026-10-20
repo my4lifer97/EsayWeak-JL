@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -33,7 +34,7 @@ public class WaitlistTests : IntegrationTestBase
         var serviceResp = await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m));
         var service = await serviceResp.Content.ReadFromJsonAsync<ItemDto>();
 
-        var date = DateTime.Now.Date.AddDays(1);
+        var date = AppClock.Now.Date.AddDays(1);
         await Client.PostAsJsonAsync("/api/admin/schedule",
             new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
 

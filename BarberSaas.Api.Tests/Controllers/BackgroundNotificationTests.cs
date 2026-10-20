@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
@@ -32,7 +33,7 @@ public class BackgroundNotificationTests : IntegrationTestBase
         var owner = (await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("bg-notify@example.com", code))).Content.ReadFromJsonAsync<LoginResponse>())!.Token;
         Authorize(Client, owner);
         var item = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m))).Content.ReadFromJsonAsync<ItemDto>();
-        var date = DateTime.Now.Date.AddDays(1);
+        var date = AppClock.Now.Date.AddDays(1);
         await Client.PostAsJsonAsync("/api/admin/schedule", new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
         await Client.PatchAsJsonAsync("/api/admin/settings", new UpdateSettingsRequest(null, null, null, null, null, null, WaitlistEnabled: true));
         Client.DefaultRequestHeaders.Authorization = null;

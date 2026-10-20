@@ -170,7 +170,7 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
 
             // A slot whose start time has already passed isn't worth offering anymore. Local
             // wall-clock time, same convention as AvailabilityService.
-            if (appointment.Date.Date.Add(TimeSpan.Parse(appointment.StartTime)) <= DateTime.Now) continue;
+            if (appointment.Date.Date.Add(TimeSpan.Parse(appointment.StartTime)) <= AppClock.Now) continue;
 
             var lastNotifiedAt = await db.WaitlistEntries
                 .Where(w => w.AppointmentId == appointmentId && w.Status == WaitlistEntryStatus.NOTIFIED)

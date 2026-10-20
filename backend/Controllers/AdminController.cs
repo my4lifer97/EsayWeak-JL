@@ -574,7 +574,7 @@ public class AdminController(
         if (BlockedReasonError(req.Reason) is { } reasonError) return BadRequest(new { error = reasonError });
         var date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         // QA run 3: a past date could be blocked, and the same full day twice (duplicate rows).
-        if (date.Date < DateTime.Now.Date) return BadRequest(new { error = "You can't block a date in the past" });
+        if (date.Date < AppClock.Now.Date) return BadRequest(new { error = "You can't block a date in the past" });
         if (req.StartTime is null && await db.BlockedSlots.AnyAsync(b => b.BusinessId == BusinessId && b.Date == date && b.StartTime == null))
             return Conflict(new { error = "This date is already blocked" });
         var slot = new BlockedSlot
@@ -609,7 +609,7 @@ public class AdminController(
         if (end < start) return BadRequest(new { error = "End date cannot be before start date" });
         if (BlockedTimesError(req.StartTime, req.EndTime) is { } timesError) return BadRequest(new { error = timesError });
         if (BlockedReasonError(req.Reason) is { } reasonError) return BadRequest(new { error = reasonError });
-        if (start.Date < DateTime.Now.Date) return BadRequest(new { error = "You can't block a date in the past" });
+        if (start.Date < AppClock.Now.Date) return BadRequest(new { error = "You can't block a date in the past" });
         if ((end - start).Days > 366) return BadRequest(new { error = "Range too large (max 366 days)" });
 
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -862,7 +862,7 @@ public class AdminController(
         var end = DateTime.Parse(req.EndDate + "T00:00:00Z").ToUniversalTime();
         if (end < start) return BadRequest(new { error = "End date cannot be before start date" });
         // A range that's already over used to count as "starting now" and replace the live hours.
-        if (DateTime.Parse(req.EndDate) < DateTime.Now.Date) return BadRequest(new { error = "This date range has already ended" });
+        if (DateTime.Parse(req.EndDate) < AppClock.Now.Date) return BadRequest(new { error = "This date range has already ended" });
 
         try
         {
@@ -899,7 +899,7 @@ public class AdminController(
     {
         // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — bucket weeks by local "now" or this drifts a day near midnight.
-        var now = DateTime.Now.Date;
+        var now = AppClock.Now.Date;
         var weekStart = now.AddDays(week * 7 - (int)now.DayOfWeek);
         var weekEnd = weekStart.AddDays(6);
 
@@ -924,7 +924,7 @@ public class AdminController(
     public async Task<IActionResult> GetAppointments([FromQuery] string? filter = null)
     {
         // Same local-vs-UTC reasoning as GetDashboard above.
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         var query = db.Appointments
             .Include(a => a.Customer)
             .Include(a => a.Item)

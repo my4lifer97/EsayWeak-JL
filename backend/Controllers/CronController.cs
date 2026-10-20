@@ -114,7 +114,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — compute "tomorrow"/"now" from local time or this fires
         // reminders a day early/late (or at the wrong hour) for any business off UTC.
-        var tomorrow = DateTime.Now.AddDays(1).Date;
+        var tomorrow = AppClock.Now.AddDays(1).Date;
         var dayBeforeAppointments = await db.Appointments
             .Include(a => a.Business)
             .Include(a => a.Customer)
@@ -131,7 +131,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         // and hasn't fired yet -- checked every run (this endpoint is called every 15 min by the
         // GitHub Actions schedule), so an appointment is caught the first run after it enters the
         // window and never sent twice thanks to ReminderSentSoon.
-        var now = DateTime.Now;
+        var now = AppClock.Now;
         var in3Hours = now.AddHours(3);
         var soonCandidates = await db.Appointments
             .Include(a => a.Business)

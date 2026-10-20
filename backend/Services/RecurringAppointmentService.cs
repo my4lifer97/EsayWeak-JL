@@ -13,7 +13,7 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
     {
         // Local wall-clock "today" -- RecurringSeries/Appointment dates are business-local,
         // never UTC-converted, same reasoning as AvailabilityService/CronController.
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         var horizon = Horizon(today);
 
         var series = await db.RecurringSeries.Include(s => s.Item).Where(s => s.IsActive).ToListAsync();
@@ -34,7 +34,7 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
     // instead of waiting for the next daily cron run.
     public async Task GenerateForSeriesNow(string seriesId)
     {
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         var horizon = Horizon(today);
 
         var s = await db.RecurringSeries.Include(x => x.Item).FirstOrDefaultAsync(x => x.Id == seriesId);

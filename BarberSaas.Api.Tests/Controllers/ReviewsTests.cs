@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.DTOs;
@@ -45,7 +46,7 @@ public class ReviewsTests : IntegrationTestBase
             BusinessId = business.Id,
             CustomerId = customer.Id,
             ItemId = item.Id,
-            Date = DateTime.Now.Date.AddDays(-2),
+            Date = AppClock.Now.Date.AddDays(-2),
             StartTime = start,
             EndTime = end,
             Status = AppointmentStatus.CONFIRMED,

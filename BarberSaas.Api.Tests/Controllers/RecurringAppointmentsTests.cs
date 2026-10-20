@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.DTOs;
@@ -53,7 +54,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         var token = await RegisterAndLoginBusiness("recurring-weekday@example.com", "recurring-weekday");
         Authorize(Client, token);
         var item = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m))).Content.ReadFromJsonAsync<ItemDto>();
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         var saturday = today.AddDays(((int)DayOfWeek.Saturday - (int)today.DayOfWeek + 7) % 7 + 7);
 
         var mondaySeries = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
@@ -145,7 +146,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
 
         Authorize(Client, token);
         var bookResp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            null, "Mohamed", "+15551112222", itemId, DateTime.Now.Date.AddDays(30).ToString("yyyy-MM-dd"), "09:00", null, Force: true));
+            null, "Mohamed", "+15551112222", itemId, AppClock.Now.Date.AddDays(30).ToString("yyyy-MM-dd"), "09:00", null, Force: true));
         var booked = await bookResp.Content.ReadFromJsonAsync<DashboardAppointmentDto>();
 
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
@@ -178,7 +179,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         var itemId = await SeedService(token);
 
         Authorize(Client, token);
-        var pastDate = DateTime.Now.Date.AddDays(-7).ToString("yyyy-MM-dd");
+        var pastDate = AppClock.Now.Date.AddDays(-7).ToString("yyyy-MM-dd");
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
             null, "Mohamed", "+15551112222", itemId, 0, "13:00", null, pastDate));
 
@@ -193,8 +194,8 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         var itemId = await SeedService(token);
 
         Authorize(Client, token);
-        var startDate = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
-        var endDate = DateTime.Now.Date.AddDays(1).ToString("yyyy-MM-dd");
+        var startDate = AppClock.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var endDate = AppClock.Now.Date.AddDays(1).ToString("yyyy-MM-dd");
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
             null, "Mohamed", "+15551112222", itemId, 0, "13:00", null, startDate, endDate));
 
@@ -299,7 +300,7 @@ public class RecurringAppointmentsTests : IntegrationTestBase
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
-            null, "Mohamed", "+15551112222", itemId, (int)DateTime.Now.AddDays(1).DayOfWeek, "23:45", null, Force: true));
+            null, "Mohamed", "+15551112222", itemId, (int)AppClock.Now.AddDays(1).DayOfWeek, "23:45", null, Force: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.Contains("midnight", await resp.Content.ReadAsStringAsync());

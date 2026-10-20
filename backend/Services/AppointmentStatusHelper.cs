@@ -16,7 +16,7 @@ public static class AppointmentStatusHelper
         // time, not DateTime.UtcNow, or this is off by the UTC offset.
         var parts = endTime.Split(':');
         var endsAt = date.Date.AddHours(int.Parse(parts[0])).AddMinutes(int.Parse(parts[1]));
-        return endsAt < DateTime.Now ? "COMPLETED" : status.ToString();
+        return endsAt < AppClock.Now ? "COMPLETED" : status.ToString();
     }
 
     // What the CUSTOMER sees. A PendingCancellationApproval appointment is still stored as

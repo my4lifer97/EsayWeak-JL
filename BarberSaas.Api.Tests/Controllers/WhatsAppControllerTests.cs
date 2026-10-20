@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -223,7 +224,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
             BusinessId = businessId,
             CustomerId = customer.Id,
             ItemId = itemId,
-            Date = DateTime.Now.Date.AddDays(1),
+            Date = AppClock.Now.Date.AddDays(1),
             StartTime = startTime,
             EndTime = endTime,
             Status = AppointmentStatus.CONFIRMED,
@@ -299,7 +300,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-local@example.com", "wa-cancel-local");
         var login = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("wa-cancel-local@example.com", "password123"));
         var ownerToken = (await login.Content.ReadFromJsonAsync<LoginResponse>())!.Token;
-        var date = DateTime.Now.Date.AddDays(1);
+        var date = AppClock.Now.Date.AddDays(1);
         Authorize(Client, ownerToken);
         await Client.PostAsJsonAsync("/api/admin/schedule",
             new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });

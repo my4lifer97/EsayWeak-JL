@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
@@ -14,7 +15,7 @@ public class BookingFlowTests : IntegrationTestBase
     // 09:00-18:00 hours, and a same-day date would be rejected by AvailabilityService's
     // "isToday" past-time cutoff depending on when the suite happens to run. Computed rather
     // than hardcoded so this doesn't go stale the way a fixed date eventually would.
-    private static readonly string TestDate = NextWeekday(DateTime.Now.Date.AddDays(1)).ToString("yyyy-MM-dd");
+    private static readonly string TestDate = NextWeekday(AppClock.Now.Date.AddDays(1)).ToString("yyyy-MM-dd");
 
     private static DateTime NextWeekday(DateTime from)
     {
@@ -28,7 +29,7 @@ public class BookingFlowTests : IntegrationTestBase
     // Tuesday afterward in that same week regardless of which weekday TestDate lands on.
     private static (string First, string Second) TwoWeekdaysInSameFutureWeek()
     {
-        var tomorrow = DateTime.Now.Date.AddDays(1);
+        var tomorrow = AppClock.Now.Date.AddDays(1);
         var daysUntilMonday = ((int)DayOfWeek.Monday - (int)tomorrow.DayOfWeek + 7) % 7;
         var monday = tomorrow.AddDays(daysUntilMonday);
         return (monday.ToString("yyyy-MM-dd"), monday.AddDays(1).ToString("yyyy-MM-dd"));

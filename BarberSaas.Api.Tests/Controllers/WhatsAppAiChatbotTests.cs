@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BarberSaas.Api.Controllers;
@@ -79,7 +80,7 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
                 BusinessId = businessId,
                 CustomerId = customer.Id,
                 ItemId = itemId,
-                Date = DateTime.Now.Date.AddDays(1),
+                Date = AppClock.Now.Date.AddDays(1),
                 StartTime = "10:00",
                 EndTime = "10:30",
                 Status = AppointmentStatus.CONFIRMED,
@@ -195,7 +196,7 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
             var appointment = new Appointment
             {
                 BusinessId = businessId, CustomerId = customer.Id, ItemId = itemId,
-                Date = DateTime.Now.Date.AddDays(i), StartTime = "10:00", EndTime = "10:30",
+                Date = AppClock.Now.Date.AddDays(i), StartTime = "10:00", EndTime = "10:30",
                 Status = AppointmentStatus.CONFIRMED,
             };
             db.Appointments.Add(appointment);

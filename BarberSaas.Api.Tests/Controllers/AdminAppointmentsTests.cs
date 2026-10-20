@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
@@ -43,7 +44,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
             // seeding with UtcNow.Date could land on a different calendar day than "yesterday"
             // when the two clocks straddle midnight, pushing this appointment out of the week
             // window the dashboard assertions below expect it in.
-            Date = DateTime.Now.Date.AddDays(-1),
+            Date = AppClock.Now.Date.AddDays(-1),
             StartTime = "10:00",
             EndTime = "10:30",
             Status = AppointmentStatus.CONFIRMED,
@@ -119,7 +120,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
         // Tomorrow, not today -- avoids the "isToday" cutoff in AvailabilityService rejecting
         // slots that fall before the current wall-clock time depending on when the test runs.
-        var date = DateTime.Now.Date.AddDays(1);
+        var date = AppClock.Now.Date.AddDays(1);
         await Client.PostAsJsonAsync("/api/admin/schedule",
             new List<WorkingHoursDto> { new(null, (int)date.DayOfWeek, "09:00", "18:00", true) });
 
@@ -260,7 +261,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
                 db.Appointments.Add(new Appointment
                 {
                     BusinessId = businessId, CustomerId = customer.Id, ItemId = itemId,
-                    Date = DateTime.Now.Date.AddDays(days), StartTime = "09:00", EndTime = "09:30",
+                    Date = AppClock.Now.Date.AddDays(days), StartTime = "09:00", EndTime = "09:30",
                     Status = AppointmentStatus.CONFIRMED,
                 });
             db.SaveChanges();
@@ -404,7 +405,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
 
         Authorize(Client, token);
         var resp = await Client.PostAsJsonAsync("/api/admin/appointments", new CreateAdminAppointmentRequest(
-            null, "Walkin", "+15551234567", itemId, DateTime.Now.Date.AddDays(daysFromToday).ToString("yyyy-MM-dd"), startTime, null, Force: true));
+            null, "Walkin", "+15551234567", itemId, AppClock.Now.Date.AddDays(daysFromToday).ToString("yyyy-MM-dd"), startTime, null, Force: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.Contains(expectedError, await resp.Content.ReadAsStringAsync());

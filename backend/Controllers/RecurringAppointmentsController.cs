@@ -20,7 +20,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
 
     private static RecurringSeriesDto ToDto(RecurringSeries s)
     {
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         var daysUntil = ((s.DayOfWeek - (int)today.DayOfWeek) + 7) % 7;
         var next = today.AddDays(daysUntil);
         if (next < s.StartDate) next = s.StartDate;
@@ -97,7 +97,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             }
         }
 
-        var today = DateTime.Now.Date;
+        var today = AppClock.Now.Date;
         DateTime startDate;
         if (string.IsNullOrWhiteSpace(req.StartDate))
         {

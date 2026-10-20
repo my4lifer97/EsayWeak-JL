@@ -70,7 +70,7 @@ public class SchedulePresetServiceTests : IDisposable
         db.PresetSchedules.Add(new PresetSchedule
         {
             BusinessId = business.Id, PresetId = target.Id, RevertToPresetId = backup.Id,
-            StartDate = AsDate(DateTime.Now.Date), EndDate = AsDate(DateTime.Now.Date.AddDays(7)),
+            StartDate = AsDate(AppClock.Now.Date), EndDate = AsDate(AppClock.Now.Date.AddDays(7)),
             Applied = false,
         });
         await db.SaveChangesAsync();
@@ -94,7 +94,7 @@ public class SchedulePresetServiceTests : IDisposable
         db.PresetSchedules.Add(new PresetSchedule
         {
             BusinessId = business.Id, PresetId = target.Id, RevertToPresetId = backup.Id,
-            StartDate = AsDate(DateTime.Now.Date.AddDays(3)), EndDate = AsDate(DateTime.Now.Date.AddDays(10)),
+            StartDate = AsDate(AppClock.Now.Date.AddDays(3)), EndDate = AsDate(AppClock.Now.Date.AddDays(10)),
             Applied = false,
         });
         await db.SaveChangesAsync();
@@ -117,7 +117,7 @@ public class SchedulePresetServiceTests : IDisposable
         db.PresetSchedules.Add(new PresetSchedule
         {
             BusinessId = business.Id, PresetId = target.Id, RevertToPresetId = backup.Id,
-            StartDate = AsDate(DateTime.Now.Date.AddDays(-10)), EndDate = AsDate(DateTime.Now.Date.AddDays(-1)),
+            StartDate = AsDate(AppClock.Now.Date.AddDays(-10)), EndDate = AsDate(AppClock.Now.Date.AddDays(-1)),
             Applied = true,
         });
         await db.SaveChangesAsync();
@@ -141,7 +141,7 @@ public class SchedulePresetServiceTests : IDisposable
         db.PresetSchedules.Add(new PresetSchedule
         {
             BusinessId = business.Id, PresetId = target.Id, RevertToPresetId = backup.Id,
-            StartDate = AsDate(DateTime.Now.Date.AddDays(-3)), EndDate = AsDate(DateTime.Now.Date.AddDays(3)),
+            StartDate = AsDate(AppClock.Now.Date.AddDays(-3)), EndDate = AsDate(AppClock.Now.Date.AddDays(3)),
             Applied = true,
         });
         await db.SaveChangesAsync();

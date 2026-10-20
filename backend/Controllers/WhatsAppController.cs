@@ -981,7 +981,7 @@ public class WhatsAppController(
             // against local "today" as a date — not DateTime.UtcNow, which is both the wrong
             // clock and, being a timestamp rather than a date, would already exclude today's
             // appointments as soon as any time had passed since UTC midnight.
-            .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && a.Date >= DateTime.Now.Date))
+            .Include(c => c.Appointments.Where(a => a.Status == AppointmentStatus.CONFIRMED && a.Date >= AppClock.Now.Date))
                 .ThenInclude(a => a.Item)
             .FirstOrDefaultAsync(c => c.BusinessId == businessId && c.Phone == fromPhone);
 

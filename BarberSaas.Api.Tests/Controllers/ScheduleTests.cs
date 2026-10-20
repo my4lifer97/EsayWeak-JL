@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.DTOs;
@@ -107,8 +108,8 @@ public class ScheduleTests : IntegrationTestBase
         var created = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Old", PresetDays(5, "08:00", "09:00")));
         var preset = await created.Content.ReadFromJsonAsync<SchedulePresetDto>();
 
-        var lastWeek = DateTime.Now.Date.AddDays(-7).ToString("yyyy-MM-dd");
-        var yesterday = DateTime.Now.Date.AddDays(-1).ToString("yyyy-MM-dd");
+        var lastWeek = AppClock.Now.Date.AddDays(-7).ToString("yyyy-MM-dd");
+        var yesterday = AppClock.Now.Date.AddDays(-1).ToString("yyyy-MM-dd");
         var resp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(lastWeek, yesterday));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
@@ -237,7 +238,7 @@ public class ScheduleTests : IntegrationTestBase
         // A later date range reverts to Default -- which must now be the applied hours, not the old ones.
         var tempResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(5, "08:00", "09:00")));
         var temp = await tempResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
         var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{temp!.Id}/schedule", new SchedulePresetRangeRequest(today, today));
         var scheduled = await scheduleResp.Content.ReadFromJsonAsync<PresetScheduleDto>();
         await Client.DeleteAsync($"/api/admin/schedule/preset-schedule/{scheduled!.Id}");
@@ -254,8 +255,8 @@ public class ScheduleTests : IntegrationTestBase
         Authorize(Client, token);
         var holidayResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(5, "08:00", "09:00")));
         var holiday = await holidayResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
-        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
+        var future = AppClock.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
         await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{holiday!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
         var summerResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Summer Hours", PresetDays(3, "10:00", "14:00")));
         var summer = await summerResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
@@ -316,8 +317,8 @@ public class ScheduleTests : IntegrationTestBase
             Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
         var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours", PresetDays(3, "10:00", "14:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
-        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
+        var future = AppClock.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
 
         var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule",
             new SchedulePresetRangeRequest(today, future));
@@ -349,9 +350,9 @@ public class ScheduleTests : IntegrationTestBase
         Authorize(Client, token);
         var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("A", PresetDays(0, "09:00", "18:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var start = DateTime.Now.Date.AddDays(10).ToString("yyyy-MM-dd");
-        var end = DateTime.Now.Date.AddDays(17).ToString("yyyy-MM-dd");
-        var newEnd = DateTime.Now.Date.AddDays(40).ToString("yyyy-MM-dd");
+        var start = AppClock.Now.Date.AddDays(10).ToString("yyyy-MM-dd");
+        var end = AppClock.Now.Date.AddDays(17).ToString("yyyy-MM-dd");
+        var newEnd = AppClock.Now.Date.AddDays(40).ToString("yyyy-MM-dd");
         await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(start, end));
 
         var secondResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}/schedule", new SchedulePresetRangeRequest(start, newEnd));
@@ -372,11 +373,11 @@ public class ScheduleTests : IntegrationTestBase
             Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
         var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(3, "10:00", "14:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
         await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, today));
 
-        var laterStart = DateTime.Now.Date.AddDays(10).ToString("yyyy-MM-dd");
-        var laterEnd = DateTime.Now.Date.AddDays(12).ToString("yyyy-MM-dd");
+        var laterStart = AppClock.Now.Date.AddDays(10).ToString("yyyy-MM-dd");
+        var laterEnd = AppClock.Now.Date.AddDays(12).ToString("yyyy-MM-dd");
         var resp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}/schedule", new SchedulePresetRangeRequest(laterStart, laterEnd));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
@@ -394,8 +395,8 @@ public class ScheduleTests : IntegrationTestBase
         Authorize(Client, token);
         var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Holiday", PresetDays(3, "10:00", "14:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
-        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
+        var future = AppClock.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
         await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
 
         var updateResp = await Client.PutAsJsonAsync($"/api/admin/schedule/presets/{preset.Id}",
@@ -415,8 +416,8 @@ public class ScheduleTests : IntegrationTestBase
             Enumerable.Range(0, 7).Select(d => new WorkingHoursDto(null, d, "09:00", "18:00", d == 0)).ToList());
         var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours", PresetDays(3, "10:00", "14:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
-        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
+        var future = AppClock.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
         var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
         var scheduled = await scheduleResp.Content.ReadFromJsonAsync<PresetScheduleDto>();
 
@@ -439,8 +440,8 @@ public class ScheduleTests : IntegrationTestBase
         Authorize(Client, token);
         var saveResp = await Client.PostAsJsonAsync("/api/admin/schedule/presets", new SaveSchedulePresetRequest("Christmas Hours", PresetDays(0, "09:00", "18:00")));
         var preset = await saveResp.Content.ReadFromJsonAsync<SchedulePresetDto>();
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
-        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
+        var future = AppClock.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
         await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{preset!.Id}/schedule", new SchedulePresetRangeRequest(today, future));
 
         var deleteResp = await Client.DeleteAsync($"/api/admin/schedule/presets/{preset.Id}");
@@ -460,8 +461,8 @@ public class ScheduleTests : IntegrationTestBase
         Assert.Equal("Default", defaultPreset.Name);
         Assert.Equal(7, defaultPreset.Days.Count);
 
-        var today = DateTime.Now.Date.ToString("yyyy-MM-dd");
-        var future = DateTime.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
+        var today = AppClock.Now.Date.ToString("yyyy-MM-dd");
+        var future = AppClock.Now.Date.AddDays(7).ToString("yyyy-MM-dd");
         var scheduleResp = await Client.PostAsJsonAsync($"/api/admin/schedule/presets/{defaultPreset.Id}/schedule",
             new SchedulePresetRangeRequest(today, future));
         Assert.Equal(HttpStatusCode.BadRequest, scheduleResp.StatusCode);

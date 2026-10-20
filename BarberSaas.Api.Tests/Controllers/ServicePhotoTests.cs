@@ -1,3 +1,4 @@
+using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
@@ -66,7 +67,7 @@ public class ServicePhotoTests : IntegrationTestBase
     // date that's still in the future no matter when the suite happens to run.
     private static string NextWeekdayDate()
     {
-        var d = DateTime.Now.AddDays(1);
+        var d = AppClock.Now.AddDays(1);
         while (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) d = d.AddDays(1);
         return d.ToString("yyyy-MM-dd");
     }
