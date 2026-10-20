@@ -149,10 +149,9 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         var fourthResp = await PostInbound(businessId, phone, "hello?");
         var fourthBody = await fourthResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        // Re-sent, not silently ignored -- not the literal "$" -- so a customer who missed the
-        // first lockout message still gets told how to unlock, instead of the bot going quiet.
-        Assert.Contains("$", fourthBody!.Reply);
-        Assert.DoesNotContain("AI:", fourthBody.Reply);
+        // No reply right after the lockout message: the reminder repeats at most every 30 minutes,
+        // and the AI isn't called while locked.
+        Assert.Null(fourthBody!.Reply);
 
         var unlockResp = await PostInbound(businessId, phone, "$");
         var unlockBody = await unlockResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();

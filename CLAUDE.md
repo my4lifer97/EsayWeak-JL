@@ -839,11 +839,11 @@ to WhatsApp).
   `WhatsAppController.MaxInvalidAttempts`) stops the bot dispatching to anything else -- including
   cancel/reschedule keywords -- until the customer sends the literal unlock keyword (`"$"`,
   `WhatsAppController.UnlockKeyword`), which restarts the conversation from the opening prompt.
-  Every message the customer sends while locked out (other than `"$"` itself) gets the
-  `whatsapp.tooManyInvalidReplies` reminder re-sent, not silence (fixed 2026-09-22 — going quiet
-  after the first reminder read as the bot being broken/spammed, since a customer who missed or
-  forgot that one message had no way to know the conversation could still be recovered). Prevents
-  the bot replying forever to someone sending random text, while still telling them how to unlock it.
+  While locked out (other than `"$"` itself) the `whatsapp.tooManyInvalidReplies` reminder is
+  re-sent at most every 30 minutes and other messages get no reply (2026-10-20, owner's choice: a
+  reminder on every message was spam; 2026-09-22's fix had replaced total silence, which looked
+  broken). The lock lasts 24 h from the last reminder (`LockoutLifetime`); `ExpiresAt - LockoutLifetime`
+  is when that reminder went out, so no extra column (`StartLockout`/`LockoutReminderIfDue`).
 - **Cancel keyword asks first** (rule-based path 2026-10-11; the AI path asks too since 2026-10-19, see below): cancel/reschedule
   keywords match **whole words only** (`ContainsKeyword`) — the old substring match cancelled real
   appointments on ordinary sentences like "אני בטלפון עכשיו" ("בטל" inside "בטלפון"); "שנה" was
@@ -891,9 +891,8 @@ system prompt tells the model to call `cancel_upcoming_appointment` then `create
 that has nothing to do with the business). Questions it answers don't count (QA: three plain
 questions used to lock the customer out, when any turn without a booking/cancel tool counted);
 `AiUsageLimiter` limits the cost instead. Any other turn resets the counter to 0. On the 3rd unclear message in a row, the AI's own reply text is
-replaced with the `whatsapp.tooManyInvalidReplies` message (same as rule-based); every message after
-that gets the same reminder re-sent (fixed 2026-09-22, mirroring the rule-based path — see above)
-instead of the AI being called at all, until the customer sends the literal `"$"`, which clears the
+replaced with the `whatsapp.tooManyInvalidReplies` message (same as rule-based); after that the AI
+isn't called at all and the reminder repeats at most every 30 minutes (same as rule-based, see above), until the customer sends the literal `"$"`, which clears the
 conversation state entirely and replies with `whatsapp.aiConversationRestarted` — a fresh state row
 only gets created once the customer sends a real next message, same as the rule-based unlock.
 

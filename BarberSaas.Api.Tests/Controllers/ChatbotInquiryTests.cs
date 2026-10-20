@@ -360,8 +360,8 @@ public class ChatbotInquiryTests : IntegrationTestBase
 
         var reply = await Reply(businessId, "+15550102", "$2");
 
-        Assert.DoesNotContain("chatting directly", reply);
-        Assert.Contains("$", reply);
+        // Still locked: no reply (the reminder was just sent), and no inquiry mode.
+        Assert.Null(reply);
         using var db = Db();
         Assert.False(await db.ChatbotInquiries.AnyAsync(i => i.BusinessId == businessId));
     }

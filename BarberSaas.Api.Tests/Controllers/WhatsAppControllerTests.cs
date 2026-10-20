@@ -184,13 +184,36 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var thirdReply = await SendWhatsAppMessage(phone, "99"); // attempt 3 -- lockout warning
         Assert.Contains("$", thirdReply);
 
-        // Locked out now -- even a cancel keyword gets the unlock reminder re-sent, not silence,
-        // so a customer who missed the first lockout warning still knows how to recover.
+        // Locked out now -- even a cancel keyword gets no reply, and the reminder isn't repeated
+        // right away (it used to answer every message).
         var lockedReply = await SendWhatsAppMessage(phone, "cancel");
-        Assert.Contains("$", lockedReply);
+        Assert.DoesNotContain("$", lockedReply);
+        Assert.DoesNotContain("cancel", lockedReply, StringComparison.OrdinalIgnoreCase);
 
         using var db = Db();
         Assert.Equal(3, await db.WhatsAppConversationStates.Where(s => s.BusinessId == businessId && s.Phone == phone).Select(s => s.InvalidAttempts).FirstAsync());
+    }
+
+    [Fact]
+    public async Task Lockout_RemindsAgainOnlyAfterThirtyMinutes()
+    {
+        var (businessId, _, _) = await SeedBusinessWithServices("wa-webhook-lockout-3@example.com", "wa-webhook-lockout-3");
+        var phone = "+15558880022";
+        await SendWhatsAppMessage(phone, "hi");
+        for (var i = 0; i < 3; i++) await SendWhatsAppMessage(phone, "99"); // locked, reminder sent
+
+        Assert.DoesNotContain("$", await SendWhatsAppMessage(phone, "hello?"));
+
+        // 31 minutes since the reminder (the lock runs 24 h from it).
+        using (var db = Db())
+        {
+            var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone);
+            state.ExpiresAt = DateTime.UtcNow.AddHours(24).AddMinutes(-31);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Contains("$", await SendWhatsAppMessage(phone, "hello?"));
+        Assert.DoesNotContain("$", await SendWhatsAppMessage(phone, "hello again"));
     }
 
     [Fact]

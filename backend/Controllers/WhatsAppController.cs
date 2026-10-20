@@ -59,6 +59,12 @@ public class WhatsAppController(
     // the rule-based bot stops replying to anything except the literal "$" unlock keyword -- see
     // the lockout gate at the top of ProcessMessageRuleBasedAsync.
     private const int MaxInvalidAttempts = 3;
+    // While locked out, the "$" reminder goes out at most this often; other messages get no reply.
+    // It used to answer every message, which kept a customer typing at a wall of reminders. The
+    // lock lasts LockoutLifetime from the last reminder (ExpiresAt), so ExpiresAt - LockoutLifetime
+    // is when the last one was sent -- no extra column.
+    private static readonly TimeSpan LockoutReminderInterval = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan LockoutLifetime = TimeSpan.FromHours(24);
     // What the AI path sends to OpenAI per message and keeps per history turn. A few very long
     // messages used to overflow the context window, and every later turn then failed (QA run 3).
     private const int MaxAiMessageChars = 1000;
@@ -445,13 +451,13 @@ public class WhatsAppController(
             // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
             // automated replies entirely -- including cancel/reschedule keywords -- until they send
             // the literal unlock keyword, which restarts the conversation from the opening prompt.
-            // Every message they send while locked out re-sends the "$"-unlock reminder (rather than
-            // going silent) so a customer who missed/forgot the first one doesn't just keep texting
-            // into a bot that looks broken -- see the AI path's identical mirror below.
+            // While locked out the "$"-unlock reminder is re-sent at most every 30 minutes
+            // (LockoutReminderIfDue), other messages get no reply: a reminder on every message was
+            // spam, none at all looked like a broken bot. Same in the AI path below.
             if (conversationState.InvalidAttempts >= MaxInvalidAttempts)
             {
                 if (incomingMsg.Trim() != UnlockKeyword)
-                    return I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword });
+                    return await LockoutReminderIfDue(conversationState, lang);
                 db.WhatsAppConversationStates.Remove(conversationState);
                 await db.SaveChangesAsync();
                 return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
@@ -514,7 +520,7 @@ public class WhatsAppController(
         if (state is not null && state.InvalidAttempts >= MaxInvalidAttempts)
         {
             if (incomingMsg.Trim() != UnlockKeyword)
-                return I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword });
+                return await LockoutReminderIfDue(state, lang);
             await ClearConversationState(business.Id, fromPhone);
             return I18nService.T(lang, "whatsapp.aiConversationRestarted");
         }
@@ -690,7 +696,7 @@ public class WhatsAppController(
         {
             state.InvalidAttempts++;
             if (state.InvalidAttempts >= MaxInvalidAttempts)
-                reply = I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword });
+                reply = StartLockout(state, lang);
         }
 
         await db.SaveChangesAsync();
@@ -896,6 +902,24 @@ public class WhatsAppController(
         var args = DateTimeArgs(upcoming);
         args["service"] = ItemName(upcoming.Item, lang);
         return I18nService.T(lang, "whatsapp.confirmCancel", args);
+    }
+
+    // The reply that locks the conversation: the "$" reminder, with the lock running LockoutLifetime.
+    private static string StartLockout(WhatsAppConversationState state, string lang)
+    {
+        state.ExpiresAt = DateTime.UtcNow.Add(LockoutLifetime);
+        return I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword });
+    }
+
+    // A message while locked out: the reminder again once LockoutReminderInterval has passed since
+    // the last one, else no reply (null).
+    private async Task<string?> LockoutReminderIfDue(WhatsAppConversationState state, string lang)
+    {
+        var lastReminder = state.ExpiresAt - LockoutLifetime;
+        if (DateTime.UtcNow - lastReminder < LockoutReminderInterval) return null;
+        var reply = StartLockout(state, lang);
+        await db.SaveChangesAsync();
+        return reply;
     }
 
     // Expired rows stay in the table, so one found without the ExpiresAt filter must not carry its
@@ -1120,10 +1144,11 @@ public class WhatsAppController(
             state.InvalidAttempts++;
             // So a following bare "1" stays in the language this reply was answered in (QA run 3).
             state.Language = lang;
-            await db.SaveChangesAsync();
-            return state.InvalidAttempts >= MaxInvalidAttempts
-                ? I18nService.T(lang, "whatsapp.tooManyInvalidReplies", new() { ["unlockKeyword"] = UnlockKeyword })
+            var invalidReply = state.InvalidAttempts >= MaxInvalidAttempts
+                ? StartLockout(state, lang)
                 : I18nService.T(lang, "whatsapp.invalidServiceSelection");
+            await db.SaveChangesAsync();
+            return invalidReply;
         }
 
         var chosen = services.FirstOrDefault(s => s.Id == shownIds[index - 1]);
