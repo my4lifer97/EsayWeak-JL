@@ -96,6 +96,9 @@ builder.Services.AddScoped<WaitlistService>();
 // mid-test; they call WaitlistService.AdvanceQueues through the cron endpoint instead.
 if (builder.Configuration.GetValue("Waitlist:WorkerEnabled", true))
     builder.Services.AddHostedService<WaitlistQueueWorker>();
+// Off in tests too; ConversationStateCleanupTests call DeleteExpiredAsync directly.
+if (builder.Configuration.GetValue("ConversationCleanup:WorkerEnabled", true))
+    builder.Services.AddHostedService<ConversationStateCleanupWorker>();
 builder.Services.AddScoped<AppointmentCancellationService>();
 builder.Services.AddScoped<CustomerNotifier>();
 // Best-effort WhatsApp/email sends run after the request instead of inside it (see NotificationQueue).

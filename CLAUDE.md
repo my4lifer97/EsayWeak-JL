@@ -828,6 +828,9 @@ number). `Twilio:AccountSid`/`Twilio:AuthToken` config still exists for this dor
 to WhatsApp).
 - `WhatsAppController.ProcessMessageAsync` is the shared dispatcher for both the bridge-inbound and
   legacy Twilio paths. It handles one message at a time per (business, phone) using a striped in-memory `SemaphoreSlim` (a single backend instance). Two messages arriving together used to both insert the conversation row and 500 on its unique index — see the AI layer subsection below for what it dispatches to.
+- `WhatsAppConversationState` rows are dead once `ExpiresAt` passes (every read filters or resets
+  them); `Services/ConversationStateCleanupWorker` deletes rows expired more than a day ago, hourly
+  (`ConversationCleanup:WorkerEnabled`, off in tests).
 - Reminders (day-before and ~3-hours-before, see `/api/cron/reminders` above) are sent via an
   external cron-job.org job calling the endpoint every 15 minutes — see the cron scheduling note
   earlier in this doc for why this isn't a GitHub Actions workflow.
