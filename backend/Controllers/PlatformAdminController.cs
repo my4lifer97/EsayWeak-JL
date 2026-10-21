@@ -641,19 +641,43 @@ public class PlatformAdminController(
             db.WorkingHours.AddRange(defaultHours);
         }
 
-        request.Status = BusinessOwnerRequestStatus.Approved;
-        request.ReviewedAt = DateTime.UtcNow;
-        request.ReviewedByPlatformAdminId = AdminId;
-        request.CreatedBusinessId = business.Id;
-        try
+        // Claimed with the same conditional update reject uses, in one transaction with the new
+        // business: approve used to save the status unconditionally, so an approve and a reject sent
+        // together both succeeded -- the business was created, the request ended Approved with the
+        // rejection note set, and the requester was also emailed the rejection (QA run 4). A
+        // racing reject now waits on the row and finds it no longer Pending; a failed insert
+        // (duplicate slug or username) rolls the claim back.
+        const string alreadyReviewed = "This request was just reviewed by someone else, or the URL was just taken. Reload and try again.";
+        var now = DateTime.UtcNow;
+        await using (var tx = await db.Database.BeginTransactionAsync())
         {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            // Two admins approving at once both pass the Pending check above; the second one's
-            // insert then hits the unique username/slug index (QA run 2: a raw 500).
-            return Conflict(new { error = "This request was just reviewed by someone else, or the URL was just taken. Reload and try again." });
+            var claimed = await db.BusinessOwnerRequests
+                .Where(r => r.Id == id && r.Status == BusinessOwnerRequestStatus.Pending)
+                .ExecuteUpdateAsync(u => u
+                    .SetProperty(r => r.Status, BusinessOwnerRequestStatus.Approved)
+                    .SetProperty(r => r.ReviewedAt, now)
+                    .SetProperty(r => r.ReviewedByPlatformAdminId, AdminId));
+            if (claimed == 0)
+            {
+                db.ChangeTracker.Clear();
+                return Conflict(new { error = alreadyReviewed });
+            }
+
+            request.Status = BusinessOwnerRequestStatus.Approved;
+            request.ReviewedAt = now;
+            request.ReviewedByPlatformAdminId = AdminId;
+            request.CreatedBusinessId = business.Id;
+            try
+            {
+                await db.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            catch (DbUpdateException)
+            {
+                await tx.RollbackAsync();
+                db.ChangeTracker.Clear();
+                return Conflict(new { error = alreadyReviewed });
+            }
         }
 
         db.ActivityLogs.Add(new ActivityLog
