@@ -92,6 +92,11 @@ public class Business
     public string? ResolveChatbotFinalMessage(string lang) =>
         lang switch { "AR" => ChatbotFinalMessageAr, "HE" => ChatbotFinalMessageHe, _ => ChatbotFinalMessageEn };
 
+    // An expired subscription or ended trial can't take new bookings (BookingController answers
+    // 403), so the chatbot doesn't hand out booking links either.
+    public bool AcceptsBookings(DateTime utcNow) =>
+        SubscriptionStatus != SubStatus.EXPIRED && !(SubscriptionStatus == SubStatus.TRIAL && TrialEndsAt < utcNow);
+
     // Overrides the fallback language WhatsAppController.ResolveLanguage uses for a signal-less
     // message (pure digits/emoji, no letters) with no open conversation to inherit from. Null
     // means "fall back to the general Language field" -- kept separate because Language also

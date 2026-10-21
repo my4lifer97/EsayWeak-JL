@@ -10,31 +10,54 @@ namespace BarberSaas.Api.Services;
 public class AiUsageLimiter(IConfiguration config)
 {
     private static readonly TimeSpan Window = TimeSpan.FromHours(24);
-    private readonly ConcurrentDictionary<string, List<DateTime>> _calls = new();
+    private static readonly TimeSpan PruneInterval = TimeSpan.FromMinutes(1);
+    private readonly ConcurrentDictionary<string, Usage> _calls = new();
+    private long _lastPruneTicks;
 
     private int Limit => config.GetValue("OpenAI:MaxMessagesPerPhonePerDay", 50);
+
+    // Removed is set under the lock when Prune drops the entry, so a TryUse that got it just before
+    // starts over on a fresh one instead of counting into an orphan (QA run 4).
+    private sealed class Usage
+    {
+        public readonly List<DateTime> Times = [];
+        public bool Removed;
+    }
 
     // Counts this message and says whether it may use OpenAI.
     public bool TryUse(string businessId, string phone, DateTime now)
     {
-        if (_calls.Count > 50_000) Prune(now);
-        var list = _calls.GetOrAdd($"{businessId}|{phone}", _ => []);
-        lock (list)
+        // At most once a minute: past 50k keys it used to scan everything on every message.
+        if (_calls.Count > 50_000)
         {
-            list.RemoveAll(t => now - t >= Window);
-            if (list.Count >= Limit) return false;
-            list.Add(now);
-            return true;
+            var last = Interlocked.Read(ref _lastPruneTicks);
+            if (now.Ticks - last >= PruneInterval.Ticks && Interlocked.CompareExchange(ref _lastPruneTicks, now.Ticks, last) == last)
+                Prune(now);
+        }
+        while (true)
+        {
+            var usage = _calls.GetOrAdd($"{businessId}|{phone}", _ => new Usage());
+            lock (usage)
+            {
+                if (usage.Removed) continue;
+                usage.Times.RemoveAll(t => now - t >= Window);
+                if (usage.Times.Count >= Limit) return false;
+                usage.Times.Add(now);
+                return true;
+            }
         }
     }
 
     private void Prune(DateTime now)
     {
-        foreach (var (key, list) in _calls)
+        foreach (var (key, usage) in _calls)
         {
-            bool stale;
-            lock (list) stale = list.Count == 0 || now - list[^1] >= Window;
-            if (stale) _calls.TryRemove(key, out _);
+            lock (usage)
+            {
+                if (usage.Times.Count > 0 && now - usage.Times[^1] < Window) continue;
+                usage.Removed = true;
+                _calls.TryRemove(key, out _);
+            }
         }
     }
 }

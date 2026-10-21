@@ -8,7 +8,13 @@ export type ActivityLogEntry = {
 
 // "RecurringAppointmentsController.Delete" -> "Delete" -- same regex as the backend's
 // ActivityLogFilter.Prettify, applied to just the action-name half for a short dropdown label.
+// Rows written by the system itself, not by a person.
+const SYSTEM_ACTION_LABELS: Record<string, string> = {
+  'WhatsAppLink.LoggedOut': 'WhatsApp bot logged out',
+}
+
 function prettifyActionLabel(action: string): string {
+  if (SYSTEM_ACTION_LABELS[action]) return SYSTEM_ACTION_LABELS[action]
   const methodName = action.split('.').pop() ?? action
   return methodName.replace(/(?<!^)([A-Z])/g, ' $1')
 }
@@ -31,7 +37,7 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
     if (actionFilter && e.action !== actionFilter) return false
     if (impersonatedFilter === 'impersonated' && !e.impersonated) return false
     if (impersonatedFilter === 'admin' && !e.byPlatformAdmin) return false
-    if (impersonatedFilter === 'direct' && (e.impersonated || e.byPlatformAdmin)) return false
+    if (impersonatedFilter === 'direct' && (e.impersonated || e.byPlatformAdmin || SYSTEM_ACTION_LABELS[e.action])) return false
     return true
   })
 
@@ -87,6 +93,9 @@ export function ActivityLogTable({ entries }: { entries: ActivityLogEntry[] | un
                         )}
                         {e.byPlatformAdmin && (
                           <span className="ml-2 text-xs text-muted">(by platform admin)</span>
+                        )}
+                        {SYSTEM_ACTION_LABELS[e.action] && (
+                          <span className="ml-2 text-xs text-muted">(system)</span>
                         )}
                       </td>
                       <td className="py-2 pr-4 text-muted">{e.method} {e.statusCode}</td>

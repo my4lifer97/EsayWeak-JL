@@ -42,11 +42,18 @@ public class WhatsAppController(
     // colloquial "بدي الغي الموعد" weren't recognised).
     private static readonly string[] CancelKeywords =
     [
-        "cancel",
+        "cancel", "cancelling", "canceling",
+        "מבטל", "מבטלת", "אבטל",
         "ביטול", "בטל", "לבטל", "תבטל", "תבטלי", "תבטלו", "בטלו", "בטלי",
-        "بطل", "إلغاء", "الغاء", "والغاء", "وإلغاء", "الغي", "ألغي", "إلغي", "الغيه", "ألغيه", "الغيلي",
+        "بطل", "إلغاء", "الغاء", "والغاء", "وإلغاء", "الغي", "ألغي", "إلغي", "الغيه", "ألغيه", "الغيلي", "تلغي", "ألغ", "الغ", "إلغ",
     ];
-    private static readonly string[] RescheduleKeywords = ["reschedule", "שינוי", "לשנות", "تغيير"];
+    // "غير" ("change!") is left out on purpose: it also means "other"/"not" and is very common.
+    private static readonly string[] RescheduleKeywords =
+    [
+        "reschedule", "rescheduling", "change", "move", "postpone",
+        "שינוי", "לשנות", "תשנה", "אשנה", "להזיז", "תזיז", "לדחות", "תדחה",
+        "تغيير", "اغير", "أغير", "نغير", "تأجيل", "تاجيل",
+    ];
     // A cancel keyword never cancels on its own: it asks "reply 1 to cancel / 2 to keep" and parks
     // the appointment id in WhatsAppConversationState.ChatbotMode as "ConfirmCancel:{id}" until the
     // customer answers (see TryHandleCancelConfirmation).
@@ -73,7 +80,14 @@ public class WhatsAppController(
     private const int MaxInquiryMessageChars = 4000;
     // Natural answers to the "reply 1 to cancel / 2 to keep" question, as whole words. "yes" went
     // to the model, which had no tool to act on it (QA run 3).
-    private static readonly string[] YesWords = ["yes", "yeah", "yep", "y", "כן", "נכון", "نعم", "ايوه", "أيوه", "اه"];
+    private static readonly string[] YesWords = ["yes", "yeah", "yep", "yup", "y", "sure", "כן", "נכון", "בטח", "نعم", "ايوه", "أيوه", "اه", "أكيد", "اكيد"];
+    // Words that may follow a yes/no without changing it ("yes please", "no thanks", "keep it").
+    private static readonly string[] AnswerFillerWords =
+    [
+        "please", "pls", "plz", "it", "thanks", "thank", "you", "the", "my", "appointment", "ok", "okay",
+        "בבקשה", "תודה", "את", "זה", "אותו", "התור", "תור",
+        "من", "فضلك", "لو", "سمحت", "شكرا", "الموعد", "موعد", "اياه",
+    ];
     private static readonly string[] NoWords = ["no", "nope", "n", "לא", "لا", "keep", "להשאיר", "השאר"];
     private const string UnlockKeyword = "$";
     // Matches WhatsAppBookingTokenService's own token lifetime -- the "stay quiet" window should
@@ -173,28 +187,49 @@ public class WhatsAppController(
     // The bridge reports a session WhatsApp itself ended ("loggedOut": the device was removed on
     // the phone, or WhatsApp dropped it). The bridge deletes the saved session then, so the bot
     // stays silent until someone links it again -- on 2026-10-20 that went unnoticed overnight.
-    // An admin's own Unlink isn't reported. Logged on the business's activity feed and emailed to
-    // the platform admin (Brevo, not Gmail). A repeat within 10 minutes (a bridge retry whose
-    // first attempt did get through) only answers 200.
+    // An admin's own Unlink isn't reported. Clears Business.WhatsAppNumber (the admin page then
+    // offers "Link WhatsApp" again, QA run 4), logs it on the business's activity feed and emails
+    // the platform admin (Brevo, not Gmail). A repeat while the number is still cleared and within
+    // 10 minutes (a bridge retry whose first attempt did get through) only answers 200; a logout
+    // after a re-link is reported again. One at a time per business, so parallel retries can't
+    // both get through the check.
     [HttpPost("bridge/session-event")]
     [RequireBridgeSecret]
     public async Task<IActionResult> BridgeSessionEvent([FromBody] BridgeSessionEventRequest req, [FromServices] PlatformAdminAlerts alerts)
     {
         if (req.Event != "loggedOut") return BadRequest(new { error = "Unknown event" });
+        var eventLock = LockFor(req.BusinessId, "session-event");
+        await eventLock.WaitAsync();
+        try
+        {
+            return await HandleLoggedOutAsync(req, alerts);
+        }
+        finally
+        {
+            eventLock.Release();
+        }
+    }
+
+    private async Task<IActionResult> HandleLoggedOutAsync(BridgeSessionEventRequest req, PlatformAdminAlerts alerts)
+    {
         var business = await db.Businesses.FindAsync(req.BusinessId);
         if (business is null) return NotFound();
 
         const string action = "WhatsAppLink.LoggedOut";
         var since = DateTime.UtcNow.AddMinutes(-10);
-        if (await db.ActivityLogs.AnyAsync(a => a.BusinessId == business.Id && a.Action == action && a.CreatedAt > since))
+        if (business.WhatsAppNumber is null
+            && await db.ActivityLogs.AnyAsync(a => a.BusinessId == business.Id && a.Action == action && a.CreatedAt > since))
             return Ok();
 
-        var number = req.PhoneNumber ?? business.WhatsAppNumber;
+        // Shown in the row and the email, so only a real phone number.
+        var reported = PhoneNormalizer.IsValid(req.PhoneNumber) ? PhoneNormalizer.Normalize(req.PhoneNumber!) : null;
+        var number = reported ?? business.WhatsAppNumber;
+        business.WhatsAppNumber = null;
         db.ActivityLogs.Add(new ActivityLog
         {
             BusinessId = business.Id,
             Action = action,
-            Description = $"WhatsApp logged out the linked number {number ?? "(unknown)"}; the bot is off until it's linked again",
+            Description = $"WhatsApp bot logged out by WhatsApp: {number ?? "(unknown number)"}. The bot is off until it's linked again",
             Method = "POST",
             Path = Request.Path.ToString(),
             StatusCode = 200,
@@ -265,7 +300,9 @@ public class WhatsAppController(
 
         // The business wants to reply themselves instead of the automated flow -- send no message
         // at all, rather than a fixed "not available" reply.
-        if (!business.ChatbotEnabled)
+        // A business the platform disabled gets no replies either (QA run 4: it still handed out
+        // its service list).
+        if (!business.ChatbotEnabled || business.IsDisabled)
             return null;
 
         // Resolved exactly once per message and threaded through everything below, rather than
@@ -395,7 +432,8 @@ public class WhatsAppController(
                 if (isLive) await ClearConversationState(business.Id, fromPhone);
                 return (false, null);
             }
-            if (trimmed == "1")
+            var gateChoice = ParseNumber(incomingMsg);
+            if (gateChoice == 1)
             {
                 // Cleared, not just flipped to Booking -- same reasoning as the $1 branch above:
                 // TryHandleServiceSelectionReply must see no open state and let PromptServiceSelection
@@ -403,7 +441,7 @@ public class WhatsAppController(
                 if (isLive) await ClearConversationState(business.Id, fromPhone);
                 return (false, null);
             }
-            if (trimmed == "2")
+            if (gateChoice == 2)
             {
                 await EnterInquiryModeAsync(business.Id, fromPhone, lang);
                 return (true, I18nService.T(lang, "whatsapp.inquiryStarted", new() { ["businessName"] = business.Name }));
@@ -414,6 +452,9 @@ public class WhatsAppController(
                 state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
                 db.WhatsAppConversationStates.Add(state);
             }
+            // An expired row keeps its old counters: an ended lockout came straight back after the
+            // gate (QA run 4).
+            else ResetIfExpired(state);
             state.ChatbotMode = AwaitingModeChoiceMode;
             state.Language = lang;
             state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
@@ -425,9 +466,31 @@ public class WhatsAppController(
     }
 
     // An RTL keyboard often puts the "$" after the digit ("1$"), which is also how "$1" used to
-    // display inside Hebrew/Arabic text, so both orders work.
-    private static string NormalizeDollarCommand(string message) =>
-        message.Length == 2 && message[1] == '$' && char.IsAsciiDigit(message[0]) ? $"${message[0]}" : message;
+    // display inside Hebrew/Arabic text, so both orders work. Direction marks (our own HE/AR texts
+    // wrap "$2" in them, so a copy-paste carries them), spaces, a trailing "." and the fullwidth
+    // dollar signs are ignored too (QA run 4). Also used for the "$" unlock.
+    private static string NormalizeDollarCommand(string message)
+    {
+        var text = new string(message.Where(c => !IsDirectionMark(c) && !char.IsWhiteSpace(c))
+            .Select(c => c is '＄' or '﹩' ? '$' : c).ToArray()).TrimEnd('.');
+        return text.Length == 2 && text[1] == '$' && char.IsAsciiDigit(text[0]) ? $"${text[0]}" : text;
+    }
+
+    private static bool IsDirectionMark(char c) =>
+        c is '‎' or '‏' or '؜' or (>= '‪' and <= '‮') or (>= '⁦' and <= '⁩');
+
+    private static bool IsUnlock(string message) => NormalizeDollarCommand(message) == UnlockKeyword;
+
+    // A numbered reply: "2", "٢", "２", "2.", "#2", "2)" or the keycap emoji "2️⃣" (QA run 4: those
+    // counted toward the lockout). Null for anything else.
+    private static int? ParseNumber(string message)
+    {
+        var text = new string(NormalizeDigits(message.Trim())
+            .Where(c => c is not ('️' or '⃣') && !IsDirectionMark(c))
+            .Select(c => c is >= '０' and <= '９' ? (char)('0' + (c - '０')) : c).ToArray());
+        var match = Regex.Match(text, @"^#?(\d{1,3})[.)]?$");
+        return match.Success ? int.Parse(match.Groups[1].Value) : null;
+    }
 
     private async Task EnterInquiryModeAsync(string businessId, string phone, string lang)
     {
@@ -497,10 +560,19 @@ public class WhatsAppController(
             // Cancel and reschedule still get through (QA: for 24 h after a link the bot ignored
             // even "cancel"), as does the answer to the cancel confirmation they start.
             if (conversationState.AwaitingBookingCompletion
-                && !conversationState.ChatbotMode.StartsWith(ConfirmCancelModePrefix)
+                && !IsCancelPrompt(conversationState.ChatbotMode)
                 && !ContainsKeyword(incomingMsg, CancelKeywords)
                 && !ContainsKeyword(incomingMsg, RescheduleKeywords))
-                return null;
+            {
+                if (await PendingLinkStillUsable(business, fromPhone)) return null;
+                // The owner turned the service off, or bookings stopped, after the link went out:
+                // the link can't work, so staying quiet for 24 h left the customer stuck (QA run 4).
+                db.WhatsAppConversationStates.Remove(conversationState);
+                await db.SaveChangesAsync();
+                var intro = I18nService.T(lang, "whatsapp.serviceNoLongerAvailable");
+                var list = await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
+                return business.AcceptsBookings(DateTime.UtcNow) ? $"{intro}\n\n{list}" : list;
+            }
 
             // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
             // automated replies entirely -- including cancel/reschedule keywords -- until they send
@@ -510,7 +582,7 @@ public class WhatsAppController(
             // spam, none at all looked like a broken bot. Same in the AI path below.
             if (conversationState.InvalidAttempts >= MaxInvalidAttempts)
             {
-                if (incomingMsg.Trim() != UnlockKeyword)
+                if (!IsUnlock(incomingMsg))
                     return await LockoutReminderIfDue(conversationState, lang);
                 db.WhatsAppConversationStates.Remove(conversationState);
                 await db.SaveChangesAsync();
@@ -518,10 +590,20 @@ public class WhatsAppController(
             }
         }
 
-        if (conversationState is not null && conversationState.ChatbotMode.StartsWith(ConfirmCancelModePrefix))
+        if (conversationState is not null && IsCancelPrompt(conversationState.ChatbotMode))
         {
-            var confirmationReply = await TryHandleCancelConfirmation(business, conversationState, fromPhone, incomingMsg, lang, welcomeMessage);
-            if (confirmationReply is not null) return confirmationReply;
+            var (outcome, promptReply) = await AnswerCancelPrompt(business.Id, conversationState, fromPhone, incomingMsg, lang);
+            if (outcome == CancelPromptOutcome.StillOpen)
+            {
+                await db.SaveChangesAsync();
+                return promptReply;
+            }
+            // Answered or dropped. With a booking link pending the row stays (the bot goes back to
+            // quiet mode); otherwise the conversation is over.
+            if (conversationState.AwaitingBookingCompletion) await db.SaveChangesAsync();
+            else await ClearConversationState(business.Id, fromPhone);
+            if (outcome == CancelPromptOutcome.Done)
+                return promptReply ?? $"{I18nService.T(lang, "whatsapp.noAppointment")}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
             // Not an answer, and a booking link is still pending: back to quiet mode.
             if (conversationState.AwaitingBookingCompletion
                 && !ContainsKeyword(incomingMsg, CancelKeywords) && !ContainsKeyword(incomingMsg, RescheduleKeywords))
@@ -536,14 +618,21 @@ public class WhatsAppController(
             await ClearConversationState(business.Id, fromPhone);
             // An upcoming appointment is moved on its own page (the reminder link), not replaced by
             // a second booking: the customer used to end up holding both slots (QA run 3).
+            // With several, each gets its link (QA run 4: only the nearest one could be reached).
             var (toMove, _) = await FindUpcomingAppointments(business.Id, fromPhone);
-            if (toMove is not null)
+            string MoveUrl(Appointment a) => $"{appUrl}/{business.Slug}/appointments/{a.Id}?token={a.CancelToken}";
+            if (toMove.Count == 1)
             {
-                var moveArgs = DateTimeArgs(toMove);
-                moveArgs["service"] = ItemName(toMove.Item, lang);
-                moveArgs["url"] = $"{appUrl}/{business.Slug}/appointments/{toMove.Id}?token={toMove.CancelToken}";
+                var moveArgs = DateTimeArgs(toMove[0]);
+                moveArgs["service"] = ItemName(toMove[0].Item, lang);
+                moveArgs["url"] = MoveUrl(toMove[0]);
                 return I18nService.T(lang, "whatsapp.rescheduleLink", moveArgs);
             }
+            if (toMove.Count > 1)
+                return I18nService.T(lang, "whatsapp.rescheduleLinks", new()
+                {
+                    ["list"] = string.Join("\n", toMove.Select(a => $"• {AppointmentLine(a, lang)}: {MoveUrl(a)}")),
+                });
             var intro = I18nService.T(lang, "whatsapp.rescheduleIntro");
             return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
         }
@@ -573,7 +662,7 @@ public class WhatsAppController(
         // the customer out); AiUsageLimiter caps the cost of chatting instead.
         if (state is not null && state.InvalidAttempts >= MaxInvalidAttempts)
         {
-            if (incomingMsg.Trim() != UnlockKeyword)
+            if (!IsUnlock(incomingMsg))
                 return await LockoutReminderIfDue(state, lang);
             await ClearConversationState(business.Id, fromPhone);
             return I18nService.T(lang, "whatsapp.aiConversationRestarted");
@@ -590,18 +679,15 @@ public class WhatsAppController(
         // are kept, unlike the rule-based path's ClearConversationState.
         // Restored if the daily cap hands this message to the rule-based path, which answers the
         // open question itself (it would otherwise read a bare number against an old service list).
+        // A short unclear answer is asked again here too, so the next "1" still answers it (QA run
+        // 4: the model re-asked in free text with nothing parked).
         var modeBeforeTurn = state?.ChatbotMode;
-        if (state is not null && state.ChatbotMode.StartsWith(ConfirmCancelModePrefix))
+        if (state is not null && IsCancelPrompt(state.ChatbotMode))
         {
-            var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
-            state.ChatbotMode = BookingMode;
-            var answer = ConfirmationAnswer(incomingMsg);
-            if (answer is "1" or "2")
+            var (outcome, promptReply) = await AnswerCancelPrompt(business.Id, state, fromPhone, incomingMsg, lang);
+            if (outcome != CancelPromptOutcome.NotAnswer)
             {
-                var confirmReply = answer == "2"
-                    ? I18nService.T(lang, "whatsapp.cancelKept")
-                    : await CancelConfirmedAppointment(business.Id, appointmentId, fromPhone, lang)
-                        ?? I18nService.T(lang, "whatsapp.noAppointment");
+                var confirmReply = promptReply ?? I18nService.T(lang, "whatsapp.noAppointment");
                 history.Add(new OpenAiTurn("user", incomingMsg));
                 history.Add(new OpenAiTurn("assistant", confirmReply));
                 if (history.Count > 12) history = history[^12..];
@@ -636,7 +722,7 @@ public class WhatsAppController(
         ];
 
         var unclear = false;
-        string? confirmCancelId = null; // set when the cancel tool asked its 1/2 question this turn
+        string? cancelPromptMode = null; // set when the cancel tool asked its question this turn
         string? toolMessage = null; // text of the last tool that actually did something
         string? cancelQuestion = null; // the cancel tool's 1/2 question, which the customer must see as-is
         string? cancelNotice = null; // its "already requested" text: nothing to confirm, so a link may follow
@@ -662,14 +748,14 @@ public class WhatsAppController(
             string result;
             if (name == "cancel_upcoming_appointment")
             {
-                var (cancelResult, appointmentId) = await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang);
+                var (cancelResult, promptMode) = await ExecuteCancelUpcomingAppointment(business.Id, fromPhone, lang);
                 result = cancelResult;
-                confirmCancelId = appointmentId ?? confirmCancelId;
+                cancelPromptMode = promptMode ?? cancelPromptMode;
                 using var cancelParsed = JsonDocument.Parse(cancelResult);
-                // "Already requested" has a message but no id to park, so it doesn't block a booking link.
+                // "Already requested" has a message but nothing to park, so it doesn't block a booking link.
                 if (cancelParsed.RootElement.TryGetProperty("message", out var question))
                 {
-                    if (appointmentId is not null) cancelQuestion = question.GetString();
+                    if (promptMode is not null) cancelQuestion = question.GetString();
                     else cancelNotice = question.GetString();
                 }
             }
@@ -737,8 +823,8 @@ public class WhatsAppController(
         // A list the rule-based fallback showed earlier is no longer what the customer is looking
         // at, so a later fallback must not read a bare number against it.
         state.ShownItemIds = null;
-        if (confirmCancelId is not null)
-            state.ChatbotMode = ConfirmCancelModePrefix + confirmCancelId;
+        if (cancelPromptMode is not null)
+            state.ChatbotMode = cancelPromptMode;
 
         // A turn where a tool really acted isn't an unclear one, even if the model also flagged it
         // (QA run 3: the lockout text could replace a link that had just been issued).
@@ -805,7 +891,7 @@ public class WhatsAppController(
             To reschedule: call cancel_upcoming_appointment first; once the customer has confirmed, help them book a new time via create_booking_link.
 
             Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.
-            Never say an appointment was cancelled, booked or changed unless a tool's message in this turn says so. A cancellation only happens when the customer replies 1 to the confirmation question; if they answer it any other way, ask them to reply 1 or 2.{inquiryNote}
+            Never say an appointment was cancelled, booked or changed unless a tool's message in this turn says so. A cancellation only happens when the customer answers the confirmation question; if their message isn't an answer to it, the question is closed and nothing was cancelled.{inquiryNote}
             """;
     }
 
@@ -821,6 +907,8 @@ public class WhatsAppController(
                 : "";
         }
         catch (JsonException) { itemId = ""; }
+        if (!business.AcceptsBookings(DateTime.UtcNow))
+            return JsonSerializer.Serialize(new { error = "This business isn't taking online bookings right now. Tell the customer to contact the business directly." });
         var services = await ActiveServices(business.Id, lang);
         var chosen = services.FirstOrDefault(s => s.Id == itemId);
         if (chosen.Id is null)
@@ -830,12 +918,12 @@ public class WhatsAppController(
         return JsonSerializer.Serialize(new { message });
     }
 
-    // Names the appointment and asks 1/2 (same text as the rule-based HandleCancel); the caller
-    // parks the returned id in ChatbotMode for the answer. Cancels nothing itself.
-    private async Task<(string Result, string? AppointmentId)> ExecuteCancelUpcomingAppointment(string businessId, string fromPhone, string lang)
+    // Asks the same question as the rule-based HandleCancel (1/2, or "which one?" for several); the
+    // caller parks the returned mode in ChatbotMode for the answer. Cancels nothing itself.
+    private async Task<(string Result, string? PromptMode)> ExecuteCancelUpcomingAppointment(string businessId, string fromPhone, string lang)
     {
         var (upcoming, pending) = await FindUpcomingAppointments(businessId, fromPhone);
-        if (upcoming is null)
+        if (upcoming.Count == 0)
         {
             // Everything left is already waiting on the owner -- say so instead of "no appointment".
             return pending is null
@@ -843,9 +931,8 @@ public class WhatsAppController(
                 : (JsonSerializer.Serialize(new { found = true, message = I18nService.T(lang, "whatsapp.cancellationAlreadyRequested", DateTimeArgs(pending)) }), null);
         }
 
-        var args = DateTimeArgs(upcoming);
-        args["service"] = ItemName(upcoming.Item, lang);
-        return (JsonSerializer.Serialize(new { found = true, message = I18nService.T(lang, "whatsapp.confirmCancel", args) }), upcoming.Id);
+        var (question, mode) = CancelQuestion(upcoming, lang);
+        return (JsonSerializer.Serialize(new { found = true, message = question }), mode);
     }
 
     // Detects the language from the incoming message's script (Hebrew/Arabic Unicode blocks --
@@ -920,12 +1007,13 @@ public class WhatsAppController(
     }
 
     // Rule-based "cancel" keyword: never cancels directly. Names the appointment it would cancel and
-    // waits for "1" (cancel) / "2" (keep) -- see TryHandleCancelConfirmation.
+    // waits for "1" (cancel) / "2" (keep), or with several upcoming ones asks which first -- see
+    // AnswerCancelPrompt.
     private async Task<string> HandleCancel(string businessId, string businessName, string fromPhone, string lang, string? welcomeMessage, bool inquiryEnabled)
     {
         var (upcoming, pending) = await FindUpcomingAppointments(businessId, fromPhone);
 
-        if (upcoming is null)
+        if (upcoming.Count == 0)
         {
             await ClearConversationState(businessId, fromPhone);
             // Everything left is already waiting on the owner -- say so instead of "no appointment".
@@ -942,20 +1030,110 @@ public class WhatsAppController(
             db.WhatsAppConversationStates.Add(state);
         }
         else ResetIfExpired(state);
-        state.ChatbotMode = ConfirmCancelModePrefix + upcoming.Id;
+        var (reply, mode) = CancelQuestion(upcoming, lang);
+        state.ChatbotMode = mode;
         state.Language = lang;
         state.InvalidAttempts = 0;
         // A pending booking link stays pending: the bot stays quiet after the question is answered
-        // (QA run 3: it re-sent the list and later chatter counted toward the lockout). The question
-        // itself still gets its full lifetime, even when the link is about to expire.
+        // (QA run 3: it re-sent the list and later chatter counted toward the lockout). The row then
+        // lives on for the link, but the question itself only ConversationStateLifetime (its own
+        // clock in the mode, see CancelPrompt).
         var questionExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
         if (!state.AwaitingBookingCompletion || state.ExpiresAt < questionExpiresAt)
             state.ExpiresAt = questionExpiresAt;
         await db.SaveChangesAsync();
+        return reply;
+    }
 
-        var args = DateTimeArgs(upcoming);
-        args["service"] = ItemName(upcoming.Item, lang);
-        return I18nService.T(lang, "whatsapp.confirmCancel", args);
+    // An open cancel question lives in ChatbotMode: "ConfirmCancel:{id}:{asked}:{reasked}" (reply
+    // 1 or 2) or "PickCancel:{id,id,...}:{asked}:{reasked}" (which appointment?). asked is unix
+    // seconds: with a booking link pending the row lives 24 h, the question only
+    // ConversationStateLifetime (QA run 4: "yes see you" cancelled an appointment 20 hours later).
+    // reasked is 1 once a short unclear answer was asked again. "ConfirmCancel:{id}" rows from
+    // before this format still parse (no clock).
+    private const string PickCancelModePrefix = "PickCancel:";
+    private const int MaxPickedAppointments = 5;
+    private enum CancelPromptOutcome { NotAnswer, StillOpen, Done }
+    private sealed record CancelPrompt(bool Pick, List<string> Ids, DateTime? AskedAt, bool Reasked);
+
+    private static bool IsCancelPrompt(string mode) =>
+        mode.StartsWith(ConfirmCancelModePrefix) || mode.StartsWith(PickCancelModePrefix);
+
+    private static string CancelPromptMode(bool pick, IEnumerable<string> ids, bool reasked) =>
+        $"{(pick ? PickCancelModePrefix : ConfirmCancelModePrefix)}{string.Join(",", ids)}:{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}:{(reasked ? 1 : 0)}";
+
+    private static CancelPrompt ParseCancelPrompt(string mode)
+    {
+        var pick = mode.StartsWith(PickCancelModePrefix);
+        var parts = mode[(pick ? PickCancelModePrefix : ConfirmCancelModePrefix).Length..].Split(':');
+        DateTime? askedAt = parts.Length > 1 && long.TryParse(parts[1], out var seconds)
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime
+            : null;
+        return new CancelPrompt(pick, parts[0].Split(',').ToList(), askedAt, parts.Length > 2 && parts[2] == "1");
+    }
+
+    // The question for the customer's cancellable appointments: 1/2 for one, "which one?" for
+    // several (QA run 4: only the nearest one could be cancelled). Returns the mode to park.
+    private static (string Reply, string Mode) CancelQuestion(List<Appointment> upcoming, string lang, bool reask = false)
+    {
+        if (upcoming.Count == 1)
+        {
+            var args = DateTimeArgs(upcoming[0]);
+            args["service"] = ItemName(upcoming[0].Item, lang);
+            return (I18nService.T(lang, reask ? "whatsapp.confirmCancelReask" : "whatsapp.confirmCancel", args),
+                CancelPromptMode(false, [upcoming[0].Id], reask));
+        }
+        var shown = upcoming.Take(MaxPickedAppointments).ToList();
+        var list = string.Join("\n", shown.Select((a, i) => $"{i + 1}. {AppointmentLine(a, lang)}"));
+        return (I18nService.T(lang, reask ? "whatsapp.pickCancelReask" : "whatsapp.pickCancel", new() { ["list"] = list }),
+            CancelPromptMode(true, shown.Select(a => a.Id), reask));
+    }
+
+    private static string AppointmentLine(Appointment a, string lang) => $"{ItemName(a.Item, lang)}, {a.Date:yyyy-MM-dd} {a.StartTime}";
+
+    // A message while a cancel question is open, shared by both paths. Done: answered (the reply,
+    // or null when the appointment can't be cancelled any more). StillOpen: asked again, or "which
+    // one?" answered with the 1/2 question for it. NotAnswer: the question is dropped, nothing is
+    // cancelled, and the message is handled as a normal one. Sets state.ChatbotMode; the caller saves.
+    private async Task<(CancelPromptOutcome Outcome, string? Reply)> AnswerCancelPrompt(string businessId, WhatsAppConversationState state, string fromPhone, string message, string lang)
+    {
+        var prompt = ParseCancelPrompt(state.ChatbotMode);
+        state.ChatbotMode = BookingMode;
+        if (prompt.AskedAt is { } asked && DateTime.UtcNow - asked >= ConversationStateLifetime)
+            return (CancelPromptOutcome.NotAnswer, null);
+
+        if (prompt.Pick)
+        {
+            var number = ParseNumber(message);
+            if (number == 0 || (number is null && ConfirmationAnswer(message) == "2"))
+                return (CancelPromptOutcome.Done, I18nService.T(lang, "whatsapp.cancelKeptAll"));
+            if (number >= 1 && number <= prompt.Ids.Count)
+            {
+                var picked = await CancellableAppointments(businessId, fromPhone, [prompt.Ids[number.Value - 1]]);
+                if (picked.Count == 0) return (CancelPromptOutcome.Done, null);
+                var (question, mode) = CancelQuestion(picked, lang);
+                state.ChatbotMode = mode;
+                return (CancelPromptOutcome.StillOpen, question);
+            }
+        }
+        else
+        {
+            var answer = ConfirmationAnswer(message);
+            if (answer == "2") return (CancelPromptOutcome.Done, I18nService.T(lang, "whatsapp.cancelKept"));
+            if (answer == "1") return (CancelPromptOutcome.Done, await CancelConfirmedAppointment(businessId, prompt.Ids[0], fromPhone, lang));
+        }
+
+        // A short reply that isn't an answer ("ok", "תמام") is asked once more: dropped, a
+        // customer who wrote "ok" believed it was cancelled (QA run 4). A longer message, a
+        // question or a reschedule request is about something else.
+        if (prompt.Reasked || Words(message).Count > 4 || message.Contains('?') || message.Contains('؟')
+            || ContainsKeyword(message, RescheduleKeywords))
+            return (CancelPromptOutcome.NotAnswer, null);
+        var still = await CancellableAppointments(businessId, fromPhone, prompt.Ids);
+        if (still.Count == 0) return (CancelPromptOutcome.NotAnswer, null);
+        var (reask, reaskMode) = CancelQuestion(still, lang, reask: true);
+        state.ChatbotMode = reaskMode;
+        return (CancelPromptOutcome.StillOpen, reask);
     }
 
     // The reply that locks the conversation: the "$" reminder, with the lock running LockoutLifetime.
@@ -988,28 +1166,6 @@ public class WhatsAppController(
         state.InvalidAttempts = 0;
         state.ShownItemIds = null;
         state.HistoryJson = null;
-    }
-
-    // Answers an open "reply 1 to cancel / 2 to keep" question. Returns null for any other reply:
-    // the question is dropped (nothing cancelled) and the message is handled as a normal one.
-    private async Task<string?> TryHandleCancelConfirmation(Business business, WhatsAppConversationState state, string fromPhone, string incomingMsg, string lang, string? welcomeMessage)
-    {
-        var appointmentId = state.ChatbotMode[ConfirmCancelModePrefix.Length..];
-        var answer = ConfirmationAnswer(incomingMsg);
-        if (state.AwaitingBookingCompletion)
-        {
-            state.ChatbotMode = BookingMode;
-            await db.SaveChangesAsync();
-        }
-        else await ClearConversationState(business.Id, fromPhone);
-
-        if (answer == "2") return I18nService.T(lang, "whatsapp.cancelKept");
-        if (answer != "1") return null;
-
-        var cancelReply = await CancelConfirmedAppointment(business.Id, appointmentId, fromPhone, lang);
-        if (cancelReply is not null) return cancelReply;
-        var intro = I18nService.T(lang, "whatsapp.noAppointment");
-        return $"{intro}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
     }
 
     // A "1" to the cancel question, shared by both paths. Null when the appointment changed since
@@ -1048,11 +1204,19 @@ public class WhatsAppController(
         _ => item.NameEn,
     };
 
-    // The customer's nearest upcoming appointment that can still be cancelled, plus (separately)
-    // the nearest one already waiting on owner approval, so callers can tell "nothing booked" apart
-    // from "already asked". Ordered by date then start time, so the earlier of two same-day
-    // appointments comes first.
-    private async Task<(Appointment? Upcoming, Appointment? PendingApproval)> FindUpcomingAppointments(string businessId, string fromPhone)
+    // The customer's upcoming appointments that can still be cancelled, nearest first (date, then
+    // start time), plus the nearest one already waiting on owner approval, so callers can tell
+    // "nothing booked" apart from "already asked".
+    private async Task<(List<Appointment> Upcoming, Appointment? PendingApproval)> FindUpcomingAppointments(string businessId, string fromPhone)
+    {
+        var all = await UpcomingAppointments(businessId, fromPhone);
+        return (all.Where(a => !a.PendingCancellationApproval).ToList(), all.FirstOrDefault(a => a.PendingCancellationApproval));
+    }
+
+    private async Task<List<Appointment>> CancellableAppointments(string businessId, string fromPhone, List<string> ids) =>
+        (await UpcomingAppointments(businessId, fromPhone)).Where(a => !a.PendingCancellationApproval && ids.Contains(a.Id)).ToList();
+
+    private async Task<List<Appointment>> UpcomingAppointments(string businessId, string fromPhone)
     {
         var customer = await db.Customers
             // a.Date is a calendar date (local wall-clock, never UTC-converted), so compare
@@ -1063,23 +1227,25 @@ public class WhatsAppController(
                 .ThenInclude(a => a.Item)
             .FirstOrDefaultAsync(c => c.BusinessId == businessId && c.Phone == fromPhone);
 
-        var upcoming = (customer?.Appointments ?? [])
+        return (customer?.Appointments ?? [])
             .Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED")
             .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
             .ToList();
-        return (upcoming.FirstOrDefault(a => !a.PendingCancellationApproval), upcoming.FirstOrDefault(a => a.PendingCancellationApproval));
     }
 
-    // "1"/"2" for an answer to the cancel question: the digit itself, or a yes/no word (alone or
-    // with a cancel word, "כן, תבטל"). Null for anything else.
+    // "1"/"2" for an answer to the cancel question: the digit itself, or a yes/no word, alone or
+    // with words that don't change it ("yes please", "כן, תבטל"). Null for anything else: "yes
+    // see you" or "yes but tomorrow" isn't a yes (QA run 4).
     private static string? ConfirmationAnswer(string message)
     {
-        var answer = NormalizeDigits(message.Trim());
-        if (answer is "1" or "2") return answer;
-        var words = Regex.Split(answer.ToLowerInvariant(), @"[^\p{L}\p{Mn}\p{Nd}]+").Where(w => w.Length > 0).ToList();
+        var number = ParseNumber(message);
+        if (number is 1 or 2) return number.ToString();
+        var words = Words(message);
         if (words.Count == 0 || words.Count > 4) return null;
-        if (YesWords.Contains(words[0]) && !words.Any(NoWords.Contains)) return "1";
-        if (NoWords.Contains(words[0]) && !words.Any(YesWords.Contains)) return "2";
+        if (YesWords.Contains(words[0]) && words.Skip(1).All(w => YesWords.Contains(w) || AnswerFillerWords.Contains(w) || CancelKeywords.Contains(w)))
+            return "1";
+        if (NoWords.Contains(words[0]) && words.Skip(1).All(w => NoWords.Contains(w) || AnswerFillerWords.Contains(w)))
+            return "2";
         return null;
     }
 
@@ -1087,8 +1253,21 @@ public class WhatsAppController(
     // prompt-injected or made-up URL never reaches the customer (QA run 3).
     // ASCII only (\P{IsBasicLatin} excluded): an emoji or a Hebrew/Arabic word written right after a
     // real link used to make the whole match unknown, and the valid link was removed.
-    private static string StripUnknownUrls(string reply, List<string> toolTexts) =>
-        Regex.Replace(reply, @"https?://[^\s)\]>""'\P{IsBasicLatin}]*[^\s)\]>""'.,!?:;\P{IsBasicLatin}]", m => toolTexts.Any(t => t.Contains(m.Value)) ? m.Value : "").Trim();
+    // Any case ("HTTPS://"), and bare domains too ("www.x.com/pay", "x.com"), which WhatsApp
+    // turns into links as well (QA run 4).
+    private static string StripUnknownUrls(string reply, List<string> toolTexts)
+    {
+        bool Known(string url) => toolTexts.Any(t => t.Contains(url, StringComparison.OrdinalIgnoreCase));
+        var withoutUrls = Regex.Replace(reply, @"https?://[^\s)\]>""'\P{IsBasicLatin}]*[^\s)\]>""'.,!?:;\P{IsBasicLatin}]",
+            m => Known(m.Value) ? m.Value : "", RegexOptions.IgnoreCase);
+        return Regex.Replace(withoutUrls,
+            @"(?<![\w@./-])(?:www\.)?(?:[a-z0-9-]+\.)+(?:com|net|org|io|co|il|me|app|info|biz|xyz|link|ly|to|ru|cn|top|site|online|shop|store)\b(?:/[^\s)\]>""'\P{IsBasicLatin}]*[^\s)\]>""'.,!?:;\P{IsBasicLatin}])?",
+            m => Known(m.Value) || IsInsideKnownUrl(withoutUrls, m) ? m.Value : "", RegexOptions.IgnoreCase).Trim();
+    }
+
+    // The host part of a full URL the first pass kept ("https://frontend.up.railway.app/x").
+    private static bool IsInsideKnownUrl(string text, Match m) =>
+        m.Index >= 3 && text[..m.Index].EndsWith("://", StringComparison.Ordinal);
 
     private sealed class AiDailyCapReachedException : Exception;
 
@@ -1102,8 +1281,29 @@ public class WhatsAppController(
         return char.IsHighSurrogate(text[max - 1]) ? text[..(max - 1)] : text[..max];
     }
 
+    // Lowercased words, with combining marks (Arabic harakat, Hebrew niqqud) removed: "ألغِ" kept
+    // its kasra and missed the keyword list (QA run 4).
+    private static List<string> Words(string message) =>
+        Regex.Split(Regex.Replace(message.ToLowerInvariant(), @"\p{Mn}", "").Replace("re-schedul", "reschedul"), @"[^\p{L}\p{Nd}]+")
+            .Where(w => w.Length > 0).ToList();
+
+    // Whole words only. An Arabic word also matches without its "و" (and) or "ال" (the) prefix:
+    // "والغاء", "الإلغاء".
     private static bool ContainsKeyword(string message, string[] keywords) =>
-        Regex.Split(message.ToLowerInvariant(), @"[^\p{L}\p{Mn}\p{Nd}]+").Any(word => keywords.Contains(word));
+        Words(message).Any(w => keywords.Contains(w)
+            || (w.Length > 2 && w[0] == 'و' && keywords.Contains(w[1..]))
+            || (w.Length > 3 && w.StartsWith("ال") && keywords.Contains(w[2..])));
+
+    // Whether the booking link the bot is staying quiet for can still be used: bookings are open
+    // and its service is still active and bookable.
+    private async Task<bool> PendingLinkStillUsable(Business business, string phone)
+    {
+        if (!business.AcceptsBookings(DateTime.UtcNow)) return false;
+        var itemId = await db.WhatsAppBookingTokens
+            .Where(t => t.BusinessId == business.Id && t.Phone == phone && t.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(t => t.CreatedAt).Select(t => t.ItemId).FirstOrDefaultAsync();
+        return itemId is null || await db.Items.AnyAsync(i => i.Id == itemId && i.IsActive && i.IsBookable);
+    }
 
     private async Task ClearConversationState(string businessId, string phone)
     {
@@ -1140,6 +1340,15 @@ public class WhatsAppController(
     // "which service + list + instructions" tail always stays in the detected language.
     private async Task<string> PromptServiceSelection(string businessId, string businessName, string phone, string lang, string? welcomeMessage, bool inquiryEnabled)
     {
+        // An expired subscription or ended trial: a link would only lead to "Booking unavailable"
+        // and then 24 h of silence (QA run 4).
+        var business = (await db.Businesses.FindAsync(businessId))!;
+        if (!business.AcceptsBookings(DateTime.UtcNow))
+        {
+            await ClearConversationState(businessId, phone);
+            return I18nService.T(lang, "whatsapp.bookingUnavailable", new() { ["businessName"] = businessName });
+        }
+
         var services = await ActiveServices(businessId, lang);
         if (services.Count == 0)
             return I18nService.T(lang, "whatsapp.noServices", new() { ["businessName"] = businessName });
@@ -1193,7 +1402,8 @@ public class WhatsAppController(
         // The number refers to the list this customer was shown (QA: after the owner turned off
         // "Kids Cut", replying "2" for Haircut booked Beard Trim).
         var shownIds = state.ShownItemIds.Split(',').ToList();
-        if (!int.TryParse(NormalizeDigits(message.Trim()), out var index) || index < 1 || index > shownIds.Count)
+        var index = ParseNumber(message) ?? 0;
+        if (index < 1 || index > shownIds.Count)
         {
             state.InvalidAttempts++;
             // So a following bare "1" stays in the language this reply was answered in (QA run 3).
@@ -1216,8 +1426,18 @@ public class WhatsAppController(
         // Kept alive (not removed) with AwaitingBookingCompletion set -- see the lockout gate in
         // ProcessMessageRuleBasedAsync for why: it's what stops the bot re-sending the opening
         // prompt while the customer finishes booking on the web page this link opens.
+        var owner = (await db.Businesses.FindAsync(businessId))!;
+        if (!owner.AcceptsBookings(DateTime.UtcNow))
+        {
+            db.WhatsAppConversationStates.Remove(state);
+            await db.SaveChangesAsync();
+            return I18nService.T(lang, "whatsapp.bookingUnavailable", new() { ["businessName"] = owner.Name });
+        }
         state.AwaitingBookingCompletion = true;
         state.ExpiresAt = DateTime.UtcNow.Add(BookingLinkPendingLifetime);
+        // The booking confirmation BookingController sends later uses this (QA run 4: a choice
+        // made in Arabic after an English list left it English).
+        state.Language = lang;
         await db.SaveChangesAsync();
 
         return await IssueBookingLink(businessId, slug, appUrl, phone, profileName, lang, chosen, confirmationMessage);

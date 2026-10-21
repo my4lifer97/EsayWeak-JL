@@ -66,6 +66,29 @@ public class WhatsAppSessionEventTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task LoggedOut_ClearsTheLinkedNumber_AndALogoutAfterARelinkIsReportedAgain()
+    {
+        var businessId = await SeedBusiness("wa-event-5@example.com", "wa-event-5");
+        using (var db = Db())
+        {
+            (await db.Businesses.FirstAsync(b => b.Id == businessId)).WhatsAppNumber = "+972501112233";
+            await db.SaveChangesAsync();
+        }
+
+        await PostEvent(businessId);
+        using (var db = Db())
+        {
+            var business = await db.Businesses.FirstAsync(b => b.Id == businessId);
+            Assert.Null(business.WhatsAppNumber); // the admin page offers "Link WhatsApp" again
+            business.WhatsAppNumber = "+972501112233"; // re-linked
+            await db.SaveChangesAsync();
+        }
+        await PostEvent(businessId);
+
+        Assert.Equal(2, Factory.Email.Sent.Count);
+    }
+
+    [Fact]
     public async Task WithoutTheBridgeSecret_IsUnauthorized()
     {
         var businessId = await SeedBusiness("wa-event-3@example.com", "wa-event-3");

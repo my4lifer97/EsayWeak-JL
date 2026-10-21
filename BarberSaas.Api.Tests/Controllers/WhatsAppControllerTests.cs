@@ -397,9 +397,12 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var later = await AddUpcomingAppointment(businessId, phone, serviceIds[0], "15:00", "15:30");
         var earlier = await AddUpcomingAppointment(businessId, phone, serviceIds[0], "10:00", "10:30");
 
-        var question = await SendWhatsAppMessage(phone, "cancel");
+        var pick = await SendWhatsAppMessage(phone, "cancel");
+        var question = await SendWhatsAppMessage(phone, "1");
         await SendWhatsAppMessage(phone, "1");
 
+        Assert.Contains("1. Service", pick); // numbered, nearest first
+        Assert.True(pick.IndexOf("10:00") < pick.IndexOf("15:00"));
         Assert.Contains("10:00", question);
         Assert.Equal(AppointmentStatus.CANCELLED, (await LoadAppointment(earlier)).Status);
         Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(later)).Status);

@@ -813,7 +813,7 @@ via three endpoints that proxy the bridge:
   linking; on `state: "connected"`, also writes the resolved phone number into `Business.WhatsAppNumber`.
 - `DELETE /api/platform-admin/businesses/{id}/whatsapp/link` — unlinks and clears `Business.WhatsAppNumber`. If the bridge is down it still clears the number (that alone stops the bot) and returns `bridgeUnreachable: true`.
 
-**Logout alert (2026-10-21)**: when WhatsApp itself ends a linked session (`DisconnectReason.loggedOut`: device removed on the phone, or dropped by WhatsApp) the bridge deletes the saved session and calls `POST /api/whatsapp/bridge/session-event` `{ businessId, event: "loggedOut", phoneNumber }` (`X-Bridge-Secret`, up to 5 tries a minute apart). The backend writes a `WhatsAppLink.LoggedOut` activity row and emails the platform admin through `Services/PlatformAdminAlerts` (system `IEmailSender` chain / Brevo, the same recipients as the Gmail health alert), with a link to the business page to re-link. A repeat within 10 minutes is ignored. An admin's own Unlink sets `session.unlinking`, so it isn't reported.
+**Logout alert (2026-10-21)**: when WhatsApp itself ends a linked session (`DisconnectReason.loggedOut`: device removed on the phone, or dropped by WhatsApp) the bridge deletes the saved session and calls `POST /api/whatsapp/bridge/session-event` `{ businessId, event: "loggedOut", phoneNumber }` (`X-Bridge-Secret`, up to 5 tries a minute apart). The backend writes a `WhatsAppLink.LoggedOut` activity row and emails the platform admin through `Services/PlatformAdminAlerts` (system `IEmailSender` chain / Brevo, the same recipients as the Gmail health alert), with a link to the business page to re-link. It also clears `Business.WhatsAppNumber`, so the admin page shows "Link WhatsApp" again (the feed labels the row "WhatsApp bot logged out (system)"). A repeat within 10 minutes while the number is still cleared is ignored (one at a time per business); a logout after a re-link is reported again. An admin's own Unlink sets `session.unlinking`, so it isn't reported.
 
 `WhatsAppBridgeClient`'s linking calls (start/status/unlink) turn any connection/HTTP failure into
 `WhatsAppBridgeUnavailableException` (a subclass of `HttpRequestException`), which
@@ -850,13 +850,29 @@ to WhatsApp).
 - **Cancel keyword asks first** (rule-based path 2026-10-11; the AI path asks too since 2026-10-19, see below): cancel/reschedule
   keywords match **whole words only** (`ContainsKeyword`) — the old substring match cancelled real
   appointments on ordinary sentences like "אני בטלפון עכשיו" ("בטל" inside "בטלפון"); "שנה" was
-  dropped from the reschedule list since it usually means "year". A cancel keyword then names the
-  nearest cancellable appointment (date, then start time) and parks its id in
-  `WhatsAppConversationState.ChatbotMode` as `"ConfirmCancel:{id}"` (no extra column/migration):
-  `1` cancels it via `CancelFromCustomerAsync`, `2` keeps it, anything else drops the question and
-  is handled as a normal message. When owner approval is required the reply is
+  dropped from the reschedule list since it usually means "year". Words are compared without
+  combining marks (harakat/niqqud), and an Arabic word also matches without its `و`/`ال` prefix
+  (`ContainsKeyword`/`Words`). A cancel keyword then names the nearest cancellable appointment
+  (date, then start time) and parks it in `WhatsAppConversationState.ChatbotMode` as
+  `"ConfirmCancel:{id}:{askedUnixSeconds}:{reasked}"` (no extra column/migration); with several
+  upcoming ones it first asks which (`whatsapp.pickCancel`, numbered, up to 5,
+  `"PickCancel:{id,id,...}:..."`; `0` keeps them all) and the number leads to the 1/2 question for
+  that one. `AnswerCancelPrompt` (shared by both paths): `1` (or a yes word, alone or with filler
+  words like "please" -- "yes see you" isn't one) cancels via `CancelFromCustomerAsync`, `2` keeps it;
+  a short unclear reply (up to 4 words, no `?`, not a reschedule) is asked once more, anything else
+  drops the question and is handled as a normal message. The question lives 10 minutes by its own
+  clock even when a pending booking link keeps the row for 24 h (QA run 4). A reschedule keyword
+  with several upcoming appointments sends every appointment's change-time link
+  (`whatsapp.rescheduleLinks`). When owner approval is required the reply is
   `whatsapp.cancellationRequested`, not `whatsapp.cancelled` (also for the AI path's cancel tool),
   and a later "cancel" with only pending ones left gets `whatsapp.cancellationAlreadyRequested`.
+- **Closed businesses**: a platform-disabled business (`IsDisabled`) gets no replies at all; one that
+  can't take bookings (`Business.AcceptsBookings`: expired subscription or ended trial, the same
+  check `BookingController` answers 403 with) gets `whatsapp.bookingUnavailable` instead of a service
+  list or link (both paths).
+- **Numbers and `$` commands** are read leniently: `ParseNumber` accepts `2.`, `#2`, `2)`, fullwidth and
+  keycap-emoji digits; `NormalizeDollarCommand` ignores direction marks (our HE/AR texts wrap `$2` in
+  them, so a copy-paste carries them), spaces and fullwidth `＄`, also for the `$` unlock.
 - **Quiet while a booking link is pending** (rule-based path only): once a booking link is issued
   (`WhatsAppController.IssueBookingLink`), the conversation-state row is kept alive (not removed)
   with `AwaitingBookingCompletion = true` instead, valid for the same 24h the link itself is --

@@ -102,8 +102,7 @@ public class BookingController(
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 
-        if (business.SubscriptionStatus == SubStatus.EXPIRED ||
-            (business.SubscriptionStatus == SubStatus.TRIAL && business.TrialEndsAt < DateTime.UtcNow))
+        if (!business.AcceptsBookings(DateTime.UtcNow))
             return StatusCode(403, new { error = "Booking unavailable" });
 
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == business.Id && s.IsActive);

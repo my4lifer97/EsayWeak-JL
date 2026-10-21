@@ -214,11 +214,14 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
         Factory.OpenAi.ToolCallRepeat = 3;
 
-        await PostInbound(businessId, phone, "cancel");
+        var pick = await PostInbound(businessId, phone, "cancel");
+        Assert.Contains("number of the one to cancel", (await pick.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply);
 
         using (var db = Db())
             Assert.DoesNotContain(AppointmentStatus.CANCELLED, await db.Appointments.Where(a => ids.Contains(a.Id)).Select(a => a.Status).ToListAsync());
 
+        var question = await PostInbound(businessId, phone, "1"); // picks the first (nearest) one
+        Assert.Contains("Reply 1 to cancel", (await question.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply);
         await PostInbound(businessId, phone, "1");
 
         using var verifyDb = Db();
@@ -254,7 +257,7 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         Factory.OpenAi.ToolCallName = null;
         Factory.OpenAi.PlainTextReply = "No problem, anything else?";
-        var resp = await PostInbound(businessId, phone, "actually never mind");
+        var resp = await PostInbound(businessId, phone, "actually, what time do you open tomorrow");
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
         Assert.Equal("No problem, anything else?", body!.Reply);
 
@@ -397,6 +400,38 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
         Assert.DoesNotContain("evil.example", body!.Reply);
+    }
+
+    // QA run 4 AI-2: an uppercase scheme or a bare domain got through.
+    [Theory]
+    [InlineData("Pay at HTTPS://EVIL.COM/pay today")]
+    [InlineData("Pay at www.evil.com/pay today")]
+    [InlineData("Pay at evil.com today")]
+    public async Task OtherLinkForms_AreStripped(string modelReply)
+    {
+        var (businessId, _, _) = await SeedBusinessWithService($"wa-ai-url{modelReply.Length}@example.com", $"wa-ai-url{modelReply.Length}");
+        Factory.OpenAi.PlainTextReply = modelReply;
+
+        var reply = await Reply(businessId, "+15559991241", "how do I pay?");
+
+        Assert.DoesNotContain("evil", reply, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("today", reply);
+    }
+
+    [Fact]
+    public async Task TheMapLinksDomainWrittenBare_IsKept()
+    {
+        var (businessId, _, _) = await SeedBusinessWithService("wa-ai-bare@example.com", "wa-ai-bare");
+        using (var db = Db())
+        {
+            (await db.Businesses.FirstAsync(b => b.Id == businessId)).MapUrl = "https://maps.google.com/?q=shop";
+            await db.SaveChangesAsync();
+        }
+        Factory.OpenAi.PlainTextReply = "Find us on maps.google.com";
+
+        var reply = await Reply(businessId, "+15559991242", "where are you?");
+
+        Assert.Contains("maps.google.com", reply);
     }
 
     // QA run 3 AI-7: the no-OpenAI 1/2 answer used up the daily allowance.
