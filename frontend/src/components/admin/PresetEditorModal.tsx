@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useConfirmDialog } from '../ConfirmDialog'
 import { api } from '../../lib/api'
 import { t } from '../../lib/i18n'
+import { cancelConflicts, confirmScheduleConflicts, type ScheduleConflict } from './scheduleConflicts'
 
 export type DayHours = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
 export type PresetBreak = { dayOfWeek: number; startTime: string; endTime: string }
@@ -212,6 +213,19 @@ export default function PresetEditorModal({
 
     setBusy(true)
     try {
+      // Anything that changes the live schedule (apply, a date range, saving Default) first lists
+      // the appointments it would leave on a closed day or in a break (QA run 4).
+      const changesSchedule = isDefault || action === 'apply' || action === 'range'
+      const conflicts = changesSchedule
+        ? (await api.post<ScheduleConflict[]>('/admin/schedule/presets/conflicts', {
+            days, breaks,
+            startDate: action === 'range' ? rangeStart : null,
+            endDate: action === 'range' ? rangeEnd : null,
+          })).data
+        : []
+      const choice = await confirmScheduleConflicts(ask, lang, conflicts)
+      if (!choice.proceed) return
+
       const id = await persist()
       let change: PresetChange = isDefault ? 'applied' : 'saved'
       if (action === 'apply') {
@@ -220,6 +234,10 @@ export default function PresetEditorModal({
       } else if (action === 'range') {
         await api.post(`/admin/schedule/presets/${id}/schedule`, { startDate: rangeStart, endDate: rangeEnd })
         change = 'scheduled'
+      }
+      if (choice.cancel) {
+        const failed = await cancelConflicts(conflicts)
+        if (failed) { await onSaved(change); setError(t(lang, 'conflictsCancelFailed').replace('{count}', String(failed))); return }
       }
       await onSaved(change)
       onClose()

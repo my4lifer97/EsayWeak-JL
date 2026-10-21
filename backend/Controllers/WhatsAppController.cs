@@ -533,12 +533,17 @@ public class WhatsAppController(
     {
         var fromLabel = string.IsNullOrWhiteSpace(profileName) ? fromPhone : $"{profileName} ({fromPhone})";
 
-        if (business.InquiryNotifyViaWhatsApp && !string.IsNullOrWhiteSpace(business.InquiryWhatsAppNumber))
-            notifications.AddWhatsApp(business, business.InquiryWhatsAppNumber,
+        // A blank contact falls back to the business's own phone/email, like the cancel-approval
+        // channels: switched on with an empty field, nothing was ever sent (QA runs 3 and 4).
+        var whatsAppTo = string.IsNullOrWhiteSpace(business.InquiryWhatsAppNumber) ? business.Phone : business.InquiryWhatsAppNumber;
+        var emailTo = string.IsNullOrWhiteSpace(business.InquiryEmail) ? business.Email : business.InquiryEmail;
+
+        if (business.InquiryNotifyViaWhatsApp && !string.IsNullOrWhiteSpace(whatsAppTo))
+            notifications.AddWhatsApp(business, whatsAppTo,
                 $"📩 New inquiry from {fromLabel}:\n\n{message}", $"WhatsApp inquiry notification for business {business.Id}");
 
-        if (business.InquiryNotifyViaEmail && !string.IsNullOrWhiteSpace(business.InquiryEmail))
-            notifications.AddOwnerEmail(business.InquiryEmail, $"New customer inquiry — {business.Name}",
+        if (business.InquiryNotifyViaEmail && !string.IsNullOrWhiteSpace(emailTo))
+            notifications.AddOwnerEmail(emailTo, $"New customer inquiry — {business.Name}",
                 $"From: {fromLabel}\n\nMessage:\n{message}", $"email inquiry notification for business {business.Id}");
     }
 

@@ -273,6 +273,9 @@ export default function ChatbotSettingsPage() {
                     className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
                 )}
 
+                {(inquiryNotifyViaWhatsApp || inquiryNotifyViaEmail) && (
+                  <p className="text-muted text-xs">{t(lang, 'inquiryContactFallback')}</p>
+                )}
                 <p className="text-muted text-xs mb-3">{t(lang, 'inquiryInboxHint')}</p>
                 <ChatbotInquiriesInbox lang={lang} />
               </div>

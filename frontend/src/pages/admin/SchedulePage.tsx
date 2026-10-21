@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
 import { presetForDate } from '../../lib/effectiveSchedule'
+import { cancelConflicts, confirmScheduleConflicts, type ScheduleConflict } from '../../components/admin/scheduleConflicts'
 import PresetEditorModal, { type PresetChange, type PresetSchedule, type SchedulePreset } from '../../components/admin/PresetEditorModal'
 
 type WorkingHour = { id?: string; dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
@@ -111,9 +112,28 @@ export default function SchedulePage() {
     }
   }
 
+  // Lists the appointments the block would leave on a closed time and asks first (QA run 4).
+  // Returns false when the owner went back; afterCancel cancels them once the block is saved.
+  async function checkBlockConflicts(startDate: string, endDate: string | null) {
+    const { data: conflicts } = await api.post<ScheduleConflict[]>('/admin/schedule/blocked/conflicts', {
+      startDate, endDate,
+      startTime: newBlocked.fullDay ? null : newBlocked.startTime,
+      endTime: newBlocked.fullDay ? null : newBlocked.endTime,
+    })
+    const choice = await confirmScheduleConflicts(ask, lang, conflicts)
+    return { proceed: choice.proceed, afterCancel: async () => {
+      if (!choice.cancel) return
+      const failed = await cancelConflicts(conflicts)
+      queryClient.invalidateQueries()
+      if (failed) setBlockedError(t(lang, 'conflictsCancelFailed').replace('{count}', String(failed)))
+    } }
+  }
+
   function addBlocked() {
     if (!newBlocked.date) return
     return submitBlocked(async () => {
+      const check = await checkBlockConflicts(newBlocked.date, null)
+      if (!check.proceed) return
       const { data: slot } = await api.post('/admin/schedule/blocked', {
         date: newBlocked.date,
         startTime: newBlocked.fullDay ? null : newBlocked.startTime,
@@ -121,12 +141,15 @@ export default function SchedulePage() {
         reason: newBlocked.reason || null,
       })
       setBlocked((prev) => [...prev, slot])
+      await check.afterCancel()
     })
   }
 
   function addBlockedRange() {
     if (!newBlocked.date || !rangeEndDate) return
     return submitBlocked(async () => {
+      const check = await checkBlockConflicts(newBlocked.date, rangeEndDate)
+      if (!check.proceed) return
       const { data: slots } = await api.post('/admin/schedule/blocked/range', {
         startDate: newBlocked.date,
         endDate: rangeEndDate,
@@ -136,6 +159,7 @@ export default function SchedulePage() {
       })
       setBlocked((prev) => [...prev, ...slots])
       setRangeEndDate('')
+      await check.afterCancel()
     })
   }
 

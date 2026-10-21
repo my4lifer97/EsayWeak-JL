@@ -353,7 +353,7 @@ public class AvailabilityService(AppDbContext db)
         return $"{total / 60:D2}:{total % 60:D2}";
     }
 
-    private static bool Overlaps(string s1, string e1, string s2, string e2) =>
+    public static bool Overlaps(string s1, string e1, string s2, string e2) =>
         string.Compare(s1, e2, StringComparison.Ordinal) < 0 &&
         string.Compare(e1, s2, StringComparison.Ordinal) > 0;
 

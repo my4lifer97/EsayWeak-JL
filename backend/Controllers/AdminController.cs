@@ -595,6 +595,75 @@ public class AdminController(
         return StatusCode(201, new BlockedSlotDto(slot.Id, req.Date, slot.StartTime, slot.EndTime, slot.Reason));
     }
 
+    // QA run 4 OWN-1: blocking a date, or switching to a schedule that closes a day, left its
+    // appointments booked with no warning, and the customers still got reminders. These two
+    // previews answer "which upcoming appointments would this change leave outside the opening
+    // hours?" before anything is saved; the Schedule page and the preset editor show the list and
+    // can cancel them (with the usual customer notice) once the change is saved.
+    [HttpPost("schedule/blocked/conflicts")]
+    public async Task<IActionResult> BlockedConflicts([FromBody] BlockedConflictsRequest req)
+    {
+        if (BlockedTimesError(req.StartTime, req.EndTime) is { } timesError) return BadRequest(new { error = timesError });
+        var start = StoredDate(req.StartDate);
+        var end = req.EndDate is null ? start : StoredDate(req.EndDate);
+        if (end < start || (end - start).Days > 366) return BadRequest(new { error = "Invalid date range" });
+
+        var appointments = await UpcomingConfirmedAppointments(start, end);
+        return Ok(appointments
+            .Where(a => req.StartTime is null || AvailabilityService.Overlaps(a.StartTime, a.EndTime, req.StartTime, req.EndTime!))
+            .Select(ToConflictDto).ToList());
+    }
+
+    [HttpPost("schedule/presets/conflicts")]
+    public async Task<IActionResult> PresetConflicts([FromBody] PresetConflictsRequest req)
+    {
+        var today = StoredDate(AppClock.Now.ToString("yyyy-MM-dd"));
+        var start = req.StartDate is null ? today : StoredDate(req.StartDate);
+        var permanent = req.EndDate is null;
+        var end = permanent ? today.AddDays(AvailabilityService.MaxDaysAhead) : StoredDate(req.EndDate!);
+        if (end < start) return BadRequest(new { error = "Invalid date range" });
+
+        // A permanent change doesn't reach dates a scheduled range covers: they use that range's preset.
+        var scheduled = permanent
+            ? await db.PresetSchedules.Where(p => p.BusinessId == BusinessId && !p.Reverted).Select(p => new { p.StartDate, p.EndDate }).ToListAsync()
+            : [];
+        var breaks = req.Breaks ?? [];
+        bool Outside(Appointment a)
+        {
+            var dow = (int)a.Date.DayOfWeek;
+            var day = req.Days.FirstOrDefault(d => d.DayOfWeek == dow);
+            return day is null || !day.IsActive
+                || string.CompareOrdinal(a.StartTime, day.StartTime) < 0 || string.CompareOrdinal(a.EndTime, day.EndTime) > 0
+                || breaks.Any(b => b.DayOfWeek == dow && AvailabilityService.Overlaps(a.StartTime, a.EndTime, b.StartTime, b.EndTime));
+        }
+
+        var appointments = await UpcomingConfirmedAppointments(start, end);
+        return Ok(appointments
+            .Where(a => !scheduled.Any(r => a.Date >= r.StartDate && a.Date <= r.EndDate) && Outside(a))
+            .Select(ToConflictDto).ToList());
+    }
+
+    // Dates are stored as UTC midnight of the calendar date, like BlockedSlot/Appointment.Date.
+    private static DateTime StoredDate(string date) => DateTime.Parse(date + "T00:00:00Z").ToUniversalTime();
+
+    // CONFIRMED appointments in [start, end] that haven't ended yet, nearest first.
+    private async Task<List<Appointment>> UpcomingConfirmedAppointments(DateTime start, DateTime end)
+    {
+        var rows = await db.Appointments
+            .Include(a => a.Customer).Include(a => a.Item)
+            .Where(a => a.BusinessId == BusinessId && a.Status == AppointmentStatus.CONFIRMED && !a.IsWaitlistCarrier
+                && a.Date >= start && a.Date <= end)
+            .ToListAsync();
+        return rows
+            .Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED")
+            .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
+            .ToList();
+    }
+
+    private static ScheduleConflictDto ToConflictDto(Appointment a) => new(
+        a.Id, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,
+        ActivityDetailExtensions.FullName(a.Customer.Name, a.Customer.FamilyName), a.Item.NameEn);
+
     // Blocks a consecutive streak of dates in one action (e.g. a week off) -- kept as a separate
     // endpoint alongside AddBlockedSlot rather than replacing it, since the owner still wants the
     // single-date picker for the common case. One transaction wraps the whole loop so a failure

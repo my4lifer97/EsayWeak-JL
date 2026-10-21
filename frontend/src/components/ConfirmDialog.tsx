@@ -58,7 +58,7 @@ function ConfirmDialog({
       className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4">
       <div role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}
         className="bg-surface rounded-2xl p-6 max-w-sm w-full border border-line">
-        <p className="text-ink mb-5">{message}</p>
+        <p className="text-ink mb-5 whitespace-pre-line">{message}</p>
         {checkbox && (
           <label className="flex items-center gap-2 text-sm text-ink mb-5 cursor-pointer">
             <input type="checkbox" checked={checked}

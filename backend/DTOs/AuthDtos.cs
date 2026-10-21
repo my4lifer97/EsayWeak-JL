@@ -28,6 +28,11 @@ public record SchedulePresetDto(string Id, string Name, DateTime CreatedAt, bool
 public record SaveSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days, List<SchedulePresetBreakDto>? Breaks = null);
 public record UpdateSchedulePresetRequest(string Name, List<SchedulePresetDayDto> Days, List<SchedulePresetBreakDto>? Breaks = null);
 public record SchedulePresetRangeRequest(string StartDate, string EndDate);
+// Schedule-change previews (AdminController.BlockedConflicts / PresetConflicts): EndDate null =
+// the one StartDate for a block, or from StartDate (default today) on for a permanent preset.
+public record BlockedConflictsRequest(string StartDate, string? EndDate, string? StartTime, string? EndTime);
+public record PresetConflictsRequest(List<SchedulePresetDayDto> Days, List<SchedulePresetBreakDto>? Breaks, string? StartDate, string? EndDate);
+public record ScheduleConflictDto(string Id, string Date, string StartTime, string EndTime, string CustomerName, string ItemName);
 public record PresetScheduleDto(string Id, string PresetId, string PresetName, string StartDate, string EndDate, bool Applied);
 public record PresetScheduleResponse(PresetScheduleDto? Schedule);
 
