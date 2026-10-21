@@ -80,6 +80,7 @@ public static class ApiErrorTranslations
         ["Slot not available"] = ("هذا الموعد غير متاح", "המועד לא פנוי"),
         ["Slot no longer available"] = ("هذا الموعد لم يعد متاحًا", "המועד כבר לא פנוי"),
         ["Booking unavailable"] = ("الحجز غير متاح", "ההזמנה לא זמינה"),
+        ["This business isn't taking online bookings right now"] = ("هذه المصلحة لا تستقبل حجوزات عبر الإنترنت حاليًا", "העסק הזה לא מקבל כרגע הזמנות אונליין"),
         ["This item is not bookable"] = ("لا يمكن حجز هذه الخدمة", "לא ניתן להזמין את השירות הזה"),
         ["Item not found"] = ("الخدمة غير موجودة", "השירות לא נמצא"),
         ["Appointment not found"] = ("الموعد غير موجود", "התור לא נמצא"),

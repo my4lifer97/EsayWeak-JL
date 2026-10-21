@@ -92,10 +92,16 @@ public class Business
     public string? ResolveChatbotFinalMessage(string lang) =>
         lang switch { "AR" => ChatbotFinalMessageAr, "HE" => ChatbotFinalMessageHe, _ => ChatbotFinalMessageEn };
 
-    // An expired subscription or ended trial can't take new bookings (BookingController answers
-    // 403), so the chatbot doesn't hand out booking links either.
+    // Whether new bookings are taken: not disabled by the platform, subscription not expired, trial
+    // not over. One rule for the directory, the storefront, booking, reschedules, the waitlist and
+    // the chatbot (QA run 4: a disabled business still took bookings nobody at it could see, and an
+    // ended trial stayed listed and failed only at the last step). Cancelling stays possible.
+    // AcceptsBookingsAt is the same rule for a query; keep the two in sync.
     public bool AcceptsBookings(DateTime utcNow) =>
-        SubscriptionStatus != SubStatus.EXPIRED && !(SubscriptionStatus == SubStatus.TRIAL && TrialEndsAt < utcNow);
+        !IsDisabled && SubscriptionStatus != SubStatus.EXPIRED && !(SubscriptionStatus == SubStatus.TRIAL && TrialEndsAt < utcNow);
+
+    public static System.Linq.Expressions.Expression<Func<Business, bool>> AcceptsBookingsAt(DateTime utcNow) =>
+        b => !b.IsDisabled && b.SubscriptionStatus != SubStatus.EXPIRED && !(b.SubscriptionStatus == SubStatus.TRIAL && b.TrialEndsAt < utcNow);
 
     // Overrides the fallback language WhatsAppController.ResolveLanguage uses for a signal-less
     // message (pure digits/emoji, no letters) with no open conversation to inherit from. Null

@@ -30,7 +30,8 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);
 
-        var q = db.Businesses.Where(b => b.IsListed && b.SubscriptionStatus != SubStatus.EXPIRED);
+        // Only businesses that take bookings: a disabled one or an ended trial used to stay listed.
+        var q = db.Businesses.Where(b => b.IsListed).Where(Business.AcceptsBookingsAt(DateTime.UtcNow));
 
         // Case-insensitive substring / exact match via lower() rather than EF.Functions.ILike --
         // ILike is Npgsql-only and can't run under the SQLite provider the tests use. lower()
@@ -87,13 +88,13 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
         return Ok(new PagedResult<BusinessSearchResultDto>(items, page, pageSize, total, page * pageSize < total));
     }
 
-    // Distinct cities among listed, non-expired businesses -- backs the /browse city filter.
+    // Distinct cities among listed businesses that take bookings -- backs the /browse city filter.
     [HttpGet("cities")]
     public async Task<IActionResult> GetCities()
     {
         var cities = await db.Businesses
-            .Where(b => b.IsListed && b.SubscriptionStatus != SubStatus.EXPIRED
-                && b.City != null && b.City != "")
+            .Where(b => b.IsListed && b.City != null && b.City != "")
+            .Where(Business.AcceptsBookingsAt(DateTime.UtcNow))
             .Select(b => b.City!.Trim())
             .Distinct()
             .OrderBy(c => c)

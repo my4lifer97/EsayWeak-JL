@@ -47,6 +47,7 @@ public class BusinessDiscoveryTests : IntegrationTestBase
             RatingCount = ratingCount,
             IsListed = isListed,
             SubscriptionStatus = status,
+            TrialEndsAt = DateTime.UtcNow.AddDays(30), // an ended trial isn't listed
             CreatedAt = createdAt ?? DateTime.UtcNow,
         };
         db.Businesses.Add(business);

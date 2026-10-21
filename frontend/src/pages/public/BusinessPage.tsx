@@ -23,6 +23,8 @@ type BusinessInfo = {
   ratingCount: number; ratingAverage: number
   // The next 7 days, today first; null times = closed.
   openingHours?: { date: string; dayOfWeek: number; startTime: string | null; endTime: string | null }[]
+  // False for a disabled business, an expired subscription or an ended trial.
+  acceptsBookings?: boolean
 }
 
 export default function BusinessPage() {
@@ -134,7 +136,10 @@ export default function BusinessPage() {
         )}
 
         <div className="space-y-3">
-          {business.items.some((i) => i.isBookable) && (
+          {business.acceptsBookings === false && business.items.some((i) => i.isBookable) && (
+            <p className="text-muted text-sm text-center bg-white border border-line rounded-2xl p-4">{t(lang, 'bookingUnavailable')}</p>
+          )}
+          {business.acceptsBookings !== false && business.items.some((i) => i.isBookable) && (
             <button onClick={() => navigate(`/${slug}/book`)}
               className="flex items-center justify-center gap-2 w-full bg-coral hover:bg-coral-dark text-white font-bold py-4 rounded-2xl transition-colors">
               ✂️ {t(lang, 'bookAppointment')}

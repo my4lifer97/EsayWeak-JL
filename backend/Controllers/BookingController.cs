@@ -48,7 +48,8 @@ public class BookingController(
             business.City, business.AddressLine, business.MapUrl,
             business.RatingCount, business.RatingAverage,
             await availability.GetOpenDates(business.Id, 60),
-            await availability.GetUpcomingHours(business.Id, 7)));
+            await availability.GetUpcomingHours(business.Id, 7),
+            business.AcceptsBookings(DateTime.UtcNow)));
     }
 
     [HttpGet("availability")]
@@ -103,7 +104,7 @@ public class BookingController(
         if (business is null) return NotFound(new { error = "Not found" });
 
         if (!business.AcceptsBookings(DateTime.UtcNow))
-            return StatusCode(403, new { error = "Booking unavailable" });
+            return StatusCode(403, new { error = "This business isn't taking online bookings right now" });
 
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == business.Id && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
@@ -347,6 +348,8 @@ public class BookingController(
 
         if (appointment is null) return NotFound(new { error = "Not found" });
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
+        if (!appointment.Business.AcceptsBookings(DateTime.UtcNow))
+            return StatusCode(403, new { error = "This business isn't taking online bookings right now" });
         if (appointment.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
         if (!appointment.Item.IsBookable || appointment.Item.DurationMinutes is null)

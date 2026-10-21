@@ -136,7 +136,7 @@ public record PublicBusinessDto(
     string Language, bool IsRTL, int[] ActiveDays, List<ItemDto> Items, bool IsFollowed,
     bool WaitlistEnabled,
     string? City, string? AddressLine, string? MapUrl, int RatingCount, double RatingAverage,
-    List<string> OpenDates, List<OpeningDayDto> OpeningHours);
+    List<string> OpenDates, List<OpeningDayDto> OpeningHours, bool AcceptsBookings);
 
 // One storefront opening-hours row; null times = closed that day.
 public record OpeningDayDto(string Date, int DayOfWeek, string? StartTime, string? EndTime);
