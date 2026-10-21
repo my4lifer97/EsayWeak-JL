@@ -4,6 +4,7 @@ using BarberSaas.Api.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Services;
@@ -54,6 +55,32 @@ public class RecurringAppointmentServiceTests : IDisposable
         return (business, item, customer);
     }
 
+    // QA run 4 ST-9: two series on one slot made the whole run fail (duplicate key), so nothing
+    // was generated for any business. Now the second is a skip, and other series still run.
+    [Fact]
+    public async Task TwoSeriesOnOneSlot_TheSecondIsSkipped_AndOtherSeriesStillRun()
+    {
+        using var db = NewDb();
+        var target = AsStoredDate(DateStr(AppClock.Now.Date.AddDays(1)));
+        var (business, item, customer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
+        var (other, otherItem, otherCustomer) = SeedBusinessServiceCustomer(db, target.DayOfWeek);
+        RecurringSeries Series(Business b, Item i, Customer c) => new()
+        {
+            BusinessId = b.Id, CustomerId = c.Id, ItemId = i.Id,
+            DayOfWeek = (int)target.DayOfWeek, StartTime = "13:00", StartDate = target, EndDate = target, IsActive = true,
+            Force = true, // skips the availability check, so only the save-time check can catch it
+        };
+        db.RecurringSeries.AddRange(Series(business, item, customer), Series(business, item, customer), Series(other, otherItem, otherCustomer));
+        await db.SaveChangesAsync();
+
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
+
+        Assert.Equal(2, result.Created);
+        Assert.Equal(1, result.Skipped);
+        Assert.Single(db.Appointments.Where(a => a.BusinessId == business.Id));
+        Assert.Single(db.Appointments.Where(a => a.BusinessId == other.Id));
+    }
+
     [Fact]
     public async Task CreatesOccurrence_WhenSlotIsAvailable()
     {
@@ -68,7 +95,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
 
-        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
 
         Assert.Equal(1, result.Created);
         Assert.Equal(0, result.Skipped);
@@ -92,7 +119,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
 
-        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
 
         Assert.Equal(0, result.Created);
         Assert.Equal(1, result.Skipped);
@@ -124,7 +151,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
 
-        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
 
         Assert.Equal(1, result.Created);
         Assert.Equal(0, result.Skipped);
@@ -154,7 +181,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
 
-        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
 
         Assert.Equal(0, result.Created);
         Assert.Equal(1, result.Skipped);
@@ -174,7 +201,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         };
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
-        var generator = new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig());
+        var generator = new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance);
 
         await generator.GenerateOccurrences();
         var secondResult = await generator.GenerateOccurrences();
@@ -198,7 +225,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
 
-        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
 
         Assert.Equal(0, result.Created);
         Assert.Empty(db.Appointments.Where(a => a.RecurringSeriesId == series.Id));
@@ -224,7 +251,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
 
-        await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+        await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
 
         var appointments = db.Appointments.Where(a => a.RecurringSeriesId == series.Id).ToList();
         var today = AppClock.Now.Date;
@@ -247,7 +274,7 @@ public class RecurringAppointmentServiceTests : IDisposable
         db.RecurringSeries.Add(series);
         await db.SaveChangesAsync();
 
-        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig()).GenerateOccurrences();
+        var result = await new RecurringAppointmentService(db, new AvailabilityService(db), EmptyConfig(), NullLogger<RecurringAppointmentService>.Instance).GenerateOccurrences();
 
         Assert.Equal(0, result.Created);
         Assert.Empty(db.Appointments.Where(a => a.RecurringSeriesId == series.Id));

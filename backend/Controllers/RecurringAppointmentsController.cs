@@ -141,12 +141,24 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             EndDate = endDate,
             Force = req.Force,
         };
-        db.RecurringSeries.Add(series);
-        await db.SaveChangesAsync();
-
-        // Materialize the first occurrence immediately -- otherwise the slot wouldn't appear
-        // on the dashboard or block other bookings until the next daily cron run.
-        await recurringAppointments.GenerateForSeriesNow(series.Id);
+        // Materialize the occurrences immediately -- otherwise the slot wouldn't appear on the
+        // dashboard or block other bookings until the next daily cron run. One transaction with
+        // the series itself: a series none of whose weeks could be booked (the slot is taken
+        // every week) is refused instead of saved as an empty one that only logs skips, and a
+        // failure doesn't leave an active series behind (QA run 4).
+        await using (var tx = await db.Database.BeginTransactionAsync())
+        {
+            db.RecurringSeries.Add(series);
+            await db.SaveChangesAsync();
+            var (inRange, generated) = await recurringAppointments.GenerateForSeriesNow(series.Id);
+            if (inRange > 0 && generated == 0)
+            {
+                await tx.RollbackAsync();
+                db.ChangeTracker.Clear();
+                return Conflict(new { error = "This time is already taken on every upcoming week" });
+            }
+            await tx.CommitAsync();
+        }
 
         var created = await db.RecurringSeries
             .Include(s => s.Customer).Include(s => s.Item).Include(s => s.Skips)

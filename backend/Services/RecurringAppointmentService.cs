@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BarberSaas.Api.Services;
 
-public class RecurringAppointmentService(AppDbContext db, AvailabilityService availability, IConfiguration config)
+public class RecurringAppointmentService(AppDbContext db, AvailabilityService availability, IConfiguration config, ILogger<RecurringAppointmentService> logger)
 {
     private DateTime Horizon(DateTime today) =>
         today.AddDays((config.GetValue<int?>("RecurringGeneration:HorizonWeeks") ?? 8) * 7);
@@ -16,32 +16,45 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
         var today = AppClock.Now.Date;
         var horizon = Horizon(today);
 
-        var series = await db.RecurringSeries.Include(s => s.Item).Where(s => s.IsActive).ToListAsync();
+        // One series at a time, each saved on its own: a failure in one used to roll back the
+        // whole run, for every business (QA run 4).
+        var seriesIds = await db.RecurringSeries.Where(s => s.IsActive).Select(s => s.Id).ToListAsync();
         int total = 0, created = 0, skipped = 0;
 
-        foreach (var s in series)
+        foreach (var id in seriesIds)
         {
-            var (t, c, sk) = await GenerateForSeries(s, today, horizon);
-            total += t; created += c; skipped += sk;
+            db.ChangeTracker.Clear();
+            try
+            {
+                var s = await db.RecurringSeries.Include(x => x.Item).FirstAsync(x => x.Id == id);
+                var (t, c, sk) = await GenerateForSeries(s, today, horizon);
+                await db.SaveChangesAsync();
+                total += t; created += c; skipped += sk;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Generating recurring series {SeriesId} failed; continuing with the others", id);
+            }
         }
-
-        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
         return (total, created, skipped);
     }
 
     // Runs the same generation immediately for one just-created series, so its first
     // occurrence becomes a real (dashboard-visible, slot-blocking) Appointment right away
     // instead of waiting for the next daily cron run.
-    public async Task GenerateForSeriesNow(string seriesId)
+    // Returns how many dates were in range and how many occurrences were created.
+    public async Task<(int Total, int Created)> GenerateForSeriesNow(string seriesId)
     {
         var today = AppClock.Now.Date;
         var horizon = Horizon(today);
 
         var s = await db.RecurringSeries.Include(x => x.Item).FirstOrDefaultAsync(x => x.Id == seriesId);
-        if (s is null || !s.IsActive) return;
+        if (s is null || !s.IsActive) return (0, 0);
 
-        await GenerateForSeries(s, today, horizon);
+        var (total, created, _) = await GenerateForSeries(s, today, horizon);
         await db.SaveChangesAsync();
+        return (total, created);
     }
 
     private async Task<(int Total, int Created, int Skipped)> GenerateForSeries(RecurringSeries s, DateTime today, DateTime horizon)
@@ -80,9 +93,9 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
                     ? AvailabilityService.ForcedSlotError(dateStr, s.StartTime, s.Item.DurationMinutes.Value) is null
                       && !await availability.HasConflictingAppointment(s.BusinessId, dateStr, s.StartTime, endTime)
                     : (await availability.GetAvailableSlots(s.BusinessId, dateStr, s.Item.DurationMinutes.Value)).Any(sl => sl.Start == s.StartTime);
-                if (slotOk)
-                {
-                    db.Appointments.Add(new Appointment
+                // Saved under the same per-date lock as every other booking write, so a slot taken
+                // since the check above (or earlier in this run) is a skip, not a duplicate.
+                if (slotOk && await availability.TryAddOccurrence(new Appointment
                     {
                         BusinessId = s.BusinessId,
                         CustomerId = s.CustomerId,
@@ -93,7 +106,8 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
                         Notes = s.Notes,
                         Status = AppointmentStatus.CONFIRMED,
                         RecurringSeriesId = s.Id,
-                    });
+                    }))
+                {
                     created++;
                 }
                 else

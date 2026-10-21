@@ -63,6 +63,25 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Created, mondaySeries.StatusCode);
     }
 
+    // QA run 4 ST-9: a second series on a taken slot was saved (201) with every week skipped, and
+    // it later made the daily cron fail for every business.
+    [Fact]
+    public async Task Create_OnASlotTakenEveryWeek_IsRefusedAndNothingIsSaved()
+    {
+        var token = await RegisterAndLoginBusiness("recurring-taken@example.com", "recurring-taken");
+        var itemId = await SeedService(token);
+        Authorize(Client, token);
+        var first = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(null, "Dana", "+15551115555", itemId, 2, "11:00", null));
+
+        var second = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(null, "Rami", "+15551116666", itemId, 2, "11:00", null));
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        using var db = Db();
+        Assert.Single(db.RecurringSeries);
+        Assert.DoesNotContain(db.Customers, c => c.Phone == "+15551116666");
+    }
+
     [Fact]
     public async Task Create_NewCustomer_CreatesActiveSeries()
     {

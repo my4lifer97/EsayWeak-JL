@@ -250,6 +250,42 @@ public class AvailabilityService(AppDbContext db)
         }
     }
 
+    // TrySaveOrDetectConflict for one generated recurring occurrence: the same per-date lock and
+    // overlap re-check, but on a conflict only this appointment is dropped, so the generator keeps
+    // its other tracked changes (the series cursor, skips). Generation used to skip the lock and
+    // save every series at once: two series on one slot made the daily cron fail for every
+    // business, and parallel creates double-booked (QA run 4).
+    public async Task<bool> TryAddOccurrence(Appointment appointment)
+    {
+        var dateStr = appointment.Date.ToString("yyyy-MM-dd");
+        var entry = db.Appointments.Add(appointment);
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync() : null;
+        try
+        {
+            if (db.Database.IsNpgsql())
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT pg_advisory_xact_lock(hashtext({"booking:" + appointment.BusinessId + ":" + dateStr}))");
+
+            if (await HasConflictingAppointment(appointment.BusinessId, dateStr, appointment.StartTime, appointment.EndTime, [appointment.Id]))
+            {
+                entry.State = EntityState.Detached;
+                return false;
+            }
+
+            await db.SaveChangesAsync();
+            if (tx is not null) await tx.CommitAsync();
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            if (tx is not null) await tx.RollbackAsync();
+            entry.State = EntityState.Detached;
+            if (await HasConflictingAppointment(appointment.BusinessId, dateStr, appointment.StartTime, appointment.EndTime, [appointment.Id]))
+                return false;
+            throw;
+        }
+    }
+
     // Per-customer limits (Business.MaxBookingsPerDay/Week), matched by phone: CONFIRMED bookings
     // with this business on the requested day and its Sun-Sat week. A reschedule passes the row it
     // moves, which doesn't count against itself. Null when the booking is within the limits.
