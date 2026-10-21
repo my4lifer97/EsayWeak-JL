@@ -1123,7 +1123,7 @@ public class WhatsAppController(
             if (answer == "1") return (CancelPromptOutcome.Done, await CancelConfirmedAppointment(businessId, prompt.Ids[0], fromPhone, lang));
         }
 
-        // A short reply that isn't an answer ("ok", "תמام") is asked once more: dropped, a
+        // A short reply that isn't an answer ("ok", "تمام") is asked once more: dropped, a
         // customer who wrote "ok" believed it was cancelled (QA run 4). A longer message, a
         // question or a reschedule request is about something else.
         if (prompt.Reasked || Words(message).Count > 4 || message.Contains('?') || message.Contains('؟')
