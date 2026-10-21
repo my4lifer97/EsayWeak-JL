@@ -138,6 +138,7 @@ builder.Services.AddHttpClient<IOwnerEmailSender, GmailApiEmailSender>();
 // it breaks -- see OwnerEmailHealth. Worker off in the tests, same as the waitlist worker.
 builder.Services.AddSingleton<OwnerEmailHealth>();
 builder.Services.AddScoped<OwnerEmailMonitor>();
+builder.Services.AddScoped<PlatformAdminAlerts>();
 if (builder.Configuration.GetValue("OwnerEmailHealth:WorkerEnabled", true))
     builder.Services.AddHostedService<OwnerEmailHealthWorker>();
 

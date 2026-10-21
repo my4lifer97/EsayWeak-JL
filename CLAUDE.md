@@ -296,6 +296,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 
 **Integrations**
 - `POST /api/whatsapp/bridge/inbound` — active inbound path; called by the self-hosted whatsapp-bridge service (auth: `X-Bridge-Secret`), resolves the business directly by `BusinessId`, drives the item-selection chatbot flow (see below) plus cancel/reschedule keywords, in the business's language
+- `POST /api/whatsapp/bridge/session-event` — the bridge reports a WhatsApp-side logout; emails the platform admin (see the logout alert under [WhatsApp chatbot](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge))
 - `POST /api/whatsapp/webhook` — dormant legacy Twilio webhook (validates X-Twilio-Signature); kept as a fallback path, see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/cron/reminders` — sends two kinds of WhatsApp reminders in one call: a day-before one (`a.Date == tomorrow`, `ReminderSent` flag) and a ~3-hours-before one (local start within the next 3 hours, `ReminderSentSoon` flag), each idempotent via its own flag so repeated calls are safe; requires `Authorization: Bearer <CronSecret>`; response shape `{ dayBefore: { total, sent, failed }, soon: { total, sent, failed } }`; triggered every 15 minutes by an external cron-job.org job, not GitHub Actions — see the cron scheduling note below
 - `GET /api/cron/generate-recurring` — extends every active `RecurringSeries`' generated `Appointment` rows to the rolling horizon (default 8 weeks, `RecurringGeneration:HorizonWeeks` config); same `Authorization: Bearer <CronSecret>` gate, response shape `{ total, created, skipped }`; triggered once daily by `.github/workflows/cron-generate-recurring.yml` — see [Owner-created & recurring appointments](#owner-created--recurring-appointments)
@@ -811,6 +812,8 @@ via three endpoints that proxy the bridge:
 - `GET /api/platform-admin/businesses/{id}/whatsapp/status` — polled by the frontend every ~2s while
   linking; on `state: "connected"`, also writes the resolved phone number into `Business.WhatsAppNumber`.
 - `DELETE /api/platform-admin/businesses/{id}/whatsapp/link` — unlinks and clears `Business.WhatsAppNumber`. If the bridge is down it still clears the number (that alone stops the bot) and returns `bridgeUnreachable: true`.
+
+**Logout alert (2026-10-21)**: when WhatsApp itself ends a linked session (`DisconnectReason.loggedOut`: device removed on the phone, or dropped by WhatsApp) the bridge deletes the saved session and calls `POST /api/whatsapp/bridge/session-event` `{ businessId, event: "loggedOut", phoneNumber }` (`X-Bridge-Secret`, up to 5 tries a minute apart). The backend writes a `WhatsAppLink.LoggedOut` activity row and emails the platform admin through `Services/PlatformAdminAlerts` (system `IEmailSender` chain / Brevo, the same recipients as the Gmail health alert), with a link to the business page to re-link. A repeat within 10 minutes is ignored. An admin's own Unlink sets `session.unlinking`, so it isn't reported.
 
 `WhatsAppBridgeClient`'s linking calls (start/status/unlink) turn any connection/HTTP failure into
 `WhatsAppBridgeUnavailableException` (a subclass of `HttpRequestException`), which

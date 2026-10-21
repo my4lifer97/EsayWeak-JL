@@ -168,6 +168,60 @@ public class WhatsAppController(
         }
     }
 
+    public record BridgeSessionEventRequest(string BusinessId, string Event, string? PhoneNumber);
+
+    // The bridge reports a session WhatsApp itself ended ("loggedOut": the device was removed on
+    // the phone, or WhatsApp dropped it). The bridge deletes the saved session then, so the bot
+    // stays silent until someone links it again -- on 2026-10-20 that went unnoticed overnight.
+    // An admin's own Unlink isn't reported. Logged on the business's activity feed and emailed to
+    // the platform admin (Brevo, not Gmail). A repeat within 10 minutes (a bridge retry whose
+    // first attempt did get through) only answers 200.
+    [HttpPost("bridge/session-event")]
+    [RequireBridgeSecret]
+    public async Task<IActionResult> BridgeSessionEvent([FromBody] BridgeSessionEventRequest req, [FromServices] PlatformAdminAlerts alerts)
+    {
+        if (req.Event != "loggedOut") return BadRequest(new { error = "Unknown event" });
+        var business = await db.Businesses.FindAsync(req.BusinessId);
+        if (business is null) return NotFound();
+
+        const string action = "WhatsAppLink.LoggedOut";
+        var since = DateTime.UtcNow.AddMinutes(-10);
+        if (await db.ActivityLogs.AnyAsync(a => a.BusinessId == business.Id && a.Action == action && a.CreatedAt > since))
+            return Ok();
+
+        var number = req.PhoneNumber ?? business.WhatsAppNumber;
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = business.Id,
+            Action = action,
+            Description = $"WhatsApp logged out the linked number {number ?? "(unknown)"}; the bot is off until it's linked again",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+        });
+        await db.SaveChangesAsync();
+
+        var appUrl = config["AppUrl"] ?? "";
+        try
+        {
+            await alerts.SendAsync(
+                $"Action needed: WhatsApp bot for {business.Name} was logged out",
+                $"WhatsApp logged out the bot number {number ?? "(unknown)"} of \"{business.Name}\" (/{business.Slug}) " +
+                $"at {AppClock.Now:yyyy-MM-dd HH:mm} (Israel time).\n\n" +
+                "Until it's linked again, the chatbot doesn't answer customers, and reminders, waitlist " +
+                "offers and booking confirmations from that number aren't sent.\n\n" +
+                "This usually means the device was removed under WhatsApp > Linked devices on the phone, " +
+                "or WhatsApp ended the session. To fix it, open the business in the platform admin and " +
+                $"click Link WhatsApp, then scan the QR code with that phone:\n{appUrl}/platform-admin/businesses/{business.Id}");
+        }
+        catch (Exception ex)
+        {
+            // The activity row is saved, so it still shows on the business page.
+            logger.LogError(ex, "Failed to email the WhatsApp logout alert for business {BusinessId}", business.Id);
+        }
+        return Ok();
+    }
+
     // Shared by both inbound transports (Twilio webhook + bridge inbound). Dispatches to the
     // OpenAI-driven path when configured, falling back to the rule-based flow on any failure (or
     // whenever OpenAI isn't configured at all) -- see ProcessMessageWithAiAsync's doc comment for

@@ -1,14 +1,11 @@
-using BarberSaas.Api.Data;
-using Microsoft.EntityFrameworkCore;
-
 namespace BarberSaas.Api.Services;
 
 // Checks the Gmail owner-email channel and tells the platform admin when it breaks (see
 // OwnerEmailHealth). The alert goes through the system IEmailSender chain (Brevo in production),
 // not Gmail -- the broken channel can't report its own failure.
 public class OwnerEmailMonitor(
-    OwnerEmailHealth health, IOwnerEmailSender ownerEmailSender, IEmailSender emailSender,
-    AppDbContext db, IConfiguration config, ILogger<OwnerEmailMonitor> logger)
+    OwnerEmailHealth health, IOwnerEmailSender ownerEmailSender, PlatformAdminAlerts alerts,
+    IConfiguration config, ILogger<OwnerEmailMonitor> logger)
 {
     public async Task CheckNowAsync()
     {
@@ -31,13 +28,6 @@ public class OwnerEmailMonitor(
         var pending = health.PendingNotification(now, repeatAfter);
         if (pending == OwnerEmailHealth.Notification.None) return;
 
-        var recipients = await AlertRecipientsAsync();
-        if (recipients.Count == 0)
-        {
-            logger.LogWarning("Owner email is {State} but there's no platform admin email to alert", pending);
-            return;
-        }
-
         var snapshot = health.GetSnapshot();
         var (subject, body) = pending == OwnerEmailHealth.Notification.Failing
             ? ("Action needed: business owner emails are failing",
@@ -54,8 +44,7 @@ public class OwnerEmailMonitor(
 
         try
         {
-            foreach (var to in recipients) await emailSender.SendAsync(to, subject, body);
-            health.MarkNotified(pending, now);
+            if (await alerts.SendAsync(subject, body)) health.MarkNotified(pending, now);
         }
         catch (Exception ex)
         {
@@ -65,11 +54,4 @@ public class OwnerEmailMonitor(
         }
     }
 
-    // Platform:AdminNotificationEmail when set, otherwise every platform admin's own login email.
-    private async Task<List<string>> AlertRecipientsAsync()
-    {
-        var configured = config["Platform:AdminNotificationEmail"];
-        if (!string.IsNullOrWhiteSpace(configured)) return [configured.Trim()];
-        return await db.PlatformAdmins.Select(a => a.Email).Where(e => e != "").ToListAsync();
-    }
 }

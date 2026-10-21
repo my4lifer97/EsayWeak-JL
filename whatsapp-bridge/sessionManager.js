@@ -8,7 +8,7 @@ const SESSIONS_DIR = process.env.SESSIONS_DIR || './data/sessions'
 const BACKEND_URL = process.env.BACKEND_URL
 const BRIDGE_SECRET = process.env.BRIDGE_SECRET
 
-// businessId -> { sock, status: 'connecting'|'qr'|'connected'|'disconnected', qr, phoneNumber }
+// businessId -> { sock, status: 'connecting'|'qr'|'connected'|'disconnected', qr, phoneNumber, unlinking? }
 // One process, many sockets -- Baileys sessions are just websocket connections, not separate OS
 // processes, so this comfortably holds every business's linked number.
 const sessions = new Map()
@@ -100,6 +100,9 @@ export async function startSession(businessId) {
         sessions.delete(businessId)
         failures.delete(businessId)
         await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
+        // WhatsApp ended a linked session: tell the backend so the platform admin gets an email.
+        // Not for an admin's own Unlink (unlinkSession), which logs out on purpose.
+        if (loggedOut && !session.unlinking) reportLoggedOut(businessId, session.phoneNumber)
       } else {
         session.status = 'disconnected'
         // DisconnectReason.forbidden means WhatsApp is actively (and temporarily) blocking this
@@ -181,10 +184,27 @@ async function handleInboundMessage(businessId, sock, msg) {
   if (reply) await sock.sendMessage(jid, { text: reply })
 }
 
+// Best-effort, a few tries a minute apart in case the backend is mid-deploy.
+async function reportLoggedOut(businessId, phoneNumber, attempt = 1) {
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/session-event`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
+      body: JSON.stringify({ businessId, event: 'loggedOut', phoneNumber }),
+    })
+    if (resp.ok || resp.status === 404) return
+    throw new Error(`backend responded ${resp.status}`)
+  } catch (err) {
+    if (attempt >= 5) return console.error(`[${businessId}] could not report the logout to the backend:`, err.message)
+    setTimeout(() => reportLoggedOut(businessId, phoneNumber, attempt + 1), 60_000)
+  }
+}
+
 export async function unlinkSession(businessId) {
   failures.delete(businessId)
   const session = sessions.get(businessId)
   if (session) {
+    session.unlinking = true
     await session.sock.logout().catch(() => {})
     sessions.delete(businessId)
   }
