@@ -9,17 +9,15 @@ using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
 
-// QA run 4 PUB-1/PUB-2: a disabled business still took bookings nobody at it could see, and an
-// ended trial stayed listed and bookable until the final Confirm.
-public class BusinessAcceptsBookingsTests : IntegrationTestBase
+public abstract class BusinessAcceptsBookingsTestBase(bool configureCardcom) : IntegrationTestBase(configureCardcom)
 {
-    private record RegisterResponse(string? DevCode);
-    private record IdDto(string Id);
-    private record InfoResponse(bool AcceptsBookings);
-    private record SearchItem(string Slug);
-    private record SearchResponse(List<SearchItem> Items);
+    protected record RegisterResponse(string? DevCode);
+    protected record IdDto(string Id);
+    protected record InfoResponse(bool AcceptsBookings);
+    protected record SearchItem(string Slug);
+    protected record SearchResponse(List<SearchItem> Items);
 
-    private async Task<(string BusinessId, string ItemId)> Seed(string slug)
+    protected async Task<(string BusinessId, string ItemId)> Seed(string slug)
     {
         var email = $"{slug}@example.com";
         var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug));
@@ -32,7 +30,7 @@ public class BusinessAcceptsBookingsTests : IntegrationTestBase
         return (await db.Businesses.Where(b => b.Slug == slug).Select(b => b.Id).FirstAsync(), item!.Id);
     }
 
-    private async Task Close(string businessId, string how)
+    protected async Task Close(string businessId, string how)
     {
         using var db = Db();
         var b = await db.Businesses.FirstAsync(x => x.Id == businessId);
@@ -41,7 +39,16 @@ public class BusinessAcceptsBookingsTests : IntegrationTestBase
         await db.SaveChangesAsync();
     }
 
-    private static string NextWeekday() => AppClock.Now.Date.AddDays(((int)DayOfWeek.Monday - (int)AppClock.Now.DayOfWeek + 7) % 7 + 7).ToString("yyyy-MM-dd");
+    protected static string NextWeekday() => AppClock.Now.Date.AddDays(((int)DayOfWeek.Monday - (int)AppClock.Now.DayOfWeek + 7) % 7 + 7).ToString("yyyy-MM-dd");
+
+}
+
+// QA run 4 PUB-1/PUB-2: a disabled business still took bookings nobody at it could see, and an
+// ended trial stayed listed and bookable until the final Confirm. Billing is configured here, so
+// trial end dates count (see BusinessTrialWithoutBillingTests for the other case).
+public class BusinessAcceptsBookingsTests : BusinessAcceptsBookingsTestBase
+{
+    public BusinessAcceptsBookingsTests() : base(configureCardcom: true) { }
 
     [Theory]
     [InlineData("disabled")]
@@ -91,5 +98,39 @@ public class BusinessAcceptsBookingsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Forbidden, moveMine.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, moveByLink.StatusCode);
         Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+    }
+}
+
+// Until billing is configured there's no way to subscribe, so an ended trial still takes bookings
+// (owner's decision, 2026-10-21); a disabled business still doesn't.
+public class BusinessTrialWithoutBillingTests() : BusinessAcceptsBookingsTestBase(configureCardcom: false)
+{
+    [Fact]
+    public async Task TrialEnded_WithoutBilling_IsStillListedAndBookable()
+    {
+        var (businessId, itemId) = await Seed("trial-no-billing");
+        await Close(businessId, "trial-ended");
+
+        var search = await Client.GetFromJsonAsync<SearchResponse>("/api/businesses/search?query=trial-no-billing");
+        var info = await Client.GetFromJsonAsync<InfoResponse>("/api/trial-no-billing/info");
+        var session = await LoginCustomerViaWhatsAppAsync("+15554070003");
+        Authorize(Client, session.Token);
+        var book = await Client.PostAsJsonAsync("/api/trial-no-billing/appointments",
+            new BookAppointmentRequest(itemId, NextWeekday(), "10:00", "Dana", "", null, CustomerFamilyName: "Levi"));
+
+        Assert.Contains(search!.Items, i => i.Slug == "trial-no-billing");
+        Assert.True(info!.AcceptsBookings);
+        Assert.Equal(HttpStatusCode.Created, book.StatusCode);
+    }
+
+    [Fact]
+    public async Task Disabled_WithoutBilling_StillRefusesBookings()
+    {
+        var (businessId, _) = await Seed("disabled-no-billing");
+        await Close(businessId, "disabled");
+
+        var info = await Client.GetFromJsonAsync<InfoResponse>("/api/disabled-no-billing/info");
+
+        Assert.False(info!.AcceptsBookings);
     }
 }

@@ -96,12 +96,15 @@ public class Business
     // not over. One rule for the directory, the storefront, booking, reschedules, the waitlist and
     // the chatbot (QA run 4: a disabled business still took bookings nobody at it could see, and an
     // ended trial stayed listed and failed only at the last step). Cancelling stays possible.
-    // AcceptsBookingsAt is the same rule for a query; keep the two in sync.
-    public bool AcceptsBookings(DateTime utcNow) =>
-        !IsDisabled && SubscriptionStatus != SubStatus.EXPIRED && !(SubscriptionStatus == SubStatus.TRIAL && TrialEndsAt < utcNow);
+    // AcceptsBookingsAt is the same rule for a query; keep the two in sync. enforceTrial is false
+    // until billing is configured (Services/BookingRules, which callers go through).
+    public bool AcceptsBookings(DateTime utcNow, bool enforceTrial) =>
+        !IsDisabled && SubscriptionStatus != SubStatus.EXPIRED
+        && !(enforceTrial && SubscriptionStatus == SubStatus.TRIAL && TrialEndsAt < utcNow);
 
-    public static System.Linq.Expressions.Expression<Func<Business, bool>> AcceptsBookingsAt(DateTime utcNow) =>
-        b => !b.IsDisabled && b.SubscriptionStatus != SubStatus.EXPIRED && !(b.SubscriptionStatus == SubStatus.TRIAL && b.TrialEndsAt < utcNow);
+    public static System.Linq.Expressions.Expression<Func<Business, bool>> AcceptsBookingsAt(DateTime utcNow, bool enforceTrial) =>
+        b => !b.IsDisabled && b.SubscriptionStatus != SubStatus.EXPIRED
+            && !(enforceTrial && b.SubscriptionStatus == SubStatus.TRIAL && b.TrialEndsAt < utcNow);
 
     // Overrides the fallback language WhatsAppController.ResolveLanguage uses for a signal-less
     // message (pure digits/emoji, no letters) with no open conversation to inherit from. Null

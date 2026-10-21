@@ -14,7 +14,8 @@ namespace BarberSaas.Api.Controllers;
 [Route("api/customer/appointments")]
 [Authorize(Policy = "CustomerOnly")]
 public class CustomerAppointmentsController(
-    AppDbContext db, AvailabilityService availability, WaitlistService waitlist, AppointmentCancellationService cancellationService) : ControllerBase
+    AppDbContext db, AvailabilityService availability, WaitlistService waitlist, AppointmentCancellationService cancellationService,
+    BookingRules bookingRules) : ControllerBase
 {
     private string AccountId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -88,7 +89,7 @@ public class CustomerAppointmentsController(
             .Include(a => a.Item).Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
-        if (!appt.Business.AcceptsBookings(DateTime.UtcNow))
+        if (!bookingRules.AcceptsBookings(appt.Business))
             return StatusCode(403, new { error = "This business isn't taking online bookings right now" });
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });

@@ -21,6 +21,7 @@ public class WhatsAppController(
     AiUsageLimiter aiUsage,
     AvailabilityService availability,
     NotificationOutbox notifications,
+    BookingRules bookingRules,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
     // Literal commands, not natural language -- deliberately simple so a business can explain them
@@ -571,7 +572,7 @@ public class WhatsAppController(
                 await db.SaveChangesAsync();
                 var intro = I18nService.T(lang, "whatsapp.serviceNoLongerAvailable");
                 var list = await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
-                return business.AcceptsBookings(DateTime.UtcNow) ? $"{intro}\n\n{list}" : list;
+                return bookingRules.AcceptsBookings(business) ? $"{intro}\n\n{list}" : list;
             }
 
             // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
@@ -907,7 +908,7 @@ public class WhatsAppController(
                 : "";
         }
         catch (JsonException) { itemId = ""; }
-        if (!business.AcceptsBookings(DateTime.UtcNow))
+        if (!bookingRules.AcceptsBookings(business))
             return JsonSerializer.Serialize(new { error = "This business isn't taking online bookings right now. Tell the customer to contact the business directly." });
         var services = await ActiveServices(business.Id, lang);
         var chosen = services.FirstOrDefault(s => s.Id == itemId);
@@ -1298,7 +1299,7 @@ public class WhatsAppController(
     // and its service is still active and bookable.
     private async Task<bool> PendingLinkStillUsable(Business business, string phone)
     {
-        if (!business.AcceptsBookings(DateTime.UtcNow)) return false;
+        if (!bookingRules.AcceptsBookings(business)) return false;
         var itemId = await db.WhatsAppBookingTokens
             .Where(t => t.BusinessId == business.Id && t.Phone == phone && t.ExpiresAt > DateTime.UtcNow)
             .OrderByDescending(t => t.CreatedAt).Select(t => t.ItemId).FirstOrDefaultAsync();
@@ -1343,7 +1344,7 @@ public class WhatsAppController(
         // An expired subscription or ended trial: a link would only lead to "Booking unavailable"
         // and then 24 h of silence (QA run 4).
         var business = (await db.Businesses.FindAsync(businessId))!;
-        if (!business.AcceptsBookings(DateTime.UtcNow))
+        if (!bookingRules.AcceptsBookings(business))
         {
             await ClearConversationState(businessId, phone);
             return I18nService.T(lang, "whatsapp.bookingUnavailable", new() { ["businessName"] = businessName });
@@ -1427,7 +1428,7 @@ public class WhatsAppController(
         // ProcessMessageRuleBasedAsync for why: it's what stops the bot re-sending the opening
         // prompt while the customer finishes booking on the web page this link opens.
         var owner = (await db.Businesses.FindAsync(businessId))!;
-        if (!owner.AcceptsBookings(DateTime.UtcNow))
+        if (!bookingRules.AcceptsBookings(owner))
         {
             db.WhatsAppConversationStates.Remove(state);
             await db.SaveChangesAsync();

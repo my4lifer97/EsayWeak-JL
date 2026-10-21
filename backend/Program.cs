@@ -163,6 +163,7 @@ builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>
 });
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<AiUsageLimiter>();
+builder.Services.AddSingleton<BookingRules>();
 
 var app = builder.Build();
 

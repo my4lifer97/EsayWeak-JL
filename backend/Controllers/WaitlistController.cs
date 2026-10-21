@@ -11,7 +11,7 @@ namespace BarberSaas.Api.Controllers;
 [ApiController]
 [Route("api/{slug}/waitlist")]
 [Authorize(Policy = "CustomerOnly")]
-public class WaitlistController(AppDbContext db) : ControllerBase
+public class WaitlistController(AppDbContext db, BookingRules bookingRules) : ControllerBase
 {
     private string CustomerAccountId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -21,7 +21,7 @@ public class WaitlistController(AppDbContext db) : ControllerBase
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
         if (!business.WaitlistEnabled) return BadRequest(new { error = "Waitlist is not enabled for this business" });
-        if (!business.AcceptsBookings(DateTime.UtcNow)) return StatusCode(403, new { error = "This business isn't taking online bookings right now" });
+        if (!bookingRules.AcceptsBookings(business)) return StatusCode(403, new { error = "This business isn't taking online bookings right now" });
 
         var appointment = await db.Appointments.Include(a => a.Customer)
             .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == business.Id);

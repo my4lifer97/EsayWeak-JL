@@ -11,7 +11,7 @@ namespace BarberSaas.Api.Controllers;
 
 [ApiController]
 [Route("api/businesses")]
-public class BusinessesController(AppDbContext db, FollowService followService) : ControllerBase
+public class BusinessesController(AppDbContext db, FollowService followService, BookingRules bookingRules) : ControllerBase
 {
     private string? CustomerAccountId =>
         User.FindFirst("type")?.Value == "customer" ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null;
@@ -31,7 +31,7 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
         pageSize = Math.Clamp(pageSize, 1, 50);
 
         // Only businesses that take bookings: a disabled one or an ended trial used to stay listed.
-        var q = db.Businesses.Where(b => b.IsListed).Where(Business.AcceptsBookingsAt(DateTime.UtcNow));
+        var q = db.Businesses.Where(b => b.IsListed).Where(bookingRules.AcceptsBookingsQuery());
 
         // Case-insensitive substring / exact match via lower() rather than EF.Functions.ILike --
         // ILike is Npgsql-only and can't run under the SQLite provider the tests use. lower()
@@ -94,7 +94,7 @@ public class BusinessesController(AppDbContext db, FollowService followService) 
     {
         var cities = await db.Businesses
             .Where(b => b.IsListed && b.City != null && b.City != "")
-            .Where(Business.AcceptsBookingsAt(DateTime.UtcNow))
+            .Where(bookingRules.AcceptsBookingsQuery())
             .Select(b => b.City!.Trim())
             .Distinct()
             .OrderBy(c => c)

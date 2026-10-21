@@ -14,7 +14,7 @@ namespace BarberSaas.Api.Controllers;
 public class BookingController(
     AppDbContext db, AvailabilityService availability, FollowService followService, IWebHostEnvironment env,
     WaitlistService waitlist, AppointmentCancellationService cancellationService,
-    NotificationOutbox notifications) : ControllerBase
+    NotificationOutbox notifications, BookingRules bookingRules) : ControllerBase
 {
     [HttpGet("info")]
     public async Task<IActionResult> GetBusinessInfo(string slug)
@@ -49,7 +49,7 @@ public class BookingController(
             business.RatingCount, business.RatingAverage,
             await availability.GetOpenDates(business.Id, 60),
             await availability.GetUpcomingHours(business.Id, 7),
-            business.AcceptsBookings(DateTime.UtcNow)));
+            bookingRules.AcceptsBookings(business)));
     }
 
     [HttpGet("availability")]
@@ -103,7 +103,7 @@ public class BookingController(
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 
-        if (!business.AcceptsBookings(DateTime.UtcNow))
+        if (!bookingRules.AcceptsBookings(business))
             return StatusCode(403, new { error = "This business isn't taking online bookings right now" });
 
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == req.ItemId && s.BusinessId == business.Id && s.IsActive);
@@ -348,7 +348,7 @@ public class BookingController(
 
         if (appointment is null) return NotFound(new { error = "Not found" });
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
-        if (!appointment.Business.AcceptsBookings(DateTime.UtcNow))
+        if (!bookingRules.AcceptsBookings(appointment.Business))
             return StatusCode(403, new { error = "This business isn't taking online bookings right now" });
         if (appointment.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
