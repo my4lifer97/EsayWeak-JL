@@ -418,6 +418,70 @@ public class WaitlistTests : IntegrationTestBase
 
     // Moving an appointment to another time frees the old slot, so its waitlist is messaged just
     // like on a cancel -- while the moved appointment keeps its Id (the customer's links still work).
+    // QA run 4 (ST-13): only the queue worker skipped a slot that had already started, so a cancel
+    // during the appointment still sent the first waiter a link to a time no longer offered.
+    [Fact]
+    public async Task CancelAfterStart_DoesNotOfferTheSlot()
+    {
+        var token = await RegisterAndLoginBusiness("wl-started@example.com", "wl-started-shop");
+        var (businessId, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-started-shop");
+        var booked = await BookAs(await GetCustomerToken("+15555100001"), "wl-started-shop", itemId, date.ToString("yyyy-MM-dd"), "10:00");
+        var appt = (await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+        var waiterPhone = "+15555100002";
+        Assert.Equal(HttpStatusCode.OK, (await JoinWaitlistAs(await GetCustomerToken(waiterPhone), "wl-started-shop", appt.AppointmentId)).StatusCode);
+
+        // Under way now: started at midnight, ends at the end of the day.
+        using (var db = Db())
+        {
+            var row = db.Appointments.Single(a => a.Id == appt.AppointmentId);
+            row.Date = DateTime.SpecifyKind(AppClock.Now.Date, DateTimeKind.Utc);
+            row.StartTime = "00:00";
+            row.EndTime = "23:59";
+            db.SaveChanges();
+        }
+
+        var cancel = await Client.DeleteAsync($"/api/wl-started-shop/appointments/{appt.AppointmentId}?token={appt.CancelToken}");
+
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        Assert.DoesNotContain(Factory.WhatsAppSender.Sent, m => m.BusinessId == businessId && m.Phone == waiterPhone);
+        using var check = Db();
+        Assert.Equal(WaitlistEntryStatus.RESOLVED, check.WaitlistEntries.Single(w => w.AppointmentId == appt.AppointmentId).Status);
+    }
+
+    // QA run 4 (ST-14): a join from a page loaded before the appointment moved queued the customer
+    // for its new time while the slot they saw stood free.
+    [Fact]
+    public async Task Join_SlotMovedSincePageLoaded_ReturnsConflict()
+    {
+        var token = await RegisterAndLoginBusiness("wl-stale@example.com", "wl-stale-shop");
+        var (_, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-stale-shop");
+        var dateStr = date.ToString("yyyy-MM-dd");
+        var bookerToken = await GetCustomerToken("+15555100003");
+        var appt = (await (await BookAs(bookerToken, "wl-stale-shop", itemId, dateStr, "10:00")).Content.ReadFromJsonAsync<BookAppointmentResponse>())!;
+
+        var move = new HttpRequestMessage(HttpMethod.Patch, $"/api/customer/appointments/{appt.AppointmentId}/reschedule")
+        {
+            Content = JsonContent.Create(new { date = dateStr, startTime = "15:00" }),
+        };
+        move.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bookerToken);
+        Assert.Equal(HttpStatusCode.OK, (await Client.SendAsync(move)).StatusCode);
+
+        var waiterToken = await GetCustomerToken("+15555100004");
+        HttpRequestMessage Join(string time)
+        {
+            var req = new HttpRequestMessage(HttpMethod.Post, $"/api/wl-stale-shop/waitlist/{appt.AppointmentId}?date={dateStr}&startTime={time}");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", waiterToken);
+            return req;
+        }
+
+        var stale = await Client.SendAsync(Join("10:00"));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.True((await stale.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("slotChanged").GetBoolean());
+        using (var db = Db()) Assert.Empty(db.WaitlistEntries.Where(w => w.AppointmentId == appt.AppointmentId));
+
+        Assert.Equal(HttpStatusCode.OK, (await Client.SendAsync(Join("15:00"))).StatusCode);
+    }
+
     [Fact]
     public async Task CustomerReschedules_WaitlistForOldSlotIsNotified()
     {

@@ -1196,11 +1196,11 @@ public class AdminController(
 
         // The owner can cancel regardless of effective status (e.g. correcting a past/completed
         // appointment after the fact) -- unlike the customer-facing cancel endpoints. Only ask
-        // WaitlistService to notify if it's actually still effectively CONFIRMED, since offering
-        // an already-passed slot to the waitlist would be a meaningless notification.
+        // WaitlistService to notify if the slot hasn't started yet, since offering a slot that's
+        // already under way would be a meaningless notification (it used to check the end time).
         var wasPendingApproval = appt.PendingCancellationApproval;
         var stillConfirmed = AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED";
-        var offeredToWaitlist = req.NotifyWaitlist && stillConfirmed;
+        var offeredToWaitlist = req.NotifyWaitlist && !WaitlistService.HasStarted(appt);
         if (!await cancellationService.CancelAsync(appt, notifyWaitlist: offeredToWaitlist))
             return Conflict(new { error = "This appointment can no longer be modified" });
         await db.SaveChangesAsync();
@@ -1313,8 +1313,6 @@ public class AdminController(
             EndTime = appt.EndTime,
             Status = AppointmentStatus.CONFIRMED,
         };
-        appt.Status = AppointmentStatus.CANCELLED;
-        appt.PendingCancellationApproval = false;
 
         // Two saves in one transaction: the partial unique index allows one CONFIRMED row per
         // start time, so the original must be cancelled before the replacement is inserted.
@@ -1323,16 +1321,15 @@ public class AdminController(
             // Claimed with one conditional UPDATE: a double-click or two staff members replacing
             // at once both passed the CONFIRMED check above, and the second insert hit the unique
             // index as a 500 (QA run 3). The row lock makes the second UPDATE wait, then match nothing.
-            var claimed = await db.Appointments
-                .Where(a => a.Id == appt.Id && a.Status == AppointmentStatus.CONFIRMED && a.PendingCancellationApproval == wasPendingApproval)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(a => a.Status, AppointmentStatus.CANCELLED)
-                    .SetProperty(a => a.PendingCancellationApproval, false));
-            if (claimed == 0)
+            // The claim also compares the date and time: a customer reschedule committing first
+            // used to leave the replacement on the old slot and cancel the moved booking (QA run 4).
+            if (!await cancellationService.TryClaimAsync(appt, AppointmentStatus.CANCELLED, pendingApproval: false))
             {
                 await tx.RollbackAsync();
                 return Conflict(new { error = "This appointment can no longer be modified" });
             }
+            appt.Status = AppointmentStatus.CANCELLED;
+            appt.PendingCancellationApproval = false;
             await db.SaveChangesAsync();
             db.Appointments.Add(replacement);
             // Whoever is still waiting for this slot keeps waiting -- on the new appointment.

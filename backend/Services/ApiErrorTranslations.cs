@@ -87,6 +87,7 @@ public static class ApiErrorTranslations
         ["Customer not found"] = ("العميل غير موجود", "הלקוח לא נמצא"),
         ["This appointment can no longer be modified"] = ("لم يعد بالإمكان تعديل هذا الموعد", "כבר לא ניתן לשנות את התור הזה"),
         ["This appointment is not currently booked"] = ("هذا الموعد غير محجوز حاليًا", "התור הזה לא מוזמן כרגע"),
+        ["This time has changed. Please pick it again."] = ("تغيّر هذا الوقت. يرجى اختياره من جديد.", "השעה הזו השתנתה. בחרו אותה שוב."),
         ["This appointment has no cancellation request"] = ("لا يوجد طلب إلغاء لهذا الموعد", "אין בקשת ביטול לתור הזה"),
         ["This time overlaps an existing appointment"] = ("هذا الوقت يتداخل مع موعد موجود", "השעה הזו חופפת לתור קיים"),
         ["This time has already passed"] = ("هذا الوقت قد مضى", "השעה הזו כבר עברה"),

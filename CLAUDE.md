@@ -275,7 +275,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `PATCH/DELETE /api/reviews/{id}` — author-scoped (`r.CustomerAccountId == accountId`, else 404); both recompute the aggregate
 
 **Waitlist (customer JWT, `CustomerOnly`)**
-- `POST /api/{slug}/waitlist/{appointmentId}` — join the waitlist for a currently-CONFIRMED appointment; 400 if the business hasn't turned `WaitlistEnabled` on; idempotent (a repeat join for the same customer+appointment is a no-op 200, not a duplicate row)
+- `POST /api/{slug}/waitlist/{appointmentId}?date=&startTime=` — join the waitlist for a currently-CONFIRMED appointment; 400 if the business hasn't turned `WaitlistEnabled` on; idempotent (a repeat join for the same customer+appointment is a no-op 200, not a duplicate row). `date`/`startTime` are the slot the page showed (optional, `BookingWizard` sends them): if the appointment has moved since, 409 `{ slotChanged: true }` and the wizard reloads the times (QA run 4: the join followed the moved appointment)
 
 **Customer account (customer JWT required, `CustomerOnly` policy)**
 - `GET /api/customer/appointments?filter=` — this customer's appointment history across all businesses (rows whose `Customer.CustomerAccountId` is this account); `upcoming`/`today` soonest first, others newest first
@@ -707,7 +707,8 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   in-process `BackgroundService` polling `WaitlistService.AdvanceQueues` every
   `Waitlist:WorkerPollSeconds` (default 30) — the 15-minute external cron is too coarse for a
   5-minute gap. Disabled in tests via `Waitlist__WorkerEnabled=false`. A slot whose start time
-  already passed is never offered. Each message is written in the language the WhatsApp
+  already passed is never offered (`WaitlistService.HasStarted`, checked on the first in-request
+  send too since QA run 4, which then closes the queue; the owner's "offer to waitlist" uses it as well). Each message is written in the language the WhatsApp
   **chatbot last replied to that customer in** (`CustomerAccount.LastMessageLanguage`, set by
   `WhatsAppController.RememberCustomerLanguage` from the resolved reply language on every inbound
   message the chatbot answers), falling back to the business's `ChatbotDefaultLanguage ?? Language`.
@@ -742,7 +743,8 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   cancels the original row, which stays with the original customer and their magic-link token, and
   creates a new row for the new customer (its id is in the response); waiting entries move to the
   new row. It used to reassign the row, which made it vanish from the original customer's list and
-  showed the new customer's details on the original customer's link.
+  showed the new customer's details on the original customer's link. The claim goes through
+  `TryClaimAsync`, so a customer reschedule that committed first makes the replace a 409.
 
 ### Owner-created & recurring appointments
 Two ways for the business to book without the customer using the self-service flow:
@@ -752,7 +754,7 @@ Two ways for the business to book without the customer using the self-service fl
   - **Generation**: `Services/RecurringAppointmentService.GenerateOccurrences()` walks each active series' `LastGeneratedThrough` cursor forward to a rolling horizon (default 8 weeks — `RecurringGeneration:HorizonWeeks`), creating an `Appointment` when `AvailabilityService.GetAvailableSlots` says the slot is free, or logging a `RecurringSkip` (`Reason = "slot_unavailable"`) when it isn't. Occurrences exist for the whole horizon (8 weeks) from the moment the series is created, so a later schedule change (a `BlockedSlot`, a preset closing that day) does meet already-generated rows: the Schedule page's conflict preview (below) lists them and can cancel them; dates beyond the horizon are generated later and skip a closed slot. The cursor never moves backward into the past, so resuming/creating after a gap doesn't backfill missed weeks. A series auto-deactivates (`IsActive = false`, logged as a `service_inactive` skip) if its linked `Item` is soft-deleted, or once its `EndDate` (if set) has passed.
   - **Immediate generation on create**: `RecurringAppointmentsController.Create` calls `RecurringAppointmentService.GenerateForSeriesNow(seriesId)` right after saving the series, so the first occurrence(s) exist and block their slot right away — otherwise nothing would appear on the dashboard, and the slot would stay bookable by others, until the next daily cron run. Both run in one transaction: a series none of whose weeks in the horizon could be booked is refused with 409 "already taken on every upcoming week" and nothing is saved.
   - **Each occurrence is saved under the booking lock** (`AvailabilityService.TryAddOccurrence`: the same `pg_advisory_xact_lock` per business+date and overlap re-check as `TrySaveOrDetectConflict`, but a conflict only drops that one occurrence, logged as a `slot_unavailable` skip). The cron (`GenerateOccurrences`) handles one series at a time, saved on its own, and logs and skips a series that fails. Before 2026-10-21 (QA run 4) generation skipped the lock and saved every series at once: two series on one slot made the daily cron fail for every business, and parallel creates double-booked.
-  - **Deleting a series** (`DELETE /api/admin/recurring/{id}`) cancels every not-yet-completed appointment it generated (`Status = CANCELLED`, freeing the slot) before removing the series row; already-completed history is left untouched (its stored `Status` is always `CONFIRMED` — see [Appointment status](#appointment-status-no-manual-complete) — so the cancel loop checks `AppointmentStatusHelper.EffectiveStatus` per row, not the raw column).
+  - **Deleting a series** (`DELETE /api/admin/recurring/{id}`) cancels every not-yet-completed appointment it generated (an occurrence the customer moved meanwhile is reloaded and cancelled where it is now, up to 3 tries) (`Status = CANCELLED`, freeing the slot) before removing the series row; already-completed history is left untouched (its stored `Status` is always `CONFIRMED` — see [Appointment status](#appointment-status-no-manual-complete) — so the cancel loop checks `AppointmentStatusHelper.EffectiveStatus` per row, not the raw column).
   - **No pause/resume** — deliberately removed; deleting is the only lifecycle action exposed to the owner besides creating. `IsActive` still exists on the model purely for the auto-deactivation cases above.
   - **Creating a series** (`pages/admin/RecurringAppointmentsPage.tsx`): the owner picks an item, a customer (`CustomerPicker`), then a **day-of-week button** (Sun–Sat, not a raw date picker), then a **time slot from the real availability grid** for the nearest upcoming date on that weekday (same `GET /api/admin/appointments/availability` endpoint the one-off modal uses) — never a free-typed time. That computed date becomes the series' `StartDate`.
   - **`RecurringSeries.Force`** — the recurring equivalent of the one-off `force` flag above, surfaced

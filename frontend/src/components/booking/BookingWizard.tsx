@@ -134,10 +134,15 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     if (!bookedSlot?.appointmentId) return
     setJoiningWaitlist(true); setWaitlistError('')
     try {
-      await customerApi.post(`/${business.slug}/waitlist/${bookedSlot.appointmentId}`)
+      // The slot as this page shows it, so a booking that moved since gets a 409, not a place in
+      // the queue for its new time.
+      await customerApi.post(`/${business.slug}/waitlist/${bookedSlot.appointmentId}`, null,
+        { params: { date, startTime: bookedSlot.start } })
       setJoinedWaitlist(true)
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      const data = (err as { response?: { data?: { error?: string; slotChanged?: boolean } } })?.response?.data
+      if (data?.slotChanged && item) fetchSlots(date, item)
+      const msg = data?.error
       setWaitlistError(msg ?? t(lang, 'waitlistJoinFailed'))
     } finally { setJoiningWaitlist(false) }
   }

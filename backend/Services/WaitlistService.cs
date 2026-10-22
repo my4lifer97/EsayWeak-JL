@@ -25,6 +25,11 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
     public Task<(int Sent, int Failed)> NotifyForCancellation(Appointment cancelledAppointment) =>
         NotifyNextInQueue(cancelledAppointment, inBackground: true);
 
+    // A slot whose start time has already passed isn't worth offering anymore. Local wall-clock
+    // time, same convention as AvailabilityService.
+    public static bool HasStarted(Appointment appointment) =>
+        appointment.Date.Date.Add(TimeSpan.Parse(appointment.StartTime)) <= AppClock.Now;
+
     // Sends to the earliest-joined still-WAITING entry. If that send fails (bridge outage, bad
     // number) it moves on to the next one in the same pass rather than stalling the whole queue
     // on one customer -- the failed entry stays WAITING and gets picked up again on a later turn.
@@ -41,6 +46,14 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
             .OrderBy(w => w.CreatedAt)
             .ToListAsync();
         if (entries.Count == 0) return (0, 0);
+
+        // Only AdvanceQueues checked this, so a cancel or reschedule after the start still sent
+        // the first message, a link to a time the booking page no longer offers (QA run 4).
+        if (HasStarted(cancelledAppointment))
+        {
+            foreach (var entry in entries) entry.Status = WaitlistEntryStatus.RESOLVED;
+            return (0, 0);
+        }
 
         // Someone may have booked over the freed slot without starting at exactly its time (or a
         // recurring series filled it), which ResolveForRebooking can miss. Offering it anyway
@@ -168,9 +181,7 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
             // WAITING entry whose appointment isn't cancelled (yet) has nothing to send.
             if (appointment is null || appointment.Status != AppointmentStatus.CANCELLED) continue;
 
-            // A slot whose start time has already passed isn't worth offering anymore. Local
-            // wall-clock time, same convention as AvailabilityService.
-            if (appointment.Date.Date.Add(TimeSpan.Parse(appointment.StartTime)) <= AppClock.Now) continue;
+            if (HasStarted(appointment)) continue;
 
             var lastNotifiedAt = await db.WaitlistEntries
                 .Where(w => w.AppointmentId == appointmentId && w.Status == WaitlistEntryStatus.NOTIFIED)

@@ -346,7 +346,9 @@ describe('BookingWizard', () => {
     vi.mocked(customerApi.post).mockResolvedValue({ data: { ok: true } })
     await userEvent.click(screen.getByText('Join Waitlist'))
 
-    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/waitlist/appt-booked'))
+    // With the slot as shown, so a booking that moved since gets a 409 instead (QA run 4).
+    await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/waitlist/appt-booked', null,
+      { params: { date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), startTime: '09:00' } }))
     await waitFor(() => expect(screen.getByText(/You're on the waitlist/)).toBeInTheDocument())
   })
 

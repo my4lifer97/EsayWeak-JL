@@ -191,7 +191,17 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             .ToListAsync();
         var cancelled = new List<Appointment>();
         foreach (var appt in linkedAppointments.Where(a => AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime) == "CONFIRMED"))
-            if (await cancellationService.CancelAsync(appt, notifyWaitlist: true)) cancelled.Add(appt);
+        {
+            // A claim that fails because the customer moved this occurrence meanwhile is retried on
+            // the moved row. Skipped, it stayed CONFIRMED with no series and wasn't in the notice
+            // (QA run 4). A row someone else cancelled stops the retries.
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                if (await cancellationService.CancelAsync(appt, notifyWaitlist: true)) { cancelled.Add(appt); break; }
+                await db.Entry(appt).ReloadAsync();
+                if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED") break;
+            }
+        }
 
         // QA run 2: deleting a series cancelled the customer's upcoming appointments silently.
         if (notifyCustomer && cancelled.Count > 0)

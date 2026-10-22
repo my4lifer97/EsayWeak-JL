@@ -16,7 +16,7 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
     private string CustomerAccountId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpPost("{appointmentId}")]
-    public async Task<IActionResult> Join(string slug, string appointmentId)
+    public async Task<IActionResult> Join(string slug, string appointmentId, [FromQuery] string? date = null, [FromQuery] string? startTime = null)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
@@ -26,6 +26,12 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
         var appointment = await db.Appointments.Include(a => a.Customer)
             .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == business.Id);
         if (appointment is null) return NotFound(new { error = "Appointment not found" });
+        // The slot the customer saw on the page. A join from a page loaded before the appointment
+        // moved queued them for its new time while the old one stood free (QA run 4). Optional so
+        // a page from the previous deploy still works.
+        if ((date is not null && appointment.Date.ToString("yyyy-MM-dd") != date)
+            || (startTime is not null && appointment.StartTime != startTime))
+            return Conflict(new { error = "This time has changed. Please pick it again.", slotChanged = true });
         // Waiting for your own slot makes no sense -- the booking page offers the customer their
         // own appointment (add a note / change the time) instead.
         if (appointment.Customer.CustomerAccountId == CustomerAccountId)
