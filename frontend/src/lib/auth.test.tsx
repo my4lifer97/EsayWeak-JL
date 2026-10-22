@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './auth'
-import { api } from './api'
+import { api, ownerSessionChangedElsewhere, setOwnerTabToken } from './api'
 
 vi.mock('./api', () => ({
   api: { post: vi.fn(), get: vi.fn().mockResolvedValue({ data: { language: 'EN' } }) },
+  setOwnerTabToken: vi.fn(),
+  ownerSessionChangedElsewhere: vi.fn().mockReturnValue(false),
 }))
 
 function TestConsumer() {
@@ -140,5 +142,36 @@ describe('AuthProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('lang').textContent).toBe('AR'))
     expect(api.get).toHaveBeenCalledWith('/admin/settings')
+  })
+})
+
+// QA run 4 (PA-4): another tab's "Log in as" switched this tab to that business without a sign.
+describe('AuthProvider session changed in another tab', () => {
+  it('covers the page with a reload notice, and drops it when the login comes back', async () => {
+    renderWithProvider()
+    vi.mocked(ownerSessionChangedElsewhere).mockReturnValue(true)
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'token' })) })
+    expect(screen.getByText(/changed in another tab/)).toBeInTheDocument()
+
+    vi.mocked(ownerSessionChangedElsewhere).mockReturnValue(false)
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'token' })) })
+    expect(screen.queryByText(/changed in another tab/)).toBeNull()
+  })
+
+  it('ignores changes to other keys', () => {
+    renderWithProvider()
+    vi.mocked(ownerSessionChangedElsewhere).mockReturnValue(true)
+    act(() => { window.dispatchEvent(new StorageEvent('storage', { key: 'lang' })) })
+    expect(screen.queryByText(/changed in another tab/)).toBeNull()
+    vi.mocked(ownerSessionChangedElsewhere).mockReturnValue(false)
+  })
+
+  it("login and logout set this tab's own token", async () => {
+    vi.mocked(api.post).mockResolvedValue({ data: { token: 't1', id: '1', name: 'A', email: 'a@example.com', slug: 'a' } })
+    renderWithProvider()
+    await userEvent.click(screen.getByText('login'))
+    await waitFor(() => expect(setOwnerTabToken).toHaveBeenCalledWith('t1'))
+    await userEvent.click(screen.getByText('logout'))
+    expect(setOwnerTabToken).toHaveBeenLastCalledWith(null)
   })
 })

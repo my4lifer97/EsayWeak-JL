@@ -71,6 +71,26 @@ describe('OwnerEmailComposer temp password', () => {
   })
 })
 
+describe('OwnerEmailComposer copy with a template missing the fields', () => {
+  // QA run 4 (PA-3): "Set password and copy" applied a password the copied text didn't contain.
+  it('refuses to set a password the copied text would not include', async () => {
+    localStorage.setItem('ownerEmailTemplate', 'Hi {{businessName}}, see you soon.')
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    vi.mocked(platformAdminApi.post).mockImplementation((url: string) =>
+      Promise.resolve({ data: url.endsWith('/generate-temp-password') ? { tempPassword: 'Tmp-abc12345' } : {} }))
+    renderComposer()
+
+    await userEvent.click(screen.getByText('Generate new temporary password'))
+    await screen.findByText(/Not active yet/)
+    await userEvent.click(screen.getByText('Copy to Clipboard'))
+
+    expect(await screen.findByText(/The password isn't in the email text/)).toBeInTheDocument()
+    expect(platformAdminApi.post).not.toHaveBeenCalledWith(expect.stringContaining('reset-password'), expect.anything())
+    expect(writeText).not.toHaveBeenCalled()
+  })
+})
+
 // QA: after approval the only copy of the temp password is in the composer -- closing it by
 // accident lost the owner's login for good.
 describe('OwnerEmailComposer close guard', () => {
@@ -100,6 +120,34 @@ describe('OwnerEmailComposer close guard', () => {
 
     await userEvent.click(screen.getByText('Send Email'))
     await screen.findByText('Sent ✓')
+    await userEvent.click(screen.getByLabelText('Close'))
+
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  // QA run 4 (PA-3): copying with Password unticked counted as handing the password over.
+  it('still asks after a copy that left the active password out', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const onClose = vi.fn()
+    renderWithApprovedPassword(onClose)
+
+    await userEvent.click(screen.getByRole('checkbox', { name: /Password/ }))
+    await userEvent.click(screen.getByText('Copy to Clipboard'))
+    expect(writeText).toHaveBeenCalledWith(expect.not.stringContaining('Tmp-approved1'))
+
+    await userEvent.click(screen.getByLabelText('Close'))
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByText(/isn't in anything you sent or copied/)).toBeInTheDocument()
+  })
+
+  it('closes without asking after a copy that included the password', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true })
+    const onClose = vi.fn()
+    renderWithApprovedPassword(onClose)
+
+    await userEvent.click(screen.getByText('Copy to Clipboard'))
+    await screen.findByText('Copied!')
     await userEvent.click(screen.getByLabelText('Close'))
 
     expect(onClose).toHaveBeenCalled()

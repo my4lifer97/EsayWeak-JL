@@ -88,9 +88,12 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [sendError, setSendError] = useState('')
   const [sent, setSent] = useState(false)
   const [copied, setCopied] = useState(false)
-  // Sent or copied at least once. The server keeps only a hash, so an active password that was
-  // never sent or copied is gone for good once this closes -- the owner would need a new one.
+  // Sent or copied at least once.
   const [delivered, setDelivered] = useState(false)
+  // The active password was in text that was sent or copied. The server keeps only a hash, so one
+  // that never was is gone for good once this closes. Copying with Password unticked, or a template
+  // without {{fields}}, used to count as delivered too (QA run 4).
+  const [passwordDelivered, setPasswordDelivered] = useState(false)
   const [ask, confirmDialog] = useConfirmDialog('EN')
 
   // Esc while editing the default template used to close the whole composer and lose the draft.
@@ -103,8 +106,8 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
 
   async function requestClose() {
     if (editingTemplate && !(await closeTemplateEditor())) return
-    if (password && passwordApplied && !delivered) {
-      if (!(await ask("You haven't sent or copied the owner's login details. Once this closes, the password can't be shown again. Close anyway?",
+    if (password && passwordApplied && !passwordDelivered) {
+      if (!(await ask("The owner's new password isn't in anything you sent or copied. Once this closes, it can't be shown again. Close anyway?",
         { yesLabel: 'Close anyway', noLabel: 'Keep open' }))) return
     } else if ((bodyEdited || subject !== defaultSubject) && !delivered) {
       if (!(await ask('Discard the changes you made to this email?', { yesLabel: 'Discard', noLabel: 'Keep editing' }))) return
@@ -232,6 +235,7 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
       if (newTempPassword) setPasswordApplied(true)
       setSent(true)
       setDelivered(true)
+      if (password && body.includes(password)) setPasswordDelivered(true)
     } catch (err: unknown) {
       const resp = (err as { response?: { data?: { error?: string } } })?.response
       setSendError(resp?.data?.error ?? 'Could not send the email')
@@ -241,13 +245,20 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   }
 
   async function copyToClipboard() {
+    const text = `Subject: ${subject}\n\n${body}`
+    const hasPassword = !!password && text.includes(password)
+    // Send refuses a new password the body doesn't show; copying used to set it anyway (QA run 4).
+    if (password && includePassword && !passwordApplied && !hasPassword) {
+      setGenError("The password isn't in the email text. Put the account details back in the body (Reset body to the template, or {{fields}} in the template) before copying.")
+      return
+    }
     // A generated password only becomes real on Send or "Set password now". Copied before that,
     // the owner got a password that didn't work (QA run 3), so copying sets it first.
     if (password && includePassword && !passwordApplied
       && !(await applyPasswordNow("The temporary password in this email isn't active yet. Set it as the owner's password now and copy? Their current password stops working and they're signed out everywhere.",
         'Set password and copy'))) return
     try {
-      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
+      await navigator.clipboard.writeText(text)
     } catch {
       // After the dialog and the reset call the browser may no longer count this as a click.
       setGenError(password && includePassword
@@ -257,6 +268,7 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
     }
     setCopied(true)
     setDelivered(true)
+    if (hasPassword) setPasswordDelivered(true)
     setTimeout(() => setCopied(false), 2000)
   }
 

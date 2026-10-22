@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { api } from './api'
+import { api, setOwnerTabToken } from './api'
 
 // axios doesn't expose a public API to invoke a registered interceptor directly, but the
 // handler list on the InterceptorManager is stable and this is the standard lightweight way
@@ -66,6 +66,38 @@ describe('api response interceptor', () => {
     await expect(responseRejected()({ response: { status: 401 }, config: { url: '/auth/login' } })).rejects.toBeTruthy()
 
     expect(localStorage.getItem('token')).toBe('abc123')
+    expect(window.location.href).toBe('')
+  })
+})
+
+// QA run 4 (PA-4): "Log in as" in another tab replaced the shared token, and this tab's lists and
+// saves went to the impersonated business.
+describe('api tab session', () => {
+  const originalLocation = window.location
+
+  beforeEach(() => {
+    localStorage.clear()
+    Object.defineProperty(window, 'location', { value: { href: '' }, writable: true })
+  })
+
+  afterEach(() => {
+    setOwnerTabToken(null)
+    Object.defineProperty(window, 'location', { value: originalLocation, writable: true })
+  })
+
+  it("keeps sending this tab's own token after another tab replaced the stored one", () => {
+    setOwnerTabToken('mine')
+    localStorage.setItem('token', 'other-tab')
+    const config = requestInterceptor()({ headers: {} }) as { headers: Record<string, string> }
+    expect(config.headers.Authorization).toBe('Bearer mine')
+  })
+
+  it("a 401 on a replaced token leaves the other tab's login alone", async () => {
+    setOwnerTabToken('mine')
+    localStorage.setItem('token', 'other-tab')
+    await expect(responseRejected()({ response: { status: 401 }, config: { url: '/admin/settings' } })).rejects.toBeTruthy()
+
+    expect(localStorage.getItem('token')).toBe('other-tab')
     expect(window.location.href).toBe('')
   })
 })

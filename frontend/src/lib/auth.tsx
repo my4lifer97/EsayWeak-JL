@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { api } from './api'
+import { api, ownerSessionChangedElsewhere, setOwnerTabToken } from './api'
+import SessionChangedNotice from '../components/admin/SessionChangedNotice'
 import { clearImpersonationMarker } from './impersonation'
 
 interface User { id: string; name: string; email: string; slug: string; mustChangePassword: boolean }
@@ -28,6 +29,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
   const [language, setLanguage] = useState(() => localStorage.getItem('lang') ?? 'EN')
   const queryClient = useQueryClient()
+  // Another tab signed in as someone else, started or ended a "Log in as", or signed out. This tab
+  // keeps using its own login (api.ts) and asks for a reload; it clears again if the other tab puts
+  // this tab's login back (e.g. exits the impersonation).
+  const [changedElsewhere, setChangedElsewhere] = useState(false)
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'token' || e.key === null) setChangedElsewhere(ownerSessionChangedElsewhere())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   function setLang(l: string) {
     localStorage.setItem('lang', l)
@@ -50,6 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function storeSession(data: { token: string; id: string; name: string; email: string; slug: string; mustChangePassword?: boolean }) {
     queryClient.clear()
     localStorage.setItem('token', data.token)
+    setOwnerTabToken(data.token)
+    setChangedElsewhere(false)
     const u = { id: data.id, name: data.name, email: data.email, slug: data.slug, mustChangePassword: !!data.mustChangePassword }
     localStorage.setItem('user', JSON.stringify(u))
     setUser(u)
@@ -91,6 +106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function logout() {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    setOwnerTabToken(null)
+    setChangedElsewhere(false)
     clearImpersonationMarker('business')
     queryClient.clear()
     setUser(null)
@@ -111,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{ user, login, verifyEmail, resendVerification, forgotPassword, resetPassword, changePassword, logout, isAuthenticated: !!user, language, setLang, updateUserName }}>
       {children}
+      {changedElsewhere && <SessionChangedNotice lang={language} />}
     </AuthContext.Provider>
   )
 }
