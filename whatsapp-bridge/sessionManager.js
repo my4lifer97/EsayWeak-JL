@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs'
+import { randomBytes } from 'crypto'
 import path from 'path'
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from '@whiskeysockets/baileys'
 import { pino } from 'pino'
@@ -72,11 +73,31 @@ export async function startSession(businessId) {
 
   sock.ev.on('creds.update', saveCreds)
 
+  // Since late July 2026 WhatsApp sends `companion_reg_refresh` while a QR is on screen and expects
+  // a new adv secret in the QR. Baileys rc14 only acks it, so the phone scans a QR with a retired
+  // secret and says "Couldn't link device / check your connection" (Baileys issue #2737, unmerged
+  // fix PR #2765, done the same way here). Pair-success signs with creds.advSecretKey, so changing
+  // it there is enough; Baileys keeps putting the old one in later QRs, hence withCurrentSecret.
+  let lastQr = null
+  const withCurrentSecret = (qr) => {
+    const parts = qr.split(',')
+    parts[parts.length - 2] = state.creds.advSecretKey // ref,noiseKey,identityKey,advSecret,platform
+    return parts.join(',')
+  }
+  sock.ws.on('CB:notification,type:companion_reg_refresh', async () => {
+    if (state.creds.me) return // already linked: the secret is what the session is verified with
+    state.creds.advSecretKey = randomBytes(32).toString('base64')
+    await saveCreds()
+    console.log(`[${businessId}] WhatsApp rotated the pairing secret -- re-rendering the QR`)
+    if (lastQr && session.status === 'qr') session.qr = await QRCode.toDataURL(withCurrentSecret(lastQr))
+  })
+
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
 
     if (qr) {
-      session.qr = await QRCode.toDataURL(qr)
+      lastQr = qr
+      session.qr = await QRCode.toDataURL(withCurrentSecret(qr))
       session.status = 'qr'
     }
 
