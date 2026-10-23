@@ -286,6 +286,22 @@ public class AuthControllerTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Unauthorized, oldPasswordResp.StatusCode);
     }
 
+    // QA run 4 OWN-6: the reset gave a working session, while login still said "verify your email".
+    [Fact]
+    public async Task ResetPassword_OnAnUnverifiedAccount_VerifiesItSoLoginWorksToo()
+    {
+        await RegisterAndGetDevCode("reset-unverified@example.com", "reset-unverified-shop");
+        var forgot = await Client.PostAsJsonAsync("/api/auth/forgot-password", new ForgotPasswordRequest("reset-unverified@example.com"));
+        var code = (await forgot.Content.ReadFromJsonAsync<ForgotPasswordResponse>())!.DevCode!;
+
+        var reset = await Client.PostAsJsonAsync("/api/auth/reset-password",
+            new ResetPasswordRequest("reset-unverified@example.com", code, "newpassword456"));
+        var login = await Client.PostAsJsonAsync("/api/auth/login", new LoginRequest("reset-unverified@example.com", "newpassword456"));
+
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+    }
+
     [Fact]
     public async Task ResetPassword_WithWrongCode_ReturnsBadRequest()
     {

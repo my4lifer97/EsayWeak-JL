@@ -77,18 +77,38 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             db.WorkingHours.AddRange(defaultHours);
         }
 
-        string code;
+        // Saved before the email goes out, inside a transaction that a failed send rolls back. Two
+        // registrations at once used to both mail a code, and the loser then 500'd on the unique
+        // index, its code never stored (QA run 4). Now the loser waits on the index and gets the
+        // same 400 as a later try, without sending anything.
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var code = AddVerificationCode(email);
         try
         {
-            code = await IssueVerificationCode(email);
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            await tx.RollbackAsync();
+            db.ChangeTracker.Clear();
+            if (await db.Businesses.AnyAsync(b => b.Email.ToLower() == email))
+                return BadRequest(new { error = "Email already registered" });
+            if (await db.Businesses.AnyAsync(b => b.Slug == req.Slug))
+                return BadRequest(new { error = "URL already taken" });
+            throw;
+        }
+
+        try
+        {
+            await SendVerificationCode(email, code);
         }
         catch (Exception ex)
         {
+            await tx.RollbackAsync();
             logger.LogError(ex, "Failed to send verification email to {Email}", email);
             return StatusCode(502, new { error = "Could not send the verification email. Please check the address and try again." });
         }
-
-        await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         string? devCode = env.IsDevelopment() ? code : null;
         return StatusCode(201, new { business.Id, business.Name, business.Email, business.Slug, devCode });
@@ -302,6 +322,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         // Proving email ownership via OTP and setting a real password accomplishes the same thing
         // as ChangePassword -- an admin-issued temp password no longer needs to be replaced.
         business.MustChangePassword = false;
+        // The code reached that inbox, which is all verify-email proves. Without this the reset
+        // returned a working session while login kept answering "verify your email" (QA run 4).
+        business.EmailVerified = true;
         await db.SaveChangesAsync();
 
         // The new hash changes the password stamp, so every other login of this account ends.
@@ -354,6 +377,13 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
     private async Task<string> IssueVerificationCode(string email)
     {
+        var code = AddVerificationCode(email);
+        await SendVerificationCode(email, code);
+        return code;
+    }
+
+    private string AddVerificationCode(string email)
+    {
         var code = Random.Shared.Next(100000, 999999).ToString();
         db.BusinessEmailOtps.Add(new BusinessEmailOtp
         {
@@ -361,10 +391,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             CodeHash = BCrypt.Net.BCrypt.HashPassword(code),
             ExpiresAt = DateTime.UtcNow.AddMinutes(EmailOtpExpiryMinutes),
         });
-
-        await emailSender.SendAsync(email, "Verify your EsayWeek email",
-            $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.");
-
         return code;
     }
+
+    private Task SendVerificationCode(string email, string code) =>
+        emailSender.SendAsync(email, "Verify your EsayWeek email",
+            $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.");
 }
