@@ -85,4 +85,26 @@ public class ErrorTranslationTests : IntegrationTestBase
         Assert.Equal("طلب غير صالح", body.GetProperty("error").GetString());
         Assert.True(body.GetProperty("errors").TryGetProperty("token", out _));
     }
+
+    // QA run 4 OWN-9: `errors` carried the framework's English messages, some naming our DTO types,
+    // and a huge dashboard week overflowed into a 500.
+    [Fact]
+    public async Task BadInput_NamesOnlyTheField_AndAHugeWeekIsA400()
+    {
+        var email = "err-owner@example.com";
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", "err-owner-shop"));
+        var code = (await register.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("devCode").GetString();
+        var login = await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code!))).Content.ReadFromJsonAsync<LoginResponse>();
+        Authorize(Client, login!.Token);
+
+        var badType = await Client.PostAsync("/api/admin/items",
+            new StringContent("""{"nameEn":"Cut","nameAr":"Cut","nameHe":"Cut","durationMinutes":"thirty","price":10}""", System.Text.Encoding.UTF8, "application/json"));
+        var hugeWeek = await Client.GetAsync("/api/admin/dashboard?week=100000000");
+
+        Assert.Equal(HttpStatusCode.BadRequest, badType.StatusCode);
+        var text = await badType.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("BarberSaas", text);
+        Assert.True((await badType.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errors").TryGetProperty("durationMinutes", out _));
+        Assert.Equal(HttpStatusCode.BadRequest, hugeWeek.StatusCode);
+    }
 }

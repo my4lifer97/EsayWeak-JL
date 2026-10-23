@@ -966,6 +966,8 @@ public class AdminController(
     [HttpGet("dashboard")]
     public async Task<IActionResult> GetDashboard([FromQuery] int week = 0)
     {
+        // Ten years either way is plenty; week=100000000 overflowed AddDays into a 500 (QA run 4).
+        if (week is < -520 or > 520) return BadRequest(new { error = "Invalid week" });
         // a.Date is the business's local wall-clock calendar date, never converted to/from UTC
         // (see AvailabilityService) — bucket weeks by local "now" or this drifts a day near midnight.
         var now = AppClock.Now.Date;

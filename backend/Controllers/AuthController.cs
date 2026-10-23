@@ -114,6 +114,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         return StatusCode(201, new { business.Id, business.Name, business.Email, business.Slug, devCode });
     }
 
+    // Verified against when the account doesn't exist, so login takes as long either way.
+    private static readonly Lazy<string> TimingDummyHash = new(() => BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()));
+
     // Same shape as BlockDisabledBusinessFilter's response, which the frontend signs out on.
     private ObjectResult AccountDisabled() =>
         StatusCode(403, new { error = "This account has been disabled. Contact support.", accountDisabled = true });
@@ -139,7 +142,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             Response.Headers.RetryAfter = ((int)Math.Ceiling(wait.TotalSeconds)).ToString();
             return StatusCode(429, new { error = LoginThrottle.TooManyAttemptsMessage(wait) });
         }
-        if (business is null || !BCrypt.Net.BCrypt.Verify(req.Password, business.PasswordHash))
+        // An unknown account runs a BCrypt verify too: answering ~0.1 s faster gave away which
+        // emails have accounts (QA run 4).
+        if (!BCrypt.Net.BCrypt.Verify(req.Password, business?.PasswordHash ?? TimingDummyHash.Value) || business is null)
         {
             throttle.RecordFailure("owner", throttleKey, ip, DateTime.UtcNow);
             return Unauthorized(new { error = "Invalid email or password" });
@@ -256,7 +261,12 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         // its password would otherwise hand a disabled owner a fresh login.
         var email = EmailAddress.Normalize(req.Email);
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
-        if (business is null || business.IsDisabled) return Ok(new { devCode = (string?)null });
+        if (business is null || business.IsDisabled)
+        {
+            // The same BCrypt work as issuing a code, so the answer isn't faster (QA run 4).
+            BCrypt.Net.BCrypt.HashPassword(email);
+            return Ok(new { devCode = (string?)null });
+        }
 
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.BusinessPasswordResetOtps
@@ -269,7 +279,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         var last = recent.FirstOrDefault();
         if ((last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < EmailOtpCooldownSeconds)
             || recent.Count >= EmailOtpMaxPerHour)
+        {
+            BCrypt.Net.BCrypt.HashPassword(email);
             return Ok(new { devCode = (string?)null });
+        }
 
         var code = Random.Shared.Next(100000, 999999).ToString();
         db.BusinessPasswordResetOtps.Add(new BusinessPasswordResetOtp

@@ -20,6 +20,7 @@ public static class ApiErrorTranslations
         ["Invalid date"] = ("تاريخ غير صالح", "תאריך לא תקין"),
         ["Invalid date. Use the format YYYY-MM-DD."] = ("تاريخ غير صالح. استخدم الصيغة YYYY-MM-DD.", "תאריך לא תקין. יש להשתמש בפורמט YYYY-MM-DD."),
         ["Invalid request"] = ("طلب غير صالح", "בקשה לא תקינה"),
+        ["Invalid week"] = ("أسبوع غير صالح", "שבוע לא תקין"),
         ["You can't block a date in the past"] = ("لا يمكن حجب تاريخ في الماضي", "אי אפשר לחסום תאריך שכבר עבר"),
         ["This date is already blocked"] = ("هذا التاريخ محجوب بالفعل", "התאריך הזה כבר חסום"),
         ["That name is reserved for the Default schedule"] = ("هذا الاسم محجوز للجدول الافتراضي", "השם הזה שמור ללוח הזמנים המוגדר כברירת מחדל"),

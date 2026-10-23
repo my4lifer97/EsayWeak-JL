@@ -57,6 +57,8 @@ public class PlatformAdminController(
         return StatusCode(201, new PlatformAdminLoginResponse(token, admin.Id, admin.Name, admin.Email));
     }
 
+    private static readonly Lazy<string> TimingDummyHash = new(() => BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()));
+
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] PlatformAdminLoginRequest req, [FromServices] LoginThrottle throttle)
     {
@@ -70,7 +72,8 @@ public class PlatformAdminController(
         }
 
         var admin = await db.PlatformAdmins.FirstOrDefaultAsync(a => a.Email.ToLower() == email);
-        if (admin is null || !BCrypt.Net.BCrypt.Verify(req.Password, admin.PasswordHash))
+        // A BCrypt verify for an unknown email too, like owner login, so timing doesn't tell.
+        if (!BCrypt.Net.BCrypt.Verify(req.Password, admin?.PasswordHash ?? TimingDummyHash.Value) || admin is null)
         {
             throttle.RecordFailure("platform-admin", email, ip, DateTime.UtcNow);
             return Unauthorized(new { error = "Invalid email or password" });

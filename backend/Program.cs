@@ -21,12 +21,16 @@ builder.Services.AddControllers(opt =>
 {
     // A missing field, a missing file or a wrong JSON type used to come back as English
     // ProblemDetails with no `error` key, which neither the frontend nor TranslateErrorFilter
-    // reads (QA run 3). `errors` keeps the per-field detail.
+    // reads (QA run 3). `errors` names the fields only: the framework's own messages are English
+    // and some carry our DTO type names ("could not be converted to BarberSaas.Api.DTOs...", QA run 4).
     opt.InvalidModelStateResponseFactory = ctx => new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(new
     {
         error = "Invalid request",
         errors = ctx.ModelState.Where(e => e.Value?.Errors.Count > 0)
-            .ToDictionary(e => e.Key, e => e.Value!.Errors.Select(x => x.ErrorMessage).ToArray()),
+            .Select(e => e.Key.StartsWith("$.") ? e.Key[2..] : e.Key)
+            .Where(k => k.Length > 0 && k != "req" && k != "$")
+            .Distinct()
+            .ToDictionary(k => k, _ => "invalid"),
     });
 });
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
