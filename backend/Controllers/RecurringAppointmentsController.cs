@@ -18,13 +18,27 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
-    private static RecurringSeriesDto ToDto(RecurringSeries s)
+    private static int Minutes(string hhmm) => int.Parse(hhmm[..2]) * 60 + int.Parse(hhmm[3..]);
+
+    // "Next" is the series' next real upcoming appointment. It used to be the next matching
+    // weekday from the calendar alone, shown even when every week had been skipped (QA run 4).
+    private async Task<Dictionary<string, DateTime>> NextOccurrences(IEnumerable<string> seriesIds)
     {
-        var today = AppClock.Now.Date;
-        var daysUntil = ((s.DayOfWeek - (int)today.DayOfWeek) + 7) % 7;
-        var next = today.AddDays(daysUntil);
-        if (next < s.StartDate) next = s.StartDate;
-        var nextOccurrence = (s.EndDate.HasValue && next > s.EndDate.Value) ? null : next.ToString("yyyy-MM-dd");
+        var ids = seriesIds.ToList();
+        var now = AppClock.Now;
+        var today = now.Date;
+        var nowTime = now.ToString("HH:mm");
+        var upcoming = await db.Appointments
+            .Where(a => a.RecurringSeriesId != null && ids.Contains(a.RecurringSeriesId) && a.Status == AppointmentStatus.CONFIRMED
+                && (a.Date > today || (a.Date == today && string.Compare(a.StartTime, nowTime) > 0)))
+            .Select(a => new { SeriesId = a.RecurringSeriesId!, a.Date })
+            .ToListAsync();
+        return upcoming.GroupBy(a => a.SeriesId).ToDictionary(g => g.Key, g => g.Min(a => a.Date));
+    }
+
+    private static RecurringSeriesDto ToDto(RecurringSeries s, IReadOnlyDictionary<string, DateTime> next)
+    {
+        var nextOccurrence = next.TryGetValue(s.Id, out var d) ? d.ToString("yyyy-MM-dd") : null;
 
         return new RecurringSeriesDto(
             s.Id,
@@ -43,7 +57,8 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             .Where(s => s.BusinessId == BusinessId)
             .OrderByDescending(s => s.IsActive).ThenBy(s => s.DayOfWeek).ThenBy(s => s.StartTime)
             .ToListAsync();
-        return Ok(series.Select(ToDto));
+        var next = await NextOccurrences(series.Select(s => s.Id));
+        return Ok(series.Select(s => ToDto(s, next)));
     }
 
     [HttpPost]
@@ -120,6 +135,11 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             var end = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
             if (!day.IsActive || string.CompareOrdinal(req.StartTime, day.StartTime) < 0 || string.CompareOrdinal(end, day.EndTime) > 0)
                 return BadRequest(new { error = "This time is outside your working hours" });
+            // And be one of the times the generator can book: on the 30-minute grid from opening,
+            // clear of breaks. 10:07 or a time inside a break was saved and then skipped every week (QA run 4).
+            if ((Minutes(req.StartTime) - Minutes(day.StartTime)) % 30 != 0
+                || day.Breaks.Any(b => AvailabilityService.Overlaps(req.StartTime, end, b.Start, b.End)))
+                return BadRequest(new { error = "This time isn't one of your bookable times" });
         }
 
         DateTime? endDate = null;
@@ -167,7 +187,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
         this.SetActivityDetail(
             $"Created recurring series: {item.NameEn} with {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} — every {(DayOfWeek)req.DayOfWeek}s at {req.StartTime}");
 
-        return StatusCode(201, ToDto(created));
+        return StatusCode(201, ToDto(created, await NextOccurrences([created.Id])));
     }
 
     [HttpDelete("{id}")]

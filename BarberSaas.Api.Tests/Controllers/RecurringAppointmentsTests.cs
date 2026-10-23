@@ -46,6 +46,34 @@ public class RecurringAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.BadRequest, closedDay.StatusCode);
     }
 
+    // QA run 4 OWN-3: an off-grid time or one inside a break passed the hours check, then every
+    // week was skipped while the page still showed a "next" date.
+    [Fact]
+    public async Task Create_OffGridOrInsideABreak_WithoutForce_IsRejected_AndNextIsARealAppointment()
+    {
+        var token = await RegisterAndLoginBusiness("recurring-grid@example.com", "recurring-grid");
+        var itemId = await SeedService(token);
+        using (var db = Db())
+        {
+            var businessId = db.Businesses.First(b => b.Slug == "recurring-grid").Id;
+            db.Breaks.Add(new BarberSaas.Api.Models.Break { BusinessId = businessId, DayOfWeek = 1, StartTime = "12:00", EndTime = "13:00" });
+            db.SaveChanges();
+        }
+        Authorize(Client, token);
+
+        var offGrid = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(null, "Dana", "+15551117777", itemId, 1, "10:07", null));
+        var inBreak = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(null, "Dana", "+15551117777", itemId, 1, "12:00", null));
+        var ok = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(null, "Dana", "+15551117777", itemId, 1, "10:00", null));
+
+        Assert.Equal(HttpStatusCode.BadRequest, offGrid.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, inBreak.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, ok.StatusCode);
+        var series = await ok.Content.ReadFromJsonAsync<RecurringSeriesDto>();
+        using var check = Db();
+        var firstAppointment = check.Appointments.Where(a => a.RecurringSeriesId == series!.Id).Min(a => a.Date);
+        Assert.Equal(firstAppointment.ToString("yyyy-MM-dd"), series!.NextOccurrenceDate);
+    }
+
     // The hours check read StartDate's weekday, not the series' own day: a Monday series starting on
     // a (closed) Saturday was rejected.
     [Fact]
