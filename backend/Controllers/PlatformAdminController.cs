@@ -596,7 +596,7 @@ public class PlatformAdminController(
             return Conflict(new { error = "This request has already been reviewed." });
 
         if (!SlugValidator.IsValidFormat(req.Slug))
-            return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (min 3 chars)" });
+            return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (3-60 characters)" });
         if (SlugValidator.IsReserved(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
         if (await db.Businesses.AnyAsync(b => b.Slug == req.Slug))

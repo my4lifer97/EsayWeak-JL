@@ -211,4 +211,41 @@ public class InputValidationTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Conflict, move.StatusCode);
         Assert.Equal(HttpStatusCode.OK, sameDay.StatusCode); // moving within its own day doesn't count against itself
     }
+
+    // QA run 4 OWN-10: a@b and a 300-character slug registered, a 5000-character map link and the
+    // same partial block twice were saved.
+    [Fact]
+    public async Task Register_Settings_AndBlocks_RejectTheLooseValues()
+    {
+        var weakEmail = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "a@b", "password123", "weak-email-shop"));
+        var longSlug = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "long-slug@example.com", "password123", new string('a', 61)));
+        Assert.Equal(HttpStatusCode.BadRequest, weakEmail.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, longSlug.StatusCode);
+
+        var (token, _) = await SetUpBusiness("own10@example.com", "own10-shop");
+        Authorize(Client, token);
+        var longMap = await Client.PatchAsJsonAsync("/api/admin/settings", new { mapUrl = "https://" + new string('a', 2000) });
+        Assert.Equal(HttpStatusCode.BadRequest, longMap.StatusCode);
+
+        var date = NextWeekday(3);
+        var first = await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest(date, "10:00", "11:00", null));
+        var again = await Client.PostAsJsonAsync("/api/admin/schedule/blocked", new CreateBlockedSlotRequest(date, "10:00", "11:00", null));
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+    }
+
+    // QA run 4 OWN-13: a deleted service could still be edited and still took gallery uploads.
+    [Fact]
+    public async Task DeletedItem_CantBeEditedOrDeletedAgain()
+    {
+        var (token, itemId) = await SetUpBusiness("own13@example.com", "own13-shop");
+        Authorize(Client, token);
+        Assert.Equal(HttpStatusCode.OK, (await Client.DeleteAsync($"/api/admin/items/{itemId}")).StatusCode);
+
+        var edit = await Client.PatchAsJsonAsync($"/api/admin/items/{itemId}", new CreateItemRequest("Renamed", "Renamed", "Renamed", 30, 20m));
+        var deleteAgain = await Client.DeleteAsync($"/api/admin/items/{itemId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, edit.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, deleteAgain.StatusCode);
+    }
 }

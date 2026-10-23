@@ -25,12 +25,13 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length < 2)
             return BadRequest(new { error = "Name must be at least 2 characters" });
         var email = EmailAddress.Normalize(req.Email);
-        if (!email.Contains('@'))
+        // The same check as the Settings email fields; "a@b" used to register (QA run 4).
+        if (!EmailAddress.IsValid(email))
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 6)
             return BadRequest(new { error = "Password must be at least 6 characters" });
         if (!SlugValidator.IsValidFormat(req.Slug))
-            return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (min 3 chars)" });
+            return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (3-60 characters)" });
         if (SlugValidator.IsReserved(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
 

@@ -13,7 +13,10 @@ public static class SlugValidator
          "platform-admin", "admin-platform", "request-business-account", "wa-link"];
 
     public static bool IsValidFormat(string slug) =>
-        !string.IsNullOrWhiteSpace(slug) && Regex.IsMatch(slug, @"^[a-z0-9-]+$") && slug.Length >= 3;
+        !string.IsNullOrWhiteSpace(slug) && Regex.IsMatch(slug, @"^[a-z0-9-]+$") && slug.Length is >= 3 and <= MaxLength;
+
+    // A 300-character slug registered (QA run 4); it goes into every link we send.
+    public const int MaxLength = 60;
 
     public static bool IsReserved(string slug) => ReservedSlugs.Contains(slug);
 }

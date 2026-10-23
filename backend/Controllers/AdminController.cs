@@ -161,6 +161,7 @@ public class AdminController(
             && !mapUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             && !mapUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = "Map link must start with http:// or https://" });
+        if (mapUrl is { Length: > 2000 }) return BadRequest(new { error = "Map link can be at most 2000 characters" });
         if (SettingsInputError(req, Has) is { } settingsError) return BadRequest(new { error = settingsError });
 
         // Captured before assignment so we can report only the fields that actually changed --
@@ -379,9 +380,10 @@ public class AdminController(
         if (!IsPhotoMode(req.PhotoMode) || !Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
             return BadRequest(new { error = "Invalid photo mode" });
 
+        // Deleted items are hidden, not gone: a stale tab could still edit one (QA run 4).
         var item = await db.Items.Include(s => s.GalleryPhotos)
-            .FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
-        if (item is null) return NotFound();
+            .FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
 
         // Captured before assignment so we can report only the fields that actually changed,
         // same approach as UpdateSettings/SaveWorkingHours above.
@@ -421,8 +423,8 @@ public class AdminController(
     [HttpDelete("items/{id}")]
     public async Task<IActionResult> DeleteItem(string id)
     {
-        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
-        if (item is null) return NotFound();
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
         item.IsActive = false;
         await db.SaveChangesAsync();
         this.SetActivityDetail($"Deleted item: {item.NameEn} ({DescribeBookability(item)})");
@@ -448,8 +450,8 @@ public class AdminController(
     [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
     public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
     {
-        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId);
-        if (item is null) return NotFound();
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId && s.IsActive);
+        if (item is null) return NotFound(new { error = "Item not found" });
 
         if (await ImageUpload.ValidateAsync(file) is not { } ext)
             return BadRequest(new { error = ImageUpload.Error });
@@ -522,7 +524,12 @@ public class AdminController(
         var oldByDay = await db.WorkingHours.Where(w => w.BusinessId == BusinessId)
             .ToDictionaryAsync(w => w.DayOfWeek, w => (w.StartTime, w.EndTime, w.IsActive));
 
-        await schedulePresets.UpsertWorkingHours(BusinessId, hours.Select(h => (h.DayOfWeek, h.StartTime, h.EndTime, h.IsActive)));
+        // A closed day keeps its times for when it reopens; ones that aren't real times ("zz", "")
+        // were stored as sent (QA run 4) and get the default hours instead.
+        await schedulePresets.UpsertWorkingHours(BusinessId, hours.Select(h =>
+            h.IsActive || TimeRangeError(h.StartTime, h.EndTime) is null
+                ? (h.DayOfWeek, h.StartTime, h.EndTime, h.IsActive)
+                : (h.DayOfWeek, "09:00", "18:00", false)));
 
         var changes = new List<string>();
         foreach (var h in hours.OrderBy(h => h.DayOfWeek))
@@ -575,8 +582,11 @@ public class AdminController(
         var date = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         // QA run 3: a past date could be blocked, and the same full day twice (duplicate rows).
         if (date.Date < AppClock.Now.Date) return BadRequest(new { error = "You can't block a date in the past" });
-        if (req.StartTime is null && await db.BlockedSlots.AnyAsync(b => b.BusinessId == BusinessId && b.Date == date && b.StartTime == null))
+        if (await db.BlockedSlots.AnyAsync(b => b.BusinessId == BusinessId && b.Date == date && b.StartTime == null))
             return Conflict(new { error = "This date is already blocked" });
+        // The same partial block twice made two rows (QA run 4).
+        if (req.StartTime is not null && await db.BlockedSlots.AnyAsync(b => b.BusinessId == BusinessId && b.Date == date && b.StartTime == req.StartTime && b.EndTime == req.EndTime))
+            return Conflict(new { error = "This time is already blocked" });
         var slot = new BlockedSlot
         {
             BusinessId = BusinessId,
