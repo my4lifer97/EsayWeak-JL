@@ -187,6 +187,26 @@ public class ReviewsTests : IntegrationTestBase
         Assert.Equal(5, publicList.Reviews.Items[0].Rating);
     }
 
+    // QA run 4 PA-8: hiding an already-hidden review wrote another audit row.
+    [Fact]
+    public async Task HidingTwice_LogsOnce()
+    {
+        await RegisterAndLoginBusiness("rev-hide-twice@example.com", "rev-hide-twice");
+        var customer = await LoginCustomerViaWhatsAppAsync("+15552000011");
+        await SeedCompletedAppointment("rev-hide-twice", customer.CustomerId, "+15552000011");
+        Authorize(Client, customer.Token);
+        var review = await (await Client.PostAsJsonAsync("/api/reviews", new CreateReviewRequest("rev-hide-twice", 2, "Meh"))).Content.ReadFromJsonAsync<ReviewDto>();
+        var admin = await Client.PostAsJsonAsync("/api/platform-admin/bootstrap", new PlatformAdminBootstrapRequest("owner@example.com", "supersecret123", "Owner"));
+        Authorize(Client, (await admin.Content.ReadFromJsonAsync<PlatformAdminLoginResponse>())!.Token);
+
+        Assert.Equal(HttpStatusCode.OK, (await Client.PostAsync($"/api/platform-admin/reviews/{review!.Id}/hide", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Client.PostAsync($"/api/platform-admin/reviews/{review.Id}/hide", null)).StatusCode);
+
+        using var db = Db();
+        Assert.True(db.Reviews.First(r => r.Id == review.Id).IsHidden);
+        Assert.Equal(1, db.ActivityLogs.Count(l => l.Action == "PlatformAdminController.HideReview"));
+    }
+
     [Fact]
     public async Task OwnerReply_RoundTrips_AndAppearsInPublicList()
     {

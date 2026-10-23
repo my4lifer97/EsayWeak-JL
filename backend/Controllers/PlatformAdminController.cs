@@ -822,7 +822,12 @@ public class PlatformAdminController(
         var review = await db.Reviews.FindAsync(id);
         if (review is null) return NotFound();
 
+        // Only an actual change is logged: hiding an already-hidden review wrote another audit row
+        // (QA run 4). Conditional, so two clicks at once log once.
+        if (await db.Reviews.Where(r => r.Id == id && r.IsHidden != hidden).ExecuteUpdateAsync(u => u.SetProperty(r => r.IsHidden, hidden)) == 0)
+            return Ok(new { review.Id, IsHidden = hidden });
         review.IsHidden = hidden;
+        db.Entry(review).Property(r => r.IsHidden).IsModified = false;
         // Moderation was the one admin write with no trace in the activity log (QA run 3).
         db.ActivityLogs.Add(new ActivityLog
         {

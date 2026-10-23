@@ -65,12 +65,18 @@ export default function PlatformAdminBusinessDetailPage() {
     if (linkStatus?.state === 'connected') {
       setPolling(false)
       queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
+      refreshActivity()
     } else if (linkStatus?.state === 'disconnected' && qrShown.current) {
       // The bridge stops a QR that wasn't scanned in time instead of showing new ones forever.
       setPolling(false)
       setLinkError('The QR code expired before it was scanned. Click Link WhatsApp for a new one.')
     }
   }, [polling, linkStatus?.state, queryClient, id])
+
+  // These actions all write activity rows; the feed used to keep showing the old list (QA run 4).
+  function refreshActivity() {
+    queryClient.invalidateQueries({ queryKey: ['platform-admin-business-activity', id] })
+  }
 
   async function handleStartLink() {
     if (!business) return
@@ -96,6 +102,7 @@ export default function PlatformAdminBusinessDetailPage() {
       if (data?.bridgeUnreachable)
         setLinkError('Unlinked here, but the WhatsApp service was unreachable, so the phone may still show the device as linked. Unlink again once the service is back.')
       queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
+      refreshActivity()
     } catch {
       setLinkError('Could not unlink')
     } finally {
@@ -132,6 +139,7 @@ export default function PlatformAdminBusinessDetailPage() {
     try {
       await platformAdminApi.post(`/platform-admin/businesses/${business.id}/${business.isDisabled ? 'enable' : 'disable'}`)
       queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
+      refreshActivity()
     } catch {
       setAccountError('Could not update the account status')
     } finally {
@@ -146,6 +154,7 @@ export default function PlatformAdminBusinessDetailPage() {
     try {
       const { data } = await platformAdminApi.post(`/platform-admin/businesses/${business.id}/reset-password`, { temporary: true })
       setTempPassword(data.tempPassword)
+      refreshActivity()
       setTempPasswordEmailed(!!data.emailSent)
     } catch {
       setAccountError('Could not reset the password')
@@ -165,6 +174,7 @@ export default function PlatformAdminBusinessDetailPage() {
       setCustomPassword('')
       setShowCustomPassword(false)
       setPasswordSetNotice(true)
+      refreshActivity()
     } catch (err: unknown) {
       const resp = (err as { response?: { data?: { error?: string } } })?.response
       setAccountError(resp?.data?.error ?? 'Could not set the password')
@@ -423,7 +433,7 @@ export default function PlatformAdminBusinessDetailPage() {
           businessName={business.name}
           businessEmail={business.email}
           username={business.username}
-          onClose={() => setShowEmailComposer(false)}
+          onClose={() => { setShowEmailComposer(false); refreshActivity() }}
         />
       )}
       {confirmDialog}
