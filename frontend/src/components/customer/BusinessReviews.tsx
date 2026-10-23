@@ -80,7 +80,7 @@ export default function BusinessReviews({
   }
 
   async function submit() {
-    if (rating < 1) { setError(t(lang, 'yourRating')); return }
+    if (rating < 1) { setError(t(lang, 'chooseRating')); return }
     setBusy(true); setError('')
     try {
       if (own) await customerApi.patch(`/reviews/${own.id}`, { rating, comment: comment.trim() || null })

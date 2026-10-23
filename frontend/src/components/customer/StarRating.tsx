@@ -35,7 +35,7 @@ export default function StarRating({ value, count, onChange, size = 'md', lang =
               type="button"
               onClick={() => onChange!(n)}
               className="px-0.5 leading-none hover:scale-110 transition-transform"
-              aria-label={t(lang, 'starsN').replace('{n}', String(n))}
+              aria-label={n === 1 ? t(lang, 'oneStar') : n === 2 ? t(lang, 'twoStars') : t(lang, 'starsN').replace('{n}', String(n))}
             >
               {star}
             </button>

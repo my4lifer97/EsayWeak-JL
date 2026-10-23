@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
-import { format, addDays, parseISO, type Locale } from 'date-fns'
+import { format, addDays, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
 import { api } from '../../lib/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -10,6 +10,7 @@ import { presetForDate } from '../../lib/effectiveSchedule'
 import type { PresetSchedule, SchedulePreset } from './PresetEditorModal'
 import CancelOptionsModal from './CancelOptionsModal'
 import RescheduleModal from './RescheduleModal'
+import { formatDay } from '../../lib/dateLocale'
 
 type Appointment = {
   id: string; date: string; startTime: string; endTime: string
@@ -333,7 +334,7 @@ export default function WeeklyCalendar({
       </div>
 
       {scheduleSel && (
-        <ScheduleInfoModal sel={scheduleSel} lang={lang} dateLocale={dateLocale} onClose={() => setScheduleSel(null)} />
+        <ScheduleInfoModal sel={scheduleSel} lang={lang} onClose={() => setScheduleSel(null)} />
       )}
 
       {selected && (
@@ -355,7 +356,7 @@ export default function WeeklyCalendar({
             </div>
             <div className="space-y-2 text-sm mb-6">
               <Row label={t(lang, 'service')} value={itemName(selected.item, lang)} />
-              <Row label={t(lang, 'date')} value={format(parseISO(selected.date.slice(0, 10)), 'EEE, MMM d, yyyy', { locale: dateLocale })} />
+              <Row label={t(lang, 'date')} value={formatDay(parseISO(selected.date.slice(0, 10)), lang, 'shortYear')} />
               <Row label={t(lang, 'time')} value={`${selected.startTime} – ${selected.endTime}`} />
               <Row label={t(lang, 'phone')} value={selected.customer.phone} />
               {selected.notes && <Row label={t(lang, 'notesLabel')} value={selected.notes} />}
@@ -424,10 +425,10 @@ function LegendSwatch({ className, style, label }: { className: string; style?: 
   )
 }
 
-function ScheduleInfoModal({ sel, lang, dateLocale, onClose }: {
-  sel: ScheduleSelection; lang: string; dateLocale: Locale; onClose: () => void
+function ScheduleInfoModal({ sel, lang, onClose }: {
+  sel: ScheduleSelection; lang: string; onClose: () => void
 }) {
-  const fmt = (d: Date) => format(d, 'EEEE, MMM d', { locale: dateLocale })
+  const fmt = (d: Date) => formatDay(d, lang, 'long')
   const view = sel.kind === 'closed'
     ? { icon: '🔒', title: t(lang, 'calClosedTitle'), accent: 'text-muted', body: t(lang, 'calClosedBody') }
     : sel.kind === 'break'

@@ -14,6 +14,7 @@ import SlotBookedModal from './SlotBookedModal'
 import BookingSuccessModal from './BookingSuccessModal'
 import AppointmentCard, { type Appointment } from '../customer/AppointmentCard'
 import { useEscapeKey } from '../useEscapeKey'
+import { formatDay } from '../../lib/dateLocale'
 
 type GalleryPhoto = { id: string; url: string }
 type Item = {
@@ -26,6 +27,13 @@ type BusinessInfo = {
 }
 type Slot = { start: string; end: string; available: boolean; appointmentId?: string }
 type Step = 1 | 2 | 3 | 4
+
+// yyyy-MM-dd naming a day that exists (new Date rolls 2026-02-30 over to March 2).
+function isRealDate(s: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  const d = new Date(`${s}T00:00:00`)
+  return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === s
+}
 
 export default function BookingWizard({ business }: { business: BusinessInfo }) {
   const { user, isAuthenticated, language: lang } = useCustomerAuth()
@@ -169,7 +177,9 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     if (!it) return
 
     setItem(it)
-    if (!prefillDate) { setStep(2); return }
+    // A date that doesn't exist (2026-02-30) showed as the next real day plus a load error that no
+    // retry could fix (QA run 4); let them pick a date instead.
+    if (!prefillDate || !isRealDate(prefillDate)) { setStep(2); return }
 
     setDate(prefillDate)
     setStep(3)
@@ -243,7 +253,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
         <div className="flex items-center gap-2 mb-8">
           {step > (isFromLink ? 2 : 1) ? (
             <button onClick={() => setStep((s) => (s - 1) as Step)} className="text-muted hover:text-ink text-sm whitespace-nowrap">
-              ← {t(lang, 'back')}
+              {lang === 'AR' || lang === 'HE' ? '→' : '←'} {t(lang, 'back')}
             </button>
           ) : isFromLink ? (
             <div />
@@ -318,7 +328,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
         {step === 3 && (
           <div>
             <p className="text-muted mb-1">{t(lang, 'selectTime')}</p>
-            <p className="text-sm text-muted mb-5">{date && format(new Date(`${date}T00:00:00`), 'EEEE, MMM d', { locale: dateLocale })}</p>
+            <p className="text-sm text-muted mb-5">{date && formatDay(new Date(`${date}T00:00:00`), lang, 'long')}</p>
             {slotTakenNotice && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/40 dark:border-amber-800/50 dark:text-amber-300 text-sm rounded-lg px-4 py-3 mb-4">{t(lang, 'slotJustTaken')}</div>
             )}
@@ -434,7 +444,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
               {item && slot && (
                 <div className="bg-surface border border-line rounded-xl p-4 text-sm space-y-1">
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'service')}</span><span className="text-ink">{itemName(item, lang)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date && format(new Date(`${date}T00:00:00`), 'EEE, MMM d, yyyy', { locale: dateLocale })}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date && formatDay(new Date(`${date}T00:00:00`), lang, 'shortYear')}</span></div>
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'time')}</span><bdi dir="ltr" className="text-ink">{slot.start} – {slot.end}</bdi></div>
                 </div>
               )}

@@ -130,7 +130,7 @@ export default function CustomerLoginPage() {
                 <button type="button"
                   onClick={() => { setView('phone'); setOtp(''); setName(''); setFamilyName(''); setDevOtp(null); setError('') }}
                   className="w-full text-muted hover:text-ink text-sm py-1 transition-colors">
-                  ← {t(lang, 'changePhone')}
+                  {lang === 'AR' || lang === 'HE' ? '→' : '←'} {t(lang, 'changePhone')}
                 </button>
               </form>
             </div>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useConfirmDialog } from '../../components/ConfirmDialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format, parseISO } from 'date-fns'
-import { dateLocale } from '../../lib/dateLocale'
+import { formatDay } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t, itemName, type TKey } from '../../lib/i18n'
@@ -151,7 +151,7 @@ export default function RecurringAppointmentsPage() {
                   <div className="text-muted text-sm mt-0.5">{itemName(s.item, lang)}</div>
                   <div className="text-muted text-xs mt-1">
                     {t(lang, 'everyWeekAt')} {t(lang, DAY_KEYS[s.dayOfWeek])} {t(lang, 'atTime')} {s.startTime}
-                    {s.nextOccurrenceDate && ` · ${t(lang, 'nextOccurrence')}: ${format(parseISO(s.nextOccurrenceDate), 'EEE, MMM d', { locale: dateLocale(lang) })}`}
+                    {s.nextOccurrenceDate && ` · ${t(lang, 'nextOccurrence')}: ${formatDay(parseISO(s.nextOccurrenceDate), lang, 'short')}`}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

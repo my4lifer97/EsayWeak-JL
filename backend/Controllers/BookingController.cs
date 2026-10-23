@@ -208,7 +208,7 @@ public class BookingController(
             Date = requestedDate,
             StartTime = req.StartTime,
             EndTime = endTime,
-            Notes = req.Notes,
+            Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
             PhotoUrl = photoUrl,
             Status = AppointmentStatus.CONFIRMED,
         };

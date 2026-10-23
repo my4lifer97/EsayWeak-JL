@@ -19,7 +19,7 @@ export default function MyBookingsPage() {
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('upcoming')
 
-  const { data: appointments = [], isLoading } = useQuery<Appointment[]>({
+  const { data: appointments = [], isLoading, isError, refetch } = useQuery<Appointment[]>({
     queryKey: ['my-bookings', filter],
     queryFn: () => customerApi.get(`/customer/appointments?filter=${filter}`).then((r) => r.data),
   })
@@ -28,7 +28,8 @@ export default function MyBookingsPage() {
     queryClient.invalidateQueries({ queryKey: ['my-bookings'] })
   }
 
-  const emptyKey: TKey = filter === 'past' ? 'noPastBookings' : 'noUpcomingBookings'
+  const emptyKey: TKey =
+    filter === 'past' ? 'noPastBookings' : filter === 'today' ? 'noBookingsToday' : filter === 'all' ? 'noBookings' : 'noUpcomingBookings'
 
   return (
     <div className="min-h-screen bg-cream text-ink" dir={lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'}>
@@ -49,6 +50,11 @@ export default function MyBookingsPage() {
 
         {isLoading ? (
           <div className="text-center text-muted py-12">{t(lang, 'loading')}</div>
+        ) : isError ? (
+          <div className="text-center text-muted py-12">
+            <p className="mb-2">{t(lang, 'bookingsLoadFailed')}</p>
+            <button type="button" onClick={() => refetch()} className="text-coral-dark hover:text-coral font-medium">{t(lang, 'retry')}</button>
+          </div>
         ) : appointments.length === 0 ? (
           <div className="text-center text-muted py-12">{t(lang, emptyKey)}</div>
         ) : (

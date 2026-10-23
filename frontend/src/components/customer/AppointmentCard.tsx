@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { imageTooLarge } from '../../lib/imageFile'
 import { useQuery } from '@tanstack/react-query'
-import { format, parseISO } from 'date-fns'
-import { ar, he, enUS } from 'date-fns/locale'
+import { parseISO } from 'date-fns'
 import { customerApi } from '../../lib/customerApi'
 import { t, itemName } from '../../lib/i18n'
 import { apiError } from '../../lib/apiError'
 import { localToday } from '../../lib/localDate'
 import { mediaUrl } from '../../lib/media'
 import InlineConfirm from './InlineConfirm'
+import { formatDay } from '../../lib/dateLocale'
 
 type GalleryPhoto = { id: string; url: string }
 export type Appointment = {
@@ -136,7 +136,7 @@ export default function AppointmentCard({
           {showBusinessName && <div className="font-semibold text-ink truncate">{appt.businessName}</div>}
           <div className="text-muted text-sm mt-1">{itemName(appt.item, lang)}</div>
           <div className="text-muted text-sm mt-1">
-            {format(parseISO(appt.date), 'EEE, MMM d yyyy', { locale: lang === 'AR' ? ar : lang === 'HE' ? he : enUS })}
+            {formatDay(parseISO(appt.date), lang, 'shortYear')}
             {' · '}<bdi dir="ltr">{appt.startTime}–{appt.endTime}</bdi>
           </div>
           {appt.notes && !expandedNotes && (

@@ -207,7 +207,8 @@ public class CustomerAppointmentsController(
         if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
-        appt.Notes = req.Notes;
+        // Whitespace-only notes clear them rather than showing a blank note (QA run 4).
+        appt.Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim();
         await db.SaveChangesAsync();
 
         // Content deliberately never logged -- notes are free text a customer writes, same

@@ -16,19 +16,21 @@ export default function WhatsAppLandingPage() {
   const { slug, token } = useParams<{ slug: string; token: string }>()
   const { loginWithWhatsAppToken, language: lang, setLang } = useCustomerAuth()
   const navigate = useNavigate()
-  const [error, setError] = useState(false)
+  // The 404 (service or business removed since the link was sent) used to say "expired" (QA run 4).
+  const [error, setError] = useState<null | 'whatsappLinkExpired' | 'whatsappLinkServiceGone'>(null)
 
   useEffect(() => {
-    if (!token) { setError(true); return }
+    if (!token) { setError('whatsappLinkExpired'); return }
     loginWithWhatsAppToken(token)
       .then(({ businessSlug, itemId }) => navigate(`/${businessSlug}/book?itemId=${itemId}`, { replace: true }))
       .catch((err: unknown) => {
         // An expired link still knows the language the customer chatted in. For a link the
         // server never issued, use the browser's language if this browser has no saved choice.
-        const chatLang = (err as { response?: { data?: { language?: string } } })?.response?.data?.language
+        const response = (err as { response?: { status?: number; data?: { language?: string } } })?.response
+        const chatLang = response?.data?.language
         const fallback = localStorage.getItem('customerLang') ? null : browserLanguage()
         if (chatLang || fallback) setLang((chatLang || fallback)!)
-        setError(true)
+        setError(response?.status === 404 ? 'whatsappLinkServiceGone' : 'whatsappLinkExpired')
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
@@ -38,7 +40,7 @@ export default function WhatsAppLandingPage() {
       <div className="text-center max-w-sm">
         {error ? (
           <>
-            <p className="text-muted mb-4">{t(lang, 'whatsappLinkExpired')}</p>
+            <p className="text-muted mb-4">{t(lang, error)}</p>
             {/* Not a dead end (QA run 3): the business page, or sign in with the phone instead. */}
             <div className="flex flex-wrap justify-center gap-3">
               {slug && <Link to={`/${slug}`} className="bg-coral hover:bg-coral-dark text-white font-semibold px-5 py-2.5 rounded-xl transition-colors">{t(lang, 'viewBusinessPage')}</Link>}

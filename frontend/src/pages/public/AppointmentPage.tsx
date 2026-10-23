@@ -6,8 +6,8 @@ import { t, itemName } from '../../lib/i18n'
 import BackButton from '../../components/BackButton'
 import InlineConfirm from '../../components/customer/InlineConfirm'
 import { localToday } from '../../lib/localDate'
-import { format, parseISO } from 'date-fns'
-import { dateLocale } from '../../lib/dateLocale'
+import { parseISO } from 'date-fns'
+import { formatDay } from '../../lib/dateLocale'
 import { useCustomerAuth } from '../../lib/customerAuth'
 
 type AppointmentDetail = {
@@ -119,7 +119,7 @@ export default function AppointmentPage() {
 
   const rows = [
     { label: t(lang, 'service'), value: itemName(appt.item, lang) },
-    { label: t(lang, 'date'), value: format(parseISO(appt.date.slice(0, 10)), 'EEE, MMM d, yyyy', { locale: dateLocale(lang) }) },
+    { label: t(lang, 'date'), value: formatDay(parseISO(appt.date.slice(0, 10)), lang, 'shortYear') },
     { label: t(lang, 'time'), value: `${appt.startTime} – ${appt.endTime}` },
     { label: t(lang, 'name'), value: appt.customer.name },
   ]
