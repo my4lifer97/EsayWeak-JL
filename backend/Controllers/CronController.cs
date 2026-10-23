@@ -159,6 +159,16 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
     {
         int sent = 0, failed = 0;
 
+        // In the language the chatbot last spoke with the customer in (like owner notices and
+        // waitlist messages, QA run 4), else the business's chatbot language. A customer the owner
+        // typed in may not have their account linked yet, so match by phone too.
+        var accountIds = appointments.Select(a => a.Customer.CustomerAccountId).OfType<string>().Distinct().ToList();
+        var phones = appointments.Select(a => a.Customer.Phone).Distinct().ToList();
+        var accounts = await db.CustomerAccounts
+            .Where(a => a.LastMessageLanguage != null && (accountIds.Contains(a.Id) || phones.Contains(a.Phone)))
+            .Select(a => new { a.Id, a.Phone, a.LastMessageLanguage })
+            .ToListAsync();
+
         foreach (var appt in appointments)
         {
             if (appt.Business.WhatsAppNumber is null)
@@ -166,13 +176,16 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
 
             try
             {
-                var lang = appt.Business.Language.ToString();
+                var lang = accounts.FirstOrDefault(a => a.Id == appt.Customer.CustomerAccountId)?.LastMessageLanguage
+                    ?? accounts.FirstOrDefault(a => a.Phone == appt.Customer.Phone)?.LastMessageLanguage
+                    ?? (appt.Business.ChatbotDefaultLanguage ?? appt.Business.Language).ToString();
                 var itemName = lang switch
                 {
                     "AR" => appt.Item.NameAr,
                     "HE" => appt.Item.NameHe,
                     _ => appt.Item.NameEn,
                 };
+                if (string.IsNullOrWhiteSpace(itemName)) itemName = appt.Item.NameEn;
 
                 var cancelUrl = $"{appUrl}/{appt.Business.Slug}/appointments/{appt.Id}?token={appt.CancelToken}";
                 var message = I18nService.T(lang, messageKey, new()

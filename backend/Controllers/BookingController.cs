@@ -220,7 +220,11 @@ public class BookingController(
         // itself below. No-op for a booking that didn't come from WhatsApp.
         var pendingWhatsAppState = await db.WhatsAppConversationStates
             .FirstOrDefaultAsync(s => s.BusinessId == business.Id && s.Phone == phone && s.AwaitingBookingCompletion);
-        var confirmationLang = pendingWhatsAppState?.Language ?? business.Language.ToString();
+        // The chat this booking came from, else the language the chatbot last spoke with this
+        // customer in (like owner notices and waitlist messages, QA run 4), else the chatbot default.
+        var confirmationLang = pendingWhatsAppState?.Language
+            ?? await db.CustomerAccounts.Where(a => a.Id == customerAccountId).Select(a => a.LastMessageLanguage).FirstOrDefaultAsync()
+            ?? (business.ChatbotDefaultLanguage ?? business.Language).ToString();
         if (pendingWhatsAppState is not null)
             db.WhatsAppConversationStates.Remove(pendingWhatsAppState);
 
@@ -237,6 +241,7 @@ public class BookingController(
         if (business.WhatsAppNumber is not null)
         {
             var itemDisplayName = confirmationLang switch { "AR" => item.NameAr, "HE" => item.NameHe, _ => item.NameEn };
+            if (string.IsNullOrWhiteSpace(itemDisplayName)) itemDisplayName = item.NameEn;
             // ChatbotFinalMessage replaces the default text -- the last message in the customer's
             // chatbot journey, as opposed to ChatbotConfirmationMessage (sent earlier, alongside
             // the booking *link* itself, before the appointment actually exists). It takes the

@@ -98,6 +98,32 @@ public class CronControllerTests : IntegrationTestBase
         Assert.False(appt.ReminderSentSoon);
     }
 
+    // QA run 4 (ST-15): reminders went out in the business's language even after the customer
+    // had chatted with the bot in another one, unlike owner notices and waitlist messages.
+    [Fact]
+    public async Task Reminders_UseTheCustomersLastChatbotLanguage()
+    {
+        var tomorrow = AppClock.Now.AddDays(1).Date;
+        var (businessId, _, appointmentId) = await SeedConfirmedAppointment(
+            "cron-reminder-lang@example.com", "cron-reminder-lang-shop", tomorrow, "10:00");
+        const string phone = "+15550002222";
+        using (var seed = Factory.CreateDbContext())
+        {
+            var appt = await seed.Appointments.Include(a => a.Customer).SingleAsync(a => a.Id == appointmentId);
+            appt.Customer.Phone = phone;
+            seed.CustomerAccounts.Add(new CustomerAccount { Phone = phone, Name = "Dana", LastMessageLanguage = "HE" });
+            await seed.SaveChangesAsync();
+        }
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+
+        var resp = await Client.GetAsync("/api/cron/reminders");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var sent = Assert.Single(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == phone);
+        Assert.Contains("תספורת", sent.Message);
+        Assert.DoesNotContain("tomorrow", sent.Message);
+    }
+
     [Fact]
     public async Task Reminders_AppointmentStartingWithinThreeHours_SendsSoonReminderAndSetsFlag()
     {

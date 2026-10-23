@@ -59,6 +59,38 @@ public class ChatbotFinalMessageTests : IntegrationTestBase
         Assert.Equal($"Thanks Dana! See you {date} at 10:00 for your Haircut.", message);
     }
 
+    // QA run 4 (ST-15): a booking that didn't start from a pending chat link was confirmed in the
+    // business's language, even though the customer had been chatting with the bot in another one.
+    [Fact]
+    public async Task Confirmation_UsesTheCustomersLastChatbotLanguage()
+    {
+        var (businessId, itemId, date) = await SeedBusiness("final-msg-lang", "unused");
+        using (var db = Db())
+        {
+            var business = db.Businesses.First(b => b.Id == businessId);
+            business.ChatbotFinalMessageEn = "EN {date}";
+            business.ChatbotFinalMessageHe = "HE {date}";
+            db.SaveChanges();
+        }
+        const string phone = "+15558880003";
+        var customerToken = (await LoginCustomerViaWhatsAppAsync(phone, "Dana", "Levi")).Token;
+        using (var db = Db())
+        {
+            db.CustomerAccounts.First(a => a.Phone == phone).LastMessageLanguage = "HE";
+            db.SaveChanges();
+        }
+
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/final-msg-lang/appointments")
+        {
+            Content = JsonContent.Create(new BookAppointmentRequest(itemId, date, "10:00", "Dana", "", null)),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        Assert.Equal(HttpStatusCode.Created, (await Client.SendAsync(req)).StatusCode);
+
+        var message = Factory.WhatsAppSender.Sent.Last(s => s.BusinessId == businessId && s.Phone == phone).Message;
+        Assert.StartsWith($"HE {date}", message);
+    }
+
     [Fact]
     public async Task CustomFinalMessage_WithoutDateOrTime_GetsTheDetailsAppended()
     {
