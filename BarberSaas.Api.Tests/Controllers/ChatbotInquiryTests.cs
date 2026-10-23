@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
 using BarberSaas.Api.DTOs;
@@ -96,7 +96,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
         Assert.Contains("1. Haircut", body!.Reply);
-        Assert.Contains("$2", body.Reply);
+        Assert.Contains("#2", body.Reply);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         var resp = await PostInboundWithAuth(businessId, "+15550011", "2");
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Contains("$1", body!.Reply);
+        Assert.Contains("#1", body!.Reply);
         using var db = Db();
         var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15550011");
         Assert.Equal("Inquiry", state.ChatbotMode);
@@ -141,7 +141,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         var resp = await PostInboundWithAuth(businessId, "+15550014", "٢"); // Arabic-Indic "2" (U+0662)
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Contains("$1", body!.Reply);
+        Assert.Contains("#1", body!.Reply);
         using var db = Db();
         var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15550014");
         Assert.Equal("Inquiry", state.ChatbotMode);
@@ -200,25 +200,26 @@ public class ChatbotInquiryTests : IntegrationTestBase
         var resp = await PostInboundWithAuth(businessId, "+15550003", "$2");
 
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Contains("$1", body!.Reply);
+        Assert.Contains("#1", body!.Reply);
         using var db = Db();
         var state = await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == "+15550003");
         Assert.Equal("Inquiry", state.ChatbotMode);
     }
 
     [Fact]
-    public async Task MessageWhileInInquiryMode_IsLoggedAndAcknowledged_NotDispatchedToBooking()
+    public async Task MessageWhileInInquiryMode_IsLoggedWithoutAReply_NotDispatchedToBooking()
     {
         var (businessId, token) = await SeedBusinessWithService("inquiry-log@example.com", "inquiry-log");
         await EnableInquiry(token);
         await PostInboundWithAuth(businessId, "+15550004", "hi");
-        await PostInboundWithAuth(businessId, "+15550004", "$2");
+        await PostInboundWithAuth(businessId, "+15550004", "#2");
 
         var resp = await PostInboundWithAuth(businessId, "+15550004", "Do you have parking nearby?", profileName: "Dana");
 
+        // The owner answers from here on; the bot stays quiet (owner, 2026-10-23: a reply to every
+        // message was spam), and never falls through to the service list.
         var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
-        Assert.Contains("$1", body!.Reply);
-        Assert.DoesNotContain("Haircut", body.Reply); // never fell through to the service list
+        Assert.Null(body!.Reply);
 
         using var db = Db();
         var inquiry = await db.ChatbotInquiries.SingleAsync(i => i.BusinessId == businessId);
@@ -445,10 +446,10 @@ public class ChatbotInquiryTests : IntegrationTestBase
     }
 
     [Fact]
-    public void RtlTexts_KeepDollarCommandsLeftToRight()
+    public void RtlTexts_KeepModeCommandsLeftToRight()
     {
         foreach (var lang in new[] { "AR", "HE" })
-            Assert.Contains("\u200E$1\u200E", I18nService.T(lang, "whatsapp.inquiryAck"));
+            Assert.Contains("\u200E#1\u200E", I18nService.T(lang, "whatsapp.inquiryStarted"));
     }
 
     // QA run 3 BOT-9: a 100,000-character inquiry was stored and forwarded in full.

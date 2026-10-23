@@ -1043,18 +1043,19 @@ service list:
 Replying `1` clears any gate state and falls through to the normal rule-based/AI dispatch, which then
 shows the real numbered service list. Replying `2` enters Inquiry mode directly. Anything else re-shows
 the gate. Once *past* the gate — mid-booking, looking at the actual service list — the plain `1`/`2`
-digits are already spoken for (service selection), so switching modes from there uses the dollar-prefixed
-commands instead, checked ahead of the gate/service logic:
-- `$1` — back to Booking mode, also when sent at the opening gate (2026-10-13; it used to be read as a service number there). The conversation-state row is *removed* outright (not just flipped),
+digits are already spoken for (service selection), so switching modes from there uses the `#`-prefixed
+commands instead (`#1`/`#2` since 2026-10-23, the owner's choice; the old `$1`/`$2` still work), checked
+ahead of the gate/service logic:
+- `#1` — back to Booking mode, also when sent at the opening gate (2026-10-13; it used to be read as a service number there). The conversation-state row is *removed* outright (not just flipped),
   matching the reschedule keyword's own `ClearConversationState` call — merely updating the row
   would leave it looking "open" to `TryHandleServiceSelectionReply`, which would then try (and fail)
   to parse the literal text `"$1"` as a numeric service choice instead of falling through to a
   fresh prompt. The same clear-not-update rule applies to the gate's own `1` reply, for the identical
   reason.
-- `$2` — enters Inquiry mode (`WhatsAppConversationState.ChatbotMode = "Inquiry"`), same as the gate's
+- `#2` — enters Inquiry mode (`WhatsAppConversationState.ChatbotMode = "Inquiry"`), same as the gate's
   `2` reply (both go through the shared `EnterInquiryModeAsync` helper).
 
-`1$`/`2$` work too (`NormalizeDollarCommand`: RTL keyboards, and how the command used to render in Hebrew/Arabic
+`1#`/`2#`, `$1`/`$2` and `1$`/`2$` work too (`NormalizeDollarCommand` turns them all into `#1`/`#2`: RTL keyboards, and how the command used to render in Hebrew/Arabic
 text; the AR/HE strings now wrap it in `\u200E` marks). `$1` also clears a live service-list row, so it never
 counts as an invalid reply, and a row with a booking link pending (it used to be kept, so `$1` after a link +
 `$2` got silence and Inquiry mode stuck for 24 h); entering Inquiry mode clears `AwaitingBookingCompletion`. A locked-out conversation (`InvalidAttempts >= 3`) skips this method entirely, so
@@ -1062,8 +1063,10 @@ only `$` unlocks it. An Inquiry-mode row lives 24 h (`InquiryStateLifetime`), no
 follow-up is still logged.
 
 While in Inquiry mode, every further message from that phone is logged as a `ChatbotInquiry` row
-(always-on "in-app" channel, an inbox inside Settings — see below) and acknowledged with a short
-reply, **not** dispatched to booking logic at all, until the customer sends `$1`. `PromptServiceSelection`
+(always-on "in-app" channel, an inbox inside Settings — see below) with **no reply** (2026-10-23,
+owner's choice: the owner is talking to the customer, and an acknowledgement for every message was
+spam; `whatsapp.inquiryStarted`, sent once on entering, says how to get back), and is **not**
+dispatched to booking logic at all, until the customer sends `#1`. `PromptServiceSelection`
 (rule-based path) always resets `ChatbotMode` back to `"Booking"` on every fresh prompt it issues —
 without this, a row left over from an expired/exited Inquiry session would still read as Inquiry mode
 once its `ExpiresAt` gets refreshed by the next prompt, silently swallowing the customer's next numeric

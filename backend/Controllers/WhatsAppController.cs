@@ -27,8 +27,10 @@ public class WhatsAppController(
     // Literal commands, not natural language -- deliberately simple so a business can explain them
     // to a customer in one sentence. Only meaningful when Business.ChatbotInquiryEnabled is on; a
     // business that doesn't use the feature sees zero behavior change (these never get checked).
-    private const string BookingModeCommand = "$1";
-    private const string InquiryModeCommand = "$2";
+    // "#1"/"#2" since 2026-10-23 (owner's choice); the old "$1"/"$2" still work, since earlier
+    // messages in customers' chats name them (NormalizeDollarCommand).
+    private const string BookingModeCommand = "#1";
+    private const string InquiryModeCommand = "#2";
     private const string BookingMode = "Booking";
     private const string InquiryMode = "Inquiry";
     // A fresh conversation (or one that gave an unrecognized reply to the gate below) sits here
@@ -417,7 +419,10 @@ public class WhatsAppController(
                 QueueInquiryNotifications(business, fromPhone, profileName,
                     Cut(incomingMsg, MaxInquiryMessageChars));
 
-            return (true, I18nService.T(lang, "whatsapp.inquiryAck"));
+            // No reply: the owner is talking to the customer now, and an automatic answer to every
+            // message was spam (owner, 2026-10-23). The one message on entering this mode
+            // (whatsapp.inquiryStarted) already says how to get back to booking.
+            return (true, null);
         }
 
         // Not in Inquiry mode and not a $-command -- either a brand-new conversation, or one still
@@ -466,15 +471,20 @@ public class WhatsAppController(
         return (false, null);
     }
 
-    // An RTL keyboard often puts the "$" after the digit ("1$"), which is also how "$1" used to
-    // display inside Hebrew/Arabic text, so both orders work. Direction marks (our own HE/AR texts
-    // wrap "$2" in them, so a copy-paste carries them), spaces, a trailing "." and the fullwidth
-    // dollar signs are ignored too (QA run 4). Also used for the "$" unlock.
+    // An RTL keyboard often puts the "#" after the digit ("1#"), which is also how "#1" can display
+    // inside Hebrew/Arabic text, so both orders work, and the old "$1"/"$2" become "#1"/"#2".
+    // Direction marks (our own HE/AR texts wrap "#2" in them, so a copy-paste carries them),
+    // spaces, a trailing "." and the fullwidth signs are ignored too (QA run 4). Also used for the
+    // "$" unlock.
     private static string NormalizeDollarCommand(string message)
     {
         var text = new string(message.Where(c => !IsDirectionMark(c) && !char.IsWhiteSpace(c))
-            .Select(c => c is '＄' or '﹩' ? '$' : c).ToArray()).TrimEnd('.');
-        return text.Length == 2 && text[1] == '$' && char.IsAsciiDigit(text[0]) ? $"${text[0]}" : text;
+            .Select(c => c switch { '＄' or '﹩' => '$', '＃' or '﹟' => '#', _ => c }).ToArray()).TrimEnd('.');
+        if (text.Length != 2) return text;
+        static bool IsSign(char c) => c is '#' or '$';
+        if (IsSign(text[0]) && char.IsAsciiDigit(text[1])) return $"#{text[1]}";
+        if (IsSign(text[1]) && char.IsAsciiDigit(text[0])) return $"#{text[0]}";
+        return text;
     }
 
     private static bool IsDirectionMark(char c) =>
@@ -871,12 +881,12 @@ public class WhatsAppController(
         var locationText = address.Length == 0 && business.MapUrl is null ? "(not provided)"
             : $"{(address.Length == 0 ? "" : address)}{(business.MapUrl is null ? "" : $" {business.MapUrl}")}".Trim();
         var languageName = lang switch { "AR" => "Arabic", "HE" => "Hebrew", _ => "English" };
-        // The literal $2 command itself is intercepted before this path ever runs (see
+        // The literal #2 command itself is intercepted before this path ever runs (see
         // HandleInquiryModeAsync) -- the model never needs to act on it, just know to mention it
         // exists, since (unlike the rule-based path's PromptServiceSelection) nothing else here
         // surfaces that note to the customer.
         var inquiryNote = business.ChatbotInquiryEnabled
-            ? "\n\nIf the customer asks something you can't help with, or wants to reach the owner directly, tell them to reply \"$2\" to talk to the owner directly."
+            ? "\n\nIf the customer asks something you can't help with, or wants to reach the owner directly, tell them to reply \"#2\" to talk to the owner directly."
             : "";
 
         return $"""

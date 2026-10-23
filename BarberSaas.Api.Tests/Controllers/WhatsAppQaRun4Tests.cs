@@ -253,9 +253,13 @@ public class WhatsAppQaRun4Tests : IntegrationTestBase
     [InlineData("‎$2‎")]
     [InlineData("$ 2")]
     [InlineData("＄2")]
+    [InlineData("#2")]
+    [InlineData("2#")]
+    [InlineData("‎#2‎")]
+    [InlineData("＃2")]
     public async Task DollarCommandVariants_EnterInquiryMode(string message)
     {
-        var (businessId, _) = await Seed("qa4-t-dollar-" + (int)message[0] + message.Length);
+        var (businessId, _) = await Seed("qa4-t-dollar-" + string.Concat(message.Select(c => (int)c)));
         await Update(businessId, b => b.ChatbotInquiryEnabled = true);
         var phone = "+15554060012";
         await Send(businessId, phone, "hi");
@@ -265,6 +269,25 @@ public class WhatsAppQaRun4Tests : IntegrationTestBase
 
         using var db = Db();
         Assert.Equal("Inquiry", (await db.WhatsAppConversationStates.FirstAsync(s => s.BusinessId == businessId && s.Phone == phone)).ChatbotMode);
+    }
+
+    // 2026-10-23: the commands became #1/#2 (the owner's choice); "#1" leaves Inquiry mode.
+    [Theory]
+    [InlineData("#1")]
+    [InlineData("1#")]
+    [InlineData("$1")]
+    public async Task HashOne_LeavesInquiryMode(string message)
+    {
+        var (businessId, _) = await Seed("qa4-t-hash-" + string.Concat(message.Select(c => (int)c)));
+        await Update(businessId, b => b.ChatbotInquiryEnabled = true);
+        var phone = "+15554060013";
+        await Send(businessId, phone, "hi");
+        await Send(businessId, phone, "#2");
+
+        await Send(businessId, phone, message);
+
+        using var db = Db();
+        Assert.False(await db.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == phone && s.ChatbotMode == "Inquiry"));
     }
 
     [Theory]
