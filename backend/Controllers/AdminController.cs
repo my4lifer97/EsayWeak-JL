@@ -85,8 +85,13 @@ public class AdminController(
 
     // Everything here used to be accepted or silently dropped: negative booking limits, an unknown
     // language (left the old one), notify contacts that could never be reached.
-    static string? SettingsInputError(UpdateSettingsRequest req, Func<string, bool> has)
+    static string? SettingsInputError(UpdateSettingsRequest req, Func<string, bool> has, Business b)
     {
+        // A contact is checked only when it changes: the form sends every field, also ones it
+        // hides (cancel-approval number while approval is off), so a stored value saved before
+        // these checks existed blocked every save with an error about a field nobody could see.
+        bool Edited(string prop, string? sent, string? stored) =>
+            has(prop) && !string.IsNullOrWhiteSpace(sent) && sent.Trim() != stored?.Trim();
         if (has("maxBookingsPerDay") && req.MaxBookingsPerDay is < 1 or > 1000)
             return "Max bookings per day must be between 1 and 1000, or empty for unlimited";
         if (has("maxBookingsPerWeek") && req.MaxBookingsPerWeek is < 1 or > 1000)
@@ -101,13 +106,13 @@ public class AdminController(
             req.ChatbotFinalMessageEn, req.ChatbotFinalMessageAr, req.ChatbotFinalMessageHe];
         if (messages.Any(m => m is not null && m.Trim().Length > MaxChatbotMessageLength))
             return $"Chatbot messages can be at most {MaxChatbotMessageLength} characters";
-        if (has("inquiryWhatsAppNumber") && !string.IsNullOrWhiteSpace(req.InquiryWhatsAppNumber) && !PhoneNormalizer.IsValid(req.InquiryWhatsAppNumber))
+        if (Edited("inquiryWhatsAppNumber", req.InquiryWhatsAppNumber, b.InquiryWhatsAppNumber) && !PhoneNormalizer.IsValid(req.InquiryWhatsAppNumber))
             return "The inquiry WhatsApp number isn't a valid phone number";
-        if (has("cancelApprovalWhatsAppNumber") && !string.IsNullOrWhiteSpace(req.CancelApprovalWhatsAppNumber) && !PhoneNormalizer.IsValid(req.CancelApprovalWhatsAppNumber))
+        if (Edited("cancelApprovalWhatsAppNumber", req.CancelApprovalWhatsAppNumber, b.CancelApprovalWhatsAppNumber) && !PhoneNormalizer.IsValid(req.CancelApprovalWhatsAppNumber))
             return "The cancellation-approval WhatsApp number isn't a valid phone number";
-        if (has("inquiryEmail") && !string.IsNullOrWhiteSpace(req.InquiryEmail) && !EmailAddress.IsValid(req.InquiryEmail))
+        if (Edited("inquiryEmail", req.InquiryEmail, b.InquiryEmail) && !EmailAddress.IsValid(req.InquiryEmail))
             return "The inquiry email address isn't valid";
-        if (has("cancelApprovalEmail") && !string.IsNullOrWhiteSpace(req.CancelApprovalEmail) && !EmailAddress.IsValid(req.CancelApprovalEmail))
+        if (Edited("cancelApprovalEmail", req.CancelApprovalEmail, b.CancelApprovalEmail) && !EmailAddress.IsValid(req.CancelApprovalEmail))
             return "The cancellation-approval email address isn't valid";
         // The body is a JsonElement, so ValidateInputFilter's length rules never saw these (QA run 3:
         // a 300-character name, a 20,000-character description and "<b>x" as the phone all saved).
@@ -117,7 +122,7 @@ public class AdminController(
             return $"Description can be at most {MaxDescriptionLength} characters";
         if (req.City is { Length: > MaxLocationLength } || req.AddressLine is { Length: > MaxLocationLength })
             return $"City and address can be at most {MaxLocationLength} characters";
-        if (has("phone") && !string.IsNullOrWhiteSpace(req.Phone) && !PhoneNormalizer.IsValid(req.Phone))
+        if (Edited("phone", req.Phone, b.Phone) && !PhoneNormalizer.IsValid(req.Phone))
             return "Please enter a valid phone number";
         return null;
     }
@@ -162,7 +167,7 @@ public class AdminController(
             && !mapUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { error = "Map link must start with http:// or https://" });
         if (mapUrl is { Length: > 2000 }) return BadRequest(new { error = "Map link can be at most 2000 characters" });
-        if (SettingsInputError(req, Has) is { } settingsError) return BadRequest(new { error = settingsError });
+        if (SettingsInputError(req, Has, b) is { } settingsError) return BadRequest(new { error = settingsError });
 
         // Captured before assignment so we can report only the fields that actually changed --
         // the settings form always submits every field on every save, so "field is present in

@@ -84,6 +84,34 @@ public class AdminSettingsTests : IntegrationTestBase
         Assert.Equal(before, await Client.GetStringAsync("/api/admin/settings"));
     }
 
+    // Prod 2026-10-23: a cancel-approval number saved before validation existed blocked every save,
+    // and the form hides that field while approval is off, so the owner couldn't fix it.
+    [Fact]
+    public async Task StoredInvalidContact_SentBackUnchanged_DoesNotBlockSave()
+    {
+        var token = await RegisterAndLoginBusiness("settings-legacy@example.com", "settings-legacy-shop");
+        Authorize(Client, token);
+        using (var db = Db())
+        {
+            var b = db.Businesses.Single(x => x.Slug == "settings-legacy-shop");
+            b.CancelApprovalWhatsAppNumber = "12";
+            b.InquiryEmail = "a@b";
+            b.Phone = "call me";
+            db.SaveChanges();
+        }
+
+        var save = await Client.PatchAsJsonAsync("/api/admin/settings", new
+        {
+            city = "Haifa", cancelApprovalWhatsAppNumber = "12", inquiryEmail = "a@b", phone = "call me",
+        });
+        Assert.Equal(System.Net.HttpStatusCode.OK, save.StatusCode);
+        Assert.Equal("Haifa", (await Client.GetFromJsonAsync<SettingsDto>("/api/admin/settings"))!.City);
+
+        // Changing it to another invalid value is still refused.
+        var changed = await Client.PatchAsJsonAsync("/api/admin/settings", new { cancelApprovalWhatsAppNumber = "13" });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, changed.StatusCode);
+    }
+
     [Fact]
     public async Task ChatbotMessages_WhitespaceIsCleared_AndOverlongRejected()
     {
