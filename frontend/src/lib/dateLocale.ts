@@ -1,4 +1,4 @@
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { ar, enUS, he } from 'date-fns/locale'
 
 // date-fns locale for an app language, so month names follow the page ("Oct 21" stayed English
@@ -18,4 +18,10 @@ const DATE_PATTERNS = {
 export function formatDay(date: Date, lang: string, style: 'short' | 'shortYear' | 'long') {
   const patterns = lang === 'AR' ? DATE_PATTERNS.AR : lang === 'HE' ? DATE_PATTERNS.HE : DATE_PATTERNS.EN
   return format(date, patterns[style], { locale: dateLocale(lang) })
+}
+
+// A stored yyyy-MM-dd (or ISO timestamp) for display; raw ISO dates were left on the HE/AR
+// dashboard (QA run 4).
+export function formatIsoDate(iso: string, lang: string) {
+  return formatDay(parseISO(iso.slice(0, 10)), lang, 'shortYear')
 }

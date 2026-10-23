@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useConfirmDialog } from '../../components/ConfirmDialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format, parseISO } from 'date-fns'
-import { formatDay } from '../../lib/dateLocale'
+import { formatDay, formatIsoDate } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t, itemName, type TKey } from '../../lib/i18n'
@@ -164,7 +164,7 @@ export default function RecurringAppointmentsPage() {
               </div>
               {s.recentSkips.length > 0 && (
                 <div className="mt-2 text-amber-700 dark:text-amber-400 text-xs">
-                  {t(lang, 'missedOccurrence')}: {s.recentSkips[0].date} — {t(lang, 'slotUnavailableReason')}
+                  {t(lang, 'missedOccurrence')}: {formatIsoDate(s.recentSkips[0].date, lang)} — {t(lang, 'slotUnavailableReason')}
                   {s.recentSkips.length > 1 && ` (+${s.recentSkips.length - 1})`}
                 </div>
               )}

@@ -17,6 +17,13 @@ type Item = {
 }
 const EMPTY = { nameEn: '', nameAr: '', nameHe: '', durationMinutes: 30, price: '', photoMode: 'None' as PhotoMode, isBookable: true }
 
+// Up to 8 hours (the API allows 24), plus the item's own duration when it's something else: a
+// 180-minute item showed "15 min" here because its value wasn't an option (QA run 4).
+const DURATION_OPTIONS = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240, 300, 360, 480]
+function durationOptions(current: number) {
+  return DURATION_OPTIONS.includes(current) || !current ? DURATION_OPTIONS : [...DURATION_OPTIONS, current].sort((a, b) => a - b)
+}
+
 export default function ServicesPage() {
   const queryClient = useQueryClient()
   const { language: lang } = useAuth()
@@ -199,7 +206,7 @@ export default function ServicesPage() {
                     <label htmlFor="service-duration" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'durationMinLabel')}</label>
                     <select id="service-duration" value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: Number(e.target.value) }))}
                       className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-coral">
-                      {[15, 30, 45, 60, 75, 90, 120].map((v) => <option key={v} value={v}>{v} {t(lang, 'min')}</option>)}
+                      {durationOptions(form.durationMinutes).map((v) => <option key={v} value={v}>{v} {t(lang, 'min')}</option>)}
                     </select>
                   </div>
                 )}

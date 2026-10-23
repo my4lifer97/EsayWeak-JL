@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useConfirmDialog } from '../ConfirmDialog'
 import { api } from '../../lib/api'
 import { t } from '../../lib/i18n'
+import { formatIsoDate } from '../../lib/dateLocale'
 import { cancelConflicts, confirmScheduleConflicts, type ScheduleConflict } from './scheduleConflicts'
 
 export type DayHours = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
@@ -75,10 +76,10 @@ export function WeekHoursEditor({ lang, days, onChange, breaks, onBreaksChange }
               </div>
               {d.isActive ? (
                 <div className="flex items-center gap-2" dir="ltr">
-                  <input type="time" value={d.startTime} aria-label={`${dayName(d.dayOfWeek, lang)} start`}
+                  <input type="time" value={d.startTime} aria-label={t(lang, 'openingTimeAria').replace('{day}', dayName(d.dayOfWeek, lang))}
                     onChange={(e) => updateDay(d.dayOfWeek, { startTime: e.target.value })} className={timeInput(hoursInvalid)} />
                   <span className="text-muted text-sm">–</span>
-                  <input type="time" value={d.endTime} aria-label={`${dayName(d.dayOfWeek, lang)} end`}
+                  <input type="time" value={d.endTime} aria-label={t(lang, 'closingTimeAria').replace('{day}', dayName(d.dayOfWeek, lang))}
                     onChange={(e) => updateDay(d.dayOfWeek, { endTime: e.target.value })} className={timeInput(hoursInvalid)} />
                   <button type="button" onClick={() => copyToAllOpenDays(d)} title={t(lang, 'copyHoursToAll')} aria-label={t(lang, 'copyHoursToAll')}
                     className="w-8 h-8 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream transition-colors">
@@ -94,13 +95,15 @@ export function WeekHoursEditor({ lang, days, onChange, breaks, onBreaksChange }
             {hoursInvalid && <p className="text-red-600 text-xs mt-1.5">{t(lang, 'invalidTimeRange')}</p>}
 
             {d.isActive && onBreaksChange && (
-              <div className="mt-2 ps-14 space-y-1.5">
+              // No indent below sm, and the label on its own line: at 360 px the row stuck out of
+              // the card to the screen edge (QA run 4).
+              <div className="mt-2 sm:ps-14 space-y-1.5">
                 {dayBreaks.map(({ b, index }) => {
                   const breakInvalid = b.endTime <= b.startTime
                   return (
                     <div key={index}>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs text-muted w-12">{t(lang, 'breakLabel')}</span>
+                        <span className="text-xs text-muted w-full sm:w-12">{t(lang, 'breakLabel')}</span>
                         <div className="flex items-center gap-2" dir="ltr">
                           <input type="time" value={b.startTime} onChange={(e) => updateBreak(index, { startTime: e.target.value })} className={timeInput(breakInvalid)} />
                           <span className="text-muted text-sm">–</span>
@@ -312,7 +315,7 @@ export default function PresetEditorModal({
                 }}
                   className="bg-cream border border-line rounded-lg px-2.5 py-1.5 text-ink text-xs focus:outline-none focus:ring-2 focus:ring-coral">
                   <option value="">{t(lang, 'copyBreaksFrom')}</option>
-                  {copyCandidates.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {copyCandidates.map((p) => <option key={p.id} value={p.id}>{p.isDefault ? t(lang, 'defaultPresetBadge') : p.name}</option>)}
                 </select>
               )}
             </div>
@@ -337,12 +340,12 @@ export default function PresetEditorModal({
                         )}
                         {opt.value === 'range' && scheduledHere && (
                           <span className="block text-xs text-coral-dark font-medium mt-1">
-                            {t(lang, scheduledHere.applied ? 'rangeRunningNow' : 'rangeBookedFor')} {scheduledHere.startDate} – {scheduledHere.endDate}
+                            {t(lang, scheduledHere.applied ? 'rangeRunningNow' : 'rangeBookedFor')} {formatIsoDate(scheduledHere.startDate, lang)} – {formatIsoDate(scheduledHere.endDate, lang)}
                           </span>
                         )}
                         {opt.value === 'range' && action === 'range' && scheduledElsewhere && (
                           <span className="block text-xs text-amber-700 dark:text-amber-400 mt-1">
-                            {t(lang, 'replacesOtherRange')} "{scheduledElsewhere.presetName}" ({scheduledElsewhere.startDate} – {scheduledElsewhere.endDate})
+                            {t(lang, 'replacesOtherRange')} "{scheduledElsewhere.presetName}" ({formatIsoDate(scheduledElsewhere.startDate, lang)} – {formatIsoDate(scheduledElsewhere.endDate, lang)})
                           </span>
                         )}
                         {opt.value === 'range' && action === 'range' && (

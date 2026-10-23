@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
+import { formatIsoDate } from '../../lib/dateLocale'
 import { presetForDate } from '../../lib/effectiveSchedule'
 import { cancelConflicts, confirmScheduleConflicts, type ScheduleConflict } from '../../components/admin/scheduleConflicts'
 import PresetEditorModal, { type PresetChange, type PresetSchedule, type SchedulePreset } from '../../components/admin/PresetEditorModal'
@@ -164,8 +165,15 @@ export default function SchedulePage() {
   }
 
   async function deleteBlocked(id: string) {
-    await api.delete(`/admin/schedule/blocked/${id}`)
-    setBlocked((prev) => prev.filter((b) => b.id !== id))
+    setBlockedError('')
+    try {
+      await api.delete(`/admin/schedule/blocked/${id}`)
+      setBlocked((prev) => prev.filter((b) => b.id !== id))
+    } catch (err: unknown) {
+      // A failed delete used to be an unhandled rejection with nothing on screen (QA run 4).
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setBlockedError(msg ?? t(lang, 'somethingWentWrong'))
+    }
   }
 
   // Called after the modal saves/applies/schedules/deletes a preset -- the Working Hours section
@@ -226,8 +234,8 @@ export default function SchedulePage() {
             <div className="bg-blue-50 border border-blue-200 text-blue-700 dark:bg-blue-900/40 dark:border-blue-800/50 dark:text-blue-400 text-sm rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-3">
               <span>
                 {scheduledChange.applied
-                  ? `${t(lang, 'yourScheduleIsCurrently')} "${scheduledChange.presetName}" ${t(lang, 'untilDate')} ${scheduledChange.endDate}`
-                  : `${t(lang, 'scheduledFrom')} ${scheduledChange.startDate} ${t(lang, 'throughDate')} ${scheduledChange.endDate}, ${t(lang, 'yourScheduleWillBe')} "${scheduledChange.presetName}"`}
+                  ? `${t(lang, 'yourScheduleIsCurrently')} "${scheduledChange.presetName}" ${t(lang, 'untilDate')} ${formatIsoDate(scheduledChange.endDate, lang)}`
+                  : `${t(lang, 'scheduledFrom')} ${formatIsoDate(scheduledChange.startDate, lang)} ${t(lang, 'throughDate')} ${formatIsoDate(scheduledChange.endDate, lang)}, ${t(lang, 'yourScheduleWillBe')} "${scheduledChange.presetName}"`}
               </span>
               <button onClick={() => cancelScheduledChange(scheduledChange.id)} className="shrink-0 text-blue-700 dark:text-blue-400 hover:underline text-xs font-medium">
                 {t(lang, 'cancelScheduledChange')}
@@ -283,15 +291,11 @@ export default function SchedulePage() {
                 <button key={p.id} onClick={() => setModalPreset(p)}
                   className="w-full text-start flex items-center justify-between bg-cream hover:bg-coral-tint/40 rounded-lg px-4 py-2.5 transition-colors">
                   <span className="text-ink text-sm flex items-center gap-2">
-                    {p.name}
-                    {p.isDefault && (
-                      <span className="text-[10px] uppercase tracking-wide bg-teal-tint text-ink px-1.5 py-0.5 rounded">
-                        {t(lang, 'defaultPresetBadge')}
-                      </span>
-                    )}
+                    {/* The Default preset's stored name is always English "Default" (QA run 4). */}
+                    {p.isDefault ? t(lang, 'defaultPresetBadge') : p.name}
                     {scheduledChange?.presetId === p.id && (
                       <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400 px-1.5 py-0.5 rounded">
-                        {scheduledChange.startDate} – {scheduledChange.endDate}
+                        {formatIsoDate(scheduledChange.startDate, lang)} – {formatIsoDate(scheduledChange.endDate, lang)}
                       </span>
                     )}
                   </span>
@@ -335,7 +339,7 @@ export default function SchedulePage() {
               {blocked.map((b) => (
                 <div key={b.id} className="flex items-center justify-between bg-cream rounded-lg px-4 py-2">
                   <span className="text-ink text-sm">
-                    <bdi dir="ltr">{b.date.slice(0, 10)}</bdi>{b.startTime ? <> · <bdi dir="ltr">{b.startTime}–{b.endTime}</bdi></> : ` · ${t(lang, 'fullDay')}`}{b.reason ? ` — ${b.reason}` : ''}
+                    <bdi>{formatIsoDate(b.date, lang)}</bdi>{b.startTime ? <> · <bdi dir="ltr">{b.startTime}–{b.endTime}</bdi></> : ` · ${t(lang, 'fullDay')}`}{b.reason ? ` — ${b.reason}` : ''}
                   </span>
                   <button onClick={() => deleteBlocked(b.id)} className="text-red-600 hover:text-red-500 text-xs">{t(lang, 'remove')}</button>
                 </div>

@@ -116,7 +116,7 @@ export default function RegisterPage() {
           <input type="password" required value={form.confirmPassword} onChange={set('confirmPassword')} placeholder={t(lang, 'authConfirmPassword')}
             className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
           <div>
-            <input type="text" required value={form.slug} onChange={set('slug')} placeholder="booking-url-slug" dir="ltr"
+            <input type="text" required value={form.slug} onChange={set('slug')} maxLength={60} placeholder="booking-url-slug" dir="ltr"
               className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral" />
             <p className="text-muted text-xs mt-1.5 px-1">
               <bdi dir="ltr">yoursite.com/{form.slug || 'your-slug'}</bdi> {t(lang, 'authSlugHint')}
