@@ -111,11 +111,7 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         if (claimed == 0)
             return BadRequest(new { error = "Invalid or expired code" });
 
-        if (account is null)
-        {
-            account = new CustomerAccount { Phone = phone, Name = req.Name!, FamilyName = req.FamilyName! };
-            db.CustomerAccounts.Add(account);
-        }
+        account ??= await CreateAccountAsync(new CustomerAccount { Phone = phone, Name = req.Name!, FamilyName = req.FamilyName! });
 
         await db.SaveChangesAsync();
 
@@ -158,10 +154,8 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         if (account is null)
         {
             var (name, familyName) = SplitProfileName(tokenRow.ProfileName);
-            account = new CustomerAccount { Phone = phone, Name = name, FamilyName = familyName };
-            db.CustomerAccounts.Add(account);
+            account = await CreateAccountAsync(new CustomerAccount { Phone = phone, Name = name, FamilyName = familyName });
         }
-        await db.SaveChangesAsync();
 
         await db.Customers
             .Where(c => c.Phone == phone && c.CustomerAccountId == null)
@@ -192,6 +186,26 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             itemId = item.Id,
             language = tokenRow.Language,
         });
+    }
+
+    // Phone is unique, so two logins for a new phone at the same moment (the same link opened
+    // twice, React StrictMode's double effect in dev) both try to insert it; the loser used to 500
+    // (QA run 4). Same idea as FollowService.EnsureFollowed: take the row that won.
+    private async Task<CustomerAccount> CreateAccountAsync(CustomerAccount account)
+    {
+        db.CustomerAccounts.Add(account);
+        try
+        {
+            await db.SaveChangesAsync();
+            return account;
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            var winner = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == account.Phone);
+            if (winner is null) throw;
+            return winner;
+        }
     }
 
     // WhatsApp only exposes a single display name, not separate given/family names -- best-effort
