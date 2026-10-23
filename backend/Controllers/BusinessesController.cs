@@ -177,12 +177,8 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 
-        var follow = await db.Follows.FirstOrDefaultAsync(f => f.CustomerAccountId == CustomerAccountId && f.BusinessId == business.Id);
-        if (follow is not null)
-        {
-            db.Follows.Remove(follow);
-            await db.SaveChangesAsync();
-        }
+        // A conditional delete, so two unfollows at once can't make the second a concurrency 500 (QA run 4).
+        await db.Follows.Where(f => f.CustomerAccountId == CustomerAccountId && f.BusinessId == business.Id).ExecuteDeleteAsync();
 
         return Ok(new { ok = true });
     }

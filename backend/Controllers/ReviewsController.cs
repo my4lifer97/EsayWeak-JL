@@ -90,7 +90,15 @@ public class ReviewsController(AppDbContext db, ReviewService reviews) : Control
         review.Rating = req.Rating;
         review.Comment = comment;
         review.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Deleted by a parallel request after it was loaded above.
+            return NotFound(new { error = "Not found" });
+        }
         await reviews.RecomputeAggregate(review.BusinessId);
 
         this.SetActivityDetail($"Updated review for {review.Business.Name}: {req.Rating}★");
@@ -107,8 +115,10 @@ public class ReviewsController(AppDbContext db, ReviewService reviews) : Control
 
         var businessId = review.BusinessId;
         var businessName = review.Business.Name;
-        db.Reviews.Remove(review);
-        await db.SaveChangesAsync();
+        // A conditional delete, not Remove + SaveChanges: two deletes at once made the second one
+        // throw a concurrency exception, a 500 (QA run 4). The loser gets the same 404 as a later try.
+        if (await db.Reviews.Where(r => r.Id == id && r.CustomerAccountId == AccountId).ExecuteDeleteAsync() == 0)
+            return NotFound(new { error = "Not found" });
         await reviews.RecomputeAggregate(businessId);
 
         this.SetActivityDetail($"Deleted review for {businessName}");
