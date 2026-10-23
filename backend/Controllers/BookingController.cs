@@ -371,6 +371,10 @@ public class BookingController(
 
         var oldDate = appointment.Date.ToString("yyyy-MM-dd");
         var oldStartTime = appointment.StartTime;
+        // Its own current slot: nothing to move. Going on would 409 against itself (the row is
+        // unchanged, so the conflict check didn't leave it out) and reset the waitlist (QA run 4).
+        if (oldDate == req.Date && oldStartTime == req.StartTime)
+            return Ok(new { appointment.Id, Status = appointment.Status.ToString() });
 
         // Held from here until the move commits: parallel reschedules of one appointment (or one
         // racing a cancel) all returned 200 and the last writer won, with notices for times that

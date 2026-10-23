@@ -543,6 +543,13 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, viaLink.StatusCode);
         using var verify = Db();
         Assert.Equal("10:00", verify.Appointments.First(a => a.Id == appt.Id).StartTime);
+
+        // QA run 4 OWN-4: its own current slot is offered, and picking it was a 409.
+        var sameViaLink = await Client.PatchAsJsonAsync($"/api/{slug}/appointments/{appt.Id}?token={cancelToken}", new RescheduleRequest(dateStr, "10:00"));
+        Authorize(Client, token);
+        var sameByOwner = await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt.Id}/reschedule", new RescheduleRequest(dateStr, "10:00"));
+        Assert.Equal(HttpStatusCode.OK, sameViaLink.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, sameByOwner.StatusCode);
     }
 
     [Fact]
