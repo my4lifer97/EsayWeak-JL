@@ -1,4 +1,4 @@
-using BarberSaas.Api.Services;
+﻿using BarberSaas.Api.Services;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -182,12 +182,12 @@ public class WhatsAppControllerTests : IntegrationTestBase
         await SendWhatsAppMessage(phone, "99"); // attempt 1 -- normal reprompt
         await SendWhatsAppMessage(phone, "99"); // attempt 2 -- normal reprompt
         var thirdReply = await SendWhatsAppMessage(phone, "99"); // attempt 3 -- lockout warning
-        Assert.Contains("$", thirdReply);
+        Assert.Contains("#", thirdReply);
 
         // Locked out now -- even a cancel keyword gets no reply, and the reminder isn't repeated
         // right away (it used to answer every message).
         var lockedReply = await SendWhatsAppMessage(phone, "cancel");
-        Assert.DoesNotContain("$", lockedReply);
+        Assert.DoesNotContain("#", lockedReply);
         Assert.DoesNotContain("cancel", lockedReply, StringComparison.OrdinalIgnoreCase);
 
         using var db = Db();
@@ -202,7 +202,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
         await SendWhatsAppMessage(phone, "hi");
         for (var i = 0; i < 3; i++) await SendWhatsAppMessage(phone, "99"); // locked, reminder sent
 
-        Assert.DoesNotContain("$", await SendWhatsAppMessage(phone, "hello?"));
+        Assert.DoesNotContain("#", await SendWhatsAppMessage(phone, "hello?"));
 
         // 31 minutes since the reminder (the lock runs 24 h from it).
         using (var db = Db())
@@ -212,8 +212,8 @@ public class WhatsAppControllerTests : IntegrationTestBase
             await db.SaveChangesAsync();
         }
 
-        Assert.Contains("$", await SendWhatsAppMessage(phone, "hello?"));
-        Assert.DoesNotContain("$", await SendWhatsAppMessage(phone, "hello again"));
+        Assert.Contains("#", await SendWhatsAppMessage(phone, "hello?"));
+        Assert.DoesNotContain("#", await SendWhatsAppMessage(phone, "hello again"));
     }
 
     [Fact]

@@ -850,9 +850,9 @@ to WhatsApp).
 - **Lockout after repeated invalid replies** (rule-based path only): 3 consecutive non-numeric/
   out-of-range replies to a "which service?" prompt (`WhatsAppConversationState.InvalidAttempts`,
   `WhatsAppController.MaxInvalidAttempts`) stops the bot dispatching to anything else -- including
-  cancel/reschedule keywords -- until the customer sends the literal unlock keyword (`"$"`,
+  cancel/reschedule keywords -- until the customer sends the literal unlock keyword (`"#"` since 2026-10-23, the old `"$"` still works;
   `WhatsAppController.UnlockKeyword`), which restarts the conversation from the opening prompt.
-  While locked out (other than `"$"` itself) the `whatsapp.tooManyInvalidReplies` reminder is
+  While locked out (other than the unlock keyword itself) the `whatsapp.tooManyInvalidReplies` reminder is
   re-sent at most every 30 minutes and other messages get no reply (2026-10-20, owner's choice: a
   reminder on every message was spam; 2026-09-22's fix had replaced total silence, which looked
   broken). The lock lasts 24 h from the last reminder (`LockoutLifetime`); `ExpiresAt - LockoutLifetime`
@@ -921,7 +921,7 @@ that has nothing to do with the business). Questions it answers don't count (QA:
 questions used to lock the customer out, when any turn without a booking/cancel tool counted);
 `AiUsageLimiter` limits the cost instead. Any other turn resets the counter to 0. On the 3rd unclear message in a row, the AI's own reply text is
 replaced with the `whatsapp.tooManyInvalidReplies` message (same as rule-based); after that the AI
-isn't called at all and the reminder repeats at most every 30 minutes (same as rule-based, see above), until the customer sends the literal `"$"`, which clears the
+isn't called at all and the reminder repeats at most every 30 minutes (same as rule-based, see above), until the customer sends the literal `"#"` (or the old `"$"`), which clears the
 conversation state entirely and replies with `whatsapp.aiConversationRestarted` — a fresh state row
 only gets created once the customer sends a real next message, same as the rule-based unlock.
 
@@ -1059,7 +1059,7 @@ ahead of the gate/service logic:
 text; the AR/HE strings now wrap it in `\u200E` marks). `$1` also clears a live service-list row, so it never
 counts as an invalid reply, and a row with a booking link pending (it used to be kept, so `$1` after a link +
 `$2` got silence and Inquiry mode stuck for 24 h); entering Inquiry mode clears `AwaitingBookingCompletion`. A locked-out conversation (`InvalidAttempts >= 3`) skips this method entirely, so
-only `$` unlocks it. An Inquiry-mode row lives 24 h (`InquiryStateLifetime`), not 10 min, so a later
+only `#` (or `$`) unlocks it. An Inquiry-mode row lives 24 h (`InquiryStateLifetime`), not 10 min, so a later
 follow-up is still logged.
 
 While in Inquiry mode, every further message from that phone is logged as a `ChatbotInquiry` row

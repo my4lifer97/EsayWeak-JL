@@ -1,4 +1,4 @@
-using BarberSaas.Api.Services;
+﻿using BarberSaas.Api.Services;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BarberSaas.Api.Controllers;
@@ -144,7 +144,7 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         var thirdBody = await thirdResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
 
         // The 3rd unclear reply is replaced with the lockout message, not the AI's own text.
-        Assert.Contains("$", thirdBody!.Reply);
+        Assert.Contains("\"#\"", thirdBody!.Reply);
         Assert.DoesNotContain("AI:", thirdBody.Reply);
 
         var fourthResp = await PostInbound(businessId, phone, "hello?");
@@ -153,7 +153,7 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         // and the AI isn't called while locked.
         Assert.Null(fourthBody!.Reply);
 
-        var unlockResp = await PostInbound(businessId, phone, "$");
+        var unlockResp = await PostInbound(businessId, phone, "#");
         var unlockBody = await unlockResp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
         Assert.Contains("start fresh", unlockBody!.Reply, StringComparison.OrdinalIgnoreCase);
 

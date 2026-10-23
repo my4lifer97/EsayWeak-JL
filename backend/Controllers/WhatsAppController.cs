@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.RegularExpressions;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Filters;
@@ -92,7 +92,10 @@ public class WhatsAppController(
         "من", "فضلك", "لو", "سمحت", "شكرا", "الموعد", "موعد", "اياه",
     ];
     private static readonly string[] NoWords = ["no", "nope", "n", "לא", "لا", "keep", "להשאיר", "השאר"];
-    private const string UnlockKeyword = "$";
+    // "#" since 2026-10-23 (owner's choice, like the #1/#2 commands); "$" still works, since earlier
+    // lockout messages in customers' chats name it.
+    private const string UnlockKeyword = "#";
+    private const string OldUnlockKeyword = "$";
     // Matches WhatsAppBookingTokenService's own token lifetime -- the "stay quiet" window should
     // never outlast the link it's protecting.
     private static readonly TimeSpan BookingLinkPendingLifetime = TimeSpan.FromHours(24);
@@ -490,7 +493,7 @@ public class WhatsAppController(
     private static bool IsDirectionMark(char c) =>
         c is '‎' or '‏' or '؜' or (>= '‪' and <= '‮') or (>= '⁦' and <= '⁩');
 
-    private static bool IsUnlock(string message) => NormalizeDollarCommand(message) == UnlockKeyword;
+    private static bool IsUnlock(string message) => NormalizeDollarCommand(message) is UnlockKeyword or OldUnlockKeyword;
 
     // A numbered reply: "2", "٢", "２", "2.", "#2", "2)" or the keycap emoji "2️⃣" (QA run 4: those
     // counted toward the lockout). Null for anything else.
