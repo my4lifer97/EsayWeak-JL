@@ -1,3 +1,4 @@
+import './redactLogs.js'
 import express from 'express'
 import { statusDto, startSession, restoreSessions, unlinkSession, sendMessage } from './sessionManager.js'
 
