@@ -27,6 +27,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ChatbotInquiry> ChatbotInquiries => Set<ChatbotInquiry>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
+    public DbSet<QuickReply> QuickReplies => Set<QuickReply>();
     public DbSet<BusinessEmailOtp> BusinessEmailOtps => Set<BusinessEmailOtp>();
     public DbSet<BusinessOwnerRequestEmailOtp> BusinessOwnerRequestEmailOtps => Set<BusinessOwnerRequestEmailOtp>();
     public DbSet<BusinessPasswordResetOtp> BusinessPasswordResetOtps => Set<BusinessPasswordResetOtp>();
@@ -336,6 +337,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.Attachment).WithMany()
             .HasForeignKey(x => x.AttachmentId).OnDelete(DeleteBehavior.SetNull);
         b.Entity<ChatAttachment>()
+            .HasOne(x => x.Business).WithMany()
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<QuickReply>()
             .HasOne(x => x.Business).WithMany()
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WhatsAppLinkToken>()

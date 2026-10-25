@@ -112,6 +112,7 @@ if (!builder.Configuration.GetValue("Notifications:Inline", false))
     builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
 builder.Services.AddScoped<ServiceListPrompt>();
+builder.Services.AddScoped<ChatTemplates>();
 builder.Services.AddScoped<WhatsAppLinkingService>();
 // Email delivery, in order of precedence: Brevo (Brevo:ApiKey set -- the only option that can
 // reach arbitrary recipients without a verified domain, see BrevoEmailSender), then SMTP (e.g.

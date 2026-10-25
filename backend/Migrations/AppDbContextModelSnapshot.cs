@@ -975,6 +975,33 @@ namespace BarberSaas.Api.Migrations
                     b.ToTable("PresetSchedules");
                 });
 
+            modelBuilder.Entity("BarberSaas.Api.Models.QuickReply", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BusinessId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessId");
+
+                    b.ToTable("QuickReplies");
+                });
+
             modelBuilder.Entity("BarberSaas.Api.Models.RecurringSeries", b =>
                 {
                     b.Property<string>("Id")
@@ -1619,6 +1646,17 @@ namespace BarberSaas.Api.Migrations
                     b.Navigation("Preset");
 
                     b.Navigation("RevertToPreset");
+                });
+
+            modelBuilder.Entity("BarberSaas.Api.Models.QuickReply", b =>
+                {
+                    b.HasOne("BarberSaas.Api.Models.Business", "Business")
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Business");
                 });
 
             modelBuilder.Entity("BarberSaas.Api.Models.RecurringSeries", b =>

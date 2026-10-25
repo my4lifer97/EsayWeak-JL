@@ -11,6 +11,7 @@ import { useIsTouchPrimary } from '../../lib/useIsTouchPrimary'
 import UnreadBadge, { CHATS_UNREAD_KEY } from '../../components/admin/UnreadBadge'
 import ChatAlertsModal, { type ChatAlertSettings } from '../../components/admin/ChatAlertsModal'
 import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
+import ReadyMessagesModal from '../../components/admin/ReadyMessagesModal'
 import type { CustomerSelection } from '../../components/admin/CustomerPicker'
 
 type Sender = 'Customer' | 'Bot' | 'Owner' | 'OwnerPhone'
@@ -155,6 +156,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [readyOpen, setReadyOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -302,6 +304,10 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
           </div>
         </div>
       )}
+      {readyOpen && (
+        <ReadyMessagesModal lang={lang} phone={phone} onClose={() => setReadyOpen(false)}
+          onPick={(text) => { setDraft((d) => (d.trim() ? `${d.trimEnd()}\n\n${text}` : text)); setReadyOpen(false) }} />
+      )}
       {booking && selection && (
         <NewAppointmentModal lang={lang} initialCustomer={selection} onClose={() => setBooking(false)} />
       )}
@@ -363,6 +369,10 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
               className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl border border-line text-lg hover:bg-cream disabled:opacity-50">
               📎
             </button>
+            <button onClick={() => setReadyOpen(true)} disabled={busy} aria-label={t(lang, 'chatsReady')} title={t(lang, 'chatsReady')}
+              className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl border border-line text-lg hover:bg-cream disabled:opacity-50">
+              ⚡
+            </button>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -372,6 +382,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
               }}
               rows={2}
               maxLength={4000}
+              dir="auto"
               placeholder={t(lang, 'chatsPlaceholder')}
               className="flex-1 resize-none rounded-xl border border-line bg-cream px-3 py-2 text-sm text-ink focus:outline-none focus:border-coral"
             />

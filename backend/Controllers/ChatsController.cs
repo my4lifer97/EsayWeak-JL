@@ -20,7 +20,7 @@ namespace BarberSaas.Api.Controllers;
 public class ChatsController(
     AppDbContext db, IWhatsAppBridgeClient bridge, WhatsAppBookingTokenService bookingTokens,
     ServiceListPrompt serviceList, BookingRules bookingRules, IConfiguration config,
-    ILogger<ChatsController> logger) : ControllerBase
+    ChatTemplates templates, ILogger<ChatsController> logger) : ControllerBase
 {
     private string BusinessId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
@@ -36,6 +36,11 @@ public class ChatsController(
     public record SendChatMessageRequest(string Phone, string Text);
     public record SendBookingLinkRequest(string Phone, string ItemId);
     public record FinishChatRequest(string Phone, bool SendServiceList);
+    public record QuickReplyDto(string Id, string Title, string Text);
+    public record SaveQuickReplyRequest(string Title, string Text);
+
+    private const int MaxQuickReplies = 100;
+    private const int MaxQuickReplyTitleChars = 100;
 
     // Open chats first, then the newest.
     [HttpGet]
@@ -240,6 +245,76 @@ public class ChatsController(
         await db.SaveChangesAsync();
         this.SetActivityDetail($"Finished the chat with {chat.Phone}");
         return Ok(new { ok = true });
+    }
+
+    // ─── Ready messages ─────────────────────────────────────────────────────
+
+    // A "From the system" ready message (ChatTemplates.Kinds) for this chat, in the customer's
+    // language: the conversation's, else the chatbot's default. Text only -- the page puts it in
+    // the message box, and the owner sends it like any other message.
+    [HttpGet("system-message")]
+    public async Task<IActionResult> GetSystemMessage([FromQuery] string phone, [FromQuery] string kind,
+        [FromQuery] string? date, [FromQuery] string? itemId)
+    {
+        var customerPhone = PhoneNormalizer.Normalize(phone ?? "");
+        if (!await db.ChatMessages.AnyAsync(m => m.BusinessId == BusinessId && m.CustomerPhone == customerPhone))
+            return NotFound(new { error = "Not found" });
+        var business = (await db.Businesses.FindAsync(BusinessId))!;
+        var lang = await db.WhatsAppConversationStates
+            .Where(s => s.BusinessId == BusinessId && s.Phone == customerPhone).Select(s => s.Language).FirstOrDefaultAsync()
+            ?? (business.ChatbotDefaultLanguage ?? business.Language).ToString();
+
+        var result = await templates.BuildAsync(business, customerPhone, lang, kind ?? "", date, itemId);
+        return result.Error is null ? Ok(new { text = result.Text }) : BadRequest(new { error = result.Error });
+    }
+
+    [HttpGet("quick-replies")]
+    public async Task<IActionResult> GetQuickReplies() =>
+        Ok(await db.QuickReplies.Where(q => q.BusinessId == BusinessId).OrderBy(q => q.CreatedAt)
+            .Select(q => new QuickReplyDto(q.Id, q.Title, q.Text)).ToListAsync());
+
+    [HttpPost("quick-replies")]
+    public async Task<IActionResult> CreateQuickReply([FromBody] SaveQuickReplyRequest req)
+    {
+        if (QuickReplyError(req) is { } error) return BadRequest(new { error });
+        if (await db.QuickReplies.CountAsync(q => q.BusinessId == BusinessId) >= MaxQuickReplies)
+            return BadRequest(new { error = "You can save up to 100 ready messages" });
+        var reply = new QuickReply { BusinessId = BusinessId, Title = req.Title.Trim(), Text = req.Text.Trim() };
+        db.QuickReplies.Add(reply);
+        await db.SaveChangesAsync();
+        return Ok(new QuickReplyDto(reply.Id, reply.Title, reply.Text));
+    }
+
+    [HttpPut("quick-replies/{id}")]
+    public async Task<IActionResult> UpdateQuickReply(string id, [FromBody] SaveQuickReplyRequest req)
+    {
+        if (QuickReplyError(req) is { } error) return BadRequest(new { error });
+        var reply = await db.QuickReplies.FirstOrDefaultAsync(q => q.Id == id && q.BusinessId == BusinessId);
+        if (reply is null) return NotFound(new { error = "Not found" });
+        reply.Title = req.Title.Trim();
+        reply.Text = req.Text.Trim();
+        await db.SaveChangesAsync();
+        return Ok(new QuickReplyDto(reply.Id, reply.Title, reply.Text));
+    }
+
+    [HttpDelete("quick-replies/{id}")]
+    public async Task<IActionResult> DeleteQuickReply(string id)
+    {
+        var reply = await db.QuickReplies.FirstOrDefaultAsync(q => q.Id == id && q.BusinessId == BusinessId);
+        if (reply is null) return NotFound(new { error = "Not found" });
+        db.QuickReplies.Remove(reply);
+        await db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    private static string? QuickReplyError(SaveQuickReplyRequest req)
+    {
+        var title = (req.Title ?? "").Trim();
+        var text = (req.Text ?? "").Trim();
+        if (title.Length == 0 || text.Length == 0) return "Write a name and a message";
+        if (title.Length > MaxQuickReplyTitleChars) return "The name is too long";
+        if (text.Length > ChatLog.MaxTextChars) return "This message is too long";
+        return null;
     }
 
     private sealed record OpenChat(string Phone, string Language, WhatsAppConversationState State);

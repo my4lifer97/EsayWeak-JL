@@ -780,7 +780,7 @@ Migrations run roughly: `InitialCreate` ... `AddPlatformAdminAndActivityLog` ...
 multi-vertical rename) → `AddBusinessOwnerRequests` → `AddReviews` (adds `Reviews` +
 `Businesses.RatingCount`/`RatingAverage`) → `AddBusinessDiscoveryFields` (adds
 `Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) → `AddCustomerOtp` (adds the
-`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18) → `AddChatMessages` → `AddChatAttachments` (2026-10-25), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
+`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18) → `AddChatMessages` → `AddChatAttachments` → `AddQuickReplies` (2026-10-25), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
 `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel
 **before** the code push, not after (see [Deployment (Railway)](#deployment-railway)) — skipping
 that ordering has caused multiple prod outages.
@@ -1134,6 +1134,14 @@ messages, reminders and other automated sends are not recorded. The owner (`Chat
   bot's numbered list (`Services/ServiceListPrompt.PromptAsync`, shared with the chatbot, leaving a
   Booking-mode row waiting for the number) when `sendServiceList`; otherwise the row is removed. The
   chatbot answers that customer again either way.
+**⚡ Ready messages** (`components/admin/ReadyMessagesModal`) put a text into the message box (the owner
+still edits and sends it): "From the system" -- `GET .../chats/system-message?phone=&kind=&date=&itemId=`,
+built by `Services/ChatTemplates` from live data in the conversation's language (`template.*` in
+`I18nService`): `services` (all with duration/price), `service`, `week` (next 7 days via
+`AvailabilityService.GetUpcomingHours`, so presets and full-day blocks count), `day`, `freeTimes` (the
+booking page's slots for a service on a date), `address` (+ map link), `page` (storefront link),
+`appointments` (this phone's upcoming ones); and "My messages" -- the owner's own `QuickReply` rows
+(`GET/POST .../chats/quick-replies`, `PUT/DELETE .../{id}`, up to 100, as typed).
 Clicking the customer's name in a chat offers **Book an appointment** (`NewAppointmentModal` with
 `initialCustomer`) or **Add to recurring appointments** (navigates to `/admin/recurring` with the
 customer in router state; the form opens on it once) or **Their appointments** (`/admin/appointments` with the
