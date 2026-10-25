@@ -210,7 +210,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). `AdminController.SettingsInputError` answers 400 (nothing saved) for a booking limit outside 1–1000, a `language`/`chatbotDefaultLanguage` other than exactly `EN`/`AR`/`HE`, a chatbot message over 1000 characters, or an inquiry/cancel-approval phone (`PhoneNormalizer.IsValid`) or email (`EmailAddress.IsValid`) that can't work; those phones are stored in E.164 and whitespace-only chatbot messages are stored as null (built-in default). WhatsApp number is read-only here — see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
-- `GET /api/admin/chats`, `GET .../chats/unread-count`, `GET .../chats/messages?phone=`, `POST .../chats/read` `{ phone }`, `POST .../chats/messages` `{ phone, text }` (`ChatsController`) — the owner's Chats page, see [Owner Chats page](#owner-chats-page)
+- `GET /api/admin/chats`, `GET .../chats/unread-count`, `GET .../chats/messages?phone=`, `POST .../chats/read` `{ phone }`, `POST .../chats/messages` `{ phone, text }`, `POST .../chats/booking-link` `{ phone, itemId }`, `POST .../chats/finish` `{ phone, sendServiceList }` (`ChatsController`) — the owner's Chats page, see [Owner Chats page](#owner-chats-page)
 - `GET /api/admin/chatbot-inquiries?unreadOnly=` / `POST .../{id}/read` — the always-on in-app inbox for the chatbot's optional Inquiry mode, see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
 - `GET/POST /api/admin/items` — items CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/items/{id}` — update / soft-delete (IsActive = false)
@@ -329,7 +329,7 @@ cron-job.org's dashboard (not tracked in this repo).
 - `/admin/services` — items CRUD (route/page names kept as "services" — see the note under Admin routes above)
 - `/admin/reviews` — this business's reviews with an inline owner-reply editor; hidden reviews shown greyed
 - `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle + notification contacts, and the `ChatbotInquiriesInbox` — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
-- `/admin/chats` — the WhatsApp conversations and replying from the dashboard (`ChatsPage`); the sidebar item shows a red unread count (`components/admin/UnreadBadge`)
+- `/admin/chats` — customers who chose to talk to the owner (`#2`): reply, send a booking link, finish the chat (`ChatsPage`); the sidebar item shows a red unread count (`components/admin/UnreadBadge`)
 - `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), booking limits, waitlist + cancellation-approval toggles, read-only assigned WhatsApp number
 - `/browse` — public discovery directory (`BrowseBusinessesPage`): category chips (`GET /api/business-types`), city + sort filters, a default top-rated list (no "type first" gate), "Load more" paging, rich cards linking to `/:slug`; the authenticated-only "Businesses You Follow" list stays below
 - `/:slug` — **public** business storefront (`BusinessPage`) — viewable logged-out (stars, location, reviews); for anonymous visitors the Follow button goes to `/login?next=/:slug`; an unknown slug shows the 404 page
@@ -1107,21 +1107,30 @@ chatbot-related control lives in one place instead of being buried in general Se
 page uses for the rest of the business record.
 
 ### Owner Chats page
-`/admin/chats` (2026-10-25, owner's request) shows the WhatsApp conversations of the business's
-linked number and lets the owner reply from the dashboard instead of picking up the phone.
-`ChatMessage` rows (`Sender`: `Customer` / `Bot` / `Owner` / `OwnerPhone`), recorded from that day on:
-`WhatsAppController.BridgeInbound` saves the customer's message (before the chatbot runs, unread) and
-the chatbot's reply; `BridgeWhatsAppSender` records every automated send as `Bot` through
-`Services/ChatLog` (its own DI scope, best-effort), except alerts to the owner's own numbers
-(`Phone`, inquiry / cancel-approval numbers); `POST /api/admin/chats/messages` sends through
-`IWhatsAppBridgeClient` (502 when the bot isn't connected, 400 when no number is linked, 404 for a
-phone with no chat yet -- no cold messages) and saves `Owner`; the bridge reports messages typed on
-the phone itself (`fromMe`, minus the ids it sent: `sendTracked` picks the id before sending, since
-Baileys echoes on `process.nextTick`) to `POST /api/whatsapp/bridge/outgoing` as `OwnerPhone`.
-Replying (either way) marks the chat read. **While the owner is chatting the chatbot stays quiet for that
-customer**: no automated reply for `ChatLog.OwnerChatPause` (2 h) after the owner's last message;
-the customer's messages are still saved, unread. The page polls (list 5 s, open chat 3 s, sidebar
-count 10 s); `POST .../chats/read` is `[SkipActivityLog]` (`Filters/SkipActivityLogAttribute`).
+`/admin/chats` (2026-10-25, owner's request) is where the owner answers customers who chose to talk
+to them in the chatbot -- Inquiry mode (`#2`, or `2` at the Book/Ask menu), so it needs
+`ChatbotInquiryEnabled` (the page says so when it's off). A chat is **open** while that customer's
+conversation-state row is live in Inquiry mode (`Services/ChatLog.IsChatOpenAsync`); only then are
+`ChatMessage` rows recorded (`Sender`: `Customer` / `Bot` / `Owner` / `OwnerPhone`):
+`WhatsAppController.BridgeInbound` saves the customer's message (unread) when the chat was already
+open, and the bot's reply on the way in or out (`inquiryStarted`, `#1`'s reply); booking-flow
+messages, reminders and other automated sends are not recorded. The owner (`ChatsController`, all
+409 "This chat has ended" for a finished chat, 404 for a phone with no chat -- no cold messages,
+400 with no linked number, 502 when the bridge can't send):
+- `POST .../chats/messages` `{ phone, text }` -- sent through `IWhatsAppBridgeClient` with a first
+  line `whatsapp.fromOwner` ("💬 Message from the business owner:") in the conversation's language;
+  stored without that line.
+- `POST .../chats/booking-link` `{ phone, itemId }` -- a normal `WhatsAppBookingToken` link
+  (`whatsapp.ownerBookingLink`, same first line) for a bookable service the owner picks; the chat stays open.
+- `POST .../chats/finish` `{ phone, sendServiceList }` -- sends `whatsapp.ownerChatEnded`, plus the
+  bot's numbered list (`Services/ServiceListPrompt.PromptAsync`, shared with the chatbot, leaving a
+  Booking-mode row waiting for the number) when `sendServiceList`; otherwise the row is removed. The
+  chatbot answers that customer again either way.
+Replying (dashboard or phone) marks the chat read and keeps the Inquiry row alive for another
+`InquiryStateLifetime`. The bridge reports messages typed on the linked phone (`fromMe`, minus the
+ids it sent: `sendTracked` picks the id before sending, since Baileys echoes on `process.nextTick`)
+to `POST /api/whatsapp/bridge/outgoing`, recorded as `OwnerPhone` only in an open chat. The page polls
+(list 5 s, open chat 3 s, sidebar count 10 s); `POST .../chats/read` is `[SkipActivityLog]`.
 
 ### Customer login via WhatsApp
 The primary way a customer session starts: redeeming a link the WhatsApp bot sent them (no

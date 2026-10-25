@@ -32,6 +32,8 @@ public static class ApiErrorTranslations
         // chats
         ["Write a message first"] = ("اكتب رسالة أولًا", "יש לכתוב הודעה קודם"),
         ["This message is too long"] = ("هذه الرسالة طويلة جدًا", "ההודעה ארוכה מדי"),
+        ["This chat has ended"] = ("انتهت هذه المحادثة", "השיחה הזו הסתיימה"),
+        ["This service can't be booked"] = ("لا يمكن حجز هذه الخدمة", "אי אפשר להזמין את השירות הזה"),
         ["Your WhatsApp bot isn't linked, so messages can't be sent"] = ("بوت واتساب غير مربوط، لذلك لا يمكن إرسال الرسائل", "בוט הוואטסאפ לא מחובר, ולכן אי אפשר לשלוח הודעות"),
         ["The message wasn't sent: the WhatsApp bot isn't connected right now"] = ("لم تُرسل الرسالة: بوت واتساب غير متصل حاليًا", "ההודעה לא נשלחה: בוט הוואטסאפ לא מחובר כרגע"),
         ["Invalid start time"] = ("وقت البدء غير صالح", "שעת התחלה לא תקינה"),

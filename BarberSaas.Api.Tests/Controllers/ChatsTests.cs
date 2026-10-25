@@ -2,36 +2,36 @@ using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.Controllers;
 using BarberSaas.Api.DTOs;
-using BarberSaas.Api.Models;
-using BarberSaas.Api.Services;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
 
-// The owner's Chats page (ChatsController) and what feeds it: messages recorded on the bridge's
-// inbound/outgoing calls and on BridgeWhatsAppSender's automated sends.
+// The owner's Chats page (ChatsController): only customers who chose to talk to the owner
+// (Inquiry mode) show up, the owner answers / sends a booking link / finishes the chat.
 public class ChatsTests : IntegrationTestBase
 {
     private record RegisterResponse(string? DevCode);
     private record UnreadCount(int Count);
 
-    private async Task<(string BusinessId, string Token)> SeedBusiness(string email, string slug, bool linked = true)
+    private async Task<(string BusinessId, string Token, string ItemId)> SeedBusiness(string slug, bool linked = true)
     {
+        var email = $"{slug}@example.com";
         var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var businessBody = await verify.Content.ReadFromJsonAsync<LoginResponse>();
         Authorize(Client, businessBody!.Token);
-        await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Haircut", "Haircut", "Haircut", 30, 50m));
+        var item = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Haircut", "תספורת", "قص شعر", 30, 50m)))
+            .Content.ReadFromJsonAsync<ItemDto>();
+        await Client.PatchAsJsonAsync("/api/admin/settings", new { chatbotInquiryEnabled = true });
         Client.DefaultRequestHeaders.Authorization = null;
 
         using var db = Db();
         var business = await db.Businesses.SingleAsync(b => b.Slug == slug);
         if (linked) business.WhatsAppNumber = "+15559990000";
         await db.SaveChangesAsync();
-        return (business.Id, businessBody.Token);
+        return (business.Id, businessBody.Token, item!.Id);
     }
 
     private async Task<string?> Inbound(string businessId, string fromPhone, string message, string? profileName = null)
@@ -43,6 +43,13 @@ public class ChatsTests : IntegrationTestBase
         req.Headers.Add("X-Bridge-Secret", TestWebApplicationFactory.BridgeSecret);
         var resp = await Client.SendAsync(req);
         return (await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply;
+    }
+
+    // "hi" (the Book/Ask menu), then "2": talking to the owner.
+    private async Task OpenChat(string businessId, string phone, string? profileName = null, string hello = "hi")
+    {
+        await Inbound(businessId, phone, hello, profileName);
+        await Inbound(businessId, phone, "2", profileName);
     }
 
     private async Task<HttpResponseMessage> Outgoing(string businessId, string toPhone, string message)
@@ -67,176 +74,239 @@ public class ChatsTests : IntegrationTestBase
         return (await Client.GetFromJsonAsync<UnreadCount>("/api/admin/chats/unread-count"))!.Count;
     }
 
-    [Fact]
-    public async Task InboundMessage_AndTheBotsReply_AreRecorded_CustomerMessageUnread()
+    private async Task<HttpResponseMessage> Post(string token, string url, object body)
     {
-        var (businessId, token) = await SeedBusiness("chats-inbound@example.com", "chats-inbound");
-        var reply = await Inbound(businessId, "+15551110001", "hi", "Dana");
+        Authorize(Client, token);
+        return await Client.PostAsJsonAsync(url, body);
+    }
 
-        var chat = await GetChat(token, "+15551110001");
-        Assert.Equal(["Customer", "Bot"], chat.Messages.Select(m => m.Sender));
-        Assert.Equal("hi", chat.Messages[0].Text);
-        Assert.Equal(reply, chat.Messages[1].Text);
+    [Fact]
+    public async Task ABookingConversation_IsNotAChat()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-bot-only");
+        await Inbound(businessId, "+15551110001", "hi");
+        await Inbound(businessId, "+15551110001", "1");
+
+        Authorize(Client, token);
+        Assert.Empty((await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>("/api/admin/chats"))!);
+        Assert.Equal(0, await Unread(token));
+    }
+
+    [Fact]
+    public async Task TalkingToTheOwner_OpensAChat_WithTheCustomersMessagesUnread()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-open");
+        await OpenChat(businessId, "+15551110002", "Dana");
+
+        Assert.Null(await Inbound(businessId, "+15551110002", "Do you cut kids' hair?", "Dana"));
+
+        var chat = await GetChat(token, "+15551110002");
+        Assert.True(chat.IsOpen);
         Assert.Equal("Dana", chat.Name);
+        Assert.Equal(["Bot", "Customer"], chat.Messages.Select(m => m.Sender)); // "you're now chatting..." then the question
+        Assert.Equal("Do you cut kids' hair?", chat.Messages[1].Text);
         Assert.Equal(1, await Unread(token));
     }
 
     [Fact]
-    public async Task ChatList_NewestFirst_WithUnreadCounts()
+    public async Task OwnerMessage_StartsWithTheOwnerLine_InTheCustomersLanguage()
     {
-        var (businessId, token) = await SeedBusiness("chats-list@example.com", "chats-list");
-        await Inbound(businessId, "+15551110002", "hi");
-        await Inbound(businessId, "+15551110003", "hello");
-        await Inbound(businessId, "+15551110003", "99");
+        var (businessId, token, _) = await SeedBusiness("chats-send");
+        await OpenChat(businessId, "+15551110003", hello: "שלום");
 
-        Authorize(Client, token);
-        var chats = (await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>("/api/admin/chats"))!;
-
-        Assert.Equal(["+15551110003", "+15551110002"], chats.Select(c => c.Phone));
-        Assert.Equal(2, chats[0].Unread);
-        Assert.Equal("Bot", chats[0].LastSender);
-        Assert.Equal(3, await Unread(token));
-    }
-
-    [Fact]
-    public async Task MarkRead_ClearsTheChatsUnreadMessages_AndLogsNoActivity()
-    {
-        var (businessId, token) = await SeedBusiness("chats-read@example.com", "chats-read");
-        await Inbound(businessId, "+15551110004", "hi");
-        await Inbound(businessId, "+15551110005", "hi");
-
-        Authorize(Client, token);
-        var resp = await Client.PostAsJsonAsync("/api/admin/chats/read", new { phone = "+15551110004" });
+        var resp = await Post(token, "/api/admin/chats/messages", new { phone = "+15551110003", text = "כן, בטח" });
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var sent = Assert.Single(Factory.WhatsAppBridge.Sent, s => s.BusinessId == businessId);
+        Assert.Equal("💬 הודעה מבעל העסק:\nכן, בטח", sent.Message);
+        var chat = await GetChat(token, "+15551110003");
+        Assert.Equal("כן, בטח", chat.Messages[^1].Text); // stored without the WhatsApp-only line
+        Assert.Equal("Owner", chat.Messages[^1].Sender);
+        Assert.True(chat.IsOpen);
+    }
+
+    [Fact]
+    public async Task ReplyingReadsTheChat()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-reply-read");
+        await OpenChat(businessId, "+15551110004");
+        await Inbound(businessId, "+15551110004", "hello?");
         Assert.Equal(1, await Unread(token));
+
+        await Post(token, "/api/admin/chats/messages", new { phone = "+15551110004", text = "Hi!" });
+
+        Assert.Equal(0, await Unread(token));
+    }
+
+    [Fact]
+    public async Task BookingLink_ForTheChosenService_SignsTheCustomerIn()
+    {
+        var (businessId, token, itemId) = await SeedBusiness("chats-link");
+        await OpenChat(businessId, "+15551110005");
+
+        var resp = await Post(token, "/api/admin/chats/booking-link", new { phone = "+15551110005", itemId });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var sent = Assert.Single(Factory.WhatsAppBridge.Sent, s => s.BusinessId == businessId);
+        Assert.StartsWith("💬 Message from the business owner:\nHere's your link to book Haircut:", sent.Message);
         using var db = Db();
-        Assert.False(await db.ActivityLogs.AnyAsync(l => l.BusinessId == businessId && l.Action == "Chats.MarkRead"));
+        var tokenRow = await db.WhatsAppBookingTokens.SingleAsync(t => t.BusinessId == businessId && t.Phone == "+15551110005");
+        Assert.Equal(itemId, tokenRow.ItemId);
+        Assert.Contains($"/chats-link/w/{tokenRow.Id}", sent.Message);
+        Assert.True((await GetChat(token, "+15551110005")).IsOpen); // sending a link doesn't end the chat
     }
 
     [Fact]
-    public async Task OwnerReply_IsSentThroughTheBridge_Recorded_AndPausesTheBot()
+    public async Task BookingLink_ForAnUnknownService_Is400()
     {
-        var (businessId, token) = await SeedBusiness("chats-send@example.com", "chats-send");
-        await Inbound(businessId, "+15551110006", "hi");
+        var (businessId, token, _) = await SeedBusiness("chats-link-bad");
+        await OpenChat(businessId, "+15551110006");
 
-        Authorize(Client, token);
-        var resp = await Client.PostAsJsonAsync("/api/admin/chats/messages", new { phone = "+15551110006", text = "Hi Dana, see you at 10" });
-
-        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-        Assert.Contains(Factory.WhatsAppBridge.Sent, s => s.BusinessId == businessId && s.ToPhone == "+15551110006" && s.Message == "Hi Dana, see you at 10");
-        Assert.Equal(0, await Unread(token)); // replying reads the chat
-
-        // The customer answers the owner: no chatbot reply, but it's in the chat, unread.
-        Assert.Null(await Inbound(businessId, "+15551110006", "great thanks"));
-        var chat = await GetChat(token, "+15551110006");
-        Assert.Equal(["Customer", "Bot", "Owner", "Customer"], chat.Messages.Select(m => m.Sender));
-        Assert.NotNull(chat.BotPausedUntil);
-        Assert.Equal(1, await Unread(token));
-    }
-
-    [Fact]
-    public async Task BotAnswersAgain_OnceThePauseIsOver()
-    {
-        var (businessId, token) = await SeedBusiness("chats-pause-end@example.com", "chats-pause-end");
-        await Inbound(businessId, "+15551110007", "hi");
-        Authorize(Client, token);
-        await Client.PostAsJsonAsync("/api/admin/chats/messages", new { phone = "+15551110007", text = "Hello" });
-
-        using (var db = Db())
-        {
-            var ownerMessage = await db.ChatMessages.SingleAsync(m => m.BusinessId == businessId && m.Sender == ChatSender.Owner);
-            ownerMessage.CreatedAt = DateTime.UtcNow - ChatLog.OwnerChatPause - TimeSpan.FromMinutes(1);
-            await db.SaveChangesAsync();
-        }
-
-        Assert.NotNull(await Inbound(businessId, "+15551110007", "hi again"));
-        Assert.Null((await GetChat(token, "+15551110007")).BotPausedUntil);
-    }
-
-    [Fact]
-    public async Task OwnerReply_WithoutALinkedBot_Is400()
-    {
-        var (businessId, token) = await SeedBusiness("chats-unlinked@example.com", "chats-unlinked", linked: false);
-        await Inbound(businessId, "+15551110008", "hi");
-
-        Authorize(Client, token);
-        var resp = await Client.PostAsJsonAsync("/api/admin/chats/messages", new { phone = "+15551110008", text = "Hello" });
+        var resp = await Post(token, "/api/admin/chats/booking-link", new { phone = "+15551110006", itemId = "nope" });
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.Empty(Factory.WhatsAppBridge.Sent);
     }
 
     [Fact]
-    public async Task OwnerReply_ToAPhoneWithNoChat_Is404()
+    public async Task Finish_EndsTheChat_AndTheBotAnswersAgain()
     {
-        var (_, token) = await SeedBusiness("chats-nochat@example.com", "chats-nochat");
+        var (businessId, token, _) = await SeedBusiness("chats-finish");
+        await OpenChat(businessId, "+15551110007");
+
+        var resp = await Post(token, "/api/admin/chats/finish", new { phone = "+15551110007", sendServiceList = false });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Contains("has ended", Assert.Single(Factory.WhatsAppBridge.Sent).Message);
+        Assert.False((await GetChat(token, "+15551110007")).IsOpen);
+
+        // The bot again (the Book/Ask menu), and it's no longer recorded.
+        var reply = await Inbound(businessId, "+15551110007", "hi again");
+        Assert.Contains("1. Book a service", reply);
+        Assert.DoesNotContain((await GetChat(token, "+15551110007")).Messages, m => m.Text == "hi again");
+
+        // The owner can't keep writing to a finished chat.
+        var late = await Post(token, "/api/admin/chats/messages", new { phone = "+15551110007", text = "one more thing" });
+        Assert.Equal(HttpStatusCode.Conflict, late.StatusCode);
+    }
+
+    [Fact]
+    public async Task FinishWithTheServiceList_LetsTheCustomerPickANumber()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-finish-list");
+        await OpenChat(businessId, "+15551110008");
+
+        await Post(token, "/api/admin/chats/finish", new { phone = "+15551110008", sendServiceList = true });
+
+        var sent = Assert.Single(Factory.WhatsAppBridge.Sent).Message;
+        Assert.Contains("has ended", sent);
+        Assert.Contains("1. Haircut", sent);
+        var reply = await Inbound(businessId, "+15551110008", "1");
+        Assert.Contains("/chats-finish-list/w/", reply); // the bot's booking link for Haircut
+    }
+
+    [Fact]
+    public async Task CustomerLeavingWithHashOne_EndsTheChat()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-leave");
+        await OpenChat(businessId, "+15551110009");
+        await Inbound(businessId, "+15551110009", "#1");
+
+        Assert.False((await GetChat(token, "+15551110009")).IsOpen);
+        var resp = await Post(token, "/api/admin/chats/messages", new { phone = "+15551110009", text = "Hello?" });
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task ChatList_OpenChatsFirst()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-list");
+        await OpenChat(businessId, "+15551110010");
+        await OpenChat(businessId, "+15551110011");
+        await Post(token, "/api/admin/chats/finish", new { phone = "+15551110011", sendServiceList = false });
 
         Authorize(Client, token);
-        var resp = await Client.PostAsJsonAsync("/api/admin/chats/messages", new { phone = "+15551110009", text = "Hello" });
+        var chats = (await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>("/api/admin/chats"))!;
+
+        Assert.Equal(["+15551110010", "+15551110011"], chats.Select(c => c.Phone));
+        Assert.True(chats[0].IsOpen);
+        Assert.False(chats[1].IsOpen);
+    }
+
+    [Fact]
+    public async Task MarkRead_LogsNoActivity()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-read");
+        await OpenChat(businessId, "+15551110012");
+        await Inbound(businessId, "+15551110012", "hello");
+
+        var resp = await Post(token, "/api/admin/chats/read", new { phone = "+15551110012" });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Equal(0, await Unread(token));
+        using var db = Db();
+        Assert.False(await db.ActivityLogs.AnyAsync(l => l.BusinessId == businessId && l.Action == "Chats.MarkRead"));
+    }
+
+    [Fact]
+    public async Task OwnerMessage_WithoutALinkedBot_Is400()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-unlinked", linked: false);
+        await OpenChat(businessId, "+15551110013");
+
+        var resp = await Post(token, "/api/admin/chats/messages", new { phone = "+15551110013", text = "Hello" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Empty(Factory.WhatsAppBridge.Sent);
+    }
+
+    [Fact]
+    public async Task OwnerMessage_ToAPhoneWithNoChat_Is404()
+    {
+        var (_, token, _) = await SeedBusiness("chats-nochat");
+
+        var resp = await Post(token, "/api/admin/chats/messages", new { phone = "+15551110014", text = "Hello" });
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-        Assert.Empty(Factory.WhatsAppBridge.Sent);
     }
 
     [Fact]
     public async Task AnotherBusinessesChat_IsNotVisible()
     {
-        var (businessA, _) = await SeedBusiness("chats-a@example.com", "chats-a");
-        var (_, tokenB) = await SeedBusiness("chats-b@example.com", "chats-b");
-        await Inbound(businessA, "+15551110010", "hi");
+        var (businessA, _, _) = await SeedBusiness("chats-a");
+        var (_, tokenB, _) = await SeedBusiness("chats-b");
+        await OpenChat(businessA, "+15551110015");
 
         Authorize(Client, tokenB);
-        var resp = await Client.GetAsync("/api/admin/chats/messages?phone=%2B15551110010");
+        var resp = await Client.GetAsync("/api/admin/chats/messages?phone=%2B15551110015");
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
         Assert.Equal(0, await Unread(tokenB));
     }
 
     [Fact]
-    public async Task MessageTypedOnThePhone_IsRecorded_ReadsTheChat_AndPausesTheBot()
+    public async Task MessageTypedOnThePhone_IsRecordedOnlyInAnOpenChat()
     {
-        var (businessId, token) = await SeedBusiness("chats-phone@example.com", "chats-phone");
-        await Inbound(businessId, "+15551110011", "hi");
+        var (businessId, token, _) = await SeedBusiness("chats-phone");
+        await Inbound(businessId, "+15551110016", "hi"); // no chat
+        await Outgoing(businessId, "+15551110016", "not a chat");
+        await OpenChat(businessId, "+15551110017");
+        await Inbound(businessId, "+15551110017", "hello");
 
-        Assert.Equal(HttpStatusCode.OK, (await Outgoing(businessId, "+15551110011", "Typed on the phone")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Outgoing(businessId, "+15551110017", "Typed on the phone")).StatusCode);
 
-        Assert.Equal(0, await Unread(token));
-        Assert.Null(await Inbound(businessId, "+15551110011", "ok"));
-        var chat = await GetChat(token, "+15551110011");
-        Assert.Contains(chat.Messages, m => m.Sender == "OwnerPhone" && m.Text == "Typed on the phone");
+        Assert.Equal(0, await Unread(token)); // answering on the phone reads it
+        Assert.Contains((await GetChat(token, "+15551110017")).Messages, m => m.Sender == "OwnerPhone" && m.Text == "Typed on the phone");
+        using var db = Db();
+        Assert.False(await db.ChatMessages.AnyAsync(m => m.CustomerPhone == "+15551110016"));
     }
 
     [Fact]
     public async Task OutgoingWithoutTheBridgeSecret_Is401()
     {
-        var (businessId, _) = await SeedBusiness("chats-secret@example.com", "chats-secret");
+        var (businessId, _, _) = await SeedBusiness("chats-secret");
         var resp = await Client.PostAsJsonAsync("/api/whatsapp/bridge/outgoing",
-            new WhatsAppController.BridgeOutgoingRequest(businessId, "+15551110012", "x"));
+            new WhatsAppController.BridgeOutgoingRequest(businessId, "+15551110018", "x"));
         Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task AutomatedSend_IsRecordedAsTheBot_ButAlertsToTheOwnersNumberAreNot()
-    {
-        var (businessId, _) = await SeedBusiness("chats-auto@example.com", "chats-auto");
-        Business business;
-        using (var db = Db())
-        {
-            business = await db.Businesses.SingleAsync(b => b.Id == businessId);
-            business.Phone = "0521234567";
-            await db.SaveChangesAsync();
-        }
-
-        var sender = new BridgeWhatsAppSender(Factory.WhatsAppBridge, Factory.Services.GetRequiredService<ChatLog>());
-        await sender.SendAsync(business, "+15551110013", "Reminder: tomorrow at 10:00");
-        await sender.SendAsync(business, "+972521234567", "New inquiry from ...");
-
-        using var check = Db();
-        var rows = await check.ChatMessages.Where(m => m.BusinessId == businessId).ToListAsync();
-        var row = Assert.Single(rows);
-        Assert.Equal(ChatSender.Bot, row.Sender);
-        Assert.Equal("+15551110013", row.CustomerPhone);
-        Assert.True(row.IsRead);
     }
 }

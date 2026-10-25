@@ -84,7 +84,6 @@ builder.Services.AddHttpClient<IWhatsAppBridgeClient, WhatsAppBridgeClient>(clie
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 builder.Services.AddScoped<IWhatsAppSender, BridgeWhatsAppSender>();
-builder.Services.AddSingleton<ChatLog>();
 // Optional LLM layer on top of the WhatsApp chatbot (see WhatsAppController.ProcessMessageAsync) --
 // only ever invoked when OpenAI:ApiKey is configured; falls back to the rule-based flow otherwise
 // or if a call throws, so this registration is unconditional (cheap, no I/O at construction time).
@@ -112,6 +111,7 @@ builder.Services.AddScoped<NotificationOutbox>();
 if (!builder.Configuration.GetValue("Notifications:Inline", false))
     builder.Services.AddHostedService<NotificationWorker>();
 builder.Services.AddScoped<WhatsAppBookingTokenService>();
+builder.Services.AddScoped<ServiceListPrompt>();
 builder.Services.AddScoped<WhatsAppLinkingService>();
 // Email delivery, in order of precedence: Brevo (Brevo:ApiKey set -- the only option that can
 // reach arbitrary recipients without a verified domain, see BrevoEmailSender), then SMTP (e.g.

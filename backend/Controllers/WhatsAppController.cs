@@ -22,6 +22,7 @@ public class WhatsAppController(
     AvailabilityService availability,
     NotificationOutbox notifications,
     BookingRules bookingRules,
+    ServiceListPrompt serviceList,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
     // Literal commands, not natural language -- deliberately simple so a business can explain them
@@ -31,8 +32,8 @@ public class WhatsAppController(
     // messages in customers' chats name them (NormalizeDollarCommand).
     private const string BookingModeCommand = "#1";
     private const string InquiryModeCommand = "#2";
-    private const string BookingMode = "Booking";
-    private const string InquiryMode = "Inquiry";
+    private const string BookingMode = ServiceListPrompt.BookingMode;
+    private const string InquiryMode = ServiceListPrompt.InquiryMode;
     // A fresh conversation (or one that gave an unrecognized reply to the gate below) sits here
     // until it resolves to "1" or "2" -- distinct from BookingMode so TryHandleServiceSelectionReply
     // never mistakes the gate's own "1"/"2" reply for an actual service-list numeric selection.
@@ -61,10 +62,10 @@ public class WhatsAppController(
     // the appointment id in WhatsAppConversationState.ChatbotMode as "ConfirmCancel:{id}" until the
     // customer answers (see TryHandleCancelConfirmation).
     private const string ConfirmCancelModePrefix = "ConfirmCancel:";
-    private static readonly TimeSpan ConversationStateLifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan ConversationStateLifetime = ServiceListPrompt.ConversationStateLifetime;
     // An inquiry waits on the owner's answer, so it outlives the 10-minute booking prompt: a
     // follow-up an hour later used to land on the opening gate and was never logged (QA).
-    private static readonly TimeSpan InquiryStateLifetime = TimeSpan.FromHours(24);
+    private static readonly TimeSpan InquiryStateLifetime = ServiceListPrompt.InquiryStateLifetime;
     // After this many consecutive non-numeric/out-of-range replies to a "which service?" prompt,
     // the rule-based bot stops replying to anything except the literal "$" unlock keyword -- see
     // the lockout gate at the top of ProcessMessageRuleBasedAsync.
@@ -178,23 +179,22 @@ public class WhatsAppController(
 
             if (fromPhone.Length == 0) return Ok(new BridgeInboundResponse(null));
 
-            // Every message both ways is kept for the owner's Chats page (ChatsController). The
-            // customer's is saved first, so it's there even if the chatbot fails on it.
+            // The owner's Chats page (ChatsController) shows only the part of a conversation where
+            // the customer chose to talk to the owner (Inquiry mode, "#2"): their messages there,
+            // and the bot's replies on the way in and out. Saved before the chatbot runs, so the
+            // message is there even if it fails.
             var profileName = TruncateName(req.ProfileName);
-            var message = req.Message.Replace("\0", "").Trim();
-            db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Customer, message,
-                string.IsNullOrWhiteSpace(profileName) ? null : profileName));
-            await db.SaveChangesAsync();
-
-            // The owner is chatting with this customer: the chatbot stays out of it.
-            var since = DateTime.UtcNow - ChatLog.OwnerChatPause;
-            if (await db.ChatMessages.AnyAsync(m => m.BusinessId == business.Id && m.CustomerPhone == fromPhone
-                    && (m.Sender == ChatSender.Owner || m.Sender == ChatSender.OwnerPhone) && m.CreatedAt > since))
-                return Ok(new BridgeInboundResponse(null));
+            var wasInChat = await ChatLog.IsChatOpenAsync(db, business.Id, fromPhone);
+            if (wasInChat)
+            {
+                db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Customer, req.Message.Replace("\0", "").Trim(),
+                    string.IsNullOrWhiteSpace(profileName) ? null : profileName));
+                await db.SaveChangesAsync();
+            }
 
             var appUrl = config["AppUrl"] ?? "";
             var reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, req.Message.Trim());
-            if (reply is not null)
+            if (reply is not null && (wasInChat || await ChatLog.IsChatOpenAsync(db, business.Id, fromPhone)))
             {
                 db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Bot, reply));
                 await db.SaveChangesAsync();
@@ -210,17 +210,22 @@ public class WhatsAppController(
     public record BridgeOutgoingRequest(string BusinessId, string ToPhone, string Message);
 
     // The owner wrote to a customer on the linked phone itself (the bridge reports those; it skips
-    // what it sent for us). Kept for the Chats page, and it pauses the chatbot for that customer.
+    // what it sent for us). Kept for the Chats page when that customer's chat is open; other
+    // messages from the phone aren't the platform's business.
     [HttpPost("bridge/outgoing")]
     [RequireBridgeSecret]
-    public async Task<IActionResult> BridgeOutgoing([FromBody] BridgeOutgoingRequest req, ChatLog chatLog)
+    public async Task<IActionResult> BridgeOutgoing([FromBody] BridgeOutgoingRequest req)
     {
         var toPhone = PhoneNormalizer.Normalize(req.ToPhone);
         var message = req.Message.Replace("\0", "").Trim();
         if (toPhone.Length == 0 || message.Length == 0) return BadRequest(new { error = "Invalid request" });
         if (!await db.Businesses.AnyAsync(b => b.Id == req.BusinessId)) return NotFound();
-        await chatLog.RecordAsync(req.BusinessId, toPhone, ChatSender.OwnerPhone, message);
-        return Ok(new { ok = true });
+        if (!await ChatLog.IsChatOpenAsync(db, req.BusinessId, toPhone)) return Ok(new { ok = true, recorded = false });
+
+        db.ChatMessages.Add(ChatLog.NewMessage(req.BusinessId, toPhone, ChatSender.OwnerPhone, message));
+        await ChatLog.OwnerAnsweredAsync(db, req.BusinessId, toPhone);
+        await db.SaveChangesAsync();
+        return Ok(new { ok = true, recorded = true });
     }
 
     public record BridgeSessionEventRequest(string BusinessId, string Event, string? PhoneNumber);
@@ -1413,74 +1418,12 @@ public class WhatsAppController(
         await db.SaveChangesAsync();
     }
 
-    // Only bookable items make sense to offer through the booking chatbot -- a showcase-only
-    // item has nothing for this flow to schedule.
-    // Alphabetical in the customer's language -- ordering by Id looked random to owners.
-    private async Task<List<(string Id, string Name)>> ActiveServices(string businessId, string lang)
-    {
-        var services = await db.Items
-            .Where(s => s.BusinessId == businessId && s.IsActive && s.IsBookable)
-            .ToListAsync();
-        return services
-            .Select(s => (s.Id, Name: lang switch
-            {
-                "AR" => s.NameAr,
-                "HE" => s.NameHe,
-                _ => s.NameEn,
-            }))
-            .OrderBy(s => s.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(s => s.Id)
-            .ToList();
-    }
+    private Task<List<(string Id, string Name)>> ActiveServices(string businessId, string lang) =>
+        serviceList.ActiveServicesAsync(businessId, lang);
 
-    // Upserts the (BusinessId, Phone) conversation-state row (unique index guarantees at most one,
-    // and records the resolved language on it for TryHandleServiceSelectionReply / future
-    // signal-less replies to reuse) and replies with the numbered service list. Reused by the
-    // conversation-start path and by the reschedule/no-appointment paths, which prefix their own
-    // intro line first. A business's custom welcome message replaces the default greeting -- the
-    // "which service + list + instructions" tail always stays in the detected language.
-    private async Task<string> PromptServiceSelection(string businessId, string businessName, string phone, string lang, string? welcomeMessage, bool inquiryEnabled)
-    {
-        // An expired subscription or ended trial: a link would only lead to "Booking unavailable"
-        // and then 24 h of silence (QA run 4).
-        var business = (await db.Businesses.FindAsync(businessId))!;
-        if (!bookingRules.AcceptsBookings(business))
-        {
-            await ClearConversationState(businessId, phone);
-            return I18nService.T(lang, "whatsapp.bookingUnavailable", new() { ["businessName"] = businessName });
-        }
-
-        var services = await ActiveServices(businessId, lang);
-        if (services.Count == 0)
-            return I18nService.T(lang, "whatsapp.noServices", new() { ["businessName"] = businessName });
-
-        var existing = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == businessId && s.Phone == phone);
-        if (existing is null)
-        {
-            existing = new WhatsAppConversationState { BusinessId = businessId, Phone = phone };
-            db.WhatsAppConversationStates.Add(existing);
-        }
-        existing.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
-        existing.Language = lang;
-        existing.InvalidAttempts = 0;
-        existing.AwaitingBookingCompletion = false;
-        // A fresh booking prompt always means "back in Booking mode" -- without this, a row left
-        // over from an expired Inquiry session (see HandleInquiryModeAsync) would still read as
-        // Inquiry mode once its ExpiresAt gets refreshed below, silently swallowing the customer's
-        // next numeric service-selection reply as if it were inquiry content.
-        existing.ChatbotMode = BookingMode;
-        existing.InquiryNotified = false;
-        existing.ShownItemIds = string.Join(",", services.Select(s => s.Id));
-        await db.SaveChangesAsync();
-
-        var list = string.Join("\n", services.Select((s, i) => $"{i + 1}. {s.Name}"));
-        var escapeHatch = inquiryEnabled ? I18nService.T(lang, "whatsapp.inquiryEscapeHatch") : "";
-        if (!string.IsNullOrWhiteSpace(welcomeMessage))
-        {
-            var tail = I18nService.T(lang, "whatsapp.selectServicePrompt", new() { ["list"] = list });
-            return $"{welcomeMessage}\n\n{tail}{escapeHatch}";
-        }
-        return I18nService.T(lang, "whatsapp.selectService", new() { ["businessName"] = businessName, ["list"] = list }) + escapeHatch;
-    }
+    // See ServiceListPrompt.PromptAsync.
+    private Task<string> PromptServiceSelection(string businessId, string businessName, string phone, string lang, string? welcomeMessage, bool inquiryEnabled) =>
+        serviceList.PromptAsync(businessId, businessName, phone, lang, welcomeMessage, inquiryEnabled);
 
     // Returns null when there's no open "which service?" prompt for this phone -- the caller then
     // falls through to starting a fresh one. Otherwise resolves the numeric reply: valid -> issues
