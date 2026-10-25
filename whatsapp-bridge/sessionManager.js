@@ -109,6 +109,8 @@ export async function startSession(businessId) {
     const { connection, lastDisconnect, qr } = update
 
     if (qr) {
+      // Once per session. Right after a scan's restart it means the saved creds were lost.
+      if (session.status !== 'qr') console.log(`[${businessId}] waiting for a QR scan`)
       lastQr = qr
       session.qr = await QRCode.toDataURL(withCurrentSecret(qr))
       session.status = 'qr'
@@ -130,10 +132,18 @@ export async function startSession(businessId) {
       // a fresh QR every 3 s forever; stop instead, and the admin clicks Link again.
       const unlinkedQrExpired = !state.creds.me && statusCode !== DisconnectReason.restartRequired
       if (loggedOut || unlinkedQrExpired) {
+        // Only while this socket is still the business's session: a newer one (Link clicked
+        // again) owns the folder now, and deleting it wiped that pairing mid-scan (2026-10-25:
+        // linked, then the restart after the scan found no creds and the bot never came back).
+        if (sessions.get(businessId) !== session) return
         console.log(`[${businessId}] ${loggedOut ? 'logged out' : 'QR code not scanned in time'} -- clearing saved session`)
-        sessions.delete(businessId)
+        // Still in the map while the folder goes, so a Link click in between gets this closing
+        // session back instead of starting a new one on the folder being deleted.
+        session.status = 'closing'
+        session.qr = null
         failures.delete(businessId)
         await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
+        sessions.delete(businessId)
         // WhatsApp ended a linked session: tell the backend so the platform admin gets an email.
         // Not for an admin's own Unlink (unlinkSession), which logs out on purpose.
         if (loggedOut && !session.unlinking) reportLoggedOut(businessId, session.phoneNumber)
