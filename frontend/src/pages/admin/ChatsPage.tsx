@@ -9,6 +9,7 @@ import { useAuth } from '../../lib/auth'
 import { itemName, t } from '../../lib/i18n'
 import { useIsTouchPrimary } from '../../lib/useIsTouchPrimary'
 import UnreadBadge, { CHATS_UNREAD_KEY } from '../../components/admin/UnreadBadge'
+import ChatAlertsModal, { type ChatAlertSettings } from '../../components/admin/ChatAlertsModal'
 
 type Sender = 'Customer' | 'Bot' | 'Owner' | 'OwnerPhone'
 type ChatSummary = { phone: string; name: string | null; lastText: string; lastSender: Sender; lastAt: string; unread: number; isOpen: boolean }
@@ -31,7 +32,8 @@ export default function ChatsPage() {
     queryFn: () => api.get('/admin/chats').then((r) => r.data),
     refetchInterval: 5000,
   })
-  const { data: settings } = useQuery<{ whatsAppNumber: string | null; chatbotInquiryEnabled: boolean }>({
+  const [alertsOpen, setAlertsOpen] = useState(false)
+  const { data: settings } = useQuery<{ whatsAppNumber: string | null; chatbotInquiryEnabled: boolean } & ChatAlertSettings>({
     queryKey: ['settings'],
     queryFn: () => api.get('/admin/settings').then((r) => r.data),
   })
@@ -42,6 +44,17 @@ export default function ChatsPage() {
 
   const inquiryOff = settings && !settings.chatbotInquiryEnabled && (
     <div className="mb-4 rounded-xl border border-line bg-surface px-4 py-3 text-sm text-muted">{t(lang, 'chatsInquiryOff')}</div>
+  )
+  // The page title with the ⚙️ that opens the alert settings.
+  const header = (
+    <div className="flex items-center justify-between gap-3 mb-4">
+      <h1 className="text-2xl font-bold text-ink">{t(lang, 'navChats')}</h1>
+      <button onClick={() => setAlertsOpen(true)} disabled={!settings} aria-label={t(lang, 'chatsSettings')} title={t(lang, 'chatsSettings')}
+        className="flex items-center gap-2 border border-line bg-surface hover:bg-cream text-ink text-sm font-medium rounded-xl px-3 py-2 disabled:opacity-50">
+        <span>⚙️</span><span>{t(lang, 'chatsSettings')}</span>
+      </button>
+      {alertsOpen && settings && <ChatAlertsModal lang={lang} settings={settings} onClose={() => setAlertsOpen(false)} />}
+    </div>
   )
   const list = (
     <ChatList lang={lang} chats={chats} isLoading={isLoading} selected={selected} onOpen={open} />
@@ -63,7 +76,7 @@ export default function ChatsPage() {
   if (isTouch) {
     return (
       <div>
-        {!selected && <h1 className="text-2xl font-bold text-ink mb-4">{t(lang, 'navChats')}</h1>}
+        {!selected && header}
         {!selected && inquiryOff}
         {selected ? conversation : list}
       </div>
@@ -72,7 +85,7 @@ export default function ChatsPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
-      <h1 className="text-2xl font-bold text-ink mb-4">{t(lang, 'navChats')}</h1>
+      {header}
       {inquiryOff}
       <div className="flex-1 min-h-0 flex bg-surface border border-line rounded-2xl overflow-hidden">
         <div className="w-80 shrink-0 border-e border-line overflow-y-auto">{list}</div>

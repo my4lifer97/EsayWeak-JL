@@ -19,10 +19,6 @@ type ChatbotSettings = {
   chatbotFinalMessageHe: string | null
   chatbotDefaultLanguage: string | null
   chatbotInquiryEnabled: boolean
-  inquiryNotifyViaWhatsApp: boolean
-  inquiryWhatsAppNumber: string | null
-  inquiryNotifyViaEmail: boolean
-  inquiryEmail: string | null
 }
 
 type MessageFieldKey =
@@ -34,7 +30,6 @@ type ChatbotForm = {
   chatbotWelcomeMessageEn: string; chatbotWelcomeMessageAr: string; chatbotWelcomeMessageHe: string
   chatbotConfirmationMessageEn: string; chatbotConfirmationMessageAr: string; chatbotConfirmationMessageHe: string
   chatbotFinalMessageEn: string; chatbotFinalMessageAr: string; chatbotFinalMessageHe: string
-  inquiryWhatsAppNumber: string; inquiryEmail: string
 }
 
 type LangNameKey = 'langEnglish' | 'langArabic' | 'langHebrew'
@@ -65,8 +60,6 @@ type ChatbotValues = {
   chatbotEnabled: boolean
   chatbotDefaultLanguage: '' | 'EN' | 'AR' | 'HE'
   chatbotInquiryEnabled: boolean
-  inquiryNotifyViaWhatsApp: boolean
-  inquiryNotifyViaEmail: boolean
 }
 
 function valuesFrom(business: ChatbotSettings): ChatbotValues {
@@ -81,14 +74,10 @@ function valuesFrom(business: ChatbotSettings): ChatbotValues {
       chatbotFinalMessageEn: business.chatbotFinalMessageEn ?? '',
       chatbotFinalMessageAr: business.chatbotFinalMessageAr ?? '',
       chatbotFinalMessageHe: business.chatbotFinalMessageHe ?? '',
-      inquiryWhatsAppNumber: business.inquiryWhatsAppNumber ?? '',
-      inquiryEmail: business.inquiryEmail ?? '',
     },
     chatbotEnabled: business.chatbotEnabled,
     chatbotDefaultLanguage: (business.chatbotDefaultLanguage as 'EN' | 'AR' | 'HE' | null) ?? '',
     chatbotInquiryEnabled: business.chatbotInquiryEnabled,
-    inquiryNotifyViaWhatsApp: business.inquiryNotifyViaWhatsApp,
-    inquiryNotifyViaEmail: business.inquiryNotifyViaEmail,
   }
 }
 
@@ -108,10 +97,6 @@ function toPayload(v: ChatbotValues) {
     chatbotFinalMessageHe: form.chatbotFinalMessageHe || null,
     chatbotDefaultLanguage: v.chatbotDefaultLanguage || null,
     chatbotInquiryEnabled: v.chatbotInquiryEnabled,
-    inquiryNotifyViaWhatsApp: v.inquiryNotifyViaWhatsApp,
-    inquiryWhatsAppNumber: form.inquiryWhatsAppNumber || null,
-    inquiryNotifyViaEmail: v.inquiryNotifyViaEmail,
-    inquiryEmail: form.inquiryEmail || null,
   }
 }
 
@@ -128,13 +113,10 @@ export default function ChatbotSettingsPage() {
     chatbotWelcomeMessageEn: '', chatbotWelcomeMessageAr: '', chatbotWelcomeMessageHe: '',
     chatbotConfirmationMessageEn: '', chatbotConfirmationMessageAr: '', chatbotConfirmationMessageHe: '',
     chatbotFinalMessageEn: '', chatbotFinalMessageAr: '', chatbotFinalMessageHe: '',
-    inquiryWhatsAppNumber: '', inquiryEmail: '',
   })
   const [chatbotEnabled, setChatbotEnabled] = useState(true)
   const [chatbotDefaultLanguage, setChatbotDefaultLanguage] = useState<'' | 'EN' | 'AR' | 'HE'>('')
   const [chatbotInquiryEnabled, setChatbotInquiryEnabled] = useState(false)
-  const [inquiryNotifyViaWhatsApp, setInquiryNotifyViaWhatsApp] = useState(false)
-  const [inquiryNotifyViaEmail, setInquiryNotifyViaEmail] = useState(false)
   // Which business the form was filled from -- refills if a different owner's settings arrive,
   // instead of keeping (and later saving) the previous business's values.
   const [initializedFor, setInitializedFor] = useState<string | null>(null)
@@ -148,13 +130,11 @@ export default function ChatbotSettingsPage() {
     setChatbotEnabled(v.chatbotEnabled)
     setChatbotDefaultLanguage(v.chatbotDefaultLanguage)
     setChatbotInquiryEnabled(v.chatbotInquiryEnabled)
-    setInquiryNotifyViaWhatsApp(v.inquiryNotifyViaWhatsApp)
-    setInquiryNotifyViaEmail(v.inquiryNotifyViaEmail)
     setInitializedFor(business.slug)
   }
 
   const payload = toPayload({
-    form, chatbotEnabled, chatbotDefaultLanguage, chatbotInquiryEnabled, inquiryNotifyViaWhatsApp, inquiryNotifyViaEmail,
+    form, chatbotEnabled, chatbotDefaultLanguage, chatbotInquiryEnabled,
   })
   // Compared against the last save too, so leaving right after Save doesn't ask while the
   // settings refetch is still in flight.
@@ -242,39 +222,7 @@ export default function ChatbotSettingsPage() {
             </label>
 
             {chatbotInquiryEnabled && (
-              <div className="mt-4 ms-7 space-y-3">
-                <h3 className="text-sm font-semibold text-ink">{t(lang, 'inquiryNotifications')}</h3>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={inquiryNotifyViaWhatsApp}
-                    onChange={(e) => setInquiryNotifyViaWhatsApp(e.target.checked)}
-                    className="w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
-                  <span className="text-sm text-ink">{t(lang, 'inquiryNotifyViaWhatsApp')}</span>
-                </label>
-                {inquiryNotifyViaWhatsApp && (
-                  <input value={form.inquiryWhatsAppNumber} type="tel"
-                    onChange={(e) => setForm((f) => ({ ...f, inquiryWhatsAppNumber: e.target.value }))}
-                    placeholder={t(lang, 'inquiryWhatsAppNumberPlaceholder')}
-                    className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
-                )}
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={inquiryNotifyViaEmail}
-                    onChange={(e) => setInquiryNotifyViaEmail(e.target.checked)}
-                    className="w-4 h-4 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
-                  <span className="text-sm text-ink">{t(lang, 'inquiryNotifyViaEmail')}</span>
-                </label>
-                {inquiryNotifyViaEmail && (
-                  <input value={form.inquiryEmail} type="email"
-                    onChange={(e) => setForm((f) => ({ ...f, inquiryEmail: e.target.value }))}
-                    placeholder={t(lang, 'inquiryEmailPlaceholder')}
-                    className="w-full bg-cream border border-line rounded-lg px-3 py-2.5 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
-                )}
-
-                {(inquiryNotifyViaWhatsApp || inquiryNotifyViaEmail) && (
-                  <p className="text-muted text-xs">{t(lang, 'inquiryContactFallback')}</p>
-                )}
-              </div>
+              <p className="mt-3 ms-7 text-muted text-xs">{t(lang, 'chatbotInquiryAlertsMoved')}</p>
             )}
           </div>
         </div>

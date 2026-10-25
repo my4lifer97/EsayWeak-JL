@@ -328,7 +328,7 @@ cron-job.org's dashboard (not tracked in this repo).
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — items CRUD (route/page names kept as "services" — see the note under Admin routes above)
 - `/admin/reviews` — this business's reviews with an inline owner-reply editor; hidden reviews shown greyed
-- `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle + notification contacts (the inquiry messages themselves are on `/admin/chats`) — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
+- `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle (the inquiry messages, and their WhatsApp/email alert settings behind the page's ⚙️ Settings / `ChatAlertsModal`, are on `/admin/chats`) — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
 - `/admin/chats` — customers who chose to talk to the owner (`#2`): reply, send a booking link, finish the chat (`ChatsPage`); the sidebar item shows a red unread count (`components/admin/UnreadBadge`)
 - `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), booking limits, waitlist + cancellation-approval toggles, read-only assigned WhatsApp number
 - `/browse` — public discovery directory (`BrowseBusinessesPage`): category chips (`GET /api/business-types`), city + sort filters, a default top-rated list (no "type first" gate), "Load more" paging, rich cards linking to `/:slug`; the authenticated-only "Businesses You Follow" list stays below
@@ -1100,8 +1100,9 @@ reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (a 
 Admin API: `GET/POST /api/admin/chatbot-inquiries` (list, `?unreadOnly=true` filter) and
 `POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `pages/admin/ChatbotSettingsPage.tsx`, its
 own top-level sidebar page (`/admin/chatbot`, separate from the general `/admin/settings` page) —
-holds the enable toggle, all three chatbot messages, the inquiry toggle and notification contacts (its
-Inquiries inbox was removed 2026-10-25 at the owner's request: those messages are on `/admin/chats`), so every
+holds the enable toggle, all three chatbot messages and the inquiry toggle (its Inquiries inbox and the
+notification contacts moved to `/admin/chats` 2026-10-25 at the owner's request -- the alert settings are its ⚙️ Settings,
+`components/admin/ChatAlertsModal`, the same partial PATCH), so every
 chatbot-related control lives in one place instead of being buried in general Settings. It PATCHes
 `/api/admin/settings` with only its own fields, same partial-update endpoint the general Settings
 page uses for the rest of the business record.
