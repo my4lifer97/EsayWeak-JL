@@ -116,7 +116,10 @@ export async function startSession(businessId) {
       session.status = 'qr'
     }
 
-    if (connection === 'open') {
+    // A socket that already closed never comes back: right after a QR scan Baileys reported "open"
+    // just after the restart close (same millisecond), which left the session marked connected,
+    // so the reconnect below returned it as-is and the bot sat on a dead socket (2026-10-25).
+    if (connection === 'open' && !session.closed) {
       failures.delete(businessId)
       session.status = 'connected'
       session.qr = null
@@ -125,6 +128,7 @@ export async function startSession(businessId) {
     }
 
     if (connection === 'close') {
+      session.closed = true
       const statusCode = lastDisconnect?.error?.output?.statusCode
       const loggedOut = statusCode === DisconnectReason.loggedOut
       // Never linked (no `me` in the creds) and not the restart WhatsApp asks for right after a
@@ -165,7 +169,12 @@ export async function startSession(businessId) {
         const delayMs = forbidden ? Math.max((expireAt ? expireAt * 1000 - Date.now() : 60_000), 60_000) : retryMs
         console.log(`[${businessId}] connection closed, reconnecting in ${Math.round(delayMs / 1000)}s (code ${statusCode}${forbidden ? ', WhatsApp temporary block' : ''})`)
         // Skipped if it was unlinked or restarted meanwhile (that session handles itself).
-        setTimeout(() => { if (sessions.get(businessId) === session) startSession(businessId) }, delayMs)
+        // The status is set again here: startSession reuses any session that isn't 'disconnected'.
+        setTimeout(() => {
+          if (sessions.get(businessId) !== session) return
+          session.status = 'disconnected'
+          startSession(businessId)
+        }, delayMs)
       }
     }
   })
