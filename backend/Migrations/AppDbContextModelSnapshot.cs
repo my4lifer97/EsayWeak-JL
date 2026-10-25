@@ -80,6 +80,9 @@ namespace BarberSaas.Api.Migrations
                     b.Property<string>("Id")
                         .HasColumnType("text");
 
+                    b.Property<string>("AttendanceStatus")
+                        .HasColumnType("text");
+
                     b.Property<string>("BusinessId")
                         .IsRequired()
                         .HasColumnType("text");

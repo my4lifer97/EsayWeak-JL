@@ -393,6 +393,11 @@ public class WhatsAppController(
         // customer (waitlist) use too.
         await RememberCustomerLanguage(fromPhone, lang);
 
+        // The answer to the day-before reminder's "will you come? 1/2" (AttendanceQuestion), before
+        // anything else: the Book/Ask menu and the service list would read the same "1"/"2".
+        var (attendanceHandled, attendanceReply) = await AnswerAttendanceQuestionAsync(business.Id, fromPhone, incomingMsg, lang);
+        if (attendanceHandled) return attendanceReply;
+
         if (business.ChatbotInquiryEnabled)
         {
             var (handled, inquiryReply) = await HandleInquiryModeAsync(business, fromPhone, profileName, incomingMsg, lang);
@@ -1268,6 +1273,38 @@ public class WhatsAppController(
         var (reask, reaskMode) = CancelQuestion(still, lang, reask: true);
         state.ChatbotMode = reaskMode;
         return (CancelPromptOutcome.Unclear, reask);
+    }
+
+    // Handled=false: no open question, or the message isn't an answer (the question is dropped either
+    // way and the message handled normally). "1"/yes confirms; "2"/no, or any cancel word, cancels
+    // through CancelFromCustomerAsync (owner approval and the waitlist included).
+    private async Task<(bool Handled, string? Reply)> AnswerAttendanceQuestionAsync(string businessId, string fromPhone, string message, string lang)
+    {
+        var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
+            s.BusinessId == businessId && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
+        var appointmentId = AttendanceQuestion.AppointmentId(state?.ChatbotMode);
+        if (appointmentId is null) return (false, null);
+
+        db.WhatsAppConversationStates.Remove(state!);
+        await db.SaveChangesAsync();
+
+        // "yes, cancel" means cancel here, not yes.
+        var answer = ContainsKeyword(message, CancelKeywords) ? "2" : ConfirmationAnswer(message);
+        if (answer is null) return (false, null);
+        if (answer == "2")
+        {
+            var cancelled = await CancelConfirmedAppointment(businessId, appointmentId, fromPhone, lang);
+            return cancelled is null ? (false, null) : (true, cancelled);
+        }
+
+        var appointment = await db.Appointments.Include(a => a.Customer)
+            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == businessId && a.Customer.Phone == fromPhone);
+        if (appointment is null || appointment.Status != AppointmentStatus.CONFIRMED || appointment.PendingCancellationApproval
+            || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+            return (false, null);
+        appointment.AttendanceStatus = AttendanceQuestion.Confirmed;
+        await db.SaveChangesAsync();
+        return (true, I18nService.T(lang, "whatsapp.attendanceConfirmed", DateTimeArgs(appointment)));
     }
 
     // The reply that locks the conversation: the "$" reminder, with the lock running LockoutLifetime.

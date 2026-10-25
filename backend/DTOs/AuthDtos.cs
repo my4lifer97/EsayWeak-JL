@@ -129,7 +129,7 @@ public record BusinessSummary(string Name, string Slug, string Language);
 public record DashboardAppointmentDto(
     string Id, string Date, string StartTime, string EndTime,
     string Status, string? Notes, CustomerSummary Customer, ItemSummary Item, decimal? Price, string? PhotoUrl,
-    string? RecurringSeriesId = null, bool PendingCancellationApproval = false);
+    string? RecurringSeriesId = null, bool PendingCancellationApproval = false, string? AttendanceStatus = null);
 
 public record ScheduleResponse(
     List<WorkingHoursDto> WorkingHours,

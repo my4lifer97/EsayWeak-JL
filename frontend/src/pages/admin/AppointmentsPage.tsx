@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AttendanceBadge from '../../components/admin/AttendanceBadge'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
@@ -20,6 +21,7 @@ type Appointment = {
   photoUrl: string | null
   recurringSeriesId: string | null
   pendingCancellationApproval: boolean
+  attendanceStatus: string | null
 }
 type Item = { id: string; nameEn: string; nameAr: string; nameHe: string }
 
@@ -191,6 +193,9 @@ export default function AppointmentsPage() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_BADGE[a.status] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800/60 dark:text-gray-400'}`}>
                         {STATUS_LABEL[a.status] ? t(lang, STATUS_LABEL[a.status]) : a.status}
                       </span>
+                    )}
+                    {!a.pendingCancellationApproval && (
+                      <div className="mt-1"><AttendanceBadge lang={lang} attendanceStatus={a.attendanceStatus} status={a.status} /></div>
                     )}
                   </td>
                   <td className="px-4 py-3">

@@ -363,6 +363,10 @@ public class Appointment
     public AppointmentStatus Status { get; set; } = AppointmentStatus.CONFIRMED;
     public bool ReminderSent { get; set; } = false;
     public bool ReminderSentSoon { get; set; } = false;
+    // The day-before reminder's "will you come? 1/2" (CronController, answered in WhatsAppController):
+    // null = not asked, "ASKED" = waiting for the answer, "CONFIRMED" = the customer said yes.
+    // A "no" cancels the appointment instead. Cleared when the appointment moves, like ReminderSent.
+    public string? AttendanceStatus { get; set; }
     public string CancelToken { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public string? RecurringSeriesId { get; set; }

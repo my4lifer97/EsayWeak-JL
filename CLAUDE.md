@@ -780,7 +780,7 @@ Migrations run roughly: `InitialCreate` ... `AddPlatformAdminAndActivityLog` ...
 multi-vertical rename) → `AddBusinessOwnerRequests` → `AddReviews` (adds `Reviews` +
 `Businesses.RatingCount`/`RatingAverage`) → `AddBusinessDiscoveryFields` (adds
 `Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) → `AddCustomerOtp` (adds the
-`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18) → `AddChatMessages` → `AddChatAttachments` → `AddQuickReplies` (2026-10-25), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
+`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18) → `AddChatMessages` → `AddChatAttachments` → `AddQuickReplies` → `AddAppointmentAttendance` (2026-10-25), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
 `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel
 **before** the code push, not after (see [Deployment (Railway)](#deployment-railway)) — skipping
 that ordering has caused multiple prod outages.
@@ -864,6 +864,17 @@ to WhatsApp).
   reminder on every message was spam; 2026-09-22's fix had replaced total silence, which looked
   broken). The lock lasts 24 h from the last reminder (`LockoutLifetime`); `ExpiresAt - LockoutLifetime`
   is when that reminder went out, so no extra column (`StartLockout`/`LockoutReminderIfDue`).
+- **No-show question in the day-before reminder** (2026-10-25, `Services/AttendanceQuestion`): the
+  reminder ends with `reminder.confirmQuestion` ("Reply 1 to confirm or 2 to cancel") when the customer
+  has no live conversation row (a service list, cancel question or owner chat would read the same
+  1/2; they get the plain reminder), at most once per phone per business per run. It's parked as
+  `ChatbotMode = "ConfirmAttendance:{appointmentId}"` until the appointment starts, and
+  `Appointment.AttendanceStatus = "ASKED"`. `WhatsAppController.AnswerAttendanceQuestionAsync` runs first
+  in `ProcessMessageLockedAsync` (before the Book/Ask menu): `1`/yes -> `"CONFIRMED"` +
+  `whatsapp.attendanceConfirmed`; `2`/no or any cancel word -> `CancelConfirmedAppointment` (owner
+  approval and waitlist included); anything else drops the question and is handled normally. Moving
+  an appointment clears `AttendanceStatus` (with `ReminderSent`). The owner sees it as a badge
+  (`components/admin/AttendanceBadge`) on Appointments and in the calendar's details.
 - **Cancel keyword asks first** (rule-based path 2026-10-11; the AI path asks too since 2026-10-19, see below): cancel/reschedule
   keywords match **whole words only** (`ContainsKeyword`) — the old substring match cancelled real
   appointments on ordinary sentences like "אני בטלפון עכשיו" ("בטל" inside "בטלפון"); "שנה" was

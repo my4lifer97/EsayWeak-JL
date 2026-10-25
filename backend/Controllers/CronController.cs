@@ -125,7 +125,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             .ToListAsync();
 
         var (dayBeforeSent, dayBeforeFailed) = await SendBatchAsync(dayBeforeAppointments, "reminder.message", appUrl,
-            (appt) => appt.ReminderSent = true);
+            (appt) => appt.ReminderSent = true, askAttendance: true);
 
         // "Soon" window: local start time (Date + StartTime) has just come within 3 hours of now,
         // and hasn't fired yet -- checked every run (this endpoint is called every 15 min by the
@@ -155,9 +155,13 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         });
     }
 
-    private async Task<(int sent, int failed)> SendBatchAsync(List<Appointment> appointments, string messageKey, string appUrl, Action<Appointment> markSent)
+    // askAttendance: the day-before one ends with "will you come? 1/2" when the customer has no
+    // live conversation (AttendanceQuestion), at most one question per phone per business.
+    private async Task<(int sent, int failed)> SendBatchAsync(List<Appointment> appointments, string messageKey, string appUrl,
+        Action<Appointment> markSent, bool askAttendance = false)
     {
         int sent = 0, failed = 0;
+        var asked = new HashSet<(string, string)>();
 
         // In the language the chatbot last spoke with the customer in (like owner notices and
         // waitlist messages, QA run 4), else the business's chatbot language. A customer the owner
@@ -197,8 +201,20 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
                     ["cancelUrl"] = cancelUrl,
                 });
 
+                var ask = false;
+                WhatsAppConversationState? existing = null;
+                if (askAttendance && !asked.Contains((appt.BusinessId, appt.Customer.Phone)))
+                    (ask, existing) = await AttendanceQuestion.CanAskAsync(db, appt.BusinessId, appt.Customer.Phone);
+                if (ask) message += $"\n\n{I18nService.T(lang, "reminder.confirmQuestion")}";
+
                 await whatsAppSender.SendAsync(appt.Business, appt.Customer.Phone, message);
 
+                // Parked only once the question really went out.
+                if (ask)
+                {
+                    AttendanceQuestion.Park(db, existing, appt, lang);
+                    asked.Add((appt.BusinessId, appt.Customer.Phone));
+                }
                 markSent(appt);
                 sent++;
             }

@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from 'react'
+import AttendanceBadge from './AttendanceBadge'
 import { Link } from 'react-router-dom'
 import { format, addDays, parseISO } from 'date-fns'
 import { ar, he, enUS } from 'date-fns/locale'
@@ -21,6 +22,7 @@ type Appointment = {
   photoUrl: string | null
   recurringSeriesId: string | null
   pendingCancellationApproval: boolean
+  attendanceStatus: string | null
 }
 
 type WorkingHour = { dayOfWeek: number; startTime: string; endTime: string; isActive: boolean }
@@ -362,6 +364,9 @@ export default function WeeklyCalendar({
               {selected.notes && <Row label={t(lang, 'notesLabel')} value={selected.notes} />}
               <Row label={t(lang, 'status')} value={t(lang, STATUS_LABEL[selected.status] ?? 'statusConfirmed')}
                 valueClass={selected.status === 'CONFIRMED' ? 'text-blue-700 dark:text-blue-400' : selected.status === 'COMPLETED' ? 'text-green-700 dark:text-green-400' : 'text-muted'} />
+              {!selected.pendingCancellationApproval && selected.attendanceStatus && selected.status === 'CONFIRMED' && (
+                <div className="flex justify-end"><AttendanceBadge lang={lang} attendanceStatus={selected.attendanceStatus} status={selected.status} /></div>
+              )}
             </div>
             {selected.photoUrl && (
               <div className="mb-6">

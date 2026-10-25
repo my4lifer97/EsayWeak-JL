@@ -127,6 +127,7 @@ public class CustomerAppointmentsController(
         // Both reminders are for the new time, including the 3-hours-before one.
         appt.ReminderSent = false;
         appt.ReminderSentSoon = false;
+        appt.AttendanceStatus = null;
 
         await waitlist.ResolveForRebooking(appt.BusinessId, appt.Date, appt.StartTime, appt.EndTime);
         if (!await availability.TrySaveOrDetectConflict(appt.BusinessId, req.Date, req.StartTime, appt.EndTime))

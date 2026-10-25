@@ -1001,7 +1001,7 @@ public class AdminController(
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ItemSummary(a.Item.Id, a.Item.NameEn, a.Item.NameAr, a.Item.NameHe, a.Item.DurationMinutes, a.Item.Price),
-            a.Item.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
+            a.Item.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval, a.AttendanceStatus)));
     }
 
     // ─── Appointments ────────────────────────────────────────────────────────
@@ -1035,7 +1035,7 @@ public class AdminController(
             AppointmentStatusHelper.EffectiveStatus(a.Status, a.Date, a.EndTime), a.Notes,
             new CustomerSummary(a.Customer.Id, a.Customer.Name, a.Customer.FamilyName, a.Customer.Phone),
             new ItemSummary(a.Item.Id, a.Item.NameEn, a.Item.NameAr, a.Item.NameHe, a.Item.DurationMinutes, a.Item.Price),
-            a.Item.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval)));
+            a.Item.Price, a.PhotoUrl, a.RecurringSeriesId, a.PendingCancellationApproval, a.AttendanceStatus)));
     }
 
     // ─── Manual appointment creation ───────────────────────────────────────
@@ -1183,6 +1183,7 @@ public class AdminController(
         // Both reminders are for the new time, including the 3-hours-before one.
         appt.ReminderSent = false;
         appt.ReminderSentSoon = false;
+        appt.AttendanceStatus = null;
 
         await waitlist.ResolveForRebooking(BusinessId, appt.Date, appt.StartTime, appt.EndTime);
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, appt.EndTime))
