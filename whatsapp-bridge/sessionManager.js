@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs'
 import { randomBytes } from 'crypto'
 import path from 'path'
-import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, generateMessageIDV2 } from '@whiskeysockets/baileys'
+import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, generateMessageIDV2, downloadMediaMessage, extractMessageContent } from '@whiskeysockets/baileys'
 import { pino } from 'pino'
 import QRCode from 'qrcode'
 
@@ -19,6 +19,12 @@ const failures = new Map()
 // as fromMe like the ones the owner types on the phone, and only the latter are reported.
 const sentIds = new Set()
 const MAX_SENT_IDS = 5000
+// A customer's photo, video, voice note, sticker or file goes to the backend with the message, for
+// the owner's Chats page (kept only while that customer's chat is open). Bigger ones are reported
+// by name only, so one long video can't fill the database.
+const MEDIA_TYPES = ['imageMessage', 'videoMessage', 'ptvMessage', 'audioMessage', 'documentMessage', 'stickerMessage']
+const MAX_MEDIA_BYTES = 16 * 1024 * 1024
+const silentLogger = pino({ level: 'silent' })
 
 // The id is chosen and remembered before sending: Baileys echoes the message (messages.upsert)
 // on process.nextTick, which can run before sendMessage's promise resolves.
@@ -225,11 +231,33 @@ async function resolvePhoneJid(sock, msg) {
   return null
 }
 
+// View-once and disappearing messages wrap the real content; extractMessageContent unwraps them.
 function messageText(msg) {
-  return msg.message?.conversation
-    || msg.message?.extendedTextMessage?.text
-    || msg.message?.imageMessage?.caption
+  const content = extractMessageContent(msg.message)
+  return content?.conversation
+    || content?.extendedTextMessage?.text
+    || content?.imageMessage?.caption
+    || content?.videoMessage?.caption
+    || content?.documentMessage?.caption
     || ''
+}
+
+// { type, mimetype, fileName, base64 } for a message with media, else null. base64 is null when the
+// file is too big or couldn't be downloaded -- the owner then sees its name and opens it on the phone.
+async function messageMedia(businessId, sock, msg) {
+  const content = extractMessageContent(msg.message)
+  const type = MEDIA_TYPES.find((t) => content?.[t])
+  if (!type) return null
+  const info = content[type]
+  const media = { type: type.replace('Message', ''), mimetype: info.mimetype || null, fileName: info.fileName || null, base64: null }
+  if (Number(info.fileLength || 0) > MAX_MEDIA_BYTES) return media
+  try {
+    const data = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage, logger: silentLogger })
+    if (data.length <= MAX_MEDIA_BYTES) media.base64 = data.toString('base64')
+  } catch (err) {
+    console.error(`[${businessId}] could not download a customer's ${media.type}:`, err.message)
+  }
+  return media
 }
 
 // A message the owner typed on the linked phone to a customer: the backend shows it on the
@@ -264,7 +292,8 @@ async function handleInboundMessage(businessId, sock, msg) {
   if (!msg.key.remoteJid || msg.key.remoteJid.endsWith('@g.us')) return // ignore group messages -- chatbot is 1:1 only
 
   const text = messageText(msg)
-  if (!text.trim()) return
+  const media = await messageMedia(businessId, sock, msg)
+  if (!text.trim() && !media) return
 
   const jid = await resolvePhoneJid(sock, msg)
   if (!jid) {
@@ -278,7 +307,7 @@ async function handleInboundMessage(businessId, sock, msg) {
   const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/inbound`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
-    body: JSON.stringify({ businessId, fromPhone, profileName, message: text }),
+    body: JSON.stringify({ businessId, fromPhone, profileName, message: text, media }),
   })
   if (!resp.ok) throw new Error(`backend responded ${resp.status}`)
   const { reply } = await resp.json()

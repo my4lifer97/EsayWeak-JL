@@ -265,6 +265,91 @@ public class ChatsTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
     }
 
+    private async Task<string?> InboundMedia(string businessId, string fromPhone, string caption, WhatsAppController.BridgeInboundMedia media)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/whatsapp/bridge/inbound")
+        {
+            Content = JsonContent.Create(new WhatsAppController.BridgeInboundRequest(businessId, fromPhone, "Dana", caption, media)),
+        };
+        req.Headers.Add("X-Bridge-Secret", TestWebApplicationFactory.BridgeSecret);
+        var resp = await Client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        return (await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>())!.Reply;
+    }
+
+    [Fact]
+    public async Task CustomersPhoto_IsShownInTheChat_WithItsCaption()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-in-photo");
+        await OpenChat(businessId, "+15551110031");
+
+        var reply = await InboundMedia(businessId, "+15551110031", "Like this one",
+            new("image", "image/jpeg", null, Convert.ToBase64String(Png)));
+
+        Assert.Null(reply);
+        var last = (await GetChat(token, "+15551110031")).Messages[^1];
+        Assert.Equal(("Customer", "Like this one"), (last.Sender, last.Text));
+        Assert.Equal(("photo.jpg", "image/jpeg"), (last.Attachment!.FileName, last.Attachment.ContentType));
+        Assert.Equal(1, await Unread(token));
+
+        var file = await Client.GetAsync($"/api/admin/chats/attachments/{last.Attachment.Id}");
+        Assert.Equal(Png, await file.Content.ReadAsByteArrayAsync());
+        Assert.Equal("nosniff", file.Headers.GetValues("X-Content-Type-Options").Single());
+    }
+
+    [Fact]
+    public async Task CustomersFile_WithoutACaption_ShowsItsNameInTheList()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-in-doc");
+        await OpenChat(businessId, "+15551110032");
+
+        await InboundMedia(businessId, "+15551110032", "",
+            new("document", "application/pdf", "../id card.pdf", Convert.ToBase64String("%PDF-1.4"u8.ToArray())));
+
+        Authorize(Client, token);
+        var chats = (await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>("/api/admin/chats"))!;
+        Assert.Equal("📎 id card.pdf", chats[0].LastText);
+    }
+
+    [Fact]
+    public async Task CustomersPageLikeFile_IsStoredAsAPlainDownload()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-in-html");
+        await OpenChat(businessId, "+15551110033");
+
+        await InboundMedia(businessId, "+15551110033", "",
+            new("document", "text/html", "page.html", Convert.ToBase64String("<script>1</script>"u8.ToArray())));
+
+        var attachment = (await GetChat(token, "+15551110033")).Messages[^1].Attachment!;
+        Assert.Equal("application/octet-stream", attachment.ContentType);
+    }
+
+    [Fact]
+    public async Task CustomersFile_NotDownloaded_IsShownByName()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-in-big");
+        await OpenChat(businessId, "+15551110034");
+
+        await InboundMedia(businessId, "+15551110034", "my video", new("video", "video/mp4", null, null));
+
+        var last = (await GetChat(token, "+15551110034")).Messages[^1];
+        Assert.Null(last.Attachment);
+        Assert.Equal("📎 video.mp4\nmy video", last.Text);
+    }
+
+    [Fact]
+    public async Task PhotoWithoutACaption_OutsideAChat_GetsNoReply_AndIsNotKept()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-in-nochat");
+
+        var reply = await InboundMedia(businessId, "+15551110035", "", new("image", "image/jpeg", null, Convert.ToBase64String(Png)));
+
+        Assert.Null(reply);
+        using var db = Db();
+        Assert.False(await db.ChatAttachments.AnyAsync(a => a.BusinessId == businessId));
+        Assert.Equal(0, await Unread(token));
+    }
+
     [Fact]
     public async Task AnotherBusinessesAttachment_IsNotServed()
     {

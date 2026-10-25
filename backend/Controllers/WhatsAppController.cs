@@ -160,7 +160,11 @@ public class WhatsAppController(
     // this is a private server-to-server call, not a public webhook Twilio signs.
     // ProfileName is the sender's WhatsApp display name: cut to length below rather than rejected,
     // since a 400 here means the customer gets no reply at all (QA run 3).
-    public record BridgeInboundRequest(string BusinessId, string FromPhone, [property: Filters.SkipLengthCheck] string? ProfileName, string Message);
+    // Media: a photo, video, voice note, sticker or file in the message (Message is then its caption,
+    // possibly empty). Base64 is null when the bridge didn't download it (too big, or it failed).
+    public record BridgeInboundRequest(string BusinessId, string FromPhone, [property: Filters.SkipLengthCheck] string? ProfileName, string Message,
+        BridgeInboundMedia? Media = null);
+    public record BridgeInboundMedia(string? Type, string? Mimetype, string? FileName, string? Base64);
     public record BridgeInboundResponse(string? Reply);
 
     [HttpPost("bridge/inbound")]
@@ -185,15 +189,33 @@ public class WhatsAppController(
             // message is there even if it fails.
             var profileName = TruncateName(req.ProfileName);
             var wasInChat = await ChatLog.IsChatOpenAsync(db, business.Id, fromPhone);
+            var text = req.Message.Replace("\0", "").Trim();
+            // A photo or file without a caption, outside a chat, is nothing for the chatbot to answer.
+            if (text.Length == 0 && (req.Media is null || !wasInChat)) return Ok(new BridgeInboundResponse(null));
+            // How a caption-less file reads where only text fits (Inquiry mode's log and owner alert).
+            var mediaLabel = req.Media is null ? null
+                : $"📎 {ChatFiles.InboundFileName(req.Media.FileName, req.Media.Type, ChatFiles.InboundContentType(req.Media.Mimetype))}";
             if (wasInChat)
             {
-                db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Customer, req.Message.Replace("\0", "").Trim(),
-                    string.IsNullOrWhiteSpace(profileName) ? null : profileName));
+                var message = ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Customer, text,
+                    string.IsNullOrWhiteSpace(profileName) ? null : profileName);
+                if (req.Media is not null)
+                {
+                    if (InboundAttachment(business.Id, req.Media) is { } attachment)
+                    {
+                        db.ChatAttachments.Add(attachment);
+                        message.AttachmentId = attachment.Id;
+                    }
+                    else
+                        // Too big, or the bridge couldn't download it: the owner sees what it was and opens it on the phone.
+                        message.Text = text.Length > 0 ? $"{mediaLabel}\n{message.Text}" : mediaLabel!;
+                }
+                db.ChatMessages.Add(message);
                 await db.SaveChangesAsync();
             }
 
             var appUrl = config["AppUrl"] ?? "";
-            var reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, req.Message.Trim());
+            var reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, text.Length > 0 ? text : mediaLabel!);
             if (reply is not null && (wasInChat || await ChatLog.IsChatOpenAsync(db, business.Id, fromPhone)))
             {
                 // With the profile name too: a chat that has only this message yet already shows who it is.
@@ -207,6 +229,24 @@ public class WhatsAppController(
         {
             conversationLock.Release();
         }
+    }
+
+    // The customer's file for the Chats page, or null when there are no usable bytes.
+    private static ChatAttachment? InboundAttachment(string businessId, BridgeInboundMedia media)
+    {
+        if (string.IsNullOrEmpty(media.Base64)) return null;
+        byte[] data;
+        try { data = Convert.FromBase64String(media.Base64); }
+        catch (FormatException) { return null; }
+        if (data.Length == 0 || data.Length > ChatFiles.MaxInboundBytes) return null;
+        var contentType = ChatFiles.InboundContentType(media.Mimetype);
+        return new ChatAttachment
+        {
+            BusinessId = businessId,
+            FileName = ChatFiles.InboundFileName(media.FileName, media.Type, contentType),
+            ContentType = contentType,
+            Data = data,
+        };
     }
 
     public record BridgeOutgoingRequest(string BusinessId, string ToPhone, string Message);

@@ -44,6 +44,40 @@ public static class ChatFiles
         return ok ? contentType : null;
     }
 
+    // A customer's photo, video, voice note, sticker or file, sent with their message by the bridge
+    // (kept for the Chats page while their chat is open). The bridge sends bigger ones by name only.
+    public const long MaxInboundBytes = 16 * 1024 * 1024;
+
+    // What a customer's file may be stored as, with the extension for a file WhatsApp sent unnamed
+    // (photos, voice notes). Anything else is stored as a plain download, so a customer's file can't
+    // open as a page (HTML, SVG) on the dashboard.
+    private static readonly Dictionary<string, string> InboundTypes = new()
+    {
+        ["image/jpeg"] = ".jpg", ["image/png"] = ".png", ["image/webp"] = ".webp", ["image/gif"] = ".gif",
+        ["video/mp4"] = ".mp4", ["video/3gpp"] = ".3gp", ["video/quicktime"] = ".mov",
+        ["audio/ogg"] = ".ogg", ["audio/mpeg"] = ".mp3", ["audio/mp4"] = ".m4a", ["audio/aac"] = ".aac", ["audio/amr"] = ".amr",
+        ["application/pdf"] = ".pdf",
+        ["application/msword"] = ".doc",
+        ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"] = ".docx",
+        ["application/vnd.ms-excel"] = ".xls",
+        ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] = ".xlsx",
+    };
+
+    // "audio/ogg; codecs=opus" -> "audio/ogg"; an unknown type -> application/octet-stream.
+    public static string InboundContentType(string? mimetype)
+    {
+        var type = (mimetype ?? "").Split(';')[0].Trim().ToLowerInvariant();
+        return InboundTypes.ContainsKey(type) ? type : "application/octet-stream";
+    }
+
+    // The customer's own file name, or one made up from the kind of message ("photo.jpg", "voice.ogg").
+    public static string InboundFileName(string? fileName, string? kind, string contentType)
+    {
+        if (!string.IsNullOrWhiteSpace(fileName)) return SafeFileName(fileName);
+        var name = kind switch { "image" => "photo", "video" or "ptv" => "video", "audio" => "voice", "sticker" => "sticker", _ => "file" };
+        return name + InboundTypes.GetValueOrDefault(contentType, "");
+    }
+
     // Just the name (no path), without characters that break a download header, at most 120 long.
     public static string SafeFileName(string fileName)
     {

@@ -422,16 +422,18 @@ function Bubble({ m, lang }: { m: ChatMessage; lang: string }) {
   )
 }
 
-// A sent photo or file. Its bytes need the owner's token (not a public link), so it's fetched with
-// the api client: a photo shows as a picture, a document as a button that saves it.
+// A photo or file in the chat (the owner's or the customer's). Its bytes need the owner's token (not
+// a public link), so it's fetched with the api client: a photo shows as a picture, a voice note or
+// video plays here, anything else is a button that saves it.
 function AttachmentView({ attachment, light }: { attachment: ChatAttachment; light: boolean }) {
-  const isImage = attachment.contentType.startsWith('image/')
+  const kind = attachment.contentType.split('/')[0]
+  const inline = kind === 'image' || kind === 'audio' || kind === 'video'
   const { data: url } = useQuery({
     queryKey: ['chat-attachment', attachment.id],
     queryFn: () => api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
       .then((r) => URL.createObjectURL(r.data as Blob)),
     staleTime: Infinity,
-    enabled: isImage,
+    enabled: inline,
   })
 
   async function download() {
@@ -444,10 +446,11 @@ function AttachmentView({ attachment, light }: { attachment: ChatAttachment; lig
     setTimeout(() => URL.revokeObjectURL(href), 1000)
   }
 
-  if (isImage)
-    return url
-      ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={attachment.fileName} className="rounded-lg max-h-64 mb-1" /></a>
-      : <div className="w-48 h-32 rounded-lg mb-1 bg-black/10" />
+  if (inline && !url) return <div className={`${kind === 'audio' ? 'w-60 h-10' : 'w-48 h-32'} rounded-lg mb-1 bg-black/10`} />
+  if (kind === 'image')
+    return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={attachment.fileName} className="rounded-lg max-h-64 mb-1" /></a>
+  if (kind === 'audio') return <audio controls src={url} className="max-w-full mb-1" />
+  if (kind === 'video') return <video controls src={url} className="rounded-lg max-h-64 max-w-full mb-1" />
   return (
     <button onClick={download}
       className={`flex items-center gap-2 mb-1 rounded-lg px-2 py-1.5 text-sm text-start ${light ? 'bg-cream text-ink' : 'bg-white/20 text-white'}`}>

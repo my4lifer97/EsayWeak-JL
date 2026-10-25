@@ -175,12 +175,15 @@ public class ChatsController(
         return Ok(new { ok = true });
     }
 
-    // The file of an attachment this business sent; fetched with the owner's token (not a public URL).
+    // The file of a photo or file in this business's chats (the owner's or the customer's); fetched
+    // with the owner's token (not a public URL). nosniff: a customer's file is only ever the type
+    // stored for it (ChatFiles.InboundContentType), never guessed into a page.
     [HttpGet("attachments/{id}")]
     public async Task<IActionResult> GetAttachment(string id)
     {
         var attachment = await db.ChatAttachments.FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
         if (attachment is null) return NotFound(new { error = "Not found" });
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
         return File(attachment.Data, attachment.ContentType, attachment.FileName);
     }
 

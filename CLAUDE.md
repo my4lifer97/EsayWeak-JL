@@ -1138,7 +1138,14 @@ messages, reminders and other automated sends are not recorded. The owner (`Chat
   doesn't survive a deploy), linked from the `ChatMessage` (`AttachmentId`); the caption gets the same
   owner first line. Sent to the bridge inline as base64 (`IWhatsAppBridgeClient.SendMediaAsync`, the
   bridge's `/send` takes `media` and a 15mb JSON body). `GET .../chats/attachments/{id}` serves the file
-  to the owner only (the page fetches it with the token as a blob).
+  to the owner only (the page fetches it with the token as a blob, `nosniff`).
+- **The customer's photos/files** (2026-10-25): the bridge downloads a customer message's image, video,
+  voice note, sticker or document (up to 16MB, `MAX_MEDIA_BYTES`) and sends it on `bridge/inbound` as
+  `media { type, mimetype, fileName, base64 }` (`Message` = its caption). Kept as a `ChatAttachment` only
+  while the chat is open; the type is narrowed to a known list (`ChatFiles.InboundContentType`, else
+  `application/octet-stream`, so HTML/SVG never renders), an unnamed photo/voice note gets `photo.jpg`/
+  `voice.ogg`. Without bytes (too big, download failed) the message reads `📎 name`. A caption-less file
+  outside a chat gets no reply. The page shows photos, plays audio/video, and downloads the rest.
 - `POST .../chats/booking-link` `{ phone, itemId }` -- a normal `WhatsAppBookingToken` link
   (`whatsapp.ownerBookingLink`, same first line) for a bookable service the owner picks; the chat stays open.
 - `POST .../chats/finish` `{ phone, sendServiceList }` -- sends `whatsapp.ownerChatEnded`, plus the
