@@ -456,22 +456,45 @@ public class WhatsAppController(
                 return (true, I18nService.T(lang, "whatsapp.inquiryStarted", new() { ["businessName"] = business.Name }));
             }
 
-            if (state is null)
+            // A reply to the gate that isn't a choice counts toward the lockout, like one to the
+            // service list: it used to re-show the gate forever (owner, 2026-10-25).
+            if (isLive)
             {
-                state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
-                db.WhatsAppConversationStates.Add(state);
+                state!.InvalidAttempts++;
+                state.Language = lang;
+                if (state.InvalidAttempts >= MaxInvalidAttempts)
+                {
+                    var lockout = StartLockout(state, lang);
+                    await db.SaveChangesAsync();
+                    return (true, lockout);
+                }
+                state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+                await db.SaveChangesAsync();
+                return (true, BuildModeGateMessage(business, lang));
             }
-            // An expired row keeps its old counters: an ended lockout came straight back after the
-            // gate (QA run 4).
-            else ResetIfExpired(state);
-            state.ChatbotMode = AwaitingModeChoiceMode;
-            state.Language = lang;
-            state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
-            await db.SaveChangesAsync();
-            return (true, BuildModeGateMessage(business, lang));
+            return (true, await ShowModeGate(business, fromPhone, lang, state));
         }
 
         return (false, null);
+    }
+
+    // Starts a conversation on the Book/Ask gate, with a new count of unclear replies.
+    private async Task<string> ShowModeGate(Business business, string fromPhone, string lang, WhatsAppConversationState? state)
+    {
+        if (state is null)
+        {
+            state = new WhatsAppConversationState { BusinessId = business.Id, Phone = fromPhone };
+            db.WhatsAppConversationStates.Add(state);
+        }
+        // An expired row keeps its old counters: an ended lockout came straight back after the
+        // gate (QA run 4).
+        else ResetIfExpired(state);
+        state.ChatbotMode = AwaitingModeChoiceMode;
+        state.Language = lang;
+        state.InvalidAttempts = 0;
+        state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+        await db.SaveChangesAsync();
+        return BuildModeGateMessage(business, lang);
     }
 
     // An RTL keyboard often puts the "#" after the digit ("1#"), which is also how "#1" can display
@@ -572,6 +595,26 @@ public class WhatsAppController(
             s.BusinessId == business.Id && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
         if (conversationState is not null)
         {
+            // A customer who's sent 3 replies in a row that don't answer the bot's last message
+            // (service list, Book/Ask gate, cancel question) gets locked out of automated replies
+            // entirely -- including cancel/reschedule keywords -- until they send the literal
+            // unlock keyword, which restarts the conversation from the opening prompt.
+            // While locked out the "#"-unlock reminder is re-sent at most every 30 minutes
+            // (LockoutReminderIfDue), other messages get no reply: a reminder on every message was
+            // spam, none at all looked like a broken bot. Same in the AI path below.
+            // Checked before the pending-link quiet mode: a cancel question asked while a link is
+            // pending can end in a lockout too.
+            if (conversationState.InvalidAttempts >= MaxInvalidAttempts)
+            {
+                if (!IsUnlock(incomingMsg))
+                    return await LockoutReminderIfDue(conversationState, lang);
+                db.WhatsAppConversationStates.Remove(conversationState);
+                await db.SaveChangesAsync();
+                return business.ChatbotInquiryEnabled
+                    ? await ShowModeGate(business, fromPhone, lang, null)
+                    : await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
+            }
+
             // A booking link was already issued and not yet completed -- stay quiet instead of
             // re-sending the opening prompt for every message the customer sends while they finish
             // booking on the web page the link opened. BookingController clears this once the
@@ -592,28 +635,27 @@ public class WhatsAppController(
                 var list = await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
                 return bookingRules.AcceptsBookings(business) ? $"{intro}\n\n{list}" : list;
             }
-
-            // A customer who's sent 3+ non-numeric/out-of-range replies in a row gets locked out of
-            // automated replies entirely -- including cancel/reschedule keywords -- until they send
-            // the literal unlock keyword, which restarts the conversation from the opening prompt.
-            // While locked out the "$"-unlock reminder is re-sent at most every 30 minutes
-            // (LockoutReminderIfDue), other messages get no reply: a reminder on every message was
-            // spam, none at all looked like a broken bot. Same in the AI path below.
-            if (conversationState.InvalidAttempts >= MaxInvalidAttempts)
-            {
-                if (!IsUnlock(incomingMsg))
-                    return await LockoutReminderIfDue(conversationState, lang);
-                db.WhatsAppConversationStates.Remove(conversationState);
-                await db.SaveChangesAsync();
-                return await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
-            }
         }
 
         if (conversationState is not null && IsCancelPrompt(conversationState.ChatbotMode))
         {
-            var (outcome, promptReply) = await AnswerCancelPrompt(business.Id, conversationState, fromPhone, incomingMsg, lang);
+            var (outcome, promptReply) = await AnswerCancelPrompt(business.Id, conversationState, fromPhone, incomingMsg, lang, reaskAnyUnclear: true);
+            if (outcome == CancelPromptOutcome.Unclear)
+            {
+                conversationState.InvalidAttempts++;
+                if (conversationState.InvalidAttempts >= MaxInvalidAttempts)
+                {
+                    // The question is gone: after "#" a "1" must not cancel anything.
+                    conversationState.ChatbotMode = BookingMode;
+                    promptReply = StartLockout(conversationState, lang);
+                }
+                await db.SaveChangesAsync();
+                return promptReply;
+            }
             if (outcome == CancelPromptOutcome.StillOpen)
             {
+                // "Which one?" answered: a new question, so a new count.
+                conversationState.InvalidAttempts = 0;
                 await db.SaveChangesAsync();
                 return promptReply;
             }
@@ -1072,7 +1114,7 @@ public class WhatsAppController(
     // before this format still parse (no clock).
     private const string PickCancelModePrefix = "PickCancel:";
     private const int MaxPickedAppointments = 5;
-    private enum CancelPromptOutcome { NotAnswer, StillOpen, Done }
+    private enum CancelPromptOutcome { NotAnswer, StillOpen, Unclear, Done }
     private sealed record CancelPrompt(bool Pick, List<string> Ids, DateTime? AskedAt, bool Reasked);
 
     private static bool IsCancelPrompt(string mode) =>
@@ -1112,9 +1154,13 @@ public class WhatsAppController(
 
     // A message while a cancel question is open, shared by both paths. Done: answered (the reply,
     // or null when the appointment can't be cancelled any more). StillOpen: asked again, or "which
-    // one?" answered with the 1/2 question for it. NotAnswer: the question is dropped, nothing is
-    // cancelled, and the message is handled as a normal one. Sets state.ChatbotMode; the caller saves.
-    private async Task<(CancelPromptOutcome Outcome, string? Reply)> AnswerCancelPrompt(string businessId, WhatsAppConversationState state, string fromPhone, string message, string lang)
+    // one?" answered with the 1/2 question for it. Unclear: not an answer, asked again. NotAnswer:
+    // the question is dropped, nothing is cancelled, and the message is handled as a normal one.
+    // Sets state.ChatbotMode; the caller saves.
+    // reaskAnyUnclear (rule-based path): every unclear reply is asked again, so it counts toward
+    // the lockout like one to any other question (owner, 2026-10-25); only a cancel/reschedule
+    // request drops the question. The AI path drops a longer message for the model to answer.
+    private async Task<(CancelPromptOutcome Outcome, string? Reply)> AnswerCancelPrompt(string businessId, WhatsAppConversationState state, string fromPhone, string message, string lang, bool reaskAnyUnclear = false)
     {
         var prompt = ParseCancelPrompt(state.ChatbotMode);
         state.ChatbotMode = BookingMode;
@@ -1145,14 +1191,14 @@ public class WhatsAppController(
         // A short reply that isn't an answer ("ok", "تمام") is asked once more: dropped, a
         // customer who wrote "ok" believed it was cancelled (QA run 4). A longer message, a
         // question or a reschedule request is about something else.
-        if (prompt.Reasked || Words(message).Count > 4 || message.Contains('?') || message.Contains('؟')
-            || ContainsKeyword(message, RescheduleKeywords))
+        if (ContainsKeyword(message, RescheduleKeywords) || ContainsKeyword(message, CancelKeywords)
+            || !reaskAnyUnclear && (prompt.Reasked || Words(message).Count > 4 || message.Contains('?') || message.Contains('؟')))
             return (CancelPromptOutcome.NotAnswer, null);
         var still = await CancellableAppointments(businessId, fromPhone, prompt.Ids);
         if (still.Count == 0) return (CancelPromptOutcome.NotAnswer, null);
         var (reask, reaskMode) = CancelQuestion(still, lang, reask: true);
         state.ChatbotMode = reaskMode;
-        return (CancelPromptOutcome.StillOpen, reask);
+        return (CancelPromptOutcome.Unclear, reask);
     }
 
     // The reply that locks the conversation: the "$" reminder, with the lock running LockoutLifetime.
@@ -1453,6 +1499,8 @@ public class WhatsAppController(
             return I18nService.T(lang, "whatsapp.bookingUnavailable", new() { ["businessName"] = owner.Name });
         }
         state.AwaitingBookingCompletion = true;
+        // Answered: the link is a new message, so earlier unclear replies no longer count.
+        state.InvalidAttempts = 0;
         state.ExpiresAt = DateTime.UtcNow.Add(BookingLinkPendingLifetime);
         // The booking confirmation BookingController sends later uses this (QA run 4: a choice
         // made in Arabic after an English list left it English).

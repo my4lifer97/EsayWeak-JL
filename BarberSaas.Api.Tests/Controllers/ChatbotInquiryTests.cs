@@ -191,6 +191,43 @@ public class ChatbotInquiryTests : IntegrationTestBase
     }
 
     [Fact]
+    public async Task ThreeUnrecognizedReplies_AtGate_LockOut_AndUnlockShowsTheGate()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-gate-lock@example.com", "inquiry-gate-lock");
+        await EnableInquiry(token);
+        var phone = "+15550040";
+        await Reply(businessId, phone, "hi");
+
+        Assert.Contains("1. Book a service", await Reply(businessId, phone, "how much"));
+        Assert.Contains("1. Book a service", await Reply(businessId, phone, "how much?"));
+        Assert.Contains("continue chatting", await Reply(businessId, phone, "hello??"));
+
+        // Locked: "#2" doesn't get around it, and nothing else gets an answer.
+        Assert.Null(await Reply(businessId, phone, "#2"));
+        Assert.Null(await Reply(businessId, phone, "1"));
+
+        Assert.Contains("1. Book a service", await Reply(businessId, phone, "#"));
+        // A new message: the count starts again.
+        Assert.Contains("1. Book a service", await Reply(businessId, phone, "blah"));
+    }
+
+    [Fact]
+    public async Task GateCount_ResetsWhenTheBotSendsANewMessage()
+    {
+        var (businessId, token) = await SeedBusinessWithService("inquiry-gate-reset@example.com", "inquiry-gate-reset");
+        await EnableInquiry(token);
+        var phone = "+15550041";
+        await Reply(businessId, phone, "hi");
+        await Reply(businessId, phone, "blah");
+        await Reply(businessId, phone, "blah");
+        await Reply(businessId, phone, "1"); // service list: a new message
+
+        var reply = await Reply(businessId, phone, "blah");
+
+        Assert.DoesNotContain("continue chatting", reply);
+    }
+
+    [Fact]
     public async Task DollarTwo_EntersInquiryMode()
     {
         var (businessId, token) = await SeedBusinessWithService("inquiry-enter@example.com", "inquiry-enter");

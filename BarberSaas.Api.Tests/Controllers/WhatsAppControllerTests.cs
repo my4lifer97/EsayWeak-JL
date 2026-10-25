@@ -383,10 +383,60 @@ public class WhatsAppControllerTests : IntegrationTestBase
 
         await SendWhatsAppMessage(phone, "ביטול");
         var reply = await SendWhatsAppMessage(phone, "מה השעות שלכם?");
-        await SendWhatsAppMessage(phone, "1"); // now a service choice, not a cancel confirmation
 
-        Assert.Contains("1.", reply); // handled as a normal message: fresh service list
+        // Not an answer: asked again (and counted toward the lockout), nothing cancelled.
+        Assert.Contains("1", reply);
+        Assert.Contains("2", reply);
         Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task CancelQuestion_ThreeUnclearReplies_LocksOutAndCancelsNothing()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-lockout@example.com", "wa-cancel-lockout");
+        var phone = "+15558880044";
+        var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+
+        await SendWhatsAppMessage(phone, "cancel");
+        await SendWhatsAppMessage(phone, "what are your hours today?");
+        await SendWhatsAppMessage(phone, "hmm");
+        var third = await SendWhatsAppMessage(phone, "do you have parking near the shop");
+        Assert.Contains("continue chatting", third);
+
+        // After the unlock the question is gone: "1" is a service choice, not a cancel.
+        await SendWhatsAppMessage(phone, "#");
+        await SendWhatsAppMessage(phone, "1");
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await LoadAppointment(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task CancelQuestion_CancelKeywordAgain_AsksAFreshQuestion()
+    {
+        var (businessId, _, serviceIds) = await SeedBusinessWithServices("wa-cancel-again@example.com", "wa-cancel-again");
+        var phone = "+15558880045";
+        await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
+
+        await SendWhatsAppMessage(phone, "cancel");
+        await SendWhatsAppMessage(phone, "hmm");
+        await SendWhatsAppMessage(phone, "cancel"); // relevant: a new question, new count
+        await SendWhatsAppMessage(phone, "hmm");
+        var reply = await SendWhatsAppMessage(phone, "hmm");
+
+        Assert.DoesNotContain("continue chatting", reply);
+    }
+
+    [Fact]
+    public async Task InvalidRepliesBeforeAValidChoice_DoNotCarryOver()
+    {
+        var (businessId, _, _) = await SeedBusinessWithServices("wa-lockout-reset@example.com", "wa-lockout-reset");
+        var phone = "+15558880046";
+        await SendWhatsAppMessage(phone, "hi");
+        await SendWhatsAppMessage(phone, "99");
+        await SendWhatsAppMessage(phone, "99");
+        await SendWhatsAppMessage(phone, "1"); // booking link: a new message
+
+        using var db = Db();
+        Assert.Equal(0, await db.WhatsAppConversationStates.Where(s => s.BusinessId == businessId && s.Phone == phone).Select(s => s.InvalidAttempts).FirstAsync());
     }
 
     [Fact]

@@ -847,11 +847,15 @@ to WhatsApp).
 - Reminders (day-before and ~3-hours-before, see `/api/cron/reminders` above) are sent via an
   external cron-job.org job calling the endpoint every 15 minutes — see the cron scheduling note
   earlier in this doc for why this isn't a GitHub Actions workflow.
-- **Lockout after repeated invalid replies** (rule-based path only): 3 consecutive non-numeric/
-  out-of-range replies to a "which service?" prompt (`WhatsAppConversationState.InvalidAttempts`,
-  `WhatsAppController.MaxInvalidAttempts`) stops the bot dispatching to anything else -- including
+- **Lockout after repeated invalid replies** (rule-based path only): 3 consecutive replies that
+  don't answer the bot's last question -- the "which service?" list, the Book/Ask gate (Inquiry
+  mode), or the cancel question (2026-10-25, owner's request: the gate used to re-show forever and
+  the cancel question dropped after one re-ask) -- (`WhatsAppConversationState.InvalidAttempts`,
+  `WhatsAppController.MaxInvalidAttempts`; reset to 0 whenever the bot sends a new message: a new
+  list, gate, question or booking link; a cancel/reschedule keyword at the cancel question starts
+  over rather than counting) stops the bot dispatching to anything else -- including
   cancel/reschedule keywords -- until the customer sends the literal unlock keyword (`"#"` since 2026-10-23, the old `"$"` still works;
-  `WhatsAppController.UnlockKeyword`), which restarts the conversation from the opening prompt.
+  `WhatsAppController.UnlockKeyword`), which restarts the conversation from the opening prompt (the Book/Ask gate when Inquiry mode is on).
   While locked out (other than the unlock keyword itself) the `whatsapp.tooManyInvalidReplies` reminder is
   re-sent at most every 30 minutes and other messages get no reply (2026-10-20, owner's choice: a
   reminder on every message was spam; 2026-09-22's fix had replaced total silence, which looked
