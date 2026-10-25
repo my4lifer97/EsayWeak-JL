@@ -19,6 +19,15 @@ public class FakeWhatsAppBridgeClient : IWhatsAppBridgeClient
         return Task.CompletedTask;
     }
 
+    public record SentMedia(string BusinessId, string ToPhone, string Caption, string FileName, string ContentType, int Bytes);
+    public List<SentMedia> SentMediaItems { get; } = [];
+
+    public Task SendMediaAsync(string businessId, string toPhone, string caption, string fileName, string contentType, byte[] data)
+    {
+        SentMediaItems.Add(new SentMedia(businessId, toPhone, caption, fileName, contentType, data.Length));
+        return Task.CompletedTask;
+    }
+
     // Simulates the bridge being down for the linking calls.
     public bool Unreachable { get; set; }
     private Task<T> Linking<T>(T result) => Unreachable

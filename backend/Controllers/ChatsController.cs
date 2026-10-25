@@ -28,7 +28,8 @@ public class ChatsController(
     private const int MaxMessages = 200;
 
     public record ChatSummaryDto(string Phone, string? Name, string LastText, string LastSender, DateTime LastAt, int Unread, bool IsOpen);
-    public record ChatMessageDto(string Id, string Sender, string Text, DateTime CreatedAt);
+    public record ChatAttachmentDto(string Id, string FileName, string ContentType);
+    public record ChatMessageDto(string Id, string Sender, string Text, DateTime CreatedAt, ChatAttachmentDto? Attachment);
     // CustomerId: the business's Customer row for this phone, if any (booking from the chat uses it).
     public record ChatDto(string Phone, string? Name, bool IsOpen, string? CustomerId, List<ChatMessageDto> Messages);
     public record ChatPhoneRequest(string Phone);
@@ -57,14 +58,17 @@ public class ChatsController(
         var lastMessages = (await db.ChatMessages
                 .Where(m => m.BusinessId == BusinessId && phones.Contains(m.CustomerPhone))
                 .GroupBy(m => m.CustomerPhone)
-                .Select(g => g.OrderByDescending(m => m.CreatedAt).First())
+                .Select(g => g.OrderByDescending(m => m.CreatedAt)
+                    .Select(m => new { m.CustomerPhone, m.Sender, m.Text, FileName = m.Attachment == null ? null : m.Attachment.FileName })
+                    .First())
                 .ToListAsync())
             .ToDictionary(m => m.CustomerPhone);
         var open = await OpenChats(phones);
         var names = await NamesFor(phones);
 
         return Ok(chats
-            .Select(c => new ChatSummaryDto(c.Phone, names.GetValueOrDefault(c.Phone), lastMessages[c.Phone].Text,
+            .Select(c => new ChatSummaryDto(c.Phone, names.GetValueOrDefault(c.Phone),
+                lastMessages[c.Phone].Text.Length == 0 && lastMessages[c.Phone].FileName is { } file ? $"📎 {file}" : lastMessages[c.Phone].Text,
                 lastMessages[c.Phone].Sender.ToString(), c.LastAt, c.Unread, open.Contains(c.Phone)))
             .OrderByDescending(c => c.IsOpen).ThenByDescending(c => c.LastAt));
     }
@@ -80,9 +84,12 @@ public class ChatsController(
     public async Task<IActionResult> GetMessages([FromQuery] string phone)
     {
         var customerPhone = PhoneNormalizer.Normalize(phone ?? "");
+        // Projected: an attachment's file bytes stay in the database (GetAttachment serves them).
         var messages = await db.ChatMessages
             .Where(m => m.BusinessId == BusinessId && m.CustomerPhone == customerPhone)
             .OrderByDescending(m => m.CreatedAt).Take(MaxMessages)
+            .Select(m => new ChatMessageDto(m.Id, m.Sender.ToString(), m.Text, m.CreatedAt,
+                m.Attachment == null ? null : new ChatAttachmentDto(m.Attachment.Id, m.Attachment.FileName, m.Attachment.ContentType)))
             .ToListAsync();
         if (messages.Count == 0) return NotFound(new { error = "Not found" });
 
@@ -91,7 +98,7 @@ public class ChatsController(
             .Select(c => c.Id).FirstOrDefaultAsync();
         return Ok(new ChatDto(customerPhone, names.GetValueOrDefault(customerPhone),
             await ChatLog.IsChatOpenAsync(db, BusinessId, customerPhone), customerId,
-            messages.OrderBy(m => m.CreatedAt).Select(ToDto).ToList()));
+            messages.OrderBy(m => m.CreatedAt).ToList()));
     }
 
     // Called by the open chat whenever it shows unread messages, so not an activity-log row each time.
@@ -120,6 +127,56 @@ public class ChatsController(
         if (sendError is not null) return sendError;
         this.SetActivityDetail($"Sent a chat message to {chat!.Phone}");
         return Ok(new { ok = true });
+    }
+
+    // A photo or file from the owner's device, with the message box's text as its caption. Photos go
+    // as WhatsApp images, the rest as documents.
+    [HttpPost("attachment")]
+    [RequestSizeLimit(ChatFiles.MaxRequestBytes)]
+    public async Task<IActionResult> SendAttachment([FromForm] string phone, [FromForm] string? caption, IFormFile file)
+    {
+        var text = (caption ?? "").Replace("\0", "").Trim();
+        if (text.Length > ChatLog.MaxTextChars) return BadRequest(new { error = "This message is too long" });
+        var contentType = await ChatFiles.ValidateAsync(file);
+        if (contentType is null) return BadRequest(new { error = ChatFiles.Error });
+
+        var (chat, error) = await OpenChatFor(phone);
+        if (error is not null) return error;
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer);
+        var fileName = ChatFiles.SafeFileName(file.FileName);
+        var ownerLine = I18nService.T(chat!.Language, "whatsapp.fromOwner");
+        try
+        {
+            await bridge.SendMediaAsync(BusinessId, PhoneNormalizer.ToE164(chat.Phone),
+                text.Length == 0 ? ownerLine : $"{ownerLine}\n{text}", fileName, contentType, buffer.ToArray());
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(ex, "Chat attachment to a customer of business {BusinessId} failed", BusinessId);
+            return StatusCode(StatusCodes.Status502BadGateway,
+                new { error = "The message wasn't sent: the WhatsApp bot isn't connected right now" });
+        }
+
+        var attachment = new ChatAttachment { BusinessId = BusinessId, FileName = fileName, ContentType = contentType, Data = buffer.ToArray() };
+        db.ChatAttachments.Add(attachment);
+        var message = ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Owner, text);
+        message.AttachmentId = attachment.Id;
+        db.ChatMessages.Add(message);
+        await ChatLog.OwnerAnsweredAsync(db, BusinessId, chat.Phone);
+        await db.SaveChangesAsync();
+        this.SetActivityDetail($"Sent a file to {chat.Phone}");
+        return Ok(new { ok = true });
+    }
+
+    // The file of an attachment this business sent; fetched with the owner's token (not a public URL).
+    [HttpGet("attachments/{id}")]
+    public async Task<IActionResult> GetAttachment(string id)
+    {
+        var attachment = await db.ChatAttachments.FirstOrDefaultAsync(a => a.Id == id && a.BusinessId == BusinessId);
+        if (attachment is null) return NotFound(new { error = "Not found" });
+        return File(attachment.Data, attachment.ContentType, attachment.FileName);
     }
 
     // A booking link for one of the business's services, the same kind the chatbot sends: it signs
@@ -228,7 +285,6 @@ public class ChatsController(
         return null;
     }
 
-    private static ChatMessageDto ToDto(ChatMessage m) => new(m.Id, m.Sender.ToString(), m.Text, m.CreatedAt);
 
     private async Task<HashSet<string>> OpenChats(List<string> phones) =>
         (await db.WhatsAppConversationStates

@@ -36,7 +36,7 @@ public static class ImageUpload
         return HasSignature(head.AsSpan(0, read), expectedContentType) ? ext : null;
     }
 
-    private static bool HasSignature(ReadOnlySpan<byte> h, string contentType) => contentType switch
+    internal static bool HasSignature(ReadOnlySpan<byte> h, string contentType) => contentType switch
     {
         "image/jpeg" => h.StartsWith((byte[])[0xFF, 0xD8, 0xFF]),
         "image/png" => h.StartsWith((byte[])[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),

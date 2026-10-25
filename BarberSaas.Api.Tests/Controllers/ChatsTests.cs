@@ -186,6 +186,98 @@ public class ChatsTests : IntegrationTestBase
         Assert.True((await GetChat(token, "+15551110005")).IsOpen); // sending a link doesn't end the chat
     }
 
+    private static readonly byte[] Png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 0x0D, 1, 2, 3];
+
+    private async Task<HttpResponseMessage> SendFile(string token, string phone, string fileName, byte[] bytes, string? caption = null)
+    {
+        Authorize(Client, token);
+        var form = new MultipartFormDataContent
+        {
+            { new StringContent(phone), "phone" },
+            { new ByteArrayContent(bytes), "file", fileName },
+        };
+        if (caption is not null) form.Add(new StringContent(caption), "caption");
+        return await Client.PostAsync("/api/admin/chats/attachment", form);
+    }
+
+    [Fact]
+    public async Task Photo_IsSentAsMedia_WithTheOwnerLine_AndShownInTheChat()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-photo");
+        await OpenChat(businessId, "+15551110021");
+
+        var resp = await SendFile(token, "+15551110021", "price list.png", Png, "Our prices");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var sent = Assert.Single(Factory.WhatsAppBridge.SentMediaItems);
+        Assert.Equal("💬 Message from the business owner:\nOur prices", sent.Caption);
+        Assert.Equal(("price list.png", "image/png", Png.Length), (sent.FileName, sent.ContentType, sent.Bytes));
+
+        var last = (await GetChat(token, "+15551110021")).Messages[^1];
+        Assert.Equal(("Owner", "Our prices"), (last.Sender, last.Text));
+        Assert.Equal("price list.png", last.Attachment!.FileName);
+
+        var file = await Client.GetAsync($"/api/admin/chats/attachments/{last.Attachment.Id}");
+        Assert.Equal(HttpStatusCode.OK, file.StatusCode);
+        Assert.Equal("image/png", file.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(Png, await file.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task FileWithoutACaption_ShowsTheFileNameInTheList()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-pdf");
+        await OpenChat(businessId, "+15551110022");
+
+        var resp = await SendFile(token, "+15551110022", "menu.pdf", "%PDF-1.4 test"u8.ToArray());
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Equal("💬 Message from the business owner:", Assert.Single(Factory.WhatsAppBridge.SentMediaItems).Caption);
+        Authorize(Client, token);
+        var chats = (await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>("/api/admin/chats"))!;
+        Assert.Equal("📎 menu.pdf", chats[0].LastText);
+    }
+
+    [Theory]
+    [InlineData("tool.exe", "MZ")]
+    [InlineData("fake.png", "<html>")] // renamed: the bytes aren't a PNG
+    [InlineData("doc.docx", "not a zip")]
+    public async Task UnsupportedOrDisguisedFile_Is400(string fileName, string content)
+    {
+        var (businessId, token, _) = await SeedBusiness($"chats-bad-{fileName.Replace('.', '-')}");
+        await OpenChat(businessId, "+15551110023");
+
+        var resp = await SendFile(token, "+15551110023", fileName, System.Text.Encoding.ASCII.GetBytes(content));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Empty(Factory.WhatsAppBridge.SentMediaItems);
+    }
+
+    [Fact]
+    public async Task File_ToAFinishedChat_Is409()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-file-ended");
+        await OpenChat(businessId, "+15551110024");
+        await Inbound(businessId, "+15551110024", "#1");
+
+        var resp = await SendFile(token, "+15551110024", "a.png", Png);
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnotherBusinessesAttachment_IsNotServed()
+    {
+        var (businessA, tokenA, _) = await SeedBusiness("chats-att-a");
+        var (_, tokenB, _) = await SeedBusiness("chats-att-b");
+        await OpenChat(businessA, "+15551110025");
+        await SendFile(tokenA, "+15551110025", "a.png", Png);
+        var attachmentId = (await GetChat(tokenA, "+15551110025")).Messages[^1].Attachment!.Id;
+
+        Authorize(Client, tokenB);
+        Assert.Equal(HttpStatusCode.NotFound, (await Client.GetAsync($"/api/admin/chats/attachments/{attachmentId}")).StatusCode);
+    }
+
     [Fact]
     public async Task BookingLink_ForAnUnknownService_Is400()
     {

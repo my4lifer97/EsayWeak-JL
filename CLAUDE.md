@@ -780,7 +780,7 @@ Migrations run roughly: `InitialCreate` ... `AddPlatformAdminAndActivityLog` ...
 multi-vertical rename) → `AddBusinessOwnerRequests` → `AddReviews` (adds `Reviews` +
 `Businesses.RatingCount`/`RatingAverage`) → `AddBusinessDiscoveryFields` (adds
 `Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) → `AddCustomerOtp` (adds the
-`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18) → `AddChatMessages` (2026-10-25), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
+`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18) → `AddChatMessages` → `AddChatAttachments` (2026-10-25), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
 `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel
 **before** the code push, not after (see [Deployment (Railway)](#deployment-railway)) — skipping
 that ordering has caused multiple prod outages.
@@ -1121,6 +1121,13 @@ messages, reminders and other automated sends are not recorded. The owner (`Chat
 - `POST .../chats/messages` `{ phone, text }` -- sent through `IWhatsAppBridgeClient` with a first
   line `whatsapp.fromOwner` ("💬 Message from the business owner:") in the conversation's language;
   stored without that line.
+- `POST .../chats/attachment` (multipart `phone`, `caption?`, `file`) -- a photo (JPG/PNG/WEBP, sent as a
+  WhatsApp image) or a PDF/Word/Excel document, up to 10MB (`Services/ChatFiles`: extension allowlist +
+  the file's first bytes must match). Kept in the database as a `ChatAttachment` (the backend's disk
+  doesn't survive a deploy), linked from the `ChatMessage` (`AttachmentId`); the caption gets the same
+  owner first line. Sent to the bridge inline as base64 (`IWhatsAppBridgeClient.SendMediaAsync`, the
+  bridge's `/send` takes `media` and a 15mb JSON body). `GET .../chats/attachments/{id}` serves the file
+  to the owner only (the page fetches it with the token as a blob).
 - `POST .../chats/booking-link` `{ phone, itemId }` -- a normal `WhatsAppBookingToken` link
   (`whatsapp.ownerBookingLink`, same first line) for a bookable service the owner picks; the chat stays open.
 - `POST .../chats/finish` `{ phone, sendServiceList }` -- sends `whatsapp.ownerChatEnded`, plus the

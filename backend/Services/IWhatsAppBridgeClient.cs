@@ -8,6 +8,8 @@ namespace BarberSaas.Api.Services;
 public interface IWhatsAppBridgeClient
 {
     Task SendAsync(string businessId, string toPhone, string message);
+    // A photo (image/*) or a document, with the message as its caption -- the owner's Chats page.
+    Task SendMediaAsync(string businessId, string toPhone, string caption, string fileName, string contentType, byte[] data);
     Task<WhatsAppLinkStatusDto> StartLinkAsync(string businessId);
     Task<WhatsAppLinkStatusDto> GetStatusAsync(string businessId);
     Task UnlinkAsync(string businessId);

@@ -22,11 +22,20 @@ const MAX_SENT_IDS = 5000
 
 // The id is chosen and remembered before sending: Baileys echoes the message (messages.upsert)
 // on process.nextTick, which can run before sendMessage's promise resolves.
-async function sendTracked(sock, jid, text) {
+// With media ({ base64, mimetype, fileName }, the owner's Chats page) the text is its caption:
+// an image is sent as a photo, anything else as a document.
+async function sendTracked(sock, jid, text, media) {
   const messageId = generateMessageIDV2(sock.user?.id)
   sentIds.add(messageId)
   if (sentIds.size > MAX_SENT_IDS) sentIds.delete(sentIds.values().next().value)
-  await sock.sendMessage(jid, { text }, { messageId })
+  let content = { text }
+  if (media) {
+    const data = Buffer.from(media.base64, 'base64')
+    content = media.mimetype?.startsWith('image/')
+      ? { image: data, mimetype: media.mimetype, caption: text }
+      : { document: data, mimetype: media.mimetype, fileName: media.fileName, caption: text }
+  }
+  await sock.sendMessage(jid, content, { messageId })
 }
 
 export function statusDto(businessId) {
@@ -304,11 +313,11 @@ export async function unlinkSession(businessId) {
   await fs.rm(path.join(SESSIONS_DIR, businessId), { recursive: true, force: true }).catch(() => {})
 }
 
-export async function sendMessage(businessId, toPhone, message) {
+export async function sendMessage(businessId, toPhone, message, media) {
   const session = sessions.get(businessId)
   if (!session || session.status !== 'connected') {
     throw new Error(`business ${businessId} has no connected WhatsApp session`)
   }
   const jid = `${toPhone.replace(/^\+/, '')}@s.whatsapp.net`
-  await sendTracked(session.sock, jid, message)
+  await sendTracked(session.sock, jid, message, media)
 }

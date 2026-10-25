@@ -33,6 +33,7 @@ public static class ApiErrorTranslations
         ["Write a message first"] = ("اكتب رسالة أولًا", "יש לכתוב הודעה קודם"),
         ["This message is too long"] = ("هذه الرسالة طويلة جدًا", "ההודעה ארוכה מדי"),
         ["This chat has ended"] = ("انتهت هذه المحادثة", "השיחה הזו הסתיימה"),
+        ["Send a photo (JPG, PNG, WEBP) or a PDF, Word or Excel file up to 10MB."] = ("أرسل صورة (JPG أو PNG أو WEBP) أو ملف PDF أو Word أو Excel حتى 10MB.", "שלחו תמונה (JPG,‏ PNG,‏ WEBP) או קובץ PDF,‏ Word או Excel עד 10MB."),
         ["This service can't be booked"] = ("لا يمكن حجز هذه الخدمة", "אי אפשר להזמין את השירות הזה"),
         ["Your WhatsApp bot isn't linked, so messages can't be sent"] = ("بوت واتساب غير مربوط، لذلك لا يمكن إرسال الرسائل", "בוט הוואטסאפ לא מחובר, ולכן אי אפשר לשלוח הודעות"),
         ["The message wasn't sent: the WhatsApp bot isn't connected right now"] = ("لم تُرسل الرسالة: بوت واتساب غير متصل حاليًا", "ההודעה לא נשלחה: בוט הוואטסאפ לא מחובר כרגע"),

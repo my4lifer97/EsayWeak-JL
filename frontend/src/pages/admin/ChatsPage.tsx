@@ -15,7 +15,12 @@ import type { CustomerSelection } from '../../components/admin/CustomerPicker'
 
 type Sender = 'Customer' | 'Bot' | 'Owner' | 'OwnerPhone'
 type ChatSummary = { phone: string; name: string | null; lastText: string; lastSender: Sender; lastAt: string; unread: number; isOpen: boolean }
-type ChatMessage = { id: string; sender: Sender; text: string; createdAt: string }
+type ChatAttachment = { id: string; fileName: string; contentType: string }
+type ChatMessage = { id: string; sender: Sender; text: string; createdAt: string; attachment: ChatAttachment | null }
+
+// Same list as the server's ChatFiles (10MB, checked there too).
+const ACCEPTED_FILES = '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx'
+const MAX_FILE_BYTES = 10 * 1024 * 1024
 type Chat = { phone: string; name: string | null; isOpen: boolean; customerId: string | null; messages: ChatMessage[] }
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; isBookable: boolean; isActive: boolean }
 
@@ -149,6 +154,8 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
 }) {
   const queryClient = useQueryClient()
   const [draft, setDraft] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -200,7 +207,37 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
     }
   }
 
-  const send = () => draft.trim() && act('/admin/chats/messages', { text: draft.trim() }, () => setDraft(''))
+  // With a chosen file the text is its caption.
+  async function send() {
+    if (!file) {
+      if (draft.trim()) await act('/admin/chats/messages', { text: draft.trim() }, () => setDraft(''))
+      return
+    }
+    if (busy) return
+    setBusy(true); setError(null); setNotice(null)
+    try {
+      const form = new FormData()
+      form.append('phone', phone)
+      form.append('caption', draft.trim())
+      form.append('file', file)
+      await api.post('/admin/chats/attachment', form)
+      setDraft(''); setFile(null)
+      await queryClient.invalidateQueries({ queryKey: ['chat', phone] })
+      onChanged()
+    } catch (err) {
+      setError(apiError(err) ?? t(lang, 'chatsSendError'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function pickFile(f: File | undefined) {
+    if (fileInput.current) fileInput.current.value = ''
+    if (!f) return
+    if (f.size > MAX_FILE_BYTES) { setError(t(lang, 'chatsFileTooBig')); return }
+    setError(null)
+    setFile(f)
+  }
   const sendLink = () => serviceId && act('/admin/chats/booking-link', { itemId: serviceId }, () => {
     setPanel('none'); setServiceId(''); setNotice(t(lang, 'chatsLinkSent'))
   })
@@ -306,7 +343,22 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
         <div className="px-4 py-3 text-sm text-muted border-t border-line bg-surface">{t(lang, 'chatsEnded')}</div>
       ) : (
         <div className="p-3 border-t border-line bg-surface">
+          {file && (
+            <div className="flex items-center gap-2 mb-2 rounded-lg border border-line bg-cream px-3 py-1.5 text-sm text-ink">
+              <span className="shrink-0">{file.type.startsWith('image/') ? '🖼️' : '📄'}</span>
+              <span className="truncate flex-1" dir="auto">{file.name}</span>
+              <span className="text-muted text-xs shrink-0">{fileSize(file.size)}</span>
+              <button onClick={() => setFile(null)} aria-label={t(lang, 'chatsRemoveFile')}
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-muted hover:text-ink hover:bg-surface">✕</button>
+            </div>
+          )}
           <div className="flex items-end gap-2">
+            <input ref={fileInput} type="file" accept={ACCEPTED_FILES} className="hidden"
+              onChange={(e) => pickFile(e.target.files?.[0])} />
+            <button onClick={() => fileInput.current?.click()} disabled={busy} aria-label={t(lang, 'chatsAttach')} title={t(lang, 'chatsAttach')}
+              className="shrink-0 w-11 h-11 flex items-center justify-center rounded-xl border border-line text-lg hover:bg-cream disabled:opacity-50">
+              📎
+            </button>
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
@@ -321,7 +373,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
             />
             <button
               onClick={send}
-              disabled={busy || !draft.trim()}
+              disabled={busy || (!draft.trim() && !file)}
               className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-medium rounded-xl px-4 py-2.5"
             >
               {t(lang, 'chatsSend')}
@@ -345,13 +397,52 @@ function Bubble({ m, lang }: { m: ChatMessage; lang: string }) {
     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[80%] rounded-2xl px-3 py-2 ${style}`}>
         {mine && <div className={`text-[11px] mb-0.5 ${m.sender === 'Bot' ? 'text-muted' : 'text-white/80'}`}>{senderLabel(m.sender, lang)}</div>}
-        <div className="text-sm whitespace-pre-wrap break-words" dir="auto">{m.text}</div>
+        {m.attachment && <AttachmentView attachment={m.attachment} light={m.sender !== 'Owner' && m.sender !== 'OwnerPhone'} />}
+        {m.text && <div className="text-sm whitespace-pre-wrap break-words" dir="auto">{m.text}</div>}
         <div className={`text-[11px] mt-1 ${m.sender === 'Bot' || m.sender === 'Customer' ? 'text-muted' : 'text-white/80'}`}>
           {when(m.createdAt, lang)}
         </div>
       </div>
     </div>
   )
+}
+
+// A sent photo or file. Its bytes need the owner's token (not a public link), so it's fetched with
+// the api client: a photo shows as a picture, a document as a button that saves it.
+function AttachmentView({ attachment, light }: { attachment: ChatAttachment; light: boolean }) {
+  const isImage = attachment.contentType.startsWith('image/')
+  const { data: url } = useQuery({
+    queryKey: ['chat-attachment', attachment.id],
+    queryFn: () => api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
+      .then((r) => URL.createObjectURL(r.data as Blob)),
+    staleTime: Infinity,
+    enabled: isImage,
+  })
+
+  async function download() {
+    const r = await api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
+    const href = URL.createObjectURL(r.data as Blob)
+    const a = document.createElement('a')
+    a.href = href
+    a.download = attachment.fileName
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(href), 1000)
+  }
+
+  if (isImage)
+    return url
+      ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={attachment.fileName} className="rounded-lg max-h-64 mb-1" /></a>
+      : <div className="w-48 h-32 rounded-lg mb-1 bg-black/10" />
+  return (
+    <button onClick={download}
+      className={`flex items-center gap-2 mb-1 rounded-lg px-2 py-1.5 text-sm text-start ${light ? 'bg-cream text-ink' : 'bg-white/20 text-white'}`}>
+      <span>📄</span><span className="underline break-all" dir="auto">{attachment.fileName}</span>
+    </button>
+  )
+}
+
+function fileSize(bytes: number) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 // The chat's customer for the booking forms: their customer record when they have one here, else

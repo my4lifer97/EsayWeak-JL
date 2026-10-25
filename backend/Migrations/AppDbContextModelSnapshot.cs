@@ -606,9 +606,43 @@ namespace BarberSaas.Api.Migrations
                     b.ToTable("BusinessTypeDefinitions");
                 });
 
+            modelBuilder.Entity("BarberSaas.Api.Models.ChatAttachment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BusinessId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessId");
+
+                    b.ToTable("ChatAttachments");
+                });
+
             modelBuilder.Entity("BarberSaas.Api.Models.ChatMessage", b =>
                 {
                     b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AttachmentId")
                         .HasColumnType("text");
 
                     b.Property<string>("BusinessId")
@@ -637,6 +671,8 @@ namespace BarberSaas.Api.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AttachmentId");
 
                     b.HasIndex("BusinessId", "IsRead");
 
@@ -1459,13 +1495,31 @@ namespace BarberSaas.Api.Migrations
                     b.Navigation("ReviewedByPlatformAdmin");
                 });
 
-            modelBuilder.Entity("BarberSaas.Api.Models.ChatMessage", b =>
+            modelBuilder.Entity("BarberSaas.Api.Models.ChatAttachment", b =>
                 {
                     b.HasOne("BarberSaas.Api.Models.Business", "Business")
                         .WithMany()
                         .HasForeignKey("BusinessId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Business");
+                });
+
+            modelBuilder.Entity("BarberSaas.Api.Models.ChatMessage", b =>
+                {
+                    b.HasOne("BarberSaas.Api.Models.ChatAttachment", "Attachment")
+                        .WithMany()
+                        .HasForeignKey("AttachmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("BarberSaas.Api.Models.Business", "Business")
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Attachment");
 
                     b.Navigation("Business");
                 });

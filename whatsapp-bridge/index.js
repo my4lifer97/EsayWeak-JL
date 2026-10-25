@@ -11,7 +11,8 @@ if (!process.env.BACKEND_URL || !BRIDGE_SECRET) {
 }
 
 const app = express()
-app.use(express.json())
+// Chat attachments arrive inline (base64): up to 10MB files, a third larger once encoded.
+app.use(express.json({ limit: '15mb' }))
 
 // Every request is server-to-server (the backend, over Railway's private network in production) --
 // same shared-secret pattern as the backend's own CronSecret.
@@ -40,10 +41,10 @@ app.delete('/sessions/:businessId', async (req, res) => {
 })
 
 app.post('/send', async (req, res) => {
-  const { businessId, toPhone, message } = req.body
+  const { businessId, toPhone, message, media } = req.body
   if (!businessId || !toPhone || !message) return res.status(400).json({ error: 'businessId, toPhone, and message are required' })
   try {
-    await sendMessage(businessId, toPhone, message)
+    await sendMessage(businessId, toPhone, message, media)
     res.json({ ok: true })
   } catch (err) {
     res.status(409).json({ error: err.message })

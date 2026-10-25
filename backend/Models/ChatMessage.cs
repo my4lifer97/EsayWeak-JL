@@ -22,6 +22,9 @@ public class ChatMessage
     // Only a customer's message starts unread (the owner hasn't seen it on the Chats page).
     public bool IsRead { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    // A photo or file the owner sent with it; Text is then its caption (may be empty).
+    public string? AttachmentId { get; set; }
 
     public Business Business { get; set; } = null!;
+    public ChatAttachment? Attachment { get; set; }
 }

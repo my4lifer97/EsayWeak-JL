@@ -26,6 +26,18 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
         resp.EnsureSuccessStatusCode();
     }
 
+    // The file goes inline (base64): the bridge is on Railway's private network, and the
+    // attachment lives in the database, not at a URL the bridge could fetch.
+    public async Task SendMediaAsync(string businessId, string toPhone, string caption, string fileName, string contentType, byte[] data)
+    {
+        var resp = await http.PostAsJsonAsync("/send", new
+        {
+            businessId, toPhone, message = caption,
+            media = new { base64 = Convert.ToBase64String(data), mimetype = contentType, fileName },
+        });
+        resp.EnsureSuccessStatusCode();
+    }
+
     public async Task<WhatsAppLinkStatusDto> StartLinkAsync(string businessId)
     {
         return await Linking(async () =>
