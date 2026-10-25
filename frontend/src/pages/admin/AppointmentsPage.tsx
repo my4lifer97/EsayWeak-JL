@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { dateLocale } from '../../lib/dateLocale'
@@ -38,8 +39,17 @@ const STATUS_VALUES = ['CONFIRMED', 'COMPLETED', 'CANCELLED']
 
 export default function AppointmentsPage() {
   const { language: lang } = useAuth()
-  const [filter, setFilter] = useState<string>('upcoming')
-  const [search, setSearch] = useState('')
+  // Opened from a chat ("His appointments"): every appointment of that phone, past and upcoming.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const fromChat = (location.state as { search?: string } | null)?.search
+  const [filter, setFilter] = useState<string>(fromChat ? 'all' : 'upcoming')
+  const [search, setSearch] = useState(fromChat ?? '')
+  // Once: a reload or Back shouldn't bring the search back.
+  useEffect(() => {
+    if (fromChat) navigate(location.pathname, { replace: true, state: null })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [serviceFilter, setServiceFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | 'recurring' | 'onetime'>('all')

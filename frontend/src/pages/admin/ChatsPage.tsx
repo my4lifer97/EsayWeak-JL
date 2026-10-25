@@ -294,6 +294,10 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
                 className="w-full border border-coral text-coral-dark hover:bg-coral-tint font-semibold py-2.5 rounded-lg">
                 🔁 {t(lang, 'chatsAddRecurring')}
               </button>
+              <button onClick={() => navigate('/admin/appointments', { state: { search: chat.phone } })}
+                className="w-full border border-line text-ink hover:bg-cream font-semibold py-2.5 rounded-lg">
+                📋 {t(lang, 'chatsCustomerAppointments')}
+              </button>
             </div>
           </div>
         </div>
