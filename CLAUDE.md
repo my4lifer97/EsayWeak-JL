@@ -211,7 +211,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
 - `GET /api/admin/chats`, `GET .../chats/unread-count`, `GET .../chats/messages?phone=`, `POST .../chats/read` `{ phone }`, `POST .../chats/messages` `{ phone, text }`, `POST .../chats/booking-link` `{ phone, itemId }`, `POST .../chats/finish` `{ phone, sendServiceList }` (`ChatsController`) — the owner's Chats page, see [Owner Chats page](#owner-chats-page)
-- `GET /api/admin/chatbot-inquiries?unreadOnly=` / `POST .../{id}/read` — the always-on in-app inbox for the chatbot's optional Inquiry mode, see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
+- `GET /api/admin/chatbot-inquiries?unreadOnly=` / `POST .../{id}/read` — the old in-app inbox for Inquiry mode, still written (`ChatbotInquiry`) but no longer shown: the owner reads and answers on `/admin/chats` since 2026-10-25, see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
 - `GET/POST /api/admin/items` — items CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/items/{id}` — update / soft-delete (IsActive = false)
 - `POST /api/admin/items/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)
@@ -328,7 +328,7 @@ cron-job.org's dashboard (not tracked in this repo).
 - `/admin/schedule` — working hours, breaks, blocked dates
 - `/admin/services` — items CRUD (route/page names kept as "services" — see the note under Admin routes above)
 - `/admin/reviews` — this business's reviews with an inline owner-reply editor; hidden reviews shown greyed
-- `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle + notification contacts, and the `ChatbotInquiriesInbox` — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
+- `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle + notification contacts (the inquiry messages themselves are on `/admin/chats`) — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
 - `/admin/chats` — customers who chose to talk to the owner (`#2`): reply, send a booking link, finish the chat (`ChatsPage`); the sidebar item shows a red unread count (`components/admin/UnreadBadge`)
 - `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), booking limits, waitlist + cancellation-approval toggles, read-only assigned WhatsApp number
 - `/browse` — public discovery directory (`BrowseBusinessesPage`): category chips (`GET /api/business-types`), city + sort filters, a default top-rated list (no "type first" gate), "Load more" paging, rich cards linking to `/:slug`; the authenticated-only "Businesses You Follow" list stays below
@@ -1070,7 +1070,7 @@ only `#` (or `$`) unlocks it. An Inquiry-mode row lives 24 h (`InquiryStateLifet
 follow-up is still logged.
 
 While in Inquiry mode, every further message from that phone is logged as a `ChatbotInquiry` row
-(always-on "in-app" channel, an inbox inside Settings — see below) with **no reply** (2026-10-23,
+(and as a `ChatMessage` for the owner's Chats page, see [Owner Chats page](#owner-chats-page)) with **no reply** (2026-10-23,
 owner's choice: the owner is talking to the customer, and an acknowledgement for every message was
 spam; `whatsapp.inquiryStarted`, sent once on entering, says how to get back), and is **not**
 dispatched to booking logic at all, until the customer sends `#1`. `PromptServiceSelection`
@@ -1100,8 +1100,8 @@ reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (a 
 Admin API: `GET/POST /api/admin/chatbot-inquiries` (list, `?unreadOnly=true` filter) and
 `POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `pages/admin/ChatbotSettingsPage.tsx`, its
 own top-level sidebar page (`/admin/chatbot`, separate from the general `/admin/settings` page) —
-holds the enable toggle, all three chatbot messages, the inquiry toggle, notification contacts, and
-the `ChatbotInquiriesInbox` component (shown whenever `chatbotInquiryEnabled` is on), so every
+holds the enable toggle, all three chatbot messages, the inquiry toggle and notification contacts (its
+Inquiries inbox was removed 2026-10-25 at the owner's request: those messages are on `/admin/chats`), so every
 chatbot-related control lives in one place instead of being buried in general Settings. It PATCHes
 `/api/admin/settings` with only its own fields, same partial-update endpoint the general Settings
 page uses for the rest of the business record.

@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { format, parseISO } from 'date-fns'
-import { dateLocale } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t } from '../../lib/i18n'
@@ -276,8 +274,6 @@ export default function ChatbotSettingsPage() {
                 {(inquiryNotifyViaWhatsApp || inquiryNotifyViaEmail) && (
                   <p className="text-muted text-xs">{t(lang, 'inquiryContactFallback')}</p>
                 )}
-                <p className="text-muted text-xs mb-3">{t(lang, 'inquiryInboxHint')}</p>
-                <ChatbotInquiriesInbox lang={lang} />
               </div>
             )}
           </div>
@@ -341,73 +337,6 @@ function MessageEditorModal({
           {t(lang, 'close')}
         </button>
       </div>
-    </div>
-  )
-}
-
-type ChatbotInquiry = {
-  id: string; customerPhone: string; customerName: string | null; message: string
-  isRead: boolean; createdAt: string
-}
-
-function ChatbotInquiriesInbox({ lang }: { lang: string }) {
-  const queryClient = useQueryClient()
-  const [unreadOnly, setUnreadOnly] = useState(false)
-  const [busyId, setBusyId] = useState<string | null>(null)
-
-  const { data: inquiries = [], isLoading } = useQuery<ChatbotInquiry[]>({
-    queryKey: ['admin-chatbot-inquiries', unreadOnly],
-    queryFn: () => api.get(`/admin/chatbot-inquiries${unreadOnly ? '?unreadOnly=true' : ''}`).then((r) => r.data),
-  })
-
-  async function markRead(id: string) {
-    setBusyId(id)
-    try {
-      await api.post(`/admin/chatbot-inquiries/${id}/read`)
-      queryClient.invalidateQueries({ queryKey: ['admin-chatbot-inquiries'] })
-    } finally { setBusyId(null) }
-  }
-
-  return (
-    <div className="border-t border-line pt-3">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-ink">{t(lang, 'inquiries')}</h3>
-        <label className="flex items-center gap-2 text-xs text-ink cursor-pointer">
-          <input type="checkbox" checked={unreadOnly} onChange={(e) => setUnreadOnly(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-line bg-cream text-coral focus:ring-coral focus:ring-offset-surface" />
-          {t(lang, 'unreadOnly')}
-        </label>
-      </div>
-
-      {isLoading ? (
-        <p className="text-muted text-sm">{t(lang, 'loading')}</p>
-      ) : inquiries.length === 0 ? (
-        <p className="text-muted text-sm">{t(lang, 'noInquiries')}</p>
-      ) : (
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {inquiries.map((i) => (
-            <div key={i.id} className={`bg-cream border rounded-xl p-3 ${i.isRead ? 'border-line opacity-70' : 'border-coral/40'}`}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-ink text-sm font-medium truncate">{i.customerName || i.customerPhone}</span>
-                  {i.customerName && <span className="text-muted text-xs shrink-0">{i.customerPhone}</span>}
-                  {!i.isRead && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-coral/15 text-coral-dark shrink-0">{t(lang, 'unread')}</span>
-                  )}
-                </div>
-                <span className="text-muted text-xs shrink-0">{format(parseISO(i.createdAt), 'MMM d · HH:mm', { locale: dateLocale(lang) })}</span>
-              </div>
-              <p className="text-ink text-sm mt-1.5 whitespace-pre-wrap">{i.message}</p>
-              {!i.isRead && (
-                <button type="button" onClick={() => markRead(i.id)} disabled={busyId === i.id}
-                  className="mt-2 border border-line text-ink hover:bg-surface text-xs font-medium py-1 px-2.5 rounded-lg transition-colors disabled:opacity-50">
-                  {t(lang, 'markAsRead')}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
