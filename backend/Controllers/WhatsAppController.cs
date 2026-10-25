@@ -243,17 +243,44 @@ public class WhatsAppController(
     [RequireBridgeSecret]
     public async Task<IActionResult> BridgeSessionEvent([FromBody] BridgeSessionEventRequest req, [FromServices] PlatformAdminAlerts alerts)
     {
-        if (req.Event != "loggedOut") return BadRequest(new { error = "Unknown event" });
+        if (req.Event is not ("loggedOut" or "connected")) return BadRequest(new { error = "Unknown event" });
         var eventLock = LockFor(req.BusinessId, "session-event");
         await eventLock.WaitAsync();
         try
         {
-            return await HandleLoggedOutAsync(req, alerts);
+            return req.Event == "connected" ? await HandleConnectedAsync(req) : await HandleLoggedOutAsync(req, alerts);
         }
         finally
         {
             eventLock.Release();
         }
+    }
+
+    // The bridge's session is up (after a scan, a restart or a reconnect): the number is saved
+    // here too. It used to be written only by the admin page's status poll during a QR link, so a
+    // session that came up with nobody watching (2026-10-25: after a logout had cleared it) left
+    // WhatsAppNumber empty -- no confirmations or reminders, and Chats said "not linked".
+    private async Task<IActionResult> HandleConnectedAsync(BridgeSessionEventRequest req)
+    {
+        var business = await db.Businesses.FindAsync(req.BusinessId);
+        if (business is null) return NotFound();
+        if (!PhoneNormalizer.IsValid(req.PhoneNumber)) return BadRequest(new { error = "Invalid request" });
+
+        var number = PhoneNormalizer.Normalize(req.PhoneNumber!);
+        if (business.WhatsAppNumber == number) return Ok();
+        var old = business.WhatsAppNumber;
+        business.WhatsAppNumber = number;
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = business.Id,
+            Action = "WhatsAppLink.Connected",
+            Description = $"WhatsApp number: \"{old}\" → \"{number}\" (the bot connected)",
+            Method = "POST",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+        });
+        await db.SaveChangesAsync();
+        return Ok();
     }
 
     private async Task<IActionResult> HandleLoggedOutAsync(BridgeSessionEventRequest req, PlatformAdminAlerts alerts)

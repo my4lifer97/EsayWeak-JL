@@ -125,6 +125,9 @@ export async function startSession(businessId) {
       session.qr = null
       session.phoneNumber = sock.user?.id ? `+${sock.user.id.split(':')[0]}` : null
       console.log(`[${businessId}] WhatsApp connected as ${session.phoneNumber}`)
+      // The backend saves the number (Business.WhatsAppNumber), which confirmations, reminders and
+      // the Chats page rely on -- also when nobody is watching a QR link (restart, reconnect).
+      if (session.phoneNumber) reportSessionEvent(businessId, 'connected', session.phoneNumber)
     }
 
     if (connection === 'close') {
@@ -150,7 +153,7 @@ export async function startSession(businessId) {
         sessions.delete(businessId)
         // WhatsApp ended a linked session: tell the backend so the platform admin gets an email.
         // Not for an admin's own Unlink (unlinkSession), which logs out on purpose.
-        if (loggedOut && !session.unlinking) reportLoggedOut(businessId, session.phoneNumber)
+        if (loggedOut && !session.unlinking) reportSessionEvent(businessId, 'loggedOut', session.phoneNumber)
       } else {
         session.status = 'disconnected'
         // DisconnectReason.forbidden means WhatsApp is actively (and temporarily) blocking this
@@ -273,19 +276,20 @@ async function handleInboundMessage(businessId, sock, msg) {
   if (reply) await sendTracked(sock, jid, reply)
 }
 
-// Best-effort, a few tries a minute apart in case the backend is mid-deploy.
-async function reportLoggedOut(businessId, phoneNumber, attempt = 1) {
+// 'loggedOut' (WhatsApp ended the session) or 'connected'. Best-effort, a few tries a minute
+// apart in case the backend is mid-deploy.
+async function reportSessionEvent(businessId, event, phoneNumber, attempt = 1) {
   try {
     const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/session-event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
-      body: JSON.stringify({ businessId, event: 'loggedOut', phoneNumber }),
+      body: JSON.stringify({ businessId, event, phoneNumber }),
     })
     if (resp.ok || resp.status === 404) return
     throw new Error(`backend responded ${resp.status}`)
   } catch (err) {
-    if (attempt >= 5) return console.error(`[${businessId}] could not report the logout to the backend:`, err.message)
-    setTimeout(() => reportLoggedOut(businessId, phoneNumber, attempt + 1), 60_000)
+    if (attempt >= 5) return console.error(`[${businessId}] could not report "${event}" to the backend:`, err.message)
+    setTimeout(() => reportSessionEvent(businessId, event, phoneNumber, attempt + 1), 60_000)
   }
 }
 

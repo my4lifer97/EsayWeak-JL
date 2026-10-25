@@ -104,8 +104,36 @@ public class WhatsAppSessionEventTests : IntegrationTestBase
     {
         var businessId = await SeedBusiness("wa-event-4@example.com", "wa-event-4");
 
-        Assert.Equal(HttpStatusCode.BadRequest, (await PostEvent(businessId, evt: "connected")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await PostEvent(businessId, evt: "paired")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await PostEvent("no-such-business")).StatusCode);
         Assert.Empty(Factory.Email.Sent);
+    }
+
+    // 2026-10-25: after a logout cleared the number, the bot came back with nobody watching the
+    // admin page, and everything that checks the number thought it wasn't linked.
+    [Fact]
+    public async Task Connected_SavesTheNumber_AfterALogoutClearedIt()
+    {
+        var businessId = await SeedBusiness("wa-event-6@example.com", "wa-event-6");
+        await PostEvent(businessId); // logged out: number cleared
+
+        var resp = await PostEvent(businessId, evt: "connected");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var db = Db();
+        Assert.Equal("+972501112233", (await db.Businesses.FirstAsync(b => b.Id == businessId)).WhatsAppNumber);
+        Assert.True(await db.ActivityLogs.AnyAsync(a => a.BusinessId == businessId && a.Action == "WhatsAppLink.Connected"));
+    }
+
+    [Fact]
+    public async Task Connected_WithTheSameNumber_LogsNothing()
+    {
+        var businessId = await SeedBusiness("wa-event-7@example.com", "wa-event-7");
+        await PostEvent(businessId, evt: "connected");
+
+        await PostEvent(businessId, evt: "connected"); // a reconnect
+
+        using var db = Db();
+        Assert.Equal(1, await db.ActivityLogs.CountAsync(a => a.BusinessId == businessId && a.Action == "WhatsAppLink.Connected"));
     }
 }
