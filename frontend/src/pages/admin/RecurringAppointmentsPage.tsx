@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useConfirmDialog } from '../../components/ConfirmDialog'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { addDays, format, parseISO } from 'date-fns'
@@ -35,9 +36,18 @@ export default function RecurringAppointmentsPage() {
   const { language: lang } = useAuth()
   const [ask, confirmDialog] = useConfirmDialog(lang)
   const queryClient = useQueryClient()
-  const [showForm, setShowForm] = useState(false)
+  // Opened from a chat ("Add to recurring appointments"): the form starts open on that customer.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const fromChat = (location.state as { customer?: CustomerSelection } | null)?.customer
+  const [showForm, setShowForm] = useState(!!fromChat)
   const [serviceId, setServiceId] = useState('')
-  const [customer, setCustomer] = useState<CustomerSelection | null>(null)
+  const [customer, setCustomer] = useState<CustomerSelection | null>(fromChat ?? null)
+  // Once: a reload or Back shouldn't reopen it.
+  useEffect(() => {
+    if (fromChat) navigate(location.pathname, { replace: true, state: null })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [dayOfWeek, setDayOfWeek] = useState<number | null>(null)
   const [slot, setSlot] = useState<Slot | null>(null)
   const [showCustomTime, setShowCustomTime] = useState(false)

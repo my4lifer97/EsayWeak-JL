@@ -29,7 +29,8 @@ public class ChatsController(
 
     public record ChatSummaryDto(string Phone, string? Name, string LastText, string LastSender, DateTime LastAt, int Unread, bool IsOpen);
     public record ChatMessageDto(string Id, string Sender, string Text, DateTime CreatedAt);
-    public record ChatDto(string Phone, string? Name, bool IsOpen, List<ChatMessageDto> Messages);
+    // CustomerId: the business's Customer row for this phone, if any (booking from the chat uses it).
+    public record ChatDto(string Phone, string? Name, bool IsOpen, string? CustomerId, List<ChatMessageDto> Messages);
     public record ChatPhoneRequest(string Phone);
     public record SendChatMessageRequest(string Phone, string Text);
     public record SendBookingLinkRequest(string Phone, string ItemId);
@@ -86,8 +87,10 @@ public class ChatsController(
         if (messages.Count == 0) return NotFound(new { error = "Not found" });
 
         var names = await NamesFor([customerPhone]);
+        var customerId = await db.Customers.Where(c => c.BusinessId == BusinessId && c.Phone == customerPhone)
+            .Select(c => c.Id).FirstOrDefaultAsync();
         return Ok(new ChatDto(customerPhone, names.GetValueOrDefault(customerPhone),
-            await ChatLog.IsChatOpenAsync(db, BusinessId, customerPhone),
+            await ChatLog.IsChatOpenAsync(db, BusinessId, customerPhone), customerId,
             messages.OrderBy(m => m.CreatedAt).Select(ToDto).ToList()));
     }
 

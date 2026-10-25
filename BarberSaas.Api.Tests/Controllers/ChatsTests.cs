@@ -103,9 +103,39 @@ public class ChatsTests : IntegrationTestBase
         var chat = await GetChat(token, "+15551110002");
         Assert.True(chat.IsOpen);
         Assert.Equal("Dana", chat.Name);
+        Assert.Null(chat.CustomerId); // never booked here: booking from the chat creates the customer
         Assert.Equal(["Bot", "Customer"], chat.Messages.Select(m => m.Sender)); // "you're now chatting..." then the question
         Assert.Equal("Do you cut kids' hair?", chat.Messages[1].Text);
         Assert.Equal(1, await Unread(token));
+    }
+
+    [Fact]
+    public async Task NewChat_ShowsTheWhatsAppName_BeforeTheCustomerWritesAnything()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-name");
+        await OpenChat(businessId, "+15551110020", "Noa Bar");
+
+        Assert.Equal("Noa Bar", (await GetChat(token, "+15551110020")).Name);
+    }
+
+    [Fact]
+    public async Task Chat_CarriesTheCustomerId_ForAKnownCustomer()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-known");
+        string customerId;
+        using (var db = Db())
+        {
+            var customer = new BarberSaas.Api.Models.Customer { BusinessId = businessId, Name = "Rami", FamilyName = "Haddad", Phone = "+15551110019" };
+            db.Customers.Add(customer);
+            await db.SaveChangesAsync();
+            customerId = customer.Id;
+        }
+        await OpenChat(businessId, "+15551110019", "rami wa");
+
+        var chat = await GetChat(token, "+15551110019");
+
+        Assert.Equal(customerId, chat.CustomerId);
+        Assert.Equal("Rami Haddad", chat.Name); // the business's own name for them, not the WhatsApp one
     }
 
     [Fact]

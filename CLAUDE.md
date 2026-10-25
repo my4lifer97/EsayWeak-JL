@@ -1127,6 +1127,11 @@ messages, reminders and other automated sends are not recorded. The owner (`Chat
   bot's numbered list (`Services/ServiceListPrompt.PromptAsync`, shared with the chatbot, leaving a
   Booking-mode row waiting for the number) when `sendServiceList`; otherwise the row is removed. The
   chatbot answers that customer again either way.
+Clicking the customer's name in a chat offers **Book an appointment** (`NewAppointmentModal` with
+`initialCustomer`) or **Add to recurring appointments** (navigates to `/admin/recurring` with the
+customer in router state; the form opens on it once). The customer is their `Customer` row when the
+chat's `customerId` is set, else a new customer from the WhatsApp name (first word / rest) and phone,
+editable in `CustomerPicker`, which now starts on a value it's given.
 Replying (dashboard or phone) marks the chat read and keeps the Inquiry row alive for another
 `InquiryStateLifetime`. The bridge reports messages typed on the linked phone (`fromMe`, minus the
 ids it sent: `sendTracked` picks the id before sending, since Baileys echoes on `process.nextTick`)

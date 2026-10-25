@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, isToday, parseISO } from 'date-fns'
 import { dateLocale } from '../../lib/dateLocale'
@@ -10,11 +10,13 @@ import { itemName, t } from '../../lib/i18n'
 import { useIsTouchPrimary } from '../../lib/useIsTouchPrimary'
 import UnreadBadge, { CHATS_UNREAD_KEY } from '../../components/admin/UnreadBadge'
 import ChatAlertsModal, { type ChatAlertSettings } from '../../components/admin/ChatAlertsModal'
+import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
+import type { CustomerSelection } from '../../components/admin/CustomerPicker'
 
 type Sender = 'Customer' | 'Bot' | 'Owner' | 'OwnerPhone'
 type ChatSummary = { phone: string; name: string | null; lastText: string; lastSender: Sender; lastAt: string; unread: number; isOpen: boolean }
 type ChatMessage = { id: string; sender: Sender; text: string; createdAt: string }
-type Chat = { phone: string; name: string | null; isOpen: boolean; messages: ChatMessage[] }
+type Chat = { phone: string; name: string | null; isOpen: boolean; customerId: string | null; messages: ChatMessage[] }
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; isBookable: boolean; isActive: boolean }
 
 // Customers who chose to talk to the owner in the WhatsApp chatbot (#2), answered from here
@@ -152,6 +154,9 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   const [notice, setNotice] = useState<string | null>(null)
   const [panel, setPanel] = useState<'none' | 'link' | 'finish'>('none')
   const [serviceId, setServiceId] = useState('')
+  const [customerMenu, setCustomerMenu] = useState(false)
+  const [booking, setBooking] = useState(false)
+  const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const { data: chat, isLoading } = useQuery<Chat>({
@@ -202,6 +207,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   const finish = (sendServiceList: boolean) => act('/admin/chats/finish', { sendServiceList }, () => setPanel('none'))
 
   const canAct = linked && chat?.isOpen
+  const selection = chat ? customerSelection(chat) : null
   const button = 'text-sm font-medium rounded-xl px-3 py-2 disabled:opacity-50'
 
   return (
@@ -212,10 +218,11 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
             <span className="rtl:rotate-180 inline-block">←</span> {t(lang, 'chatsAll')}
           </button>
         )}
-        <div className="min-w-0 flex-1">
-          <div className="text-ink font-medium truncate">{chat?.name ?? <bdi dir="ltr">{phone}</bdi>}</div>
+        <button onClick={() => chat && setCustomerMenu(true)} disabled={!chat} title={t(lang, 'chatsCustomerActions')}
+          className="min-w-0 flex-1 text-start rounded-lg -mx-1 px-1 hover:bg-cream disabled:hover:bg-transparent">
+          <div className="text-ink font-medium truncate underline decoration-dotted underline-offset-4">{chat?.name ?? <bdi dir="ltr">{phone}</bdi>}</div>
           {chat?.name && <div className="text-muted text-xs"><bdi dir="ltr">{phone}</bdi></div>}
-        </div>
+        </button>
         {canAct && (
           <div className="flex gap-2">
             <button onClick={() => setPanel(panel === 'link' ? 'none' : 'link')} disabled={busy}
@@ -231,6 +238,32 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
         {chat && !chat.isOpen && <StatusTag lang={lang} open={false} />}
       </div>
 
+      {customerMenu && chat && (
+        <div onClick={() => setCustomerMenu(false)} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true"
+            className="bg-surface rounded-2xl p-6 w-full max-w-sm border border-line">
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <h2 className="text-ink font-semibold text-lg min-w-0 truncate">{chat.name ?? <bdi dir="ltr">{chat.phone}</bdi>}</h2>
+              <button onClick={() => setCustomerMenu(false)} aria-label={t(lang, 'close')}
+                className="-m-2 w-11 h-11 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-cream text-2xl leading-none">✕</button>
+            </div>
+            <p className="text-muted text-sm mb-5">{t(lang, 'chatsCustomerActions')}</p>
+            <div className="space-y-2">
+              <button onClick={() => { setCustomerMenu(false); setBooking(true) }}
+                className="w-full bg-coral hover:bg-coral-dark text-white font-semibold py-2.5 rounded-lg">
+                📅 {t(lang, 'chatsBookAppointment')}
+              </button>
+              <button onClick={() => navigate('/admin/recurring', { state: { customer: selection } })}
+                className="w-full border border-coral text-coral-dark hover:bg-coral-tint font-semibold py-2.5 rounded-lg">
+                🔁 {t(lang, 'chatsAddRecurring')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {booking && selection && (
+        <NewAppointmentModal lang={lang} initialCustomer={selection} onClose={() => setBooking(false)} />
+      )}
       {canAct && panel === 'link' && (
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-line bg-surface">
           <select value={serviceId} onChange={(e) => setServiceId(e.target.value)}
@@ -319,6 +352,14 @@ function Bubble({ m, lang }: { m: ChatMessage; lang: string }) {
       </div>
     </div>
   )
+}
+
+// The chat's customer for the booking forms: their customer record when they have one here, else
+// a new customer with the WhatsApp name (first word, rest as the family name) and phone, editable.
+function customerSelection(chat: Chat): CustomerSelection {
+  if (chat.customerId) return { customerId: chat.customerId, label: `${chat.name ?? ''} · ${chat.phone}` }
+  const [first = '', ...rest] = (chat.name ?? '').trim().split(/\s+/)
+  return { customerName: first, customerFamilyName: rest.join(' '), customerPhone: chat.phone }
 }
 
 function senderLabel(sender: Sender, lang: string) {

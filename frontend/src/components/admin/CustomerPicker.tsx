@@ -19,11 +19,13 @@ export default function CustomerPicker({
   onChange: (selection: CustomerSelection | null) => void
   waitlistEntries?: WaitlistEntrySummary[]
 }) {
-  const [mode, setMode] = useState<'existing' | 'new' | 'waitlist'>('existing')
-  const [query, setQuery] = useState('')
-  const [newName, setNewName] = useState('')
-  const [newFamilyName, setNewFamilyName] = useState('')
-  const [newPhone, setNewPhone] = useState('')
+  // A value given up front (booking from a chat) starts the picker on it: an existing customer as
+  // already chosen, a new one with the fields filled in.
+  const [mode, setMode] = useState<'existing' | 'new' | 'waitlist'>(() => value && 'customerName' in value ? 'new' : 'existing')
+  const [query, setQuery] = useState(() => value && 'customerId' in value ? value.label : '')
+  const [newName, setNewName] = useState(() => value && 'customerName' in value ? value.customerName : '')
+  const [newFamilyName, setNewFamilyName] = useState(() => value && 'customerName' in value ? value.customerFamilyName : '')
+  const [newPhone, setNewPhone] = useState(() => value && 'customerName' in value ? value.customerPhone : '')
 
   const { data: results = [], isFetching } = useQuery<CustomerSummary[]>({
     queryKey: ['customer-search', query],

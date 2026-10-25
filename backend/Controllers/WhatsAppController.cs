@@ -196,7 +196,9 @@ public class WhatsAppController(
             var reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, req.Message.Trim());
             if (reply is not null && (wasInChat || await ChatLog.IsChatOpenAsync(db, business.Id, fromPhone)))
             {
-                db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Bot, reply));
+                // With the profile name too: a chat that has only this message yet already shows who it is.
+                db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Bot, reply,
+                    string.IsNullOrWhiteSpace(profileName) ? null : profileName));
                 await db.SaveChangesAsync();
             }
             return Ok(new BridgeInboundResponse(reply));

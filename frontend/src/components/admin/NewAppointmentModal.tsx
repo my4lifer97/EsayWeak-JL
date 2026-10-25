@@ -8,15 +8,17 @@ type Item = { id: string; nameEn: string; nameAr: string; nameHe: string; durati
 type Slot = { start: string; end: string }
 
 export default function NewAppointmentModal({
-  lang, defaultDate, onClose,
+  lang, defaultDate, initialCustomer, onClose,
 }: {
   lang: string
   defaultDate?: string
+  // Booking from a chat: the customer is filled in.
+  initialCustomer?: CustomerSelection
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
   const [serviceId, setServiceId] = useState('')
-  const [customer, setCustomer] = useState<CustomerSelection | null>(null)
+  const [customer, setCustomer] = useState<CustomerSelection | null>(initialCustomer ?? null)
   const [date, setDate] = useState(defaultDate ?? '')
   const [slot, setSlot] = useState<Slot | null>(null)
   const [showCustomTime, setShowCustomTime] = useState(false)
