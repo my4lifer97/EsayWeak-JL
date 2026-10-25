@@ -84,6 +84,7 @@ builder.Services.AddHttpClient<IWhatsAppBridgeClient, WhatsAppBridgeClient>(clie
     client.Timeout = TimeSpan.FromSeconds(15);
 });
 builder.Services.AddScoped<IWhatsAppSender, BridgeWhatsAppSender>();
+builder.Services.AddSingleton<ChatLog>();
 // Optional LLM layer on top of the WhatsApp chatbot (see WhatsAppController.ProcessMessageAsync) --
 // only ever invoked when OpenAI:ApiKey is configured; falls back to the rule-based flow otherwise
 // or if a call throws, so this registration is unconditional (cheap, no I/O at construction time).

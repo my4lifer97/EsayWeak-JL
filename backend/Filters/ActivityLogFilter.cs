@@ -47,6 +47,7 @@ public class ActivityLogFilter(AppDbContext db) : IAsyncResultFilter
         if (type == "platform_admin") return;
 
         var descriptor = context.ActionDescriptor as ControllerActionDescriptor;
+        if (descriptor?.MethodInfo.IsDefined(typeof(SkipActivityLogAttribute), false) == true) return;
         var action = descriptor is null ? request.Path.ToString() : $"{descriptor.ControllerName}.{descriptor.ActionName}";
 
         var detail = context.HttpContext.Items["ActivityDetail"] as string;

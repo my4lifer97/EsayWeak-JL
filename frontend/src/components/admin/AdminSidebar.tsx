@@ -3,6 +3,9 @@ import { useAuth } from '../../lib/auth'
 import { useNavigate } from 'react-router-dom'
 import { t, type TKey } from '../../lib/i18n'
 import ThemeToggle from '../ThemeToggle'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../../lib/api'
+import UnreadBadge, { CHATS_UNREAD_KEY } from './UnreadBadge'
 
 const NAV: { to: string; key: TKey; icon: string }[] = [
   { to: '/admin/dashboard', key: 'dashboard', icon: '📅' },
@@ -11,11 +14,19 @@ const NAV: { to: string; key: TKey; icon: string }[] = [
   { to: '/admin/recurring', key: 'recurringAppointments', icon: '🔁' },
   { to: '/admin/services', key: 'services', icon: '✂️' },
   { to: '/admin/reviews', key: 'navReviews', icon: '★' },
+  { to: '/admin/chats', key: 'navChats', icon: '💬' },
   { to: '/admin/chatbot', key: 'chatbotSettings', icon: '🤖' },
   { to: '/admin/settings', key: 'settings', icon: '⚙️' },
 ]
 
 function NavContent({ lang, onNavigate }: { lang: string; onNavigate?: () => void }) {
+  // Unread customer messages on the Chats page, kept fresh while any owner page is open.
+  const { data: unread = 0 } = useQuery<number>({
+    queryKey: CHATS_UNREAD_KEY,
+    queryFn: () => api.get('/admin/chats/unread-count').then((r) => r.data.count),
+    refetchInterval: 10000,
+  })
+
   return (
     <nav className="flex-1 space-y-1">
       {NAV.map((item) => (
@@ -30,7 +41,10 @@ function NavContent({ lang, onNavigate }: { lang: string; onNavigate?: () => voi
           }
         >
           <span>{item.icon}</span>
-          {t(lang, item.key)}
+          <span className="flex-1">{t(lang, item.key)}</span>
+          {item.to === '/admin/chats' && unread > 0 && (
+            <UnreadBadge count={unread} label={t(lang, 'chatsUnread').replace('{n}', String(unread))} />
+          )}
         </NavLink>
       ))}
     </nav>

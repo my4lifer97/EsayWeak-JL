@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs'
 import { randomBytes } from 'crypto'
 import path from 'path'
-import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason } from '@whiskeysockets/baileys'
+import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, generateMessageIDV2 } from '@whiskeysockets/baileys'
 import { pino } from 'pino'
 import QRCode from 'qrcode'
 
@@ -15,6 +15,19 @@ const BRIDGE_SECRET = process.env.BRIDGE_SECRET
 const sessions = new Map()
 // businessId -> reconnect attempts since the last successful open, for the backoff below.
 const failures = new Map()
+// Ids of the messages this bridge sent (chatbot replies, backend sends). WhatsApp echoes them back
+// as fromMe like the ones the owner types on the phone, and only the latter are reported.
+const sentIds = new Set()
+const MAX_SENT_IDS = 5000
+
+// The id is chosen and remembered before sending: Baileys echoes the message (messages.upsert)
+// on process.nextTick, which can run before sendMessage's promise resolves.
+async function sendTracked(sock, jid, text) {
+  const messageId = generateMessageIDV2(sock.user?.id)
+  sentIds.add(messageId)
+  if (sentIds.size > MAX_SENT_IDS) sentIds.delete(sentIds.values().next().value)
+  await sock.sendMessage(jid, { text }, { messageId })
+}
 
 export function statusDto(businessId) {
   const s = sessions.get(businessId)
@@ -148,8 +161,13 @@ export async function startSession(businessId) {
   })
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
-    if (type !== 'notify') return
     for (const msg of messages) {
+      if (msg.key.fromMe) {
+        await reportOwnMessage(businessId, sock, msg).catch((err) =>
+          console.error(`[${businessId}] failed to report a message sent from the phone:`, err.message))
+        continue
+      }
+      if (type !== 'notify') continue
       await handleInboundMessage(businessId, sock, msg).catch((err) =>
         console.error(`[${businessId}] failed to process inbound message:`, err.message))
     }
@@ -176,14 +194,45 @@ async function resolvePhoneJid(sock, msg) {
   return null
 }
 
+function messageText(msg) {
+  return msg.message?.conversation
+    || msg.message?.extendedTextMessage?.text
+    || msg.message?.imageMessage?.caption
+    || ''
+}
+
+// A message the owner typed on the linked phone to a customer: the backend shows it on the
+// dashboard's Chats page and keeps the chatbot out of that conversation for a while.
+// Not ours (sentIds), not a group, not the owner's chat with themselves, and only fresh ones --
+// a reconnect can replay older messages.
+async function reportOwnMessage(businessId, sock, msg) {
+  if (!msg.message || sentIds.has(msg.key.id)) return
+  const remote = msg.key.remoteJid
+  if (!remote || remote.endsWith('@g.us') || remote.endsWith('@broadcast') || remote.endsWith('@newsletter')) return
+  const text = messageText(msg)
+  if (!text.trim()) return
+  const sentAt = Number(msg.messageTimestamp || 0) * 1000
+  if (sentAt && Date.now() - sentAt > 2 * 60_000) return
+
+  const jid = await resolvePhoneJid(sock, msg)
+  if (!jid) return
+  const toPhone = `+${jid.split('@')[0].split(':')[0]}`
+  const ownPhone = sock.user?.id ? `+${sock.user.id.split(':')[0].split('@')[0]}` : null
+  if (toPhone === ownPhone) return
+
+  const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/outgoing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
+    body: JSON.stringify({ businessId, toPhone, message: text }),
+  })
+  if (!resp.ok) throw new Error(`backend responded ${resp.status}`)
+}
+
 async function handleInboundMessage(businessId, sock, msg) {
   if (!msg.message || msg.key.fromMe) return
   if (!msg.key.remoteJid || msg.key.remoteJid.endsWith('@g.us')) return // ignore group messages -- chatbot is 1:1 only
 
-  const text = msg.message.conversation
-    || msg.message.extendedTextMessage?.text
-    || msg.message.imageMessage?.caption
-    || ''
+  const text = messageText(msg)
   if (!text.trim()) return
 
   const jid = await resolvePhoneJid(sock, msg)
@@ -202,7 +251,7 @@ async function handleInboundMessage(businessId, sock, msg) {
   })
   if (!resp.ok) throw new Error(`backend responded ${resp.status}`)
   const { reply } = await resp.json()
-  if (reply) await sock.sendMessage(jid, { text: reply })
+  if (reply) await sendTracked(sock, jid, reply)
 }
 
 // Best-effort, a few tries a minute apart in case the backend is mid-deploy.
@@ -238,5 +287,5 @@ export async function sendMessage(businessId, toPhone, message) {
     throw new Error(`business ${businessId} has no connected WhatsApp session`)
   }
   const jid = `${toPhone.replace(/^\+/, '')}@s.whatsapp.net`
-  await session.sock.sendMessage(jid, { text: message })
+  await sendTracked(session.sock, jid, message)
 }

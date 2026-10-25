@@ -38,6 +38,7 @@ const ServicesPage = lazyPage(() => import('./pages/admin/ServicesPage'))
 const ReviewsPage = lazyPage(() => import('./pages/admin/ReviewsPage'))
 const SettingsPage = lazyPage(() => import('./pages/admin/SettingsPage'))
 const ChatbotSettingsPage = lazyPage(() => import('./pages/admin/ChatbotSettingsPage'))
+const ChatsPage = lazyPage(() => import('./pages/admin/ChatsPage'))
 const PlatformAdminLoginPage = lazyPage(() => import('./pages/platform-admin/LoginPage'))
 const PlatformAdminDashboardPage = lazyPage(() => import('./pages/platform-admin/DashboardPage'))
 const PlatformAdminBusinessDetailPage = lazyPage(() => import('./pages/platform-admin/BusinessDetailPage'))
@@ -79,6 +80,7 @@ const router = createBrowserRouter(createRoutesFromElements(
         <Route path="/admin/services" element={<ServicesPage />} />
         <Route path="/admin/reviews" element={<ReviewsPage />} />
         <Route path="/admin/chatbot" element={<ChatbotSettingsPage />} />
+        <Route path="/admin/chats" element={<ChatsPage />} />
         <Route path="/admin/settings" element={<SettingsPage />} />
       </Route>
     </Route>

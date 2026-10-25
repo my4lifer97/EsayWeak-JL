@@ -210,6 +210,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 - `GET/PATCH /api/admin/settings` — business profile, language, booking limits, and discovery fields (`city`, `addressLine`, `mapUrl` free text; `isListed` directory toggle — `mapUrl` must start `http(s)://`). `AdminController.SettingsInputError` answers 400 (nothing saved) for a booking limit outside 1–1000, a `language`/`chatbotDefaultLanguage` other than exactly `EN`/`AR`/`HE`, a chatbot message over 1000 characters, or an inquiry/cancel-approval phone (`PhoneNormalizer.IsValid`) or email (`EmailAddress.IsValid`) that can't work; those phones are stored in E.164 and whitespace-only chatbot messages are stored as null (built-in default). WhatsApp number is read-only here — see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
+- `GET /api/admin/chats`, `GET .../chats/unread-count`, `GET .../chats/messages?phone=`, `POST .../chats/read` `{ phone }`, `POST .../chats/messages` `{ phone, text }` (`ChatsController`) — the owner's Chats page, see [Owner Chats page](#owner-chats-page)
 - `GET /api/admin/chatbot-inquiries?unreadOnly=` / `POST .../{id}/read` — the always-on in-app inbox for the chatbot's optional Inquiry mode, see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
 - `GET/POST /api/admin/items` — items CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/items/{id}` — update / soft-delete (IsActive = false)
@@ -297,6 +298,7 @@ in older docs/commits) — bookable and showcase-only items are the same table, 
 
 **Integrations**
 - `POST /api/whatsapp/bridge/inbound` — active inbound path; called by the self-hosted whatsapp-bridge service (auth: `X-Bridge-Secret`), resolves the business directly by `BusinessId`, drives the item-selection chatbot flow (see below) plus cancel/reschedule keywords, in the business's language
+- `POST /api/whatsapp/bridge/outgoing` — the bridge reports a message the owner typed on the linked phone (`X-Bridge-Secret`), see [Owner Chats page](#owner-chats-page)
 - `POST /api/whatsapp/bridge/session-event` — the bridge reports a WhatsApp-side logout; emails the platform admin (see the logout alert under [WhatsApp chatbot](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge))
 - `POST /api/whatsapp/webhook` — dormant legacy Twilio webhook (validates X-Twilio-Signature); kept as a fallback path, see [WhatsApp chatbot: self-hosted via Baileys](#whatsapp-chatbot-self-hosted-via-baileys-whatsapp-bridge)
 - `GET /api/cron/reminders` — sends two kinds of WhatsApp reminders in one call: a day-before one (`a.Date == tomorrow`, `ReminderSent` flag) and a ~3-hours-before one (local start within the next 3 hours, `ReminderSentSoon` flag), each idempotent via its own flag so repeated calls are safe; requires `Authorization: Bearer <CronSecret>`; response shape `{ dayBefore: { total, sent, failed }, soon: { total, sent, failed } }`; triggered every 15 minutes by an external cron-job.org job, not GitHub Actions — see the cron scheduling note below
@@ -327,6 +329,7 @@ cron-job.org's dashboard (not tracked in this repo).
 - `/admin/services` — items CRUD (route/page names kept as "services" — see the note under Admin routes above)
 - `/admin/reviews` — this business's reviews with an inline owner-reply editor; hidden reviews shown greyed
 - `/admin/chatbot` — its own top-level sidebar page (`ChatbotSettingsPage`), separate from `/admin/settings`: chatbot enable toggle, the three chatbot messages, Inquiry mode toggle + notification contacts, and the `ChatbotInquiriesInbox` — see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
+- `/admin/chats` — the WhatsApp conversations and replying from the dashboard (`ChatsPage`); the sidebar item shows a red unread count (`components/admin/UnreadBadge`)
 - `/admin/settings` — business info, **location & directory** (city/address/map link + "list in directory" toggle), booking limits, waitlist + cancellation-approval toggles, read-only assigned WhatsApp number
 - `/browse` — public discovery directory (`BrowseBusinessesPage`): category chips (`GET /api/business-types`), city + sort filters, a default top-rated list (no "type first" gate), "Load more" paging, rich cards linking to `/:slug`; the authenticated-only "Businesses You Follow" list stays below
 - `/:slug` — **public** business storefront (`BusinessPage`) — viewable logged-out (stars, location, reviews); for anonymous visitors the Follow button goes to `/login?next=/:slug`; an unknown slug shows the 404 page
@@ -777,7 +780,7 @@ Migrations run roughly: `InitialCreate` ... `AddPlatformAdminAndActivityLog` ...
 multi-vertical rename) → `AddBusinessOwnerRequests` → `AddReviews` (adds `Reviews` +
 `Businesses.RatingCount`/`RatingAverage`) → `AddBusinessDiscoveryFields` (adds
 `Businesses.City`/`AddressLine`/`MapUrl`/`IsListed` + indexes) → `AddCustomerOtp` (adds the
-`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
+`CustomerOtps` table for phone+OTP login) → … → `AddConversationShownItemIds` (2026-10-13) → `AddAppointmentIsWaitlistCarrier` (2026-10-18) → `AddChatMessages` (2026-10-25), the latest as of this writing. Production does **not** auto-migrate (`db.Database.Migrate()` runs only when
 `IsDevelopment()`); a migration-bearing deploy must apply it via the Railway Postgres tunnel
 **before** the code push, not after (see [Deployment (Railway)](#deployment-railway)) — skipping
 that ordering has caused multiple prod outages.
@@ -1102,6 +1105,23 @@ the `ChatbotInquiriesInbox` component (shown whenever `chatbotInquiryEnabled` is
 chatbot-related control lives in one place instead of being buried in general Settings. It PATCHes
 `/api/admin/settings` with only its own fields, same partial-update endpoint the general Settings
 page uses for the rest of the business record.
+
+### Owner Chats page
+`/admin/chats` (2026-10-25, owner's request) shows the WhatsApp conversations of the business's
+linked number and lets the owner reply from the dashboard instead of picking up the phone.
+`ChatMessage` rows (`Sender`: `Customer` / `Bot` / `Owner` / `OwnerPhone`), recorded from that day on:
+`WhatsAppController.BridgeInbound` saves the customer's message (before the chatbot runs, unread) and
+the chatbot's reply; `BridgeWhatsAppSender` records every automated send as `Bot` through
+`Services/ChatLog` (its own DI scope, best-effort), except alerts to the owner's own numbers
+(`Phone`, inquiry / cancel-approval numbers); `POST /api/admin/chats/messages` sends through
+`IWhatsAppBridgeClient` (502 when the bot isn't connected, 400 when no number is linked, 404 for a
+phone with no chat yet -- no cold messages) and saves `Owner`; the bridge reports messages typed on
+the phone itself (`fromMe`, minus the ids it sent: `sendTracked` picks the id before sending, since
+Baileys echoes on `process.nextTick`) to `POST /api/whatsapp/bridge/outgoing` as `OwnerPhone`.
+Replying (either way) marks the chat read. **While the owner is chatting the chatbot stays quiet for that
+customer**: no automated reply for `ChatLog.OwnerChatPause` (2 h) after the owner's last message;
+the customer's messages are still saved, unread. The page polls (list 5 s, open chat 3 s, sidebar
+count 10 s); `POST .../chats/read` is `[SkipActivityLog]` (`Filters/SkipActivityLogAttribute`).
 
 ### Customer login via WhatsApp
 The primary way a customer session starts: redeeming a link the WhatsApp bot sent them (no

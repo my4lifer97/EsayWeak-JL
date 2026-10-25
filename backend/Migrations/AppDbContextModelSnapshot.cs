@@ -606,6 +606,45 @@ namespace BarberSaas.Api.Migrations
                     b.ToTable("BusinessTypeDefinitions");
                 });
 
+            modelBuilder.Entity("BarberSaas.Api.Models.ChatMessage", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("BusinessId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CustomerName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CustomerPhone")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Sender")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessId", "IsRead");
+
+                    b.HasIndex("BusinessId", "CustomerPhone", "CreatedAt");
+
+                    b.ToTable("ChatMessages");
+                });
+
             modelBuilder.Entity("BarberSaas.Api.Models.ChatbotInquiry", b =>
                 {
                     b.Property<string>("Id")
@@ -1418,6 +1457,17 @@ namespace BarberSaas.Api.Migrations
                     b.Navigation("CreatedBusiness");
 
                     b.Navigation("ReviewedByPlatformAdmin");
+                });
+
+            modelBuilder.Entity("BarberSaas.Api.Models.ChatMessage", b =>
+                {
+                    b.HasOne("BarberSaas.Api.Models.Business", "Business")
+                        .WithMany()
+                        .HasForeignKey("BusinessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Business");
                 });
 
             modelBuilder.Entity("BarberSaas.Api.Models.ChatbotInquiry", b =>

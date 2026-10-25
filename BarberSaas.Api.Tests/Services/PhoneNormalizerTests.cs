@@ -1,4 +1,6 @@
-using BarberSaas.Api.Services;
+﻿using BarberSaas.Api.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Services;
@@ -70,7 +72,10 @@ public class PhoneNormalizerTests
     public async Task BridgeWhatsAppSender_SendsInE164()
     {
         var bridge = new BarberSaas.Api.Tests.Fakes.FakeWhatsAppBridgeClient();
-        var sender = new BridgeWhatsAppSender(bridge);
+        // No database here: recording the chat message fails and is only logged, never thrown.
+        var chatLog = new ChatLog(new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<ChatLog>.Instance);
+        var sender = new BridgeWhatsAppSender(bridge, chatLog);
 
         await sender.SendAsync(new BarberSaas.Api.Models.Business { Id = "b1" }, "0556652545", "hi");
 

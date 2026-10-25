@@ -176,16 +176,51 @@ public class WhatsAppController(
             var business = await db.Businesses.FindAsync(req.BusinessId);
             if (business is null) return NotFound();
 
+            if (fromPhone.Length == 0) return Ok(new BridgeInboundResponse(null));
+
+            // Every message both ways is kept for the owner's Chats page (ChatsController). The
+            // customer's is saved first, so it's there even if the chatbot fails on it.
+            var profileName = TruncateName(req.ProfileName);
+            var message = req.Message.Replace("\0", "").Trim();
+            db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Customer, message,
+                string.IsNullOrWhiteSpace(profileName) ? null : profileName));
+            await db.SaveChangesAsync();
+
+            // The owner is chatting with this customer: the chatbot stays out of it.
+            var since = DateTime.UtcNow - ChatLog.OwnerChatPause;
+            if (await db.ChatMessages.AnyAsync(m => m.BusinessId == business.Id && m.CustomerPhone == fromPhone
+                    && (m.Sender == ChatSender.Owner || m.Sender == ChatSender.OwnerPhone) && m.CreatedAt > since))
+                return Ok(new BridgeInboundResponse(null));
+
             var appUrl = config["AppUrl"] ?? "";
-            var reply = fromPhone.Length == 0
-                ? null
-                : await ProcessMessageLockedAsync(business, appUrl, fromPhone, TruncateName(req.ProfileName), req.Message.Trim());
+            var reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, req.Message.Trim());
+            if (reply is not null)
+            {
+                db.ChatMessages.Add(ChatLog.NewMessage(business.Id, fromPhone, ChatSender.Bot, reply));
+                await db.SaveChangesAsync();
+            }
             return Ok(new BridgeInboundResponse(reply));
         }
         finally
         {
             conversationLock.Release();
         }
+    }
+
+    public record BridgeOutgoingRequest(string BusinessId, string ToPhone, string Message);
+
+    // The owner wrote to a customer on the linked phone itself (the bridge reports those; it skips
+    // what it sent for us). Kept for the Chats page, and it pauses the chatbot for that customer.
+    [HttpPost("bridge/outgoing")]
+    [RequireBridgeSecret]
+    public async Task<IActionResult> BridgeOutgoing([FromBody] BridgeOutgoingRequest req, ChatLog chatLog)
+    {
+        var toPhone = PhoneNormalizer.Normalize(req.ToPhone);
+        var message = req.Message.Replace("\0", "").Trim();
+        if (toPhone.Length == 0 || message.Length == 0) return BadRequest(new { error = "Invalid request" });
+        if (!await db.Businesses.AnyAsync(b => b.Id == req.BusinessId)) return NotFound();
+        await chatLog.RecordAsync(req.BusinessId, toPhone, ChatSender.OwnerPhone, message);
+        return Ok(new { ok = true });
     }
 
     public record BridgeSessionEventRequest(string BusinessId, string Event, string? PhoneNumber);

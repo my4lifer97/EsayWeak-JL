@@ -25,6 +25,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WhatsAppLinkToken> WhatsAppLinkTokens => Set<WhatsAppLinkToken>();
     public DbSet<WhatsAppConversationState> WhatsAppConversationStates => Set<WhatsAppConversationState>();
     public DbSet<ChatbotInquiry> ChatbotInquiries => Set<ChatbotInquiry>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<BusinessEmailOtp> BusinessEmailOtps => Set<BusinessEmailOtp>();
     public DbSet<BusinessOwnerRequestEmailOtp> BusinessOwnerRequestEmailOtps => Set<BusinessOwnerRequestEmailOtp>();
     public DbSet<BusinessPasswordResetOtp> BusinessPasswordResetOtps => Set<BusinessPasswordResetOtp>();
@@ -86,6 +87,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<ChatbotInquiry>()
             .HasIndex(x => new { x.BusinessId, x.CreatedAt });
+
+        // A conversation's messages in order, and the unread count (Chats page, sidebar badge).
+        b.Entity<ChatMessage>()
+            .HasIndex(x => new { x.BusinessId, x.CustomerPhone, x.CreatedAt });
+        b.Entity<ChatMessage>()
+            .HasIndex(x => new { x.BusinessId, x.IsRead });
+        b.Entity<ChatMessage>()
+            .Property(x => x.Sender).HasConversion<string>();
 
         b.Entity<BusinessEmailOtp>()
             .HasIndex(x => new { x.Email, x.CreatedAt });
@@ -317,6 +326,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(x => x.Business).WithMany()
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<ChatbotInquiry>()
+            .HasOne(x => x.Business).WithMany()
+            .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
+        b.Entity<ChatMessage>()
             .HasOne(x => x.Business).WithMany()
             .HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         b.Entity<WhatsAppLinkToken>()
