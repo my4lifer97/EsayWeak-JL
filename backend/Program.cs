@@ -155,18 +155,6 @@ builder.Services.AddCors(opt =>
         .AllowAnyHeader()
         .AllowAnyMethod()));
 
-// Railway's proxy sits in front of the app, so RemoteIpAddress was always the proxy's -- read the
-// client IP from X-Real-IP instead (LoginThrottle, activity log). Checked in prod 2026-10-12: Railway
-// overwrites both X-Real-IP and X-Forwarded-For (client-sent values are dropped), and X-Forwarded-For
-// is "<client>, <Railway edge>" -- so its last entry is the edge, not the client.
-builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(opt =>
-{
-    opt.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor;
-    opt.ForwardedForHeaderName = "X-Real-IP";
-    opt.ForwardLimit = 1;
-    opt.KnownNetworks.Clear();
-    opt.KnownProxies.Clear();
-});
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<AiUsageLimiter>();
 builder.Services.AddSingleton<BookingRules>();
@@ -176,7 +164,17 @@ var app = builder.Build();
 var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "uploads");
 Directory.CreateDirectory(uploadsPath);
 
-app.UseForwardedHeaders();
+// Railway's proxy sits in front of the app, so RemoteIpAddress is the proxy's -- see ClientIp.
+app.Use((context, next) =>
+{
+    var ip = ClientIp.Resolve(context.Request.Headers);
+    if (ip is not null) context.Connection.RemoteIpAddress = ip;
+    // Raw proxy headers on sign-in requests, to check what Railway sends when the IPs look wrong.
+    if (context.Request.Path.Value?.EndsWith("/login", StringComparison.OrdinalIgnoreCase) == true)
+        app.Logger.LogInformation("Login request IP headers: X-Forwarded-For={Xff} X-Real-IP={RealIp} resolved={Ip}",
+            context.Request.Headers["X-Forwarded-For"].ToString(), context.Request.Headers["X-Real-IP"].ToString(), ip);
+    return next(context);
+});
 app.UseExceptionHandler();
 app.UseStaticFiles(new StaticFileOptions
 {

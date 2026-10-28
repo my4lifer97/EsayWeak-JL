@@ -9,7 +9,7 @@ namespace BarberSaas.Api.Services;
 //   - per account, any IP (default 20): stops guessing spread across many addresses;
 //   - per IP, any account (default 50): stops one address sweeping many accounts.
 // A successful login clears its account+IP count. In memory on purpose -- one backend instance, and
-// a restart only resets the counters. The IP is the one Railway's proxy saw (UseForwardedHeaders).
+// a restart only resets the counters. The IP is the client's, from Railway's proxy headers (ClientIp).
 public class LoginThrottle(IConfiguration config)
 {
     private readonly ConcurrentDictionary<string, List<DateTime>> _failures = new();
