@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { t, itemName } from '../../lib/i18n'
@@ -8,10 +8,12 @@ type Item = { id: string; nameEn: string; nameAr: string; nameHe: string; durati
 type Slot = { start: string; end: string }
 
 export default function NewAppointmentModal({
-  lang, defaultDate, initialCustomer, onClose,
+  lang, defaultDate, defaultTime, initialCustomer, onClose,
 }: {
   lang: string
   defaultDate?: string
+  // Clicked on the dashboard calendar: preselect this HH:mm slot once its times load.
+  defaultTime?: string
   // Booking from a chat: the customer is filled in.
   initialCustomer?: CustomerSelection
   onClose: () => void
@@ -39,6 +41,16 @@ export default function NewAppointmentModal({
     queryFn: () => api.get(`/admin/appointments/availability?date=${date}&itemId=${serviceId}`).then((r) => r.data.slots),
     enabled: !!date && !!serviceId && !showCustomTime,
   })
+
+  // The clicked time is preselected for whichever service the owner picks, as long as they
+  // haven't changed the date. If it isn't free for that service, say so instead.
+  const wantedTime = defaultTime && date === defaultDate && !showCustomTime ? defaultTime : null
+  const wantedFree = !!wantedTime && slots.some((s) => s.start === wantedTime)
+  useEffect(() => {
+    if (!wantedTime || slotsLoading) return
+    const match = slots.find((s) => s.start === wantedTime)
+    if (match) setSlot(match)
+  }, [wantedTime, slots, slotsLoading])
 
   const startTime = showCustomTime ? customTime : slot?.start ?? ''
   const canSubmit = !!serviceId && !!customer && !!date && !!startTime && (!showCustomTime || forceBook)
@@ -101,6 +113,15 @@ export default function NewAppointmentModal({
               ) : slots.length === 0 ? (
                 <div className="text-muted text-sm py-2">{t(lang, 'noTimes')}</div>
               ) : (
+                <>
+                {wantedTime && !wantedFree && (
+                  <div className="text-amber-700 dark:text-amber-400 text-sm mb-2">
+                    {(() => {
+                      const [before, after = ''] = t(lang, 'pickedTimeUnavailable').split('{time}')
+                      return <>{before}<bdi dir="ltr">{wantedTime}</bdi>{after}</>
+                    })()}
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-2">
                   {slots.map((s) => (
                     <button key={s.start} type="button" onClick={() => setSlot(s)}
@@ -113,8 +134,13 @@ export default function NewAppointmentModal({
                     </button>
                   ))}
                 </div>
+                </>
               )}
             </div>
+          )}
+
+          {wantedTime && !serviceId && (
+            <div className="text-muted text-sm">{t(lang, 'time')}: <bdi dir="ltr">{wantedTime}</bdi></div>
           )}
 
           <button type="button" onClick={() => { setShowCustomTime((v) => !v); setForceBook(false); setSlot(null) }}

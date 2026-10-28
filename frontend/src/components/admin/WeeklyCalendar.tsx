@@ -75,10 +75,12 @@ function timeToMinutes(t: string) {
 }
 
 export default function WeeklyCalendar({
-  appointments, weekStart, weekOffset, onWeekChange, lang,
+  appointments, weekStart, weekOffset, onWeekChange, lang, onSlotClick,
 }: {
   appointments: Appointment[]; weekStart: string; weekOffset: number
   onWeekChange: (offset: number) => void; lang: string
+  // Clicking an empty spot on the board (like Outlook) -- date is yyyy-MM-dd, time HH:mm.
+  onSlotClick?: (date: string, time: string) => void
 }) {
   const [selected, setSelected] = useState<Appointment | null>(null)
   const [scheduleSel, setScheduleSel] = useState<ScheduleSelection | null>(null)
@@ -130,6 +132,9 @@ export default function WeeklyCalendar({
   const endMinute = Math.min(Math.ceil(latest / 60) * 60, 24 * 60)
   const totalMinutes = endMinute - startMinute
   const HOURS = Array.from({ length: totalMinutes / 60 }, (_, i) => i + startMinute / 60)
+  // Half-hour cells, matching the 30-minute slots the booking modal offers.
+  const HALF_HOURS = Array.from({ length: totalMinutes / 30 }, (_, i) => startMinute + i * 30)
+  const minutesToTime = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
   // Clamps a time range to the visible window; null if it falls entirely outside.
   function span(start: string, end: string) {
@@ -250,10 +255,20 @@ export default function WeeklyCalendar({
                     <div key={h} className="absolute w-full border-t border-line/60"
                       style={{ top: `${(h * 60 - startMinute) * 1.2}px`, height: `${60 * 1.2}px` }} />
                   ))}
+                  {/* Empty time cells open the new-appointment modal at that time. They sit under
+                      the schedule layers and appointments, which keep their own click popups. */}
+                  {onSlotClick && !closed && !fullDayBlock && HALF_HOURS.map((m) => (
+                    <button key={m} type="button" onClick={() => onSlotClick(dayStr, minutesToTime(m))}
+                      aria-label={`${t(lang, 'newAppointment')} ${minutesToTime(m)}`}
+                      className="group absolute inset-x-0 hover:bg-coral/10 transition-colors text-start px-1.5"
+                      style={{ top: `${(m - startMinute) * 1.2}px`, height: `${30 * 1.2}px` }}>
+                      <span className="hidden group-hover:inline text-[11px] font-medium text-coral-dark">+ {minutesToTime(m)}</span>
+                    </button>
+                  ))}
                   {/* Schedule layers sit under the appointments (z-10), so an appointment booked
                       before a day got closed/blocked is still visible and clickable. */}
-                  {beforeOpen && <div className="absolute inset-x-0 bg-stone-400/10" style={beforeOpen} title={t(lang, 'calOutsideHours')} />}
-                  {afterClose && <div className="absolute inset-x-0 bg-stone-400/10" style={afterClose} title={t(lang, 'calOutsideHours')} />}
+                  {beforeOpen && <div className="absolute inset-x-0 bg-stone-400/10 pointer-events-none" style={beforeOpen} title={t(lang, 'calOutsideHours')} />}
+                  {afterClose && <div className="absolute inset-x-0 bg-stone-400/10 pointer-events-none" style={afterClose} title={t(lang, 'calOutsideHours')} />}
                   {fullDayBlock ? (
                     <button onClick={() => selectBlocked(fullDayBlock)}
                       className={`absolute inset-0.5 rounded-md p-1.5 text-start hover:opacity-80 transition-opacity ${BLOCKED_STYLE.className}`}

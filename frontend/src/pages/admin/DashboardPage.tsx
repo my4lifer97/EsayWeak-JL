@@ -9,7 +9,8 @@ import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
 
 export default function DashboardPage() {
   const [weekOffset, setWeekOffset] = useState(0)
-  const [showNewAppointment, setShowNewAppointment] = useState(false)
+  // null = closed; date/time set when the owner clicked a spot on the calendar.
+  const [newAppointment, setNewAppointment] = useState<{ date: string; time?: string } | null>(null)
   const { language: lang } = useAuth()
 
   const { data: appointments = [] } = useQuery({
@@ -23,7 +24,7 @@ export default function DashboardPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-ink">{t(lang, 'dashboard')}</h1>
-        <button onClick={() => setShowNewAppointment(true)}
+        <button onClick={() => setNewAppointment({ date: format(new Date(), 'yyyy-MM-dd') })}
           className="bg-coral hover:bg-coral-dark text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           {t(lang, 'newAppointment')}
         </button>
@@ -34,9 +35,11 @@ export default function DashboardPage() {
         weekOffset={weekOffset}
         onWeekChange={setWeekOffset}
         lang={lang}
+        onSlotClick={(date, time) => setNewAppointment({ date, time })}
       />
-      {showNewAppointment && (
-        <NewAppointmentModal lang={lang} defaultDate={format(new Date(), 'yyyy-MM-dd')} onClose={() => setShowNewAppointment(false)} />
+      {newAppointment && (
+        <NewAppointmentModal lang={lang} defaultDate={newAppointment.date} defaultTime={newAppointment.time}
+          onClose={() => setNewAppointment(null)} />
       )}
     </div>
   )
