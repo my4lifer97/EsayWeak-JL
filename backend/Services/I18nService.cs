@@ -63,6 +63,7 @@ public static class I18nService
             // The day-before reminder's no-show question (AttendanceQuestion) and its "yes" reply.
             ["reminder.confirmQuestion"] = "Will you make it? Reply 1 to confirm or 2 to cancel.",
             ["whatsapp.attendanceConfirmed"] = "Thanks for confirming! See you on {date} at {time} 👋",
+            ["whatsapp.attendanceReask"] = "Just to be sure: to cancel your appointment on {date} at {time}, reply 2. To keep it, reply 1.",
             ["whatsapp.fromOwner"] = "💬 Message from the business owner:",
             ["whatsapp.ownerChatEnded"] = "The conversation with {businessName} has ended. Send us a message any time to book or to ask again.",
             ["whatsapp.ownerBookingLink"] = "Here's your link to book {service}:\n{url}",
@@ -122,6 +123,7 @@ public static class I18nService
             ["template.noUpcoming"] = "ليس لديك مواعيد قادمة لدينا حاليًا.",
             ["reminder.confirmQuestion"] = "هل ستحضر؟ أرسل ‎1‎ للتأكيد أو ‎2‎ للإلغاء.",
             ["whatsapp.attendanceConfirmed"] = "شكرًا على التأكيد! نراك يوم {date} الساعة {time} 👋",
+            ["whatsapp.attendanceReask"] = "للتأكد فقط: لإلغاء موعدك يوم {date} الساعة {time} أرسل ‎2‎. للإبقاء عليه أرسل ‎1‎.",
             ["whatsapp.fromOwner"] = "💬 رسالة من صاحب العمل:",
             ["whatsapp.ownerChatEnded"] = "انتهت المحادثة مع {businessName}. أرسل لنا رسالة في أي وقت للحجز أو للسؤال مرة أخرى.",
             ["whatsapp.ownerBookingLink"] = "هذا رابط حجز {service}:\n{url}",
@@ -181,6 +183,7 @@ public static class I18nService
             ["template.noUpcoming"] = "אין לך כרגע תורים קרובים אצלנו.",
             ["reminder.confirmQuestion"] = "האם תגיעו? השיבו 1 לאישור או 2 לביטול.",
             ["whatsapp.attendanceConfirmed"] = "תודה על האישור! נתראה ב-{date} בשעה {time} 👋",
+            ["whatsapp.attendanceReask"] = "רק לוודא: כדי לבטל את התור ב-{date} בשעה {time} השיבו 2. כדי להשאיר אותו השיבו 1.",
             ["whatsapp.fromOwner"] = "💬 הודעה מבעל העסק:",
             ["whatsapp.ownerChatEnded"] = "השיחה עם {businessName} הסתיימה. אפשר לשלוח לנו הודעה בכל זמן כדי לקבוע תור או לשאול שוב.",
             ["whatsapp.ownerBookingLink"] = "הנה הקישור לקביעת {service}:\n{url}",

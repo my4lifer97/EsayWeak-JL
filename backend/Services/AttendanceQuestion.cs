@@ -27,8 +27,8 @@ public static class AttendanceQuestion
         return state is null ? (true, null) : (state.ExpiresAt <= DateTime.UtcNow, state);
     }
 
-    // The question stays open until the appointment starts.
-    public static void Park(AppDbContext db, WhatsAppConversationState? existing, Appointment appointment, string lang)
+    // The question stays open until the appointment starts. Returns the state row.
+    public static WhatsAppConversationState Park(AppDbContext db, WhatsAppConversationState? existing, Appointment appointment, string lang)
     {
         var state = existing ?? new WhatsAppConversationState { BusinessId = appointment.BusinessId, Phone = appointment.Customer.Phone };
         if (existing is null) db.WhatsAppConversationStates.Add(state);
@@ -42,5 +42,6 @@ public static class AttendanceQuestion
         var localStart = DateTime.SpecifyKind(appointment.Date.Date.Add(TimeSpan.Parse(appointment.StartTime)), DateTimeKind.Unspecified);
         state.ExpiresAt = TimeZoneInfo.ConvertTimeToUtc(localStart, AppClock.Zone);
         appointment.AttendanceStatus = Asked;
+        return state;
     }
 }

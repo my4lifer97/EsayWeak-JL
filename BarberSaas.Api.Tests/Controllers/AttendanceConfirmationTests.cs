@@ -99,7 +99,6 @@ public class AttendanceConfirmationTests : IntegrationTestBase
     [Theory]
     [InlineData("2")]
     [InlineData("no")]
-    [InlineData("yes cancel")] // a cancel word means cancel, not yes
     public async Task TwoOrNo_CancelsTheAppointment(string answer)
     {
         var (businessId, _, appointmentId) = await Seed($"attend-no-{answer.Replace(' ', '-')}", "+15553330003");
@@ -109,6 +108,121 @@ public class AttendanceConfirmationTests : IntegrationTestBase
 
         Assert.Contains("cancelled", reply);
         Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+    }
+
+    [Theory]
+    [InlineData("keep it")]
+    [InlineData("להשאיר")]
+    [InlineData("yes please")]
+    public async Task KeepWords_ConfirmTheAppointment(string answer)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-keep-{answer.Length}-{answer.GetHashCode():x}", "+15553330008");
+        await RunReminders();
+
+        var reply = await Inbound(businessId, "+15553330008", answer);
+
+        Assert.NotNull(reply); // in the customer's language
+        var appointment = await Load(appointmentId);
+        Assert.Equal(AttendanceQuestion.Confirmed, appointment.AttendanceStatus);
+        Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
+    }
+
+    // QA run 5: any message with a cancel word cancelled straight away, "don't cancel" included.
+    [Theory]
+    [InlineData("please don't cancel")]
+    [InlineData("dont cancel it")]
+    [InlineData("לא לבטל")]
+    [InlineData("لا تلغي")]
+    [InlineData("yes cancel")]
+    public async Task CancelWord_AsksAgain_InsteadOfCancelling(string answer)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-reask-{answer.Length}-{answer.GetHashCode():x}", "+15553330009");
+        await RunReminders();
+
+        var reply = await Inbound(businessId, "+15553330009", answer);
+
+        // In the customer's language: the date is in every version.
+        Assert.Contains(AppClock.Now.AddDays(1).ToString("yyyy-MM-dd"), reply);
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await Load(appointmentId)).Status);
+
+        await Inbound(businessId, "+15553330009", "1");
+        Assert.Equal(AttendanceQuestion.Confirmed, (await Load(appointmentId)).AttendanceStatus);
+    }
+
+    [Theory]
+    [InlineData("2")]
+    [InlineData("cancel")]
+    public async Task AfterTheReask_TwoOrACancelWordCancels(string answer)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-reask2-{answer}", "+15553330010");
+        await RunReminders();
+        await Inbound(businessId, "+15553330010", "cancel please");
+
+        var reply = await Inbound(businessId, "+15553330010", answer);
+
+        Assert.Contains("cancelled", reply);
+        Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task RescheduleRequest_DoesNotCancel()
+    {
+        var (businessId, _, appointmentId) = await Seed("attend-move", "+15553330011");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330011", "can I move it instead of cancel?");
+
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await Load(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task ChatbotOff_GetsThePlainReminder()
+    {
+        var (businessId, _, appointmentId) = await Seed("attend-bot-off", "+15553330012");
+        using (var db = Db())
+        {
+            var business = await db.Businesses.SingleAsync(b => b.Id == businessId);
+            business.ChatbotEnabled = false;
+            await db.SaveChangesAsync();
+        }
+
+        await RunReminders();
+
+        var sent = Assert.Single(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId);
+        Assert.DoesNotContain("Reply 1 to confirm", sent.Message);
+        Assert.Null((await Load(appointmentId)).AttendanceStatus);
+    }
+
+    // QA run 5: the conversation row the customer's message created made the run's single save
+    // fail, so no ReminderSent was saved and the next run sent every reminder again.
+    [Fact]
+    public async Task CustomerWritesInDuringTheRun_ReminderIsNotSentTwice()
+    {
+        var (businessId, _, appointmentId) = await Seed("attend-race", "+15553330013");
+        Factory.WhatsAppSender.OnSend = async () =>
+        {
+            Factory.WhatsAppSender.OnSend = null;
+            using var db = Db();
+            db.WhatsAppConversationStates.Add(new WhatsAppConversationState
+            {
+                BusinessId = businessId, Phone = "+15553330013", ChatbotMode = "Booking", ExpiresAt = DateTime.UtcNow.AddHours(1),
+            });
+            await db.SaveChangesAsync();
+        };
+        try
+        {
+            await RunReminders();
+            await RunReminders();
+        }
+        finally
+        {
+            Factory.WhatsAppSender.OnSend = null;
+        }
+
+        Assert.Single(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId);
+        var appointment = await Load(appointmentId);
+        Assert.True(appointment.ReminderSent);
+        Assert.Null(appointment.AttendanceStatus);
     }
 
     [Fact]

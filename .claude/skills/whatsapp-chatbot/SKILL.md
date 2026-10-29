@@ -77,14 +77,19 @@ to WhatsApp).
   broken). The lock lasts 24 h from the last reminder (`LockoutLifetime`); `ExpiresAt - LockoutLifetime`
   is when that reminder went out, so no extra column (`StartLockout`/`LockoutReminderIfDue`).
 - **No-show question in the day-before reminder** (2026-10-25, `Services/AttendanceQuestion`): the
-  reminder ends with `reminder.confirmQuestion` ("Reply 1 to confirm or 2 to cancel") when the customer
-  has no live conversation row (a service list, cancel question or owner chat would read the same
-  1/2; they get the plain reminder), at most once per phone per business per run. It's parked as
+  reminder ends with `reminder.confirmQuestion` ("Reply 1 to confirm or 2 to cancel") when the chatbot
+  is on, the business isn't disabled and the customer has no live conversation row (a service list,
+  cancel question or owner chat would read the same 1/2; they get the plain reminder), at most once
+  per phone per business per run. The cron saves after each reminder; if the customer's own message
+  created their conversation row mid-run, the question is dropped and the reminder stays sent. It's parked as
   `ChatbotMode = "ConfirmAttendance:{appointmentId}"` until the appointment starts, and
   `Appointment.AttendanceStatus = "ASKED"`. `WhatsAppController.AnswerAttendanceQuestionAsync` runs first
-  in `ProcessMessageLockedAsync` (before the Book/Ask menu): `1`/yes -> `"CONFIRMED"` +
-  `whatsapp.attendanceConfirmed`; `2`/no or any cancel word -> `CancelConfirmedAppointment` (owner
-  approval and waitlist included); anything else drops the question and is handled normally. Moving
+  in `ProcessMessageLockedAsync` (before the Book/Ask menu): `1`/yes or a keep word ("keep it",
+  "להשאיר") -> `"CONFIRMED"` + `whatsapp.attendanceConfirmed`; `2`/no -> `CancelConfirmedAppointment`
+  (owner approval and waitlist included); any other message with a cancel word ("yes cancel", "don't
+  cancel", "לא לבטל") gets `whatsapp.attendanceReask` once (`InvalidAttempts = 1` marks it), after which
+  a non-negated cancel word cancels; a reschedule word or anything else drops the question and is
+  handled normally. Moving
   an appointment clears `AttendanceStatus` (with `ReminderSent`). The owner sees it as a badge
   (`components/admin/AttendanceBadge`) on Appointments and in the calendar's details.
 - **Cancel keyword asks first** (rule-based path 2026-10-11; the AI path asks too since 2026-10-19, see below): cancel/reschedule

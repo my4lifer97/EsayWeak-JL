@@ -93,6 +93,11 @@ public class WhatsAppController(
         "من", "فضلك", "لو", "سمحت", "شكرا", "الموعد", "موعد", "اياه",
     ];
     private static readonly string[] NoWords = ["no", "nope", "n", "לא", "لا", "keep", "להשאיר", "השאר"];
+    // "Keep it" to the reminder's "1 to confirm / 2 to cancel" is a confirm (QA run 5: as a no word
+    // it cancelled the appointment).
+    private static readonly string[] KeepWords = ["keep", "להשאיר", "השאר", "תשאיר", "תשאירו", "خلي", "خليه", "ابقي", "أبقي", "إبقاء", "ابقاء"];
+    // A word before a cancel word that turns it around: "don't cancel", "לא לבטל", "لا تلغي".
+    private static readonly string[] NegationWords = ["dont", "not", "never", "לא", "אל", "لا", "ما", "مش", "بلاش"];
     // "#" since 2026-10-23 (owner's choice, like the #1/#2 commands); "$" still works, since earlier
     // lockout messages in customers' chats name it.
     private const string UnlockKeyword = "#";
@@ -1316,8 +1321,11 @@ public class WhatsAppController(
     }
 
     // Handled=false: no open question, or the message isn't an answer (the question is dropped either
-    // way and the message handled normally). "1"/yes confirms; "2"/no, or any cancel word, cancels
-    // through CancelFromCustomerAsync (owner approval and the waitlist included).
+    // way and the message handled normally). "1"/yes or a keep word confirms; "2"/no cancels through
+    // CancelFromCustomerAsync (owner approval and the waitlist included). Any other message with a
+    // cancel word ("yes cancel", "please don't cancel", "לא לבטל") is asked once more, "reply 2 to
+    // cancel, 1 to keep": a cancel word cancelling straight away also cancelled "don't cancel"
+    // (QA run 5). After that one re-ask a cancel word without a negation cancels.
     private async Task<(bool Handled, string? Reply)> AnswerAttendanceQuestionAsync(string businessId, string fromPhone, string message, string lang)
     {
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
@@ -1325,26 +1333,49 @@ public class WhatsAppController(
         var appointmentId = AttendanceQuestion.AppointmentId(state?.ChatbotMode);
         if (appointmentId is null) return (false, null);
 
-        db.WhatsAppConversationStates.Remove(state!);
-        await db.SaveChangesAsync();
+        var appointment = await db.Appointments.Include(a => a.Customer)
+            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == businessId && a.Customer.Phone == fromPhone);
+        var open = appointment is not null && appointment.Status == AppointmentStatus.CONFIRMED && !appointment.PendingCancellationApproval
+            && AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) == "CONFIRMED";
 
-        // "yes, cancel" means cancel here, not yes.
-        var answer = ContainsKeyword(message, CancelKeywords) ? "2" : ConfirmationAnswer(message);
-        if (answer is null) return (false, null);
+        var answer = AttendanceAnswer(message, reasked: state!.InvalidAttempts > 0);
+        if (open && answer == "reask")
+        {
+            state.InvalidAttempts = 1;
+            await db.SaveChangesAsync();
+            return (true, I18nService.T(lang, "whatsapp.attendanceReask", DateTimeArgs(appointment!)));
+        }
+
+        db.WhatsAppConversationStates.Remove(state);
+        await db.SaveChangesAsync();
+        if (!open || answer is not ("1" or "2")) return (false, null);
+
         if (answer == "2")
         {
             var cancelled = await CancelConfirmedAppointment(businessId, appointmentId, fromPhone, lang);
             return cancelled is null ? (false, null) : (true, cancelled);
         }
 
-        var appointment = await db.Appointments.Include(a => a.Customer)
-            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == businessId && a.Customer.Phone == fromPhone);
-        if (appointment is null || appointment.Status != AppointmentStatus.CONFIRMED || appointment.PendingCancellationApproval
-            || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
-            return (false, null);
-        appointment.AttendanceStatus = AttendanceQuestion.Confirmed;
+        appointment!.AttendanceStatus = AttendanceQuestion.Confirmed;
         await db.SaveChangesAsync();
         return (true, I18nService.T(lang, "whatsapp.attendanceConfirmed", DateTimeArgs(appointment)));
+    }
+
+    // "1" (coming), "2" (cancel), "reask" (mentions cancelling but isn't a plain answer), or null
+    // (about something else: a question, a reschedule request).
+    private static string? AttendanceAnswer(string message, bool reasked)
+    {
+        if (ContainsKeyword(message, RescheduleKeywords)) return null;
+        var words = Words(message);
+        var cancelAt = words.FindIndex(w => ContainsKeyword(w, CancelKeywords));
+        var negatedCancel = cancelAt > 0 && NegationWords.Contains(words[cancelAt - 1])
+            || cancelAt > 1 && words[cancelAt - 1] == "t" && words[cancelAt - 2] == "don";
+        if (cancelAt < 0 && words.Count <= 4 && words.Any(w => KeepWords.Contains(w))
+            && words.All(w => KeepWords.Contains(w) || NoWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w)))
+            return "1";
+        if (cancelAt >= 0)
+            return reasked && !negatedCancel ? "2" : "reask";
+        return ConfirmationAnswer(message);
     }
 
     // The reply that locks the conversation: the "$" reminder, with the lock running LockoutLifetime.

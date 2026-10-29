@@ -203,19 +203,34 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
 
                 var ask = false;
                 WhatsAppConversationState? existing = null;
-                if (askAttendance && !asked.Contains((appt.BusinessId, appt.Customer.Phone)))
+                // Only the chatbot answers it: with the chatbot off (or the business disabled) the
+                // customer's "1"/"2" got no reply and changed nothing (QA run 5).
+                if (askAttendance && appt.Business.ChatbotEnabled && !appt.Business.IsDisabled
+                    && !asked.Contains((appt.BusinessId, appt.Customer.Phone)))
                     (ask, existing) = await AttendanceQuestion.CanAskAsync(db, appt.BusinessId, appt.Customer.Phone);
                 if (ask) message += $"\n\n{I18nService.T(lang, "reminder.confirmQuestion")}";
 
                 await whatsAppSender.SendAsync(appt.Business, appt.Customer.Phone, message);
 
-                // Parked only once the question really went out.
-                if (ask)
-                {
-                    AttendanceQuestion.Park(db, existing, appt, lang);
-                    asked.Add((appt.BusinessId, appt.Customer.Phone));
-                }
+                // Saved per reminder, right after its send: one save for the whole run meant any
+                // failure left every ReminderSent unsaved, and the next run sent them all again
+                // (QA run 5). Parked only once the question really went out.
                 markSent(appt);
+                var parked = ask ? AttendanceQuestion.Park(db, existing, appt, lang) : null;
+                try
+                {
+                    await db.SaveChangesAsync();
+                }
+                catch (DbUpdateException) when (parked is not null && existing is null)
+                {
+                    // The customer wrote in during the run and their conversation row now exists
+                    // (unique per business + phone): that conversation wins, the reminder stays sent.
+                    db.Entry(parked).State = EntityState.Detached;
+                    appt.AttendanceStatus = null;
+                    await db.SaveChangesAsync();
+                    parked = null;
+                }
+                if (parked is not null) asked.Add((appt.BusinessId, appt.Customer.Phone));
                 sent++;
             }
             catch (Exception ex)

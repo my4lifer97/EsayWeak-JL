@@ -18,9 +18,14 @@ public class FakeWhatsAppSender : IWhatsAppSender
     // A slow bridge, for checking a request doesn't wait on the send (BackgroundNotificationTests).
     public TimeSpan Delay { get; set; } = TimeSpan.Zero;
 
+    // Runs during a send, before it completes: lets a test change the database mid-run (a customer
+    // writing in while the reminder cron is going, AttendanceConfirmationTests).
+    public Func<Task>? OnSend { get; set; }
+
     public async Task SendAsync(Business business, string toPhone, string message)
     {
         if (Delay > TimeSpan.Zero) await Task.Delay(Delay);
+        if (OnSend is not null) await OnSend();
         if (ShouldFail)
             throw new HttpRequestException("Response status code does not indicate success: 401 (Unauthorized).");
 
