@@ -76,7 +76,7 @@ export default function RecurringAppointmentsPage() {
 
   const { data: slots = [], isFetching: slotsLoading } = useQuery<Slot[]>({
     queryKey: ['admin-availability', effectiveDate, serviceId],
-    queryFn: () => api.get(`/admin/appointments/availability?date=${effectiveDate}&itemId=${serviceId}`).then((r) => r.data.slots),
+    queryFn: () => api.get(`/admin/appointments/availability?date=${effectiveDate}&itemId=${serviceId}&recurring=true`).then((r) => r.data.slots),
     enabled: !!effectiveDate && !!serviceId && !showCustomTime,
   })
 

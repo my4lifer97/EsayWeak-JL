@@ -1041,14 +1041,16 @@ public class AdminController(
     // ─── Manual appointment creation ───────────────────────────────────────
 
     [HttpGet("appointments/availability")]
-    public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string itemId, [FromQuery] string? excludeAppointmentId = null)
+    public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string itemId, [FromQuery] string? excludeAppointmentId = null,
+        [FromQuery] bool recurring = false)
     {
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == BusinessId && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
         // The reschedule modal passes the appointment it's moving, so it doesn't block itself.
-        var slots = await availability.GetAvailableSlots(BusinessId, date, item.DurationMinutes.Value, excludeAppointmentId);
+        // The recurring form asks for the 30-minute grid only (no gap filling).
+        var slots = await availability.GetAvailableSlots(BusinessId, date, item.DurationMinutes.Value, excludeAppointmentId, gapFilling: !recurring);
         return Ok(new { slots });
     }
 

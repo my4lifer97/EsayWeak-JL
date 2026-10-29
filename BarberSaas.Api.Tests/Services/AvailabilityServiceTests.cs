@@ -343,6 +343,88 @@ public class AvailabilityServiceTests : IDisposable
     }
 
     // Default: Monday 09:00-12:00 only. Holiday: only `holidayDayOfWeek` open.
+    // Gap filling: the end of an appointment is offered too, so a 15-minute haircut at 09:00
+    // doesn't waste 09:15-09:30.
+    [Fact]
+    public async Task GapFilling_OffersTheTimeAnAppointmentEnds_WhenTheServiceFits()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var (item, customer) = SeedItemAndCustomer(db, business);
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:00", "09:15"));
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:30", "10:00"));
+        db.SaveChanges();
+        var service = new AvailabilityService(db);
+
+        var fifteen = await service.GetAvailableSlots(business.Id, TestDate, 15);
+        var thirty = await service.GetAvailableSlots(business.Id, TestDate, 30);
+
+        Assert.Equal(["09:15", "10:00", "10:30", "11:00", "11:30"], fifteen.Select(s => s.Start));
+        Assert.DoesNotContain(thirty, s => s.Start == "09:15"); // would run into 09:30
+    }
+
+    [Fact]
+    public async Task GapFilling_ALongerServiceStartsAtTheGapWhenTheNextAppointmentIsLater()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var (item, customer) = SeedItemAndCustomer(db, business);
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:00", "09:15"));
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:45", "10:00"));
+        db.SaveChanges();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 30);
+
+        var gap = Assert.Single(slots, s => s.Start == "09:15");
+        Assert.Equal("09:45", gap.End);
+    }
+
+    [Fact]
+    public async Task GapFillingOff_OffersOnlyTheThirtyMinuteGrid()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var (item, customer) = SeedItemAndCustomer(db, business);
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:00", "09:15"));
+        db.SaveChanges();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 15, gapFilling: false);
+
+        Assert.DoesNotContain(slots, s => s.Start == "09:15");
+    }
+
+    [Fact]
+    public async Task GapFilling_OffersTheEndOfABreak()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        db.Breaks.Add(new Break { BusinessId = business.Id, DayOfWeek = MondayDayOfWeek, StartTime = "10:00", EndTime = "10:20" });
+        db.SaveChanges();
+
+        var slots = await new AvailabilityService(db).GetAvailableSlots(business.Id, TestDate, 30);
+
+        Assert.Contains(slots, s => s.Start == "10:20");
+        Assert.DoesNotContain(slots, s => s.Start == "10:00");
+    }
+
+    // A gap time that's taken isn't listed as a booked slot to join a waitlist for; the regular
+    // 30-minute ones still are.
+    [Fact]
+    public async Task GapFilling_TakenGapTimesAreNotListedAsBooked()
+    {
+        using var db = NewDb();
+        var business = SeedBusiness(db);
+        var (item, customer) = SeedItemAndCustomer(db, business);
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:00", "09:15"));
+        db.Appointments.Add(NewAppointment(business, item, customer, "09:15", "10:00"));
+        db.SaveChanges();
+
+        var slots = await new AvailabilityService(db).GetSlotsWithBookingInfo(business.Id, TestDate, 15);
+
+        Assert.Equal(["09:00", "09:30", "10:00", "10:30", "11:00", "11:30"], slots.Select(s => s.Start));
+        Assert.False(slots.Single(s => s.Start == "09:30").Available);
+    }
+
     private static (SchedulePreset Holiday, SchedulePreset Default) SeedPresets(AppDbContext db, string businessId, int holidayDayOfWeek)
     {
         SchedulePreset Make(string name, bool isDefault, int openDay) => new()

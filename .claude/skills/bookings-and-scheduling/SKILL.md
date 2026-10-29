@@ -14,6 +14,18 @@ appointment — "per week" means the fixed Sun–Sat calendar week containing th
 A customer's reschedule (magic link or My Bookings) is checked too, not counting the appointment
 being moved (2026-10-20); the owner's own reschedule isn't.
 
+### Start times: 30-minute grid + gap filling (2026-10-30)
+`AvailabilityService.GetSlotsWithBookingInfo` offers start times every 30 minutes from opening
+**plus** the end time of every CONFIRMED appointment, break and blocked range that day (so a
+14:00-14:15 haircut leaves 14:15 bookable for any service that fits before the next booking).
+Each slot ends at start + the item's duration, and is checked for overlap over that whole range.
+Gap times are listed only while free -- never as booked slots for the waitlist. The owner's
+choice: the 30-minute grid stays the default for all businesses (no per-business interval
+setting yet). `gapFilling: false` (`GET /api/admin/appointments/availability?recurring=true`,
+used by the recurring form) returns the grid only, since `RecurringAppointmentsController`
+accepts only grid times. Every booking path validates "start is in the offered list", so gap
+times work everywhere else (wizard, owner booking, reschedules, chatbot) with no extra code.
+
 ### No overlapping bookings (advisory lock)
 Every booking/reschedule write (public, customer, owner) saves through
 `AvailabilityService.TrySaveOrDetectConflict`, which on Postgres takes

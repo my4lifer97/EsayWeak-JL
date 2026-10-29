@@ -9,9 +9,12 @@ public class AvailabilityService(AppDbContext db)
 {
     // excludeAppointmentId: the appointment being rescheduled. Without it, a booking blocked its
     // own neighbouring slots, so a 60-min 10:00 appointment could never move to 10:30.
-    public async Task<List<TimeSlot>> GetAvailableSlots(string businessId, string dateStr, int serviceDuration, string? excludeAppointmentId = null)
+    // gapFilling false: the 30-minute grid only, for a weekly series (RecurringAppointmentsController
+    // accepts only grid times, and one week's gap says nothing about the others).
+    public async Task<List<TimeSlot>> GetAvailableSlots(string businessId, string dateStr, int serviceDuration, string? excludeAppointmentId = null,
+        bool gapFilling = true)
     {
-        var slots = await GetSlotsWithBookingInfo(businessId, dateStr, serviceDuration, excludeAppointmentId);
+        var slots = await GetSlotsWithBookingInfo(businessId, dateStr, serviceDuration, excludeAppointmentId, gapFilling);
         return slots.Where(s => s.Available).Select(s => new TimeSlot(s.Start, s.End)).ToList();
     }
 
@@ -21,7 +24,8 @@ public class AvailabilityService(AppDbContext db)
     // hiding them entirely. Breaks/blocked-slots are still fully excluded (not real bookings).
     public const int MaxDaysAhead = 365;
 
-    public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string businessId, string dateStr, int serviceDuration, string? excludeAppointmentId = null)
+    public async Task<List<SlotWithBookingInfoDto>> GetSlotsWithBookingInfo(string businessId, string dateStr, int serviceDuration, string? excludeAppointmentId = null,
+        bool gapFilling = true)
     {
         // A date entirely before today (not just "already passed today's slots", see the isToday
         // check further down) must never offer any slots at all -- otherwise it's booking-able,
@@ -55,7 +59,17 @@ public class AvailabilityService(AppDbContext db)
                 .Select(b => new TimeSlot(b.StartTime!, b.EndTime!)))
             .ToList();
 
-        var candidates = GenerateSlots(startTime, endTime, 30);
+        // Every 30 minutes from opening, plus gap filling: the moment an appointment, break or
+        // blocked time ends, so a 14:00-14:15 haircut leaves 14:15 bookable for whatever fits
+        // before the next appointment. Those extra times are offered only while free -- they
+        // aren't shown as booked slots to join a waitlist for.
+        var gridStarts = GenerateSlots(startTime, endTime, 30).Select(s => s.Start).ToHashSet();
+        HashSet<string> gapStarts = !gapFilling ? [] : existingAppointments.Select(a => a.EndTime)
+            .Concat(blockedPeriods.Select(b => b.End))
+            .Where(t => string.Compare(t, startTime, StringComparison.Ordinal) > 0
+                && string.Compare(t, endTime, StringComparison.Ordinal) < 0 && !gridStarts.Contains(t))
+            .ToHashSet();
+        var candidates = gridStarts.Concat(gapStarts).Order(StringComparer.Ordinal).ToList();
 
         // For today, don't offer slots that have already started — a customer booking at
         // 15:00 shouldn't see (or be able to grab) a 10:00 slot. WorkingHours/Appointment
@@ -69,21 +83,22 @@ public class AvailabilityService(AppDbContext db)
         var nowTime = now.ToString("HH:mm");
 
         return candidates
-            .Where(slot =>
+            .Where(start =>
             {
-                var slotEnd = AddMinutes(slot.Start, serviceDuration);
+                var slotEnd = AddMinutes(start, serviceDuration);
                 if (string.Compare(slotEnd, endTime, StringComparison.Ordinal) > 0) return false;
-                if (isToday && string.Compare(slot.Start, nowTime, StringComparison.Ordinal) <= 0) return false;
-                return !blockedPeriods.Any(b => Overlaps(slot.Start, slotEnd, b.Start, b.End));
+                if (isToday && string.Compare(start, nowTime, StringComparison.Ordinal) <= 0) return false;
+                return !blockedPeriods.Any(b => Overlaps(start, slotEnd, b.Start, b.End));
             })
-            .Select(slot =>
+            .Select(start =>
             {
-                // Slots start every 30 minutes, but each one ends when the service would: the
-                // booking summary showed 13:00-13:30 for a 60-minute service (QA run 3).
-                var serviceEnd = AddMinutes(slot.Start, serviceDuration);
-                var booking = existingAppointments.FirstOrDefault(a => Overlaps(slot.Start, serviceEnd, a.StartTime, a.EndTime));
-                return new SlotWithBookingInfoDto(slot.Start, serviceEnd, booking is null, booking?.Id);
+                // Each slot ends when the service would: the booking summary showed 13:00-13:30
+                // for a 60-minute service (QA run 3).
+                var serviceEnd = AddMinutes(start, serviceDuration);
+                var booking = existingAppointments.FirstOrDefault(a => Overlaps(start, serviceEnd, a.StartTime, a.EndTime));
+                return new SlotWithBookingInfoDto(start, serviceEnd, booking is null, booking?.Id);
             })
+            .Where(slot => slot.Available || gridStarts.Contains(slot.Start))
             .ToList();
     }
 
