@@ -31,8 +31,10 @@ public class ServiceListPrompt(AppDbContext db, BookingRules bookingRules)
         }
 
         var services = await ActiveServicesAsync(businessId, lang);
+        // With Inquiry on, it says how to reach the owner instead of ending there (QA run 5).
         if (services.Count == 0)
-            return I18nService.T(lang, "whatsapp.noServices", new() { ["businessName"] = businessName });
+            return I18nService.T(lang, "whatsapp.noServices", new() { ["businessName"] = businessName })
+                + (inquiryEnabled ? I18nService.T(lang, "whatsapp.inquiryEscapeHatch") : "");
 
         var existing = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == businessId && s.Phone == phone);
         if (existing is null)

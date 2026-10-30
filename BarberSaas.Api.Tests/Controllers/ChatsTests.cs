@@ -369,7 +369,7 @@ public class ChatsTests : IntegrationTestBase
         Assert.Null(reply);
         var last = (await GetChat(token, "+15551110031")).Messages[^1];
         Assert.Equal(("Customer", "Like this one"), (last.Sender, last.Text));
-        Assert.Equal(("photo.jpg", "image/jpeg"), (last.Attachment!.FileName, last.Attachment.ContentType));
+        Assert.Equal(("photo.png", "image/png"), (last.Attachment!.FileName, last.Attachment.ContentType));
         Assert.Equal(1, await Unread(token));
 
         var file = await Client.GetAsync($"/api/admin/chats/attachments/{last.Attachment.Id}");

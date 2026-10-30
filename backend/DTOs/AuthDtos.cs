@@ -72,7 +72,6 @@ public record UpdateSettingsRequest(
     bool CancelApprovalNotifyViaWhatsApp = true, string? CancelApprovalWhatsAppNumber = null,
     bool CancelApprovalNotifyViaEmail = false, string? CancelApprovalEmail = null);
 
-public record ChatbotInquiryDto(string Id, string CustomerPhone, string? CustomerName, string Message, bool IsRead, DateTime CreatedAt);
 
 public record BookAppointmentRequest(
     string ItemId, string Date, string StartTime,

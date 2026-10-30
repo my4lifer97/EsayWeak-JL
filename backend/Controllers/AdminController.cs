@@ -294,33 +294,6 @@ public class AdminController(
         return Ok(new { b.Id, b.Name, Language = b.Language.ToString() });
     }
 
-    // ─── Chatbot inquiries ──────────────────────────────────────────────────
-    // Always-on "in-app" side of owner notification for the chatbot's Inquiry mode (see
-    // WhatsAppController.HandleInquiryModeAsync) -- exists regardless of whether
-    // InquiryNotifyViaWhatsApp/Email are also on.
-
-    [HttpGet("chatbot-inquiries")]
-    public async Task<IActionResult> GetChatbotInquiries([FromQuery] bool unreadOnly = false)
-    {
-        var query = db.ChatbotInquiries.Where(i => i.BusinessId == BusinessId);
-        if (unreadOnly) query = query.Where(i => !i.IsRead);
-
-        var inquiries = await query.OrderByDescending(i => i.CreatedAt).Take(200)
-            .Select(i => new ChatbotInquiryDto(i.Id, i.CustomerPhone, i.CustomerName, i.Message, i.IsRead, i.CreatedAt))
-            .ToListAsync();
-        return Ok(inquiries);
-    }
-
-    [HttpPost("chatbot-inquiries/{id}/read")]
-    public async Task<IActionResult> MarkChatbotInquiryRead(string id)
-    {
-        var inquiry = await db.ChatbotInquiries.FirstOrDefaultAsync(i => i.Id == id && i.BusinessId == BusinessId);
-        if (inquiry is null) return NotFound();
-        inquiry.IsRead = true;
-        await db.SaveChangesAsync();
-        return Ok(new { ok = true });
-    }
-
     // ─── Items ──────────────────────────────────────────────────────────────
 
     [HttpGet("items")]
@@ -1185,7 +1158,7 @@ public class AdminController(
         // Both reminders are for the new time, including the 3-hours-before one.
         appt.ReminderSent = false;
         appt.ReminderSentSoon = false;
-        appt.AttendanceStatus = null;
+        await AttendanceQuestion.ForgetAsync(db, appt);
 
         await waitlist.ResolveForRebooking(BusinessId, appt.Date, appt.StartTime, appt.EndTime);
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, appt.EndTime))

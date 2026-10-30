@@ -46,6 +46,9 @@ public static class ApiErrorTranslations
         ["This service can't be booked"] = ("لا يمكن حجز هذه الخدمة", "אי אפשר להזמין את השירות הזה"),
         ["Your WhatsApp bot isn't linked, so messages can't be sent"] = ("بوت واتساب غير مربوط، لذلك لا يمكن إرسال الرسائل", "בוט הוואטסאפ לא מחובר, ולכן אי אפשר לשלוח הודעות"),
         ["The message wasn't sent: the WhatsApp bot isn't connected right now"] = ("لم تُرسل الرسالة: بوت واتساب غير متصل حاليًا", "ההודעה לא נשלחה: בוט הוואטסאפ לא מחובר כרגע"),
+        ["WhatsApp didn't answer in time, so the message may or may not have been sent. Check the phone before sending it again."] = (
+            "لم يرد واتساب في الوقت المحدد، لذلك ربما أُرسلت الرسالة وربما لا. تحقق من الهاتف قبل إرسالها مرة أخرى.",
+            "וואטסאפ לא ענה בזמן, ולכן ייתכן שההודעה נשלחה וייתכן שלא. כדאי לבדוק בטלפון לפני ששולחים שוב."),
         ["Invalid start time"] = ("وقت البدء غير صالح", "שעת התחלה לא תקינה"),
         ["Invalid day of week"] = ("يوم غير صالح", "יום לא תקין"),
         ["Please upload a JPG, PNG, or WEBP image up to 5MB."] = ("يرجى رفع صورة JPG أو PNG أو WEBP بحجم أقصاه 5MB.", "יש להעלות תמונת JPG,‏ PNG או WEBP עד 5MB."),

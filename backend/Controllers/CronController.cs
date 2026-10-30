@@ -122,6 +122,9 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             // A customer cancellation waiting on the owner's approval stays CONFIRMED internally, but the
             // customer already sees it as cancelled -- no reminder for it.
             .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSent)
+            // In time order: with two appointments the same day, the question goes with the first
+            // one's reminder, not an arbitrary one (QA run 5). Each reminder names its own time.
+            .OrderBy(a => a.StartTime)
             .ToListAsync();
 
         var (dayBeforeSent, dayBeforeFailed) = await SendBatchAsync(dayBeforeAppointments, "reminder.message", appUrl,

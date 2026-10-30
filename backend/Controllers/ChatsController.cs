@@ -143,35 +143,39 @@ public class ChatsController(
 
     // A photo or file from the owner's device, with the message box's text as its caption. Photos go
     // as WhatsApp images, the rest as documents.
+    // Every field optional for binding, and the body limit above the file limit: a missing file part
+    // or a file over 10MB got the framework's generic "Invalid request" instead of the file rule
+    // (QA run 5).
     [HttpPost("attachment")]
-    [RequestSizeLimit(ChatFiles.MaxRequestBytes)]
-    public async Task<IActionResult> SendAttachment([FromForm] string phone, [FromForm] string? caption, IFormFile file)
+    [RequestSizeLimit(ChatFiles.MaxRequestBodyBytes)]
+    public async Task<IActionResult> SendAttachment([FromForm] string? phone, [FromForm] string? caption, IFormFile? file)
     {
         var text = (caption ?? "").Replace("\0", "").Trim();
         if (text.Length > ChatLog.MaxTextChars) return BadRequest(new { error = "This message is too long" });
+        if (file is null) return BadRequest(new { error = ChatFiles.Error });
         var contentType = await ChatFiles.ValidateAsync(file);
         if (contentType is null) return BadRequest(new { error = ChatFiles.Error });
 
-        var (chat, error) = await OpenChatFor(phone);
+        var (chat, error) = await OpenChatFor(phone ?? "");
         if (error is not null) return error;
 
         using var buffer = new MemoryStream();
         await file.CopyToAsync(buffer);
         var fileName = ChatFiles.SafeFileName(file.FileName);
         var ownerLine = I18nService.T(chat!.Language, "whatsapp.fromOwner");
+        var data = buffer.ToArray();
         try
         {
             await bridge.SendMediaAsync(BusinessId, PhoneNormalizer.ToE164(chat.Phone),
-                text.Length == 0 ? ownerLine : $"{ownerLine}\n{text}", fileName, contentType, buffer.ToArray());
+                text.Length == 0 ? ownerLine : $"{ownerLine}\n{text}", fileName, contentType, data);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (SendFailure(ex) is { } failure)
         {
             logger.LogWarning(ex, "Chat attachment to a customer of business {BusinessId} failed", BusinessId);
-            return StatusCode(StatusCodes.Status502BadGateway,
-                new { error = "The message wasn't sent: the WhatsApp bot isn't connected right now" });
+            return failure;
         }
 
-        var attachment = new ChatAttachment { BusinessId = BusinessId, FileName = fileName, ContentType = contentType, Data = buffer.ToArray() };
+        var attachment = new ChatAttachment { BusinessId = BusinessId, FileName = fileName, ContentType = contentType, Data = data };
         db.ChatAttachments.Add(attachment);
         var message = ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Owner, text);
         message.AttachmentId = attachment.Id;
@@ -243,7 +247,7 @@ public class ChatsController(
         {
             await bridge.SendAsync(BusinessId, PhoneNormalizer.ToE164(chat.Phone), text);
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             // Finished anyway: the owner is done, the customer just doesn't get told.
             logger.LogWarning(ex, "Chat-finished message to a customer of business {BusinessId} failed", BusinessId);
@@ -292,6 +296,14 @@ public class ChatsController(
         var reply = new QuickReply { BusinessId = BusinessId, Title = req.Title.Trim(), Text = req.Text.Trim() };
         db.QuickReplies.Add(reply);
         await db.SaveChangesAsync();
+        // Counted again after the insert: two requests at once both passed the check above and
+        // went past the limit (QA run 5). Each one over it takes itself back out.
+        if (await db.QuickReplies.CountAsync(q => q.BusinessId == BusinessId) > MaxQuickReplies)
+        {
+            db.QuickReplies.Remove(reply);
+            await db.SaveChangesAsync();
+            return BadRequest(new { error = "You can save up to 100 ready messages" });
+        }
         return Ok(new QuickReplyDto(reply.Id, reply.Title, reply.Text));
     }
 
@@ -349,6 +361,18 @@ public class ChatsController(
         return (new OpenChat(customerPhone, state.Language, state), null);
     }
 
+    // The answer to a failed send through the bridge: 502 when it refused (not connected), 504 when
+    // it didn't answer in time -- then the message may well have gone out, so the owner checks
+    // before sending again. A timeout used to be a 500 (QA run 5). Null: not a send failure.
+    private ObjectResult? SendFailure(Exception ex) => ex switch
+    {
+        HttpRequestException => StatusCode(StatusCodes.Status502BadGateway,
+            new { error = "The message wasn't sent: the WhatsApp bot isn't connected right now" }),
+        TaskCanceledException when !HttpContext.RequestAborted.IsCancellationRequested => StatusCode(StatusCodes.Status504GatewayTimeout,
+            new { error = "WhatsApp didn't answer in time, so the message may or may not have been sent. Check the phone before sending it again." }),
+        _ => null,
+    };
+
     // Sends with the "Message from the business owner" first line and records it (without that
     // line, which is only for WhatsApp). Null on success.
     private async Task<IActionResult?> SendAsOwner(OpenChat chat, string text)
@@ -358,11 +382,10 @@ public class ChatsController(
             await bridge.SendAsync(BusinessId, PhoneNormalizer.ToE164(chat.Phone),
                 $"{I18nService.T(chat.Language, "whatsapp.fromOwner")}\n{text}");
         }
-        catch (HttpRequestException ex)
+        catch (Exception ex) when (SendFailure(ex) is { } failure)
         {
             logger.LogWarning(ex, "Chat message to a customer of business {BusinessId} failed", BusinessId);
-            return StatusCode(StatusCodes.Status502BadGateway,
-                new { error = "The message wasn't sent: the WhatsApp bot isn't connected right now" });
+            return failure;
         }
         db.ChatMessages.Add(ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Owner, text));
         await ChatLog.OwnerAnsweredAsync(db, BusinessId, chat.Phone);

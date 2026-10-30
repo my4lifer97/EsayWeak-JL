@@ -10,8 +10,9 @@ namespace BarberSaas.Api.Services;
 public static class ChatFiles
 {
     public const long MaxBytes = 10 * 1024 * 1024;
-    // The whole multipart body (caption and phone included).
-    public const long MaxRequestBytes = MaxBytes + 64 * 1024;
+    // The whole multipart body accepted, well above MaxBytes so a too-big file still reaches
+    // ValidateAsync and gets Error, not a generic failure.
+    public const long MaxRequestBodyBytes = 3 * MaxBytes;
     public const string Error = "Send a photo (JPG, PNG, WEBP) or a PDF, Word or Excel file up to 10MB.";
 
     private static readonly Dictionary<string, string> AllowedTypes = new()
@@ -97,6 +98,23 @@ public static class ChatFiles
         return InboundTypes.ContainsKey(type) ? type : "application/octet-stream";
     }
 
+    // The same, checked against the file's first bytes: the type is the sender's claim (QA run 5).
+    // A claimed image is whichever image its bytes are (a PNG sent as JPEG still shows), or a plain
+    // download if they're no image; a claimed PDF must start like one.
+    public static string InboundContentType(string? mimetype, byte[] data)
+    {
+        var type = InboundContentType(mimetype);
+        if (type.StartsWith("image/"))
+            return ImageTypes.FirstOrDefault(t => IsImage(data, t)) ?? "application/octet-stream";
+        if (type == "application/pdf" && !data.AsSpan().StartsWith("%PDF"u8)) return "application/octet-stream";
+        return type;
+    }
+
+    private static readonly string[] ImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+    private static bool IsImage(byte[] data, string type) =>
+        type == "image/gif" ? data.AsSpan().StartsWith("GIF8"u8) : ImageUpload.HasSignature(data, type);
+
     // The customer's own file name, or one made up from the kind of message ("photo.jpg", "voice.ogg").
     public static string InboundFileName(string? fileName, string? kind, string contentType)
     {
@@ -105,11 +123,16 @@ public static class ChatFiles
         return name + InboundTypes.GetValueOrDefault(contentType, "");
     }
 
+    // Direction marks and overrides: "invoice" + U+202E + "fdp.exe" shows as "invoiceexe.pdf" (QA run 5).
+    private static readonly HashSet<char> BidiControls =
+        ['\u061C', '\u200E', '\u200F', '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066', '\u2067', '\u2068', '\u2069'];
+
     // Just the name (no path), without characters that break a download header, at most 120 long.
     public static string SafeFileName(string fileName)
     {
         var name = Path.GetFileName(fileName.Replace('\\', '/'));
-        name = new string(name.Where(c => !char.IsControl(c) && c is not ('"' or '/' or ':' or '*' or '?' or '<' or '>' or '|')).ToArray()).Trim();
+        name = new string(name.Where(c => !char.IsControl(c) && !BidiControls.Contains(c)
+            && c is not ('"' or '/' or ':' or '*' or '?' or '<' or '>' or '|')).ToArray()).Trim();
         if (name.Length == 0) name = "file";
         if (name.Length <= 120) return name;
         // A long "extension" ("a.<200 characters>") is just part of the name.

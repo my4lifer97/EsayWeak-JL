@@ -68,7 +68,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         // Falls into the normal invalid-service-selection path, not inquiry mode.
         Assert.DoesNotContain("chatting directly", body!.Reply);
         using var db = Db();
-        Assert.False(await db.ChatbotInquiries.AnyAsync(i => i.BusinessId == businessId));
+        Assert.False(await CustomerChatMessages(db).AnyAsync(i => i.BusinessId == businessId));
     }
 
     [Fact]
@@ -259,10 +259,10 @@ public class ChatbotInquiryTests : IntegrationTestBase
         Assert.Null(body!.Reply);
 
         using var db = Db();
-        var inquiry = await db.ChatbotInquiries.SingleAsync(i => i.BusinessId == businessId);
+        var inquiry = await CustomerChatMessages(db).SingleAsync(i => i.BusinessId == businessId);
         Assert.Equal("+15550004", inquiry.CustomerPhone);
         Assert.Equal("Dana", inquiry.CustomerName);
-        Assert.Equal("Do you have parking nearby?", inquiry.Message);
+        Assert.Equal("Do you have parking nearby?", inquiry.Text);
     }
 
     [Fact]
@@ -320,7 +320,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         Assert.Contains("first question", emailSent[0].Body);
 
         using var db = Db();
-        Assert.Equal(2, await db.ChatbotInquiries.CountAsync(i => i.BusinessId == businessId));
+        Assert.Equal(2, await CustomerChatMessages(db).CountAsync(i => i.BusinessId == businessId));
     }
 
     [Fact]
@@ -340,29 +340,21 @@ public class ChatbotInquiryTests : IntegrationTestBase
         Assert.Equal(2, waSent.Count);
     }
 
+    // QA run 5 BOT-9: the Inquiries inbox UI is gone (the Chats page replaced it), so its endpoint
+    // and table writes went too; messages are kept as chat messages.
     [Fact]
-    public async Task AdminInquiriesEndpoint_ListsAndMarksRead()
+    public async Task OldInquiriesEndpoint_IsGone()
     {
-        var (businessId, token) = await SeedBusinessWithService("inquiry-inbox@example.com", "inquiry-inbox");
-        await EnableInquiry(token);
-        await PostInboundWithAuth(businessId, "+15550009", "hi");
-        await PostInboundWithAuth(businessId, "+15550009", "$2");
-        await PostInboundWithAuth(businessId, "+15550009", "hello there");
+        var (_, token) = await SeedBusinessWithService("inquiry-inbox@example.com", "inquiry-inbox");
 
         Authorize(Client, token);
-        var list = await Client.GetFromJsonAsync<List<ChatbotInquiryDto>>("/api/admin/chatbot-inquiries");
-        var inquiry = Assert.Single(list!);
-        Assert.False(inquiry.IsRead);
+        var resp = await Client.GetAsync("/api/admin/chatbot-inquiries");
 
-        var readResp = await Client.PostAsync($"/api/admin/chatbot-inquiries/{inquiry.Id}/read", null);
-        Assert.Equal(HttpStatusCode.OK, readResp.StatusCode);
-
-        var listAfter = await Client.GetFromJsonAsync<List<ChatbotInquiryDto>>("/api/admin/chatbot-inquiries");
-        Assert.True(listAfter!.Single().IsRead);
-
-        var unreadOnly = await Client.GetFromJsonAsync<List<ChatbotInquiryDto>>("/api/admin/chatbot-inquiries?unreadOnly=true");
-        Assert.Empty(unreadOnly!);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
+
+    private static IQueryable<BarberSaas.Api.Models.ChatMessage> CustomerChatMessages(BarberSaas.Api.Data.AppDbContext db) =>
+        db.ChatMessages.Where(m => m.Sender == BarberSaas.Api.Models.ChatSender.Customer);
 
     // QA run 2 chatbot minors.
     private async Task<string?> Reply(string businessId, string phone, string message)
@@ -401,7 +393,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         // Still locked: no reply (the reminder was just sent), and no inquiry mode.
         Assert.Null(reply);
         using var db = Db();
-        Assert.False(await db.ChatbotInquiries.AnyAsync(i => i.BusinessId == businessId));
+        Assert.False(await CustomerChatMessages(db).AnyAsync(i => i.BusinessId == businessId));
     }
 
     [Theory]
@@ -435,7 +427,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
 
         await Reply(businessId, "+15550104", "Also, are you open Friday?");
         using var db2 = Db();
-        Assert.Equal(2, await db2.ChatbotInquiries.CountAsync(i => i.BusinessId == businessId));
+        Assert.Equal(2, await CustomerChatMessages(db2).CountAsync(i => i.BusinessId == businessId));
     }
 
     [Fact]
@@ -458,7 +450,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         Assert.Contains("1. Haircut", body!.Reply);
         await PostInboundWithAuth(businessId, phone, "1");
         using var db = Db();
-        Assert.Equal(1, await db.ChatbotInquiries.CountAsync(i => i.BusinessId == businessId));
+        Assert.Equal(["a question", "$1"], await CustomerChatMessages(db).Where(i => i.BusinessId == businessId).OrderBy(i => i.CreatedAt).Select(i => i.Text).ToListAsync());
     }
 
     [Fact]
@@ -500,7 +492,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         await PostInboundWithAuth(businessId, "+15550099", new string('q', 100_000));
 
         using var db = Db();
-        var inquiry = await db.ChatbotInquiries.SingleAsync(i => i.BusinessId == businessId);
-        Assert.Equal(4000, inquiry.Message.Length);
+        var inquiry = await CustomerChatMessages(db).SingleAsync(i => i.BusinessId == businessId);
+        Assert.Equal(4000, inquiry.Text.Length);
     }
 }

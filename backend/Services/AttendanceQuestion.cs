@@ -42,6 +42,17 @@ public static class AttendanceQuestion
         return state is null ? (true, null) : (state.ExpiresAt <= DateTime.UtcNow, state);
     }
 
+    // A moved appointment drops its open (or just answered) question: kept with its old expiry, a
+    // later "1" confirmed the new time without asking about it (QA run 5). Saved by the caller.
+    public static async Task ForgetAsync(AppDbContext db, Appointment appointment)
+    {
+        appointment.AttendanceStatus = null;
+        var modes = new[] { ModePrefix + appointment.Id, AnsweredPrefix + appointment.Id };
+        db.WhatsAppConversationStates.RemoveRange(await db.WhatsAppConversationStates
+            .Where(s => s.BusinessId == appointment.BusinessId && modes.Contains(s.ChatbotMode))
+            .ToListAsync());
+    }
+
     // The question stays open until the appointment starts. Returns the state row.
     public static WhatsAppConversationState Park(AppDbContext db, WhatsAppConversationState? existing, Appointment appointment, string lang)
     {

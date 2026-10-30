@@ -392,7 +392,7 @@ public class BookingController(
         // Both reminders are for the new time, including the 3-hours-before one.
         appointment.ReminderSent = false;
         appointment.ReminderSentSoon = false;
-        appointment.AttendanceStatus = null;
+        await AttendanceQuestion.ForgetAsync(db, appointment);
 
         await waitlist.ResolveForRebooking(appointment.BusinessId, appointment.Date, appointment.StartTime, appointment.EndTime);
         if (!await availability.TrySaveOrDetectConflict(appointment.BusinessId, req.Date, req.StartTime, appointment.EndTime))

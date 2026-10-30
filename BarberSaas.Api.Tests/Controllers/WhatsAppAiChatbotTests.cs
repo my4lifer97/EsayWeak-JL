@@ -246,6 +246,44 @@ public class WhatsAppAiChatbotTests : IntegrationTestBase
         Assert.Equal(AppointmentStatus.CONFIRMED, (await db.Appointments.SingleAsync(a => a.Id == ids[0])).Status);
     }
 
+    // QA run 5 AI-2: "don't cancel" (a cancel word) dropped the question for the model.
+    [Theory]
+    [InlineData("please don't cancel")]
+    [InlineData("לא לבטל")]
+    public async Task CancelQuestion_DontCancel_KeepsTheAppointment(string answer)
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService($"wa-ai-keep-{answer.Length}@example.com", $"wa-ai-keep-{answer.Length}");
+        var phone = "+15559991030";
+        var ids = await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        await PostInbound(businessId, phone, "cancel please");
+        Factory.OpenAi.ToolCallName = null;
+        Factory.OpenAi.PlainTextReply = "MODEL";
+
+        var resp = await PostInbound(businessId, phone, answer);
+
+        var body = await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeInboundResponse>();
+        Assert.NotEqual("MODEL", body!.Reply);
+        using var db = Db();
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await db.Appointments.SingleAsync(a => a.Id == ids[0])).Status);
+    }
+
+    // QA run 5 AI-1: an unclear reply reset the count instead of counting toward the lockout.
+    [Fact]
+    public async Task CancelQuestion_UnclearReply_CountsTowardTheLockout()
+    {
+        var (businessId, _, itemId) = await SeedBusinessWithService("wa-ai-unclear@example.com", "wa-ai-unclear");
+        var phone = "+15559991031";
+        await SeedUpcomingAppointments(businessId, itemId, phone, 1);
+        Factory.OpenAi.ToolCallName = "cancel_upcoming_appointment";
+        await PostInbound(businessId, phone, "cancel please");
+
+        await PostInbound(businessId, phone, "ok");
+
+        using var db = Db();
+        Assert.Equal(1, (await db.WhatsAppConversationStates.SingleAsync(s => s.BusinessId == businessId && s.Phone == phone)).InvalidAttempts);
+    }
+
     [Fact]
     public async Task CancelQuestion_OtherReply_DropsTheQuestionAndAsksTheModel()
     {

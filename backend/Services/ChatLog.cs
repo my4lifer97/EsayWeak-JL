@@ -1,5 +1,6 @@
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Models;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 
 namespace BarberSaas.Api.Services;
@@ -17,12 +18,18 @@ public static class ChatLog
         db.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.Phone == customerPhone
             && s.ChatbotMode == ServiceListPrompt.InquiryMode && s.ExpiresAt > DateTime.UtcNow);
 
+    // The sign-in part of the links we send ("/w/<token>" booking links, "?token=" appointment
+    // links) is left out of the stored copy: the customer has the working link on WhatsApp, and
+    // chat history is kept long after (QA run 5).
+    public static string WithoutLinkTokens(string text) =>
+        Regex.Replace(Regex.Replace(text, @"/w/[A-Za-z0-9_-]+", "/w/..."), @"([?&]token=)[^&\s]+", "$1...");
+
     public static ChatMessage NewMessage(string businessId, string customerPhone, ChatSender sender, string text, string? customerName = null) => new()
     {
         BusinessId = businessId,
         CustomerPhone = customerPhone,
         Sender = sender,
-        Text = TextCut.Cut(text, MaxTextChars),
+        Text = TextCut.Cut(sender == ChatSender.Customer ? text : WithoutLinkTokens(text), MaxTextChars),
         CustomerName = customerName,
         IsRead = sender != ChatSender.Customer,
     };

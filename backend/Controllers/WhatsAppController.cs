@@ -271,7 +271,7 @@ public class WhatsAppController(
         try { data = Convert.FromBase64String(media.Base64); }
         catch (FormatException) { return null; }
         if (data.Length == 0 || data.Length > ChatFiles.MaxInboundBytes) return null;
-        var contentType = ChatFiles.InboundContentType(media.Mimetype);
+        var contentType = ChatFiles.InboundContentType(media.Mimetype, data);
         return new ChatAttachment
         {
             BusinessId = businessId,
@@ -322,7 +322,7 @@ public class WhatsAppController(
         await eventLock.WaitAsync();
         try
         {
-            return req.Event == "connected" ? await HandleConnectedAsync(req) : await HandleLoggedOutAsync(req, alerts);
+            return req.Event == "connected" ? await HandleConnectedAsync(req, alerts) : await HandleLoggedOutAsync(req, alerts);
         }
         finally
         {
@@ -334,7 +334,10 @@ public class WhatsAppController(
     // here too. It used to be written only by the admin page's status poll during a QR link, so a
     // session that came up with nobody watching (2026-10-25: after a logout had cleared it) left
     // WhatsAppNumber empty -- no confirmations or reminders, and Chats said "not linked".
-    private async Task<IActionResult> HandleConnectedAsync(BridgeSessionEventRequest req)
+    // A number another business already has is saved too (that one may just be stale), but the
+    // platform admin is told: two sessions on one WhatsApp account would both answer every
+    // message (QA run 5).
+    private async Task<IActionResult> HandleConnectedAsync(BridgeSessionEventRequest req, PlatformAdminAlerts alerts)
     {
         var business = await db.Businesses.FindAsync(req.BusinessId);
         if (business is null) return NotFound();
@@ -344,6 +347,15 @@ public class WhatsAppController(
         if (business.WhatsAppNumber == number) return Ok();
         var old = business.WhatsAppNumber;
         business.WhatsAppNumber = number;
+        var others = await db.Businesses.Where(b => b.Id != business.Id && b.WhatsAppNumber == number)
+            .Select(b => b.Name + " (" + b.Slug + ")").ToListAsync();
+        if (others.Count > 0)
+        {
+            logger.LogWarning("WhatsApp number of business {BusinessId} is also saved on {Count} other business(es)", business.Id, others.Count);
+            await alerts.SendAsync("A WhatsApp number is linked to two businesses",
+                $"The bot of {business.Name} ({business.Slug}) connected with a number that is also saved on: {string.Join(", ", others)}. "
+                + "Both would answer the same customers. Unlink the one that shouldn't have it.");
+        }
         db.ActivityLogs.Add(new ActivityLog
         {
             BusinessId = business.Id,
@@ -548,14 +560,8 @@ public class WhatsAppController(
 
         if (isLive && state!.ChatbotMode == InquiryMode)
         {
-            db.ChatbotInquiries.Add(new ChatbotInquiry
-            {
-                BusinessId = business.Id,
-                CustomerPhone = fromPhone,
-                CustomerName = string.IsNullOrWhiteSpace(profileName) ? null : profileName,
-                Message = Cut(incomingMsg, MaxInquiryMessageChars),
-            });
-
+            // The message itself is kept as a ChatMessage (BridgeInbound, the Chats page). The old
+            // ChatbotInquiries table is no longer written: nothing read it since the inbox went (QA run 5).
             // Only the first message of a session pings the owner -- InquiryNotified is reset
             // whenever the customer returns to Booking mode (above), so a later, separate inquiry
             // still notifies again.
@@ -899,8 +905,16 @@ public class WhatsAppController(
                 history.Add(new OpenAiTurn("assistant", confirmReply));
                 if (history.Count > 12) history = history[^12..];
                 state.HistoryJson = JsonSerializer.Serialize(history);
-                state.InvalidAttempts = 0;
                 state.ExpiresAt = DateTime.UtcNow.Add(ConversationStateLifetime);
+                // An unclear reply counts toward the lockout like on the rule-based path; it was
+                // reset to 0, so it never locked (QA run 5).
+                if (outcome == CancelPromptOutcome.Unclear && ++state.InvalidAttempts >= MaxInvalidAttempts)
+                {
+                    state.ChatbotMode = BookingMode;
+                    confirmReply = StartLockout(state, lang);
+                }
+                else if (outcome != CancelPromptOutcome.Unclear)
+                    state.InvalidAttempts = 0;
                 await db.SaveChangesAsync();
                 return confirmReply;
             }
@@ -1316,7 +1330,7 @@ public class WhatsAppController(
         if (prompt.Pick)
         {
             var number = ParseNumber(message);
-            if (number == 0 || (number is null && ConfirmationAnswer(message) == "2"))
+            if (number == 0 || (number is null && (ConfirmationAnswer(message) == "2" || IsNegatedCancel(message))))
                 return (CancelPromptOutcome.Done, I18nService.T(lang, "whatsapp.cancelKeptAll"));
             if (number >= 1 && number <= prompt.Ids.Count)
             {
@@ -1329,7 +1343,8 @@ public class WhatsAppController(
         }
         else
         {
-            var answer = ConfirmationAnswer(message);
+            // "don't cancel" is a keep: as a cancel word it dropped the question (QA run 5).
+            var answer = IsNegatedCancel(message) ? "2" : ConfirmationAnswer(message);
             if (answer == "2") return (CancelPromptOutcome.Done, I18nService.T(lang, "whatsapp.cancelKept"));
             if (answer == "1") return (CancelPromptOutcome.Done, await CancelConfirmedAppointment(businessId, prompt.Ids[0], fromPhone, lang));
         }
@@ -1424,8 +1439,7 @@ public class WhatsAppController(
         if (ContainsKeyword(message, RescheduleKeywords)) return null;
         var words = Words(message);
         var cancelAt = words.FindIndex(w => ContainsKeyword(w, CancelKeywords));
-        var negatedCancel = cancelAt > 0 && NegationWords.Contains(words[cancelAt - 1])
-            || cancelAt > 1 && words[cancelAt - 1] == "t" && words[cancelAt - 2] == "don";
+        var negatedCancel = IsNegatedCancel(words, cancelAt);
         if (cancelAt < 0 && words.Count <= 4 && words.Any(w => KeepWords.Contains(w))
             && words.All(w => KeepWords.Contains(w) || NoWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w)))
             return "1";
@@ -1433,6 +1447,17 @@ public class WhatsAppController(
             return reasked && !negatedCancel ? "2" : "reask";
         if (IsAttendanceAcknowledgement(message, words)) return "1";
         return ConfirmationAnswer(message);
+    }
+
+    // A negation right before the first cancel word: "don't cancel", "לא לבטל", "لا تلغي".
+    private static bool IsNegatedCancel(List<string> words, int cancelAt) =>
+        cancelAt > 0 && NegationWords.Contains(words[cancelAt - 1])
+        || cancelAt > 1 && words[cancelAt - 1] == "t" && words[cancelAt - 2] == "don";
+
+    private static bool IsNegatedCancel(string message)
+    {
+        var words = Words(message);
+        return IsNegatedCancel(words, words.FindIndex(w => ContainsKeyword(w, CancelKeywords)));
     }
 
     // "ok", "thanks", a thumbs up, "I'll be there", "אגיע", "تمام": a short reply that means coming.
