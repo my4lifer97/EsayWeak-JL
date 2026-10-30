@@ -39,7 +39,13 @@ public static class AttendanceQuestion
     public static async Task<(bool CanAsk, WhatsAppConversationState? Existing)> CanAskAsync(AppDbContext db, string businessId, string phone)
     {
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s => s.BusinessId == businessId && s.Phone == phone);
-        return state is null ? (true, null) : (state.ExpiresAt <= DateTime.UtcNow, state);
+        if (state is null) return (true, null);
+        if (state.ExpiresAt <= DateTime.UtcNow) return (true, state);
+        // An open question about an appointment that was cancelled since stays for a late "1"/"2"
+        // (answered with "it was cancelled"), but it no longer needs the row: it kept the customer's
+        // other appointment from being asked about (QA run 10).
+        var openFor = AppointmentId(state.ChatbotMode);
+        return (openFor is not null && await db.Appointments.AnyAsync(a => a.Id == openFor && a.Status == AppointmentStatus.CANCELLED), state);
     }
 
     // A moved appointment drops its open (or just answered) question: kept with its old expiry, a

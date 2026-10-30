@@ -166,7 +166,10 @@ public class AdminController(
         // fields below, which this form does send as explicit null when the owner clears them.
         bool Has(string prop) => body.TryGetProperty(prop, out _);
 
-        var mapUrl = string.IsNullOrWhiteSpace(req.MapUrl) ? null : req.MapUrl.Trim();
+        // Cleaned like the business name: a zero-width space in a city split the directory filter
+        // into two cities (QA run 10).
+        static string? OneLine(string? text) => string.IsNullOrWhiteSpace(text) || TextClean.Name(text) is not { Length: > 0 } clean ? null : clean;
+        var mapUrl = OneLine(req.MapUrl);
         if (mapUrl is not null
             && !mapUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             && !mapUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
@@ -219,7 +222,7 @@ public class AdminController(
         }
         // Blank is "no phone": "   " was stored, and looked set (QA run 7).
         if (req.Phone is not null) b.Phone = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone.Trim();
-        if (req.Description is not null) b.Description = req.Description;
+        if (req.Description is not null) b.Description = TextClean.Note(req.Description);
         if (req.Language is not null) b.Language = Enum.Parse<Language>(req.Language);
         // null is a real value for these two (unlimited), not "omitted" -- gated on key presence,
         // not "is req.X null", so a caller can still explicitly send null to clear a limit.
@@ -251,8 +254,8 @@ public class AdminController(
         if (Has("inquiryEmail")) b.InquiryEmail = string.IsNullOrWhiteSpace(req.InquiryEmail) ? null : req.InquiryEmail.Trim();
         // Discovery fields -- empty strings are still normalized to null (clearing the field),
         // only an actually-absent key leaves the current value alone.
-        if (Has("city")) b.City = string.IsNullOrWhiteSpace(req.City) ? null : req.City.Trim();
-        if (Has("addressLine")) b.AddressLine = string.IsNullOrWhiteSpace(req.AddressLine) ? null : req.AddressLine.Trim();
+        if (Has("city")) b.City = OneLine(req.City);
+        if (Has("addressLine")) b.AddressLine = OneLine(req.AddressLine);
         if (Has("mapUrl")) b.MapUrl = mapUrl;
         if (Has("isListed")) b.IsListed = req.IsListed;
         if (Has("cancelApprovalNotifyViaWhatsApp")) b.CancelApprovalNotifyViaWhatsApp = req.CancelApprovalNotifyViaWhatsApp;
@@ -528,7 +531,8 @@ public class AdminController(
     [HttpPost("schedule")]
     public async Task<IActionResult> SaveWorkingHours([FromBody] List<WorkingHoursDto> hours)
     {
-        if (hours.Any(h => h.DayOfWeek is < 0 or > 6)) return BadRequest(new { error = "Invalid day of week" });
+        // [null] was a 500 (QA run 10).
+        if (hours.Any(h => h is null || h.DayOfWeek is < 0 or > 6)) return BadRequest(new { error = "Invalid day of week" });
         if (hours.Where(h => h.IsActive).Select(h => TimeRangeError(h.StartTime, h.EndTime)).FirstOrDefault(e => e is not null) is { } hoursError)
             return BadRequest(new { error = hoursError });
 
@@ -920,6 +924,13 @@ public class AdminController(
             db.SchedulePresets.Remove(preset);
             await db.SaveChangesAsync();
         }
+        // A double click: the other delete got there first. It answered "used by a scheduled
+        // change" (QA run 10).
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return NotFound();
+        }
         catch (DbUpdateException)
         {
             db.ChangeTracker.Clear();
@@ -1116,6 +1127,10 @@ public class AdminController(
 
         var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
 
+        // Before the slot checks: a bad phone on a taken slot answered "Slot not available" (QA run 10).
+        if (await CustomerInputError(req.CustomerId, req.CustomerName, req.CustomerPhone) is { } customerInputError)
+            return customerInputError;
+
         if (!req.Force)
         {
             var slots = await availability.GetAvailableSlots(BusinessId, req.Date, item.DurationMinutes.Value);
@@ -1129,7 +1144,7 @@ public class AdminController(
 
         // After the slot checks: a refused booking (slot taken, past date, outside hours) used to
         // leave the new phone's customer row behind (QA run 9).
-        var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
+        var (customer, createdCustomer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
         if (customerError is not null) return customerError;
 
         var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
@@ -1149,7 +1164,10 @@ public class AdminController(
 
         await waitlist.ResolveForRebooking(BusinessId, requestedDate, req.StartTime, endTime);
         if (!await availability.TrySaveOrDetectConflict(BusinessId, req.Date, req.StartTime, endTime))
+        {
+            if (createdCustomer) await CustomerRows.RemoveIfUnusedAsync(db, customer.Id);
             return Conflict(new { error = "Slot no longer available" });
+        }
 
         this.SetActivityDetail($"Booked appointment: {item.NameEn} for {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} on {req.Date} at {req.StartTime}");
 
@@ -1324,6 +1342,7 @@ public class AdminController(
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         Customer customer;
+        var createdCustomer = false;
         if (!string.IsNullOrWhiteSpace(req.WaitlistEntryId))
         {
             var entry = await db.WaitlistEntries.Include(w => w.CustomerAccount)
@@ -1337,9 +1356,10 @@ public class AdminController(
         }
         else
         {
-            var (resolved, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
+            var (resolved, created, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
             if (error is not null) return error;
             customer = resolved!;
+            createdCustomer = created;
             // Typed in by name/phone, someone already waiting for this slot stayed WAITING on what is
             // now their own appointment, and was offered it again once they cancelled (QA run 7).
             if (customer.CustomerAccountId is { } accountId)
@@ -1381,6 +1401,7 @@ public class AdminController(
             if (!await cancellationService.TryClaimAsync(appt, AppointmentStatus.CANCELLED, pendingApproval: false))
             {
                 await tx.RollbackAsync();
+                if (createdCustomer) await CustomerRows.RemoveIfUnusedAsync(db, customer.Id);
                 return Conflict(new { error = "This appointment can no longer be modified" });
             }
             appt.Status = AppointmentStatus.CANCELLED;
@@ -1415,27 +1436,21 @@ public class AdminController(
 
     // Shared by CreateAppointment and ReplaceCustomer: resolve an existing customer by id, or
     // find or create one by phone -- an existing phone with a different name is a 409, see OwnerTypedCustomer.
-    private async Task<(Customer? Customer, IActionResult? Error)> ResolveCustomer(
+    // Created says the row is new and this request's: a refused booking removes it again.
+    private async Task<(Customer? Customer, bool Created, IActionResult? Error)> ResolveCustomer(
         string? customerId, string? customerName, string? customerPhone, string? customerFamilyName = null)
     {
+        if (await CustomerInputError(customerId, customerName, customerPhone) is { } inputError)
+            return (null, false, inputError);
         if (!string.IsNullOrWhiteSpace(customerId))
-        {
-            var existing = await db.Customers.FirstOrDefaultAsync(c => c.Id == customerId && c.BusinessId == BusinessId);
-            return existing is null ? (null, NotFound(new { error = "Customer not found" })) : (existing, null);
-        }
+            return (await db.Customers.FirstAsync(c => c.Id == customerId && c.BusinessId == BusinessId), false, null);
 
-        if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerPhone))
-            return (null, BadRequest(new { error = "Customer name and phone are required" }));
         // Trimmed (QA run 6), and without line breaks or invisible/direction characters (QA run 8).
-        customerName = TextClean.Name(customerName);
+        customerName = TextClean.Name(customerName!);
         customerFamilyName = customerFamilyName is null ? null : TextClean.Name(customerFamilyName);
-        if (customerName.Length == 0)
-            return (null, BadRequest(new { error = "Customer name and phone are required" }));
-        if (!PhoneNormalizer.IsValid(customerPhone))
-            return (null, BadRequest(new { error = "Please enter a valid phone number" }));
         // Same stored format as every other path, so "050..." typed here finds the customer who
         // booked on the website or WhatsApp as "+97250..." instead of creating a duplicate.
-        customerPhone = PhoneNormalizer.Normalize(customerPhone);
+        customerPhone = PhoneNormalizer.Normalize(customerPhone!);
 
         var customer = await db.Customers.FirstOrDefaultAsync(c => c.BusinessId == BusinessId && c.Phone == customerPhone);
         // Link to an existing CustomerAccount by phone, same as the public booking flow does from
@@ -1443,18 +1458,32 @@ public class AdminController(
         // customer never shows up in that customer's own "My Bookings" until they book/reschedule
         // with this business themselves.
         var customerAccountId = (await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == customerPhone))?.Id;
+        var created = false;
         if (customer is null)
         {
-            customer = await CustomerRows.AddOrGetExistingAsync(db,
-                new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId, CustomerAccountId = customerAccountId });
+            var added = new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId, CustomerAccountId = customerAccountId };
+            customer = await CustomerRows.AddOrGetExistingAsync(db, added);
+            created = customer == added;
         }
-        else
+        // Also when a parallel booking just added this phone: a different name passed unchecked (QA run 10).
+        if (!created)
         {
             if (OwnerTypedCustomer.MatchExisting(customer, customerName, customerFamilyName) is { } conflict)
-                return (null, Conflict(new { error = conflict }));
+                return (null, false, Conflict(new { error = conflict }));
             if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
         }
-        return (customer, null);
+        return (customer, created, null);
+    }
+
+    // What's wrong with the customer as typed, checked without creating anything.
+    private async Task<IActionResult?> CustomerInputError(string? customerId, string? customerName, string? customerPhone)
+    {
+        if (!string.IsNullOrWhiteSpace(customerId))
+            return await db.Customers.AnyAsync(c => c.Id == customerId && c.BusinessId == BusinessId)
+                ? null : NotFound(new { error = "Customer not found" });
+        if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerPhone) || TextClean.Name(customerName).Length == 0)
+            return BadRequest(new { error = "Customer name and phone are required" });
+        return PhoneNormalizer.IsValid(customerPhone) ? null : BadRequest(new { error = "Please enter a valid phone number" });
     }
 
     // Replace-from-waitlist knows the customer's real account already (phone, name, family

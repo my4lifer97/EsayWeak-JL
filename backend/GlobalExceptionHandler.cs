@@ -28,8 +28,11 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHos
         // the other one before this one saved. It was a 500 with EF's message (QA run 8).
         // The same race seen as a unique (23505) or foreign-key (23503) violation: two first-time
         // preset applies both inserting a day's hours, a preset edit racing its delete (QA run 9).
+        // A deadlock (40P01) too: two saves inserting a new business's hours in different orders, one
+        // is stopped by Postgres. EF wraps that one in an InvalidOperationException, so the code is
+        // looked for through the whole chain (QA run 10).
         if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException
-            || exception is Microsoft.EntityFrameworkCore.DbUpdateException && (FindPostgresError(exception, "23505") || FindPostgresError(exception, "23503")))
+            || FindPostgresError(exception, "23505") || FindPostgresError(exception, "23503") || FindPostgresError(exception, "40P01"))
         {
             httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
             await httpContext.Response.WriteAsJsonAsync(new { error = Services.ApiErrorTranslations.Translate(lang, "This was just changed. Please refresh and try again.") }, cancellationToken);

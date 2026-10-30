@@ -64,7 +64,7 @@ public class BookingController(
     public async Task<IActionResult> GetAvailability(string slug, [FromQuery] string date, [FromQuery] string itemId,
         [FromQuery] string? excludeAppointmentId = null, [FromQuery] string? token = null)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == business.Id && s.IsActive);
@@ -91,7 +91,7 @@ public class BookingController(
     [HttpGet("availability/full")]
     public async Task<IActionResult> GetFullAvailability(string slug, [FromQuery] string date, [FromQuery] string itemId)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == business.Id && s.IsActive);
@@ -114,7 +114,7 @@ public class BookingController(
         };
         if (req.CustomerName.Length == 0)
             return BadRequest(new { error = "Please enter your name." });
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         if (!bookingRules.AcceptsBookings(business))
@@ -297,7 +297,7 @@ public class BookingController(
             Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
             return StatusCode(429, new { error = "Too many photos were uploaded from here. Please try again later." });
         }
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         if (await ImageUpload.ValidateAsync(file) is not { } ext)

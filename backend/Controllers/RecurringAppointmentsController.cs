@@ -190,9 +190,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
                 await tx.RollbackAsync();
                 db.ChangeTracker.Clear();
                 if (createdCustomerId is not null)
-                    await db.Customers.Where(c => c.Id == createdCustomerId && !db.Appointments.Any(a => a.CustomerId == c.Id)
-                            && !db.RecurringSeries.Any(s => s.CustomerId == c.Id))
-                        .ExecuteDeleteAsync();
+                    await CustomerRows.RemoveIfUnusedAsync(db, createdCustomerId);
                 return Conflict(new { error = "This time is already taken on every upcoming week" });
             }
             await tx.CommitAsync();

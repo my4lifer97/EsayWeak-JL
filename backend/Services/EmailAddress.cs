@@ -24,6 +24,9 @@ public static class EmailAddress
             // and a real domain: no label starting or ending with "-", a top level of 2+ letters
             // ("a@-b.com", "a@b.c" passed; QA run 9).
             && !e.Any(c => char.IsControl(c) || System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format)
+            // ASCII only: "a@Ｂ.com" and "a@é.com" wrote one mailbox several ways, and the mail we build
+            // has no support for other addresses (QA run 10).
+            && e.All(char.IsAscii)
             && ValidDomain(e[(at + 1)..]);
     }
 
@@ -31,7 +34,8 @@ public static class EmailAddress
     {
         var labels = domain.Split('.');
         var top = labels[^1];
-        return labels.All(l => l.Length is > 0 and <= 63 && l[0] != '-' && l[^1] != '-')
-            && top.Length >= 2 && top.All(char.IsLetter);
+        return labels.All(l => l.Length is > 0 and <= 63 && l[0] != '-' && l[^1] != '-' && l.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'))
+            // A top level of letters, or an international one in its ASCII form ("xn--p1ai").
+            && top.Length >= 2 && (top.All(char.IsAsciiLetter) || top.StartsWith("xn--", StringComparison.OrdinalIgnoreCase) && top.Length > 4);
     }
 }

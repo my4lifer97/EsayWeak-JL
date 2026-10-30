@@ -8,11 +8,15 @@ namespace BarberSaas.Api.Services;
 //     network can't lock the real owner out of their own account;
 //   - per account, any IP (default 20): stops guessing spread across many addresses;
 //   - per IP, any account (default 50): stops one address sweeping many accounts.
-// A successful login clears its account+IP count. In memory on purpose -- one backend instance, and
+// A successful login clears its account+IP count, and that address keeps skipping the account-wide
+// limit for TrustedIpDays: with only the first two limits, anyone with a few addresses could lock the
+// real owner or the only platform admin out from everywhere (QA run 10). It still has its own 5.
+// In memory on purpose -- one backend instance, and
 // a restart only resets the counters. The IP is the client's, from Railway's proxy headers (ClientIp).
 public class LoginThrottle(IConfiguration config)
 {
     private readonly ConcurrentDictionary<string, List<DateTime>> _failures = new();
+    private readonly ConcurrentDictionary<string, DateTime> _trustedUntil = new();
 
     private TimeSpan Window => TimeSpan.FromMinutes(config.GetValue("LoginThrottle:WindowMinutes", 15));
 
@@ -29,8 +33,10 @@ public class LoginThrottle(IConfiguration config)
     public TimeSpan? RetryAfter(string scope, string identifier, string? ip, DateTime now)
     {
         TimeSpan? longest = null;
+        var trusted = _trustedUntil.TryGetValue(TrustKey(scope, identifier, ip), out var until) && until > now;
         foreach (var (key, limit) in Keys(scope, identifier, ip))
         {
+            if (trusted && key.Contains("|acct|")) continue;
             if (!_failures.TryGetValue(key, out var list)) continue;
             lock (list)
             {
@@ -54,8 +60,15 @@ public class LoginThrottle(IConfiguration config)
         }
     }
 
-    public void RecordSuccess(string scope, string identifier, string? ip) =>
+    public void RecordSuccess(string scope, string identifier, string? ip)
+    {
         _failures.TryRemove(Keys(scope, identifier, ip).First().Key, out _);
+        if (_trustedUntil.Count > 50_000) _trustedUntil.Clear();
+        _trustedUntil[TrustKey(scope, identifier, ip)] = DateTime.UtcNow.AddDays(config.GetValue("LoginThrottle:TrustedIpDays", 30));
+    }
+
+    private static string TrustKey(string scope, string identifier, string? ip) =>
+        $"{scope}|{identifier.Trim().ToLowerInvariant()}|{ip ?? "unknown"}";
 
     private void Prune(DateTime now)
     {

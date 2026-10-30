@@ -125,7 +125,8 @@ public class ReviewsController(AppDbContext db, ReviewService reviews) : Control
         return Ok(new { ok = true });
     }
 
-    private static string? Normalize(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    // Cleaned like booking notes (QA run 10).
+    private static string? Normalize(string? s) => TextClean.Note(s);
 
     private static ReviewDto ToDto(Review r, string slug) => new(
         r.Id, slug, r.Rating, r.Comment, r.CreatedAt, r.UpdatedAt, r.OwnerReply, r.OwnerRepliedAt);

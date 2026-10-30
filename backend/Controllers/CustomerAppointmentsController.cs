@@ -222,7 +222,8 @@ public class CustomerAppointmentsController(
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         // Whitespace-only notes clear them rather than showing a blank note (QA run 4).
-        appt.Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim();
+        // Invisible and direction characters go too, like booking notes (QA run 10).
+        appt.Notes = TextClean.Note(req.Notes);
         await db.SaveChangesAsync();
 
         // Content deliberately never logged -- notes are free text a customer writes, same

@@ -13,21 +13,21 @@ public class FollowService(AppDbContext db)
     // unhandled 500, since the end state (a Follow row exists) is exactly what we wanted anyway.
     public async Task EnsureFollowed(string customerAccountId, string businessId)
     {
-        var exists = await db.Follows.AnyAsync(f => f.CustomerAccountId == customerAccountId && f.BusinessId == businessId);
-        if (exists) return;
+        // Twice: a parallel unfollow can remove the row that just won, which answered 409 (QA run 10).
+        for (var attempt = 1; ; attempt++)
+        {
+            if (await db.Follows.AnyAsync(f => f.CustomerAccountId == customerAccountId && f.BusinessId == businessId)) return;
 
-        db.Follows.Add(new Follow { CustomerAccountId = customerAccountId, BusinessId = businessId });
-        try
-        {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            db.ChangeTracker.Clear();
-            // Only swallow if a concurrent request really did win the race; otherwise this was
-            // some other failure and should still surface.
-            if (!await db.Follows.AnyAsync(f => f.CustomerAccountId == customerAccountId && f.BusinessId == businessId))
-                throw;
+            db.Follows.Add(new Follow { CustomerAccountId = customerAccountId, BusinessId = businessId });
+            try
+            {
+                await db.SaveChangesAsync();
+                return;
+            }
+            catch (DbUpdateException) when (attempt < 2)
+            {
+                db.ChangeTracker.Clear();
+            }
         }
     }
 }

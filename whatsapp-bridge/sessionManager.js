@@ -105,6 +105,7 @@ const starting = new Map()
 // Bumped by every unlink. A start that settles after the unlink gave up waiting for it (60 s)
 // still registered a session and showed a scannable QR (QA run 9); it checks this first.
 const unlinkCount = new Map()
+const unlinking = new Set()
 
 // A business id is a database id: letters, digits, "-" and "_" only, since it names a folder.
 export function isValidBusinessId(businessId) {
@@ -113,11 +114,18 @@ export function isValidBusinessId(businessId) {
 
 export function startSession(businessId) {
   if (!isValidBusinessId(businessId)) return Promise.reject(new Error('Invalid business id'))
+  const unlinks = unlinkCount.get(businessId) ?? 0
   const inFlight = starting.get(businessId)
-  if (inFlight) return inFlight
-  const start = startSessionNow(businessId).finally(() => starting.delete(businessId))
-  starting.set(businessId, start)
-  return start
+  // A start from before an unlink is already doomed: joining it failed this Link click too, and
+  // the owner had to click again (QA run 10). It stays out of the new start's way once it settles.
+  // Not while the unlink is still waiting for it, though: it would log the new session out.
+  if (inFlight && (inFlight.unlinks === unlinks || unlinking.has(businessId))) return inFlight.promise
+  const entry = { unlinks }
+  entry.promise = startSessionNow(businessId).finally(() => {
+    if (starting.get(businessId) === entry) starting.delete(businessId)
+  })
+  starting.set(businessId, entry)
+  return entry.promise
 }
 
 async function startSessionNow(businessId) {
@@ -129,7 +137,9 @@ async function startSessionNow(businessId) {
   const { state, saveCreds } = await useMultiFileAuthState(authFolder)
   const { version } = await fetchLatestBaileysVersion()
   if ((unlinkCount.get(businessId) ?? 0) !== unlinksAtStart) {
-    await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
+    // The folder is a newer start's by now, if there is one.
+    if (!starting.has(businessId) || starting.get(businessId).unlinks === unlinksAtStart)
+      await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
     throw new Error('the business was unlinked while its session was starting')
   }
 
@@ -449,7 +459,11 @@ export async function unlinkSession(businessId) {
   // Bounded: a start that never settles mustn't hang the unlink (QA run 8).
   unlinkCount.set(businessId, (unlinkCount.get(businessId) ?? 0) + 1)
   const inFlight = starting.get(businessId)
-  if (inFlight) await withTimeout(inFlight, 'waiting for a session start').catch(() => {})
+  if (inFlight) {
+    unlinking.add(businessId)
+    await withTimeout(inFlight.promise, 'waiting for a session start').catch(() => {})
+    unlinking.delete(businessId)
+  }
   failures.delete(businessId)
   const session = sessions.get(businessId)
   if (session) {

@@ -216,6 +216,9 @@ public class PlatformAdminController(
     // (generate + hash + MustChangePassword=true); custom mode sets an exact password with no
     // forced change, since the admin picked it deliberately. Never logs the actual password --
     // ActivityLog rows here are metadata only, matching every other action in this controller.
+    // Ten NUL characters were stored as a password nobody can type (QA run 10).
+    private const string PasswordControlCharError = "The text contains characters that aren't allowed.";
+
     [HttpPost("businesses/{id}/reset-password")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> ResetBusinessPassword(string id, [FromBody] PlatformAdminResetPasswordRequest req)
@@ -232,6 +235,7 @@ public class PlatformAdminController(
             // already generated and showed (see GenerateTempPassword below).
             if (req.NewPassword is not null && (req.NewPassword.Length < 6 || string.IsNullOrWhiteSpace(req.NewPassword)))
                 return BadRequest(new { error = "Password must be at least 6 characters" });
+            if (req.NewPassword?.Any(char.IsControl) == true) return BadRequest(new { error = PasswordControlCharError });
             tempPassword = req.NewPassword ?? GenerateTempPassword();
             b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(tempPassword);
             b.MustChangePassword = true;
@@ -246,6 +250,7 @@ public class PlatformAdminController(
         {
             if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
                 return BadRequest(new { error = "Password must be at least 6 characters" });
+            if (req.NewPassword.Any(char.IsControl)) return BadRequest(new { error = PasswordControlCharError });
 
             b.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);
             b.MustChangePassword = false;
@@ -464,7 +469,8 @@ public class PlatformAdminController(
             BusinessId = b.Id,
             ImpersonatedByPlatformAdminId = AdminId,
             Action = $"{nameof(PlatformAdminController)}.{nameof(EmailOwner)}",
-            Description = $"Emailed owner: \"{req.Subject}\"",
+            // One line: the subject is as typed, line breaks included (QA run 10).
+            Description = $"Emailed owner: \"{TextClean.Name(req.Subject)}\"",
             Method = "POST",
             Path = Request.Path.ToString(),
             StatusCode = 200,

@@ -47,9 +47,12 @@ public class WhatsAppController(
     private static readonly string[] CancelKeywords =
     [
         "cancel", "cancelling", "canceling",
-        "מבטל", "מבטלת", "אבטל",
+        // QA run 10: these got the service list. "drop" is left out: "I'll drop by" is a coming.
+        "cancellation", "cancelled", "canceled", "cancle", "cancell", "delete", "remove", "unbook",
+        "מבטל", "מבטלת", "אבטל", "נבטל", "מבטלים", "בטלתי", "ביטלתי", "לבטלו", "מחק", "הסר", "קנסל",
         "ביטול", "בטל", "לבטל", "תבטל", "תבטלי", "תבטלו", "בטלו", "בטלי",
         "بطل", "إلغاء", "الغاء", "والغاء", "وإلغاء", "الغي", "ألغي", "إلغي", "الغيه", "ألغيه", "الغيلي", "تلغي", "ألغ", "الغ", "إلغ",
+        "نلغي", "نلغيه", "بلغي", "لغي", "ابطل", "احذف", "امسح", "كنسل",
     ];
     // "غير" ("change!") is left out on purpose: it also means "other"/"not" and is very common.
     private static readonly string[] RescheduleKeywords =
@@ -113,7 +116,8 @@ public class WhatsAppController(
     private static readonly string[] NegationWords =
     [
         "dont", "not", "never", "wont", "didnt", "doesnt", "wouldnt", "shouldnt", "isnt", "wasnt",
-        "לא", "אל", "אין", "لا", "ما", "مش", "مو", "بلاش", "بدون",
+        "havent", "hasnt", "arent", "without", "refuse", "forget", "ignore", "disregard",
+        "לא", "אל", "אין", "בלי", "מבלי", "שלא", "لا", "ما", "مش", "مو", "بلاش", "بدون", "مافي", "مافيش",
     ];
     // "#" since 2026-10-23 (owner's choice, like the #1/#2 commands); "$" still works, since earlier
     // lockout messages in customers' chats name it.
@@ -600,7 +604,7 @@ public class WhatsAppController(
         {
             // Cancelling or rescheduling isn't "booking" or "asking": the gate used to stand in the
             // way until the customer picked "Book a service" (QA run 3).
-            if (ContainsKeyword(incomingMsg, CancelKeywords) || ContainsKeyword(incomingMsg, RescheduleKeywords))
+            if (AsksToCancel(incomingMsg) || ContainsKeyword(incomingMsg, RescheduleKeywords))
             {
                 if (isLive) await ClearConversationState(business.Id, fromPhone);
                 return (false, null);
@@ -788,7 +792,7 @@ public class WhatsAppController(
             // even "cancel"), as does the answer to the cancel confirmation they start.
             if (conversationState.AwaitingBookingCompletion
                 && !IsCancelPrompt(conversationState.ChatbotMode)
-                && !ContainsKeyword(incomingMsg, CancelKeywords)
+                && !AsksToCancel(incomingMsg)
                 && !ContainsKeyword(incomingMsg, RescheduleKeywords))
             {
                 if (await PendingLinkStillUsable(business, fromPhone)) return null;
@@ -832,11 +836,11 @@ public class WhatsAppController(
                 return promptReply ?? $"{I18nService.T(lang, "whatsapp.noAppointment")}\n\n{await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled)}";
             // Not an answer, and a booking link is still pending: back to quiet mode.
             if (conversationState.AwaitingBookingCompletion
-                && !ContainsKeyword(incomingMsg, CancelKeywords) && !ContainsKeyword(incomingMsg, RescheduleKeywords))
+                && !AsksToCancel(incomingMsg) && !ContainsKeyword(incomingMsg, RescheduleKeywords))
                 return null;
         }
 
-        if (ContainsKeyword(incomingMsg, CancelKeywords))
+        if (AsksToCancel(incomingMsg))
             return await HandleCancel(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
 
         if (ContainsKeyword(incomingMsg, RescheduleKeywords))
@@ -1418,7 +1422,10 @@ public class WhatsAppController(
         }
         if (bareNumber && appointment is not null && (answeredId is not null || !open) && !message.TrimStart().StartsWith('#'))
         {
-            if (appointmentId is not null)
+            // Kept while the owner decides on a cancel request: once they keep the appointment the
+            // question is open again, and a "1" here used it up, so the later "1" got the menu and
+            // the owner never saw a confirmation (QA run 10).
+            if (appointmentId is not null && !appointment.PendingCancellationApproval)
             {
                 db.WhatsAppConversationStates.Remove(state!);
                 await db.SaveChangesAsync();
@@ -1431,6 +1438,12 @@ public class WhatsAppController(
         }
 
         var answer = answeredId is null ? AttendanceAnswer(message, reasked: state!.InvalidAttempts > 0) : null;
+        // The question is about one appointment, a cancel sentence may be about another: "cancel my
+        // 11:00", sent twice, cancelled the 09:00 it was asked about (QA run 10). With more than one
+        // upcoming, the normal cancel flow asks which. A plain "2" still answers the question.
+        if (open && answer is "reask" or "2" && ContainsKeyword(message, CancelKeywords) && !IsNegatedCancel(message)
+            && (await FindUpcomingAppointments(businessId, fromPhone)).Upcoming.Count > 1)
+            answer = null;
         if (open && answer == "reask")
         {
             state!.InvalidAttempts = 1;
@@ -1493,7 +1506,13 @@ public class WhatsAppController(
         if (message.Contains('?') || message.Contains('؟')) return null;
         var cancelAt = words.FindIndex(w => ContainsKeyword(w, CancelKeywords));
         if (cancelAt >= 0)
-            return IsNegatedCancel(words, cancelAt) ? (reasked ? "1" : "reask") : (reasked ? "2" : "reask");
+        {
+            if (IsNegatedCancel(words, cancelAt) || NoCancelPhrase.IsMatch(message)) return reasked ? "1" : "reask";
+            // A negation or "but" this code can't place is never read as a cancel: the customer gets
+            // the plain 1/2 question each time. "not coming, please cancel" is clear, so it stays one.
+            if (!IsNotComing(message, words) && HasUnclearCancelWords(words)) return "reask";
+            return reasked ? "2" : "reask";
+        }
         if (IsNotComing(message, words)) return "reask";
         // "no, I'm coming", "לא, אני מגיע", "لا، جاي": the "no" is to cancelling. They got the
         // Book/Ask menu (QA run 9).
@@ -1519,6 +1538,9 @@ public class WhatsAppController(
         // After the re-ask (the customer had written "cancel it" or "I can't come"), only a digit,
         // "keep" or the cancel word answers: a "yes" / "ok" / "thanks" confirmed a no-show (QA run 7).
         if (IsAttendanceAcknowledgement(message, words)) return reasked ? "reask" : "1";
+        // Longer ways of saying it ("إن شاء الله سآتي", "sounds good", "בטח שאגיע") dropped the question
+        // and got the booking menu (QA run 10). Unsure ones get the plain question.
+        if (SaysComing(words)) return reasked || HasOpenNegation(words) || words.Any(UnsureWords.Contains) ? "reask" : "1";
         var answer = ConfirmationAnswer(message);
         if (reasked && answer is not null) return "reask";
         return answer == "2" && words.Count > 1 ? "reask" : answer;
@@ -1531,34 +1553,80 @@ public class WhatsAppController(
 
     // "I can't come", "won't make it", "not coming", "לא מגיע", "לא אגיע", "ما رح اجي", "مش جاي", or a
     // lone 👎/❌. A negation followed within three words by a coming (or keep) word.
-    private static readonly string[] NotComingNegations = ["cannot", "cant", "wont", "not", "never", "unable", "לא", "لا", "ما", "مش", "مو", "لن"];
+    private static readonly string[] NotComingNegations = ["cannot", "cant", "wont", "not", "never", "unable", "לא", "אי", "בלתי", "لا", "ما", "مش", "مو", "لن"];
     private static readonly string[] ComingWords =
     [
         "come", "coming", "make", "be", "attend", "arrive",
-        "מגיע", "מגיעה", "מגיעים", "אגיע", "נגיע", "אהיה", "נהיה", "להגיע", "לבוא", "אבוא", "נבוא", "בא", "באה",
+        "מגיע", "מגיעה", "מגיעים", "אגיע", "נגיע", "אהיה", "נהיה", "להגיע", "לבוא", "אבוא", "נבוא", "בא", "באה", "אוכל", "נוכל",
         "اجي", "آجي", "أجي", "جاي", "جاية", "بجي", "رح", "بقدر", "اقدر", "أقدر",
         "آتي", "اتي", "أتي", "استطيع", "أستطيع", "الحضور", "احضر", "أحضر",
+        "سآتي", "ساتي", "سأحضر", "ساحضر", "بحضر",
     ];
     // "Can't wait to be there", "I won't be late", "לא נורא, אגיע", "ما تقلق جاي" are coming
-    // (QA run 9: read as not coming, then asked again and again).
-    private static readonly string[] NotComingExceptions = ["wait", "late", "worry", "נורא", "לדאוג", "تقلق", "تخاف", "تهتم", "تتأخر"];
-    private static readonly string[] NotComingEmoji = ["\U0001F44E", "\u274C", "\u2716"];
+    // (QA run 9: read as not coming, then asked again and again). QA run 10 added the rest.
+    private static readonly string[] NotComingExceptions =
+    [
+        "wait", "late", "worry", "forget", "miss", "problem", "all",
+        "נורא", "לדאוג", "בעיה", "משנה", "אפסיד", "אשכח", "אפספס", "אאחר",
+        "تقلق", "تخاف", "تهتم", "تتأخر", "اتأخر", "أتأخر", "مشكلة", "بأس", "باس", "يهمك", "شك", "شاء",
+    ];
+    private static readonly string[] NotComingEmoji = ["\U0001F44E", "❌", "✖"];
 
+    private static bool IsNegationForComing(List<string> words, int i) =>
+        NotComingNegations.Contains(words[i])
+        || (words[i] == "t" && i > 0 && words[i - 1] is "can" or "won" or "don" or "didn" or "couldn" or "isn" or "aren" or "wasn" or "wouldn")
+        || (words[i] == "longer" && i > 0 && words[i - 1] == "no");
+
+    // An exception only counts before the coming word ("can't come, sorry for the late notice" is
+    // still not coming), or right after "be": "I wasn't going to be late".
     private static bool IsNotComing(string message, List<string> words)
     {
         if (words.Count == 0) return NotComingEmoji.Any(message.Contains);
+        if (Follows(words, "no", "show") || Follows(words, "not", "tomorrow") || Follows(words, "im", "out") || Follows(words, "m", "out")
+            || Follows(words, "out", "of") && words.Contains("town") || words[^1] == "not" || message.Contains("בחו\"ל")) return true;
         for (var i = 0; i < words.Count; i++)
         {
-            var negation = NotComingNegations.Contains(words[i])
-                || (words[i] == "t" && i > 0 && words[i - 1] is "can" or "won" or "don" or "didn" or "couldn" or "isn" or "aren" or "wasn" or "wouldn")
-                || (words[i] == "longer" && i > 0 && words[i - 1] == "no");
-            if (!negation || words.Skip(i + 1).Take(3).Any(NotComingExceptions.Contains)) continue;
-            if (words.Skip(i + 1).Take(3).Any(w => ComingWords.Contains(w) || KeepWords.Contains(w))) return true;
+            if (!IsNegationForComing(words, i)) continue;
+            var next = words.Skip(i + 1).Take(5).ToList();
+            var exception = next.FindIndex(NotComingExceptions.Contains);
+            var coming = next.Take(3).ToList().FindIndex(w => ComingWords.Contains(w) || KeepWords.Contains(w));
+            if (exception >= 0 && (coming < 0 || exception < coming || next[coming] == "be" && exception == coming + 1)) continue;
+            if (coming >= 0) return true;
             // "sorry can't", "I cannot" with nothing after it (QA run 7).
-            if (i == words.Count - 1 && (words[i] is "cannot" or "cant" || words[i] == "t" && words[i - 1] == "can")) return true;
+            if (i == words.Count - 1 && (words[i] is "cannot" or "cant" or "unable" || words[i] == "t" && words[i - 1] == "can")) return true;
         }
         return false;
     }
+
+    // A negation left over once the friendly ones ("no worries", "לא נורא") are set aside.
+    private static bool HasOpenNegation(List<string> words) =>
+        Enumerable.Range(0, words.Count).Any(i => IsNegationForComing(words, i) && !words.Skip(i + 1).Take(5).Any(NotComingExceptions.Contains));
+
+    private static readonly string[] UnsureWords = ["maybe", "perhaps", "probably", "try", "hope", "אולי", "מקווה", "אנסה", "ربما", "يمكن", "ممكن"];
+    // Said alone or with more words around them; "come", "be" and "رح" aren't enough on their own.
+    private static readonly string[] PlainComingWords =
+    [
+        "coming", "attend",
+        "מגיע", "מגיעה", "מגיעים", "אגיע", "נגיע", "אהיה", "נהיה", "אבוא", "נבוא",
+        "جاي", "جاية", "جايه", "جايين", "اجي", "آجي", "أجي", "بجي", "آتي", "سآتي", "ساتي", "سأحضر", "ساحضر", "بحضر", "احضر", "أحضر",
+    ];
+
+    // "שאגיע", "ואגיע", "فجاي": the letter glued on doesn't change the word.
+    private static bool IsPlainComingWord(string w) =>
+        PlainComingWords.Contains(w) || (w.Length > 2 && w[0] is 'ש' or 'ו' or 'و' or 'ف' && PlainComingWords.Contains(w[1..]));
+
+    private static bool SaysComing(List<string> words) =>
+        words.Count <= 10 && (words.Any(IsPlainComingWord)
+            || Follows(words, "ll", "come") || Follows(words, "ill", "come") || Follows(words, "will", "come")
+            || Follows(words, "be", "there") || Follows(words, "see", "you") || Follows(words, "will", "do")
+            || Follows(words, "sounds", "good") || Follows(words, "all", "good") || Follows(words, "count", "me")
+            || Follows(words, "אישור", "הגעה") || Follows(words, "מאשר", "הגעה") || Follows(words, "מאשרת", "הגעה"));
+
+    // "I wanted to cancel, but I'm coming", "الغاء لا": what the cancel word means isn't clear.
+    private static bool HasUnclearCancelWords(List<string> words) =>
+        Follows(words, "no", "need")
+        || Enumerable.Range(0, words.Count).Any(i => IsNegationWord(words[i]) || IsNegationForComing(words, i)
+            || words[i] is "but" or "however" or "אבל" or "لكن" or "بس");
 
     // A negation before the first cancel word: "don't cancel", "לא לבטל", "لا تلغي", and with
     // "want"/"need" words between: "I don't want to cancel", "no need to cancel", "I won't cancel",
@@ -1569,11 +1637,14 @@ public class WhatsAppController(
         var i = cancelAt - 1;
         while (i >= 0 && cancelAt - i <= 5 && NegatedCancelMiddleWords.Contains(words[i])) i--;
         if (i < 0) return false;
+        // "Don't forget to cancel" is a cancel; left to HasUnclearCancelWords.
+        if (words[i] == "forget" && i > 0 && words[i - 1] is "t" or "dont" or "not" or "never") return false;
         if (IsNegationWord(words[i])) return true;
-        if (words[i] == "t" && i > 0 && words[i - 1] is "don" or "won" or "didn" or "doesn" or "shouldn" or "wouldn" or "wasn" or "isn" or "aren") return true;
-        // "I no longer want to cancel" (QA run 9).
+        if (words[i] == "t" && i > 0 && words[i - 1] is "don" or "won" or "didn" or "doesn" or "shouldn" or "wouldn" or "wasn" or "isn" or "aren" or "haven" or "hasn" or "dont") return true;
+        // "I no longer want to cancel" (QA run 9), "hold off on the cancel" (QA run 10).
         if (words[i] == "longer" && i > 0 && words[i - 1] == "no") return true;
-        return words[i] == "no" && i + 1 < cancelAt && words[i + 1] == "need";
+        if (words[i] == "off" && i > 0 && words[i - 1] == "hold") return true;
+        return words[i] == "no" && i + 1 < cancelAt && words[i + 1] is "need" or "intention" or "plan" or "plans" or "reason";
     }
 
     // A negation, also with the "and"/"so" letter glued on: "ואל תבטל", "ולא לבטל", "ولا تلغي",
@@ -1584,15 +1655,23 @@ public class WhatsAppController(
     private static readonly string[] NegatedCancelMiddleWords =
     [
         "want", "wanna", "need", "to", "going", "gonna", "please", "have", "wanted", "mean", "meant", "say", "said", "ask", "asked",
-        "me", "planning", "plan", "intend", "intending",
-        "רוצה", "רוצים", "צריך", "צריכה", "צריכים", "צורך",
-        "أريد", "اريد", "بدي", "بدنا", "عايز", "بدك", "لازم", "داعي", "في", "ناوي", "ناوية",
+        "me", "planning", "plan", "plans", "intend", "intending",
+        "be", "on", "the", "think", "i", "let", "them", "you", "intention", "wish", "decided", "reason",
+        "רוצה", "רוצים", "צריך", "צריכה", "צריכים", "צורך", "סיבה",
+        "أريد", "اريد", "بدي", "بدنا", "عايز", "بدك", "لازم", "داعي", "في", "ناوي", "ناوية", "أنوي", "انوي", "ابغى", "أبغى",
     ];
+
+    // "no cancelling please". Read on the raw text: with punctuation ("no, cancel") it's a cancel.
+    private static readonly Regex NoCancelPhrase = new(@"(^|\s)no\s+cancel", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    // "I'll be there, no cancellation needed" isn't a request.
+    private static bool AsksToCancel(string message) =>
+        ContainsKeyword(message, CancelKeywords) && !NoCancelPhrase.IsMatch(message);
 
     private static bool IsNegatedCancel(string message)
     {
         var words = Words(WithoutStandaloneNo(message));
-        return IsNegatedCancel(words, words.FindIndex(w => ContainsKeyword(w, CancelKeywords)));
+        return NoCancelPhrase.IsMatch(message) || IsNegatedCancel(words, words.FindIndex(w => ContainsKeyword(w, CancelKeywords)));
     }
 
     // "ok", "thanks", a thumbs up, "I'll be there", "אגיע", "تمام": a short reply that means coming.

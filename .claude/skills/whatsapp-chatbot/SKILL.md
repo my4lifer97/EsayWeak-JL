@@ -89,7 +89,13 @@ to WhatsApp).
   (owner approval and waitlist included); any other message with a cancel word ("yes cancel", "don't
   cancel", "לא לבטל") gets `whatsapp.attendanceReask` once (`InvalidAttempts = 1` marks it), after which
   a non-negated cancel word cancels; a reschedule word or anything else drops the question and is
-  handled normally. Moving
+  handled normally. With more than one upcoming appointment a cancel sentence goes to the normal
+  "which one?" flow instead (a plain `2` still answers the question). A cancel sentence with a negation
+  or "but" the code can't place (`HasUnclearCancelWords`) is never read as a cancel: it gets the re-ask
+  every time, so word lists can stay incomplete safely; "not coming, cancel" is clear and still cancels.
+  Longer coming replies (`SaysComing`) confirm, unsure ones ("maybe", "not sure") get the re-ask. A row
+  for a question whose appointment was cancelled stays for a late `1`/`2` (answered "it was cancelled")
+  but doesn't stop the next reminder from asking, and it's kept while a cancel request is pending. Moving
   an appointment clears `AttendanceStatus` (with `ReminderSent`). The owner sees it as a badge
   (`components/admin/AttendanceBadge`) on Appointments and in the calendar's details.
 - **Cancel keyword asks first** (rule-based path 2026-10-11; the AI path asks too since 2026-10-19, see below): cancel/reschedule

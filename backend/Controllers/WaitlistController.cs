@@ -19,7 +19,7 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
     public async Task<IActionResult> Join(string slug, string appointmentId, [FromQuery] string? date = null, [FromQuery] string? startTime = null,
         [FromQuery] string? itemId = null)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
         if (!business.WaitlistEnabled) return BadRequest(new { error = "Waitlist is not enabled for this business" });
         if (!bookingRules.AcceptsBookings(business)) return StatusCode(403, new { error = "This business isn't taking online bookings right now" });

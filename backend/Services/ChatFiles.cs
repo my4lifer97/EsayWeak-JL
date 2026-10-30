@@ -153,20 +153,32 @@ public static class ChatFiles
         var name = Path.GetFileName(fileName.Replace('\\', '/'));
         var kept = new StringBuilder();
         foreach (var r in name.EnumerateRunes())
-            if (!IsHidden(r) && r.Value is not ('"' or '/' or ':' or '*' or '?' or '<' or '>' or '|')) kept.Append(r.ToString());
+        {
+            if (IsHidden(r) || r.Value is '"' or '/' or ':' or '*' or '?' or '<' or '>' or '|') continue;
+            // A mark needs a letter to sit on (QA run 10).
+            if (IsMark(r) && (kept.Length == 0 || kept[^1] == '.' || char.IsWhiteSpace(kept[^1]))) continue;
+            kept.Append(r.ToString());
+        }
         // A joiner only joins two letters: at either end or next to a dot it just hides itself
         // ("<ZWJ>.pdf" showed as ".pdf", and 130 of them pushed the extension out; QA run 9).
-        name = Regex.Replace(kept.ToString(), @"[\u200C\u200D]+(?=\.)|(?<=\.)[\u200C\u200D]+", "").Trim(' ', '\u200C', '\u200D');
-        // No trailing dots or spaces ("a.pdf.", ". ."), and a name of only joiners or dots is no name (QA run 8).
-        name = name.TrimEnd('.', ' ', '\u200C', '\u200D');
+        name = Regex.Replace(kept.ToString(), @"[\u200C\u200D]+(?=\.)|(?<=\.)[\u200C\u200D]+", "");
+        // Every kind of space (QA run 10: a no-break space stayed). No trailing dots or spaces
+        // ("a.pdf.", ". ."), and a name of only joiners or dots is no name (QA run 8).
+        name = TrimStart(TrimEnd(name));
         // Nor one of only combining marks (a lone U+FE0F or U+0301; QA run 9).
-        if (!name.Any(c => c is not ('.' or ' ' or '\u200C' or '\u200D')
-            && CharUnicodeInfo.GetUnicodeCategory(c) is not (UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.SpacingCombiningMark)))
+        if (!name.EnumerateRunes().Any(r => !IsMark(r) && r.Value is not ('.' or ' ' or 0x200C or 0x200D)))
             name = "file";
         if (name.Length <= 120) return name;
         // A long "extension" ("a.<200 characters>") is just part of the name.
         var ext = Path.GetExtension(name);
         if (ext.Length > 20) ext = "";
-        return TextCut.Cut(name[..^ext.Length], 120 - ext.Length) + ext;
+        // The cut can leave a space or dot at its end (QA run 10).
+        return TrimEnd(TextCut.Cut(name[..^ext.Length], 120 - ext.Length)) + ext;
     }
+
+    private static string TrimStart(string name) => Regex.Replace(name, @"^[\s\u200C\u200D]+", "");
+    private static string TrimEnd(string name) => Regex.Replace(name, @"[\s.\u200C\u200D]+$", "");
+
+    private static bool IsMark(Rune r) =>
+        Rune.GetUnicodeCategory(r) is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.SpacingCombiningMark;
 }

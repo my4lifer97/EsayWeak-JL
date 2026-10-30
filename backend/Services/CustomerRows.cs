@@ -26,4 +26,20 @@ public static class CustomerRows
             return winner;
         }
     }
+
+    // A refused booking's new customer goes again, unless a parallel booking started using the row
+    // (QA run 10: the losers of a race each left an empty customer).
+    public static async Task RemoveIfUnusedAsync(AppDbContext db, string customerId)
+    {
+        try
+        {
+            await db.Customers.Where(c => c.Id == customerId && !db.Appointments.Any(a => a.CustomerId == c.Id)
+                    && !db.RecurringSeries.Any(s => s.CustomerId == c.Id))
+                .ExecuteDeleteAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // In use after all.
+        }
+    }
 }
