@@ -70,8 +70,9 @@ public class ValidateInputFilter : IActionFilter
         if (DateNames.Contains(name) && !IsDate(value))
             return "Invalid date. Use the format YYYY-MM-DD.";
         // bcrypt only uses the first 72 bytes, so a longer password was cut without a word (QA run 6).
+        // Bytes, not characters: a Hebrew letter or an emoji takes 2-4 (QA run 9).
         if (name.Contains("password", StringComparison.OrdinalIgnoreCase) && System.Text.Encoding.UTF8.GetByteCount(value) > 72)
-            return "Passwords can be at most 72 characters.";
+            return "This password is too long. Use at most 72 English letters and digits, or fewer with other characters.";
         if (LongTextNames.Contains(name) && value.Length > MaxLongTextLength)
             return $"This text can be at most {MaxLongTextLength} characters.";
         if (name.Equals("subject", StringComparison.OrdinalIgnoreCase) && value.Length > MaxSubjectLength)

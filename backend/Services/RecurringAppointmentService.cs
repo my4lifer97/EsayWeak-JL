@@ -6,6 +6,15 @@ namespace BarberSaas.Api.Services;
 
 public class RecurringAppointmentService(AppDbContext db, AvailabilityService availability, IConfiguration config, ILogger<RecurringAppointmentService> logger)
 {
+    // One run per series at a time: two overlapping runs both read the old LastGeneratedThrough
+    // and logged every skipped date twice (QA run 9, ST-21). The series is loaded inside the lock,
+    // so the second run starts from where the first stopped.
+    private static readonly SemaphoreSlim[] SeriesLocks =
+        Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
+    private static SemaphoreSlim LockFor(string seriesId) =>
+        SeriesLocks[(uint)StringComparer.Ordinal.GetHashCode(seriesId) % (uint)SeriesLocks.Length];
+
     private DateTime Horizon(DateTime today) =>
         today.AddDays((config.GetValue<int?>("RecurringGeneration:HorizonWeeks") ?? 8) * 7);
 
@@ -24,9 +33,12 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
         foreach (var id in seriesIds)
         {
             db.ChangeTracker.Clear();
+            var seriesLock = LockFor(id);
+            await seriesLock.WaitAsync();
             try
             {
-                var s = await db.RecurringSeries.Include(x => x.Item).FirstAsync(x => x.Id == id);
+                var s = await db.RecurringSeries.Include(x => x.Item).FirstOrDefaultAsync(x => x.Id == id);
+                if (s is null || !s.IsActive) continue;
                 var (t, c, sk) = await GenerateForSeries(s, today, horizon);
                 await db.SaveChangesAsync();
                 total += t; created += c; skipped += sk;
@@ -34,6 +46,10 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
             catch (Exception ex)
             {
                 logger.LogError(ex, "Generating recurring series {SeriesId} failed; continuing with the others", id);
+            }
+            finally
+            {
+                seriesLock.Release();
             }
         }
         db.ChangeTracker.Clear();
@@ -49,12 +65,21 @@ public class RecurringAppointmentService(AppDbContext db, AvailabilityService av
         var today = AppClock.Now.Date;
         var horizon = Horizon(today);
 
-        var s = await db.RecurringSeries.Include(x => x.Item).FirstOrDefaultAsync(x => x.Id == seriesId);
-        if (s is null || !s.IsActive) return (0, 0);
+        var seriesLock = LockFor(seriesId);
+        await seriesLock.WaitAsync();
+        try
+        {
+            var s = await db.RecurringSeries.Include(x => x.Item).FirstOrDefaultAsync(x => x.Id == seriesId);
+            if (s is null || !s.IsActive) return (0, 0);
 
-        var (total, created, _) = await GenerateForSeries(s, today, horizon);
-        await db.SaveChangesAsync();
-        return (total, created);
+            var (total, created, _) = await GenerateForSeries(s, today, horizon);
+            await db.SaveChangesAsync();
+            return (total, created);
+        }
+        finally
+        {
+            seriesLock.Release();
+        }
     }
 
     private async Task<(int Total, int Created, int Skipped)> GenerateForSeries(RecurringSeries s, DateTime today, DateTime horizon)

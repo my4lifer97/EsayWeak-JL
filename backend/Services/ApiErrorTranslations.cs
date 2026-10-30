@@ -52,7 +52,7 @@ public static class ApiErrorTranslations
         ["Invalid date range"] = ("نطاق تواريخ غير صالح", "טווח תאריכים לא תקין"),
         ["This time isn't one of your bookable times"] = ("هذا الوقت ليس من أوقات الحجز لديك", "השעה הזו אינה אחת משעות ההזמנה שלך"),
         ["This time is already taken on every upcoming week"] = ("هذا الوقت محجوز في كل الأسابيع القادمة", "השעה הזו כבר תפוסה בכל השבועות הקרובים"),
-        ["Passwords can be at most 72 characters."] = ("يمكن أن تتكون كلمة المرور من 72 حرفًا كحد أقصى.", "הסיסמה יכולה להכיל עד 72 תווים."),
+        ["This password is too long. Use at most 72 English letters and digits, or fewer with other characters."] = ("كلمة المرور طويلة جدًا. استخدم 72 حرفًا إنجليزيًا ورقمًا كحد أقصى، أو أقل مع أحرف أخرى.", "הסיסמה ארוכה מדי. אפשר עד 72 אותיות באנגלית וספרות, או פחות עם תווים אחרים."),
         ["This text can be at most 2000 characters."] = ("يمكن أن يتكون هذا النص من 2000 حرف كحد أقصى.", "הטקסט הזה יכול להכיל עד 2000 תווים."),
         ["Too many codes were requested from here. Please try again later."] = ("طُلبت رموز كثيرة من هنا. حاول مرة أخرى لاحقًا.", "נשלחו מכאן יותר מדי בקשות לקוד. נסו שוב מאוחר יותר."),
         ["Too many photos were uploaded from here. Please try again later."] = ("رُفعت صور كثيرة من هنا. حاول مرة أخرى لاحقًا.", "הועלו מכאן יותר מדי תמונות. נסו שוב מאוחר יותר."),

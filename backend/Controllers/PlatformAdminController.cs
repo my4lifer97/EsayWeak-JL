@@ -32,12 +32,22 @@ public class PlatformAdminController(
     // Only ever succeeds once -- creates the first (and, for now, only) platform admin account.
     // Always 403s once one exists, so this can stay a public endpoint without becoming an
     // open door.
+    // Two calls at once could both pass the "none yet" check and make two admins (QA run 9).
+    private static readonly SemaphoreSlim BootstrapLock = new(1, 1);
+
     [HttpPost("bootstrap")]
     public async Task<IActionResult> Bootstrap([FromBody] PlatformAdminBootstrapRequest req)
     {
+        await BootstrapLock.WaitAsync();
+        try { return await BootstrapLocked(req); }
+        finally { BootstrapLock.Release(); }
+    }
+
+    private async Task<IActionResult> BootstrapLocked(PlatformAdminBootstrapRequest req)
+    {
         if (await db.PlatformAdmins.AnyAsync())
             return StatusCode(403, new { error = "An admin account already exists." });
-        if (string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
+        if (string.IsNullOrWhiteSpace(req.Email) || !EmailAddress.IsValid(req.Email.Trim()))
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 8)
             return BadRequest(new { error = "Password must be at least 8 characters" });
@@ -48,8 +58,10 @@ public class PlatformAdminController(
         {
             Email = req.Email.Trim().ToLower(),
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-            Name = req.Name,
+            Name = TextClean.Name(req.Name),
         };
+        if (admin.Name.Length == 0)
+            return BadRequest(new { error = "Name is required" });
         db.PlatformAdmins.Add(admin);
         await db.SaveChangesAsync();
 
