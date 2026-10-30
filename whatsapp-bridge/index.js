@@ -61,6 +61,13 @@ app.post('/send', async (req, res) => {
   }
 })
 
+// Bad or oversized JSON came back as an HTML error page with a stack trace (QA run 7).
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err)
+  const status = err.status ?? err.statusCode ?? 500
+  res.status(status).json({ error: err.type === 'entity.too.large' ? 'Request too large' : status < 500 ? 'Invalid request' : 'Internal error' })
+})
+
 app.listen(PORT, async () => {
   console.log(`whatsapp-bridge listening on :${PORT}`)
   await restoreSessions()

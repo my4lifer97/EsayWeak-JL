@@ -27,6 +27,20 @@ const MAX_SENT_IDS = 5000
 const BACKEND_TIMEOUT_MS = 60_000
 const MEDIA_TYPES = ['imageMessage', 'videoMessage', 'ptvMessage', 'audioMessage', 'documentMessage', 'stickerMessage']
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024
+// A stalled download or send held up that business's whole inbound loop, which handles one
+// message at a time (QA run 7).
+const WHATSAPP_TIMEOUT_MS = 60_000
+
+function withTimeout(promise, what, onTimeout) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      onTimeout?.()
+      reject(new Error(`${what} timed out`))
+    }, WHATSAPP_TIMEOUT_MS)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
 const silentLogger = pino({ level: 'silent' })
 
 // The id is chosen and remembered before sending: Baileys echoes the message (messages.upsert)
@@ -44,7 +58,7 @@ async function sendTracked(sock, jid, text, media) {
       ? { image: data, mimetype: media.mimetype, caption: text }
       : { document: data, mimetype: media.mimetype, fileName: media.fileName, caption: text }
   }
-  await sock.sendMessage(jid, content, { messageId })
+  await withTimeout(sock.sendMessage(jid, content, { messageId }), 'sending a message')
 }
 
 export function statusDto(businessId) {
@@ -295,18 +309,24 @@ async function messageMedia(businessId, sock, msg, info, wanted) {
   try {
     // Streamed and stopped at the limit: fileLength is what the sender claims, and a whole-file
     // buffer of a bigger one could run the bridge out of memory (QA run 5).
-    const stream = await downloadMediaMessage(msg, 'stream', {}, { reuploadRequest: sock.updateMediaMessage, logger: silentLogger })
-    const chunks = []
-    let size = 0
-    for await (const chunk of stream) {
-      size += chunk.length
-      if (size > MAX_MEDIA_BYTES) {
-        stream.destroy()
-        return media
+    let stream
+    const download = (async () => {
+      stream = await downloadMediaMessage(msg, 'stream', {}, { reuploadRequest: sock.updateMediaMessage, logger: silentLogger })
+      const chunks = []
+      let size = 0
+      for await (const chunk of stream) {
+        size += chunk.length
+        if (size > MAX_MEDIA_BYTES) {
+          stream.destroy()
+          return null
+        }
+        chunks.push(chunk)
       }
-      chunks.push(chunk)
-    }
-    media.base64 = Buffer.concat(chunks).toString('base64')
+      return Buffer.concat(chunks)
+    })()
+    download.catch(() => {}) // still settles after a timeout; nothing waits for it then
+    const data = await withTimeout(download, 'downloading media', () => stream?.destroy())
+    if (data) media.base64 = data.toString('base64')
   } catch (err) {
     console.error(`[${businessId}] could not download a customer's ${media.type}:`, err.message)
   }
@@ -416,11 +436,16 @@ async function reportSessionEvent(businessId, event, phoneNumber, isCurrent = ()
 }
 
 export async function unlinkSession(businessId) {
+  // A start still under way would leave a live session (and a scannable QR) behind the unlink
+  // (QA run 7), so it finishes first and is then logged out like any other.
+  await starting.get(businessId)?.catch(() => {})
   failures.delete(businessId)
   const session = sessions.get(businessId)
   if (session) {
     session.unlinking = true
     await session.sock.logout().catch(() => {})
+    // A session still showing a QR has nothing to log out of; its socket is closed instead.
+    try { session.sock.end(undefined) } catch {}
     sessions.delete(businessId)
   }
   await fs.rm(path.join(SESSIONS_DIR, businessId), { recursive: true, force: true }).catch(() => {})
