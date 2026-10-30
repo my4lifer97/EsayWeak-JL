@@ -107,7 +107,11 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         }
 
         var account = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == phone);
-        if (account is null && (string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.FamilyName)))
+        // Cleaned before the code is used up: a NUL in the name failed the save after the code was
+        // already consumed, so the customer had to ask for a new one (QA run 6).
+        var name = req.Name?.Replace("\0", "").Trim();
+        var familyName = req.FamilyName?.Replace("\0", "").Trim();
+        if (account is null && (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(familyName)))
             return BadRequest(new { error = "Name and family name required for new customers" });
 
         // Claim the code in one conditional UPDATE: two requests with the same code at the same
@@ -118,7 +122,7 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         if (claimed == 0)
             return BadRequest(new { error = "Invalid or expired code" });
 
-        account ??= await CreateAccountAsync(new CustomerAccount { Phone = phone, Name = req.Name!, FamilyName = req.FamilyName! });
+        account ??= await CreateAccountAsync(new CustomerAccount { Phone = phone, Name = name!, FamilyName = familyName! });
 
         await db.SaveChangesAsync();
 

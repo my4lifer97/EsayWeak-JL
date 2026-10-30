@@ -405,21 +405,26 @@ public class AttendanceConfirmationTests : IntegrationTestBase
         Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
     }
 
-    // QA run 6 ST-3: two overlapping runs both sent every reminder.
+    // QA run 6 ST-3: two overlapping runs both sent every reminder. The second run happens while
+    // the first is in the middle of its send (SQLite can't run two truly parallel requests).
     [Fact]
     public async Task OverlappingReminderRuns_SendEachReminderOnce()
     {
         var (businessId, _, _) = await Seed("attend-overlap", "+15553330025");
-        Factory.WhatsAppSender.Delay = TimeSpan.FromMilliseconds(300);
+        using var second = Factory.CreateClient();
+        second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+        Factory.WhatsAppSender.OnSend = async () =>
+        {
+            Factory.WhatsAppSender.OnSend = null;
+            await second.GetAsync("/api/cron/reminders");
+        };
         try
         {
-            using var second = Factory.CreateClient();
-            second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
-            await Task.WhenAll(RunReminders(), second.GetAsync("/api/cron/reminders"));
+            await RunReminders();
         }
         finally
         {
-            Factory.WhatsAppSender.Delay = TimeSpan.Zero;
+            Factory.WhatsAppSender.OnSend = null;
         }
 
         Assert.Single(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId);
