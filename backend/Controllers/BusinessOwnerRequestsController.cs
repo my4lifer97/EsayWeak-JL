@@ -141,16 +141,16 @@ public class BusinessOwnerRequestsController(
             .Where(o => o.Email == email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
             .OrderByDescending(o => o.CreatedAt)
             .FirstOrDefaultAsync();
-        if (otp is null || !BCrypt.Net.BCrypt.Verify(req.Code ?? "", otp.CodeHash))
-        {
-            if (otp is not null)
-            {
-                otp.Attempts++;
-                await db.SaveChangesAsync();
-            }
+        // Each guess takes an attempt in one conditional update before the check, and the code is
+        // used up the same way: parallel guesses all read the count before any of them saved it
+        // (QA run 7).
+        var tookAttempt = otp is not null && await db.BusinessOwnerRequestEmailOtps
+            .Where(o => o.Id == otp.Id && o.Attempts < EmailOtpMaxAttempts)
+            .ExecuteUpdateAsync(s => s.SetProperty(o => o.Attempts, o => o.Attempts + 1)) == 1;
+        if (!tookAttempt || !BCrypt.Net.BCrypt.Verify(req.Code ?? "", otp!.CodeHash)
+            || await db.BusinessOwnerRequestEmailOtps.Where(o => o.Id == otp.Id && !o.Consumed)
+                .ExecuteUpdateAsync(s => s.SetProperty(o => o.Consumed, true)) == 0)
             return BadRequest(new { error = "Invalid or expired verification code" });
-        }
-        otp.Consumed = true;
 
         var request = new BusinessOwnerRequest
         {

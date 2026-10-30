@@ -1,3 +1,4 @@
+using System.Globalization;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -127,15 +128,23 @@ public static class ChatFiles
     private static readonly HashSet<char> BidiControls =
         ['\u061C', '\u200E', '\u200F', '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066', '\u2067', '\u2068', '\u2069',
          // and other invisible ones (zero-width space, line/paragraph separators, BOM, soft hyphen; QA run 6)
-         '\u200B', '\u200C', '\u2028', '\u2029', '\u2060', '\uFEFF', '\u00AD'];
+         '\u200B', '\u2028', '\u2029', '\u2060', '\uFEFF', '\u00AD',
+         // Hangul fillers, which show as blank (QA run 7)
+         '\u3164', '\u115F', '\u1160', '\uFFA0'];
+
+    // Plus every other format or private-use character (U+180E, U+FFF9, U+E000...; QA run 7), but
+    // not the zero-width joiner/non-joiner: Persian and Arabic-script names and emoji need them.
+    private static bool IsHidden(char c) =>
+        char.IsControl(c) || BidiControls.Contains(c)
+        || CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.Format or UnicodeCategory.PrivateUse && c is not ('\u200C' or '\u200D');
 
     // Just the name (no path), without characters that break a download header, at most 120 long.
     public static string SafeFileName(string fileName)
     {
         var name = Path.GetFileName(fileName.Replace('\\', '/'));
-        name = new string(name.Where(c => !char.IsControl(c) && !BidiControls.Contains(c)
+        name = new string(name.Where(c => !IsHidden(c)
             && c is not ('"' or '/' or ':' or '*' or '?' or '<' or '>' or '|')).ToArray()).Trim();
-        if (name.Length == 0) name = "file";
+        if (name.Trim('.').Length == 0) name = "file";
         if (name.Length <= 120) return name;
         // A long "extension" ("a.<200 characters>") is just part of the name.
         var ext = Path.GetExtension(name);

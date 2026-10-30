@@ -1398,6 +1398,15 @@ public class WhatsAppController(
             await db.SaveChangesAsync();
             return (true, I18nService.T(lang, "whatsapp.attendanceReask", DateTimeArgs(appointment)));
         }
+        // "2" asked for a cancellation, the owner kept the appointment, and now "1": a confirm. It got
+        // "no longer active" (QA run 7).
+        if (bareNumber && appointment is not null && answeredId is not null && open && ParseNumber(message) == 1
+            && appointment.AttendanceStatus != AttendanceQuestion.Confirmed && !message.TrimStart().StartsWith('#'))
+        {
+            appointment.AttendanceStatus = AttendanceQuestion.Confirmed;
+            await db.SaveChangesAsync();
+            return (true, I18nService.T(lang, "whatsapp.attendanceConfirmed", DateTimeArgs(appointment)));
+        }
         if (bareNumber && appointment is not null && (answeredId is not null || !open) && !message.TrimStart().StartsWith('#'))
         {
             if (appointmentId is not null)
@@ -1437,6 +1446,12 @@ public class WhatsAppController(
         if (answer == "2")
         {
             var cancelled = await CancelConfirmedAppointment(businessId, appointmentId!, fromPhone, lang);
+            // Answered: the owner's badge no longer says "waiting for a reply" (QA run 7).
+            if (appointment!.AttendanceStatus == AttendanceQuestion.Asked)
+            {
+                appointment.AttendanceStatus = null;
+                await db.SaveChangesAsync();
+            }
             if (cancelled is not null) return (true, cancelled);
             db.WhatsAppConversationStates.Remove(state!);
             await db.SaveChangesAsync();

@@ -179,6 +179,15 @@ app.Use((context, next) =>
     return next(context);
 });
 app.UseExceptionHandler();
+// Every response is JSON or an uploaded file: never sniffed as something else, never framed
+// (QA run 7: uploads were served without nosniff).
+app.Use((context, next) =>
+{
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers.XFrameOptions = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    return next(context);
+});
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),

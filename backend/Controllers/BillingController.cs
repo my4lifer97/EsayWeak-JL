@@ -59,7 +59,8 @@ public class BillingController(AppDbContext db, IConfiguration config, ICardcomS
         // never acts on fields taken directly from this request; it re-fetches the verified
         // result from Cardcom server-to-server before mutating any billing state.
         var lowProfileId = Request.Query["LowProfileId"].FirstOrDefault()
-            ?? Request.Form["LowProfileId"].FirstOrDefault();
+            // Form only for a form body: Request.Form throws on any other content type (QA run 7).
+            ?? (Request.HasFormContentType ? (await Request.ReadFormAsync())["LowProfileId"].FirstOrDefault() : null);
         if (string.IsNullOrEmpty(lowProfileId))
         {
             logger.LogWarning("Cardcom webhook received without a LowProfileId");

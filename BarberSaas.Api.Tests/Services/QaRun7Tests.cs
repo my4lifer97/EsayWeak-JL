@@ -42,6 +42,60 @@ public class QaRun7Tests : IntegrationTestBase
         Assert.Equal(expected, Digits.ToAscii(input));
     }
 
+    // OWN-17 / PUB-23
+    [Theory]
+    [InlineData("a--b", false)]
+    [InlineData("shop-", false)]
+    [InlineData("-shop", false)]
+    [InlineData("my-shop-2", true)]
+    public void Slug_HyphensOnlyBetweenLettersAndDigits(string slug, bool valid)
+    {
+        Assert.Equal(valid, SlugValidator.IsValidFormat(slug));
+        Assert.True(SlugValidator.IsReserved("reviews") && SlugValidator.IsReserved("business-owner-requests"));
+    }
+
+    // CHAT-11
+    [Theory]
+    [InlineData("aㅤb᠎￹.pdf", "ab.pdf")]
+    [InlineData("..", "file")]
+    [InlineData("می‌خواهم.pdf", "می‌خواهم.pdf")]
+    public void SafeFileName_DropsHiddenCharacters_KeepsTheJoiners(string input, string expected)
+    {
+        Assert.Equal(expected, ChatFiles.SafeFileName(input));
+    }
+
+    // OWN-18
+    [Theory]
+    [InlineData("A service can have up to 20 photos")]
+    [InlineData("Invalid date range")]
+    [InlineData("This time isn't one of your bookable times")]
+    [InlineData("This time is already taken on every upcoming week")]
+    public void NewErrors_AreTranslated(string message)
+    {
+        Assert.NotEqual(message, ApiErrorTranslations.Translate("HE", message));
+        Assert.NotEqual(message, ApiErrorTranslations.Translate("AR", message));
+    }
+
+    // ST-5: the owner's second cancel was a 409; the customer's has been OK since QA run 6.
+    [Fact]
+    public async Task OwnerCancel_Twice_IsOkBothTimes()
+    {
+        Authorize(Client, await RegisterAndVerify("qa7-cancel2@example.com", "qa7-cancel2"));
+        var item = (await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Cut", "Cut", "Cut", 30, 20m)))
+            .Content.ReadFromJsonAsync<ItemDto>())!;
+        var booked = await Client.PostAsJsonAsync("/api/admin/appointments", new
+        {
+            itemId = item.Id, date = AppClock.Now.AddDays(1).ToString("yyyy-MM-dd"), startTime = "10:00", customerName = "Dana", customerPhone = "+15557100004", force = true,
+        });
+        var id = (await booked.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetString();
+
+        var first = await Client.PatchAsJsonAsync($"/api/admin/appointments/{id}", new { status = "CANCELLED" });
+        var second = await Client.PatchAsJsonAsync($"/api/admin/appointments/{id}", new { status = "CANCELLED" });
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+    }
+
     // OWN-14: AddMinutes parsed the time before anything checked it.
     [Theory]
     [InlineData("zz")]

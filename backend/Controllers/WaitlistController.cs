@@ -42,7 +42,14 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
         // own appointment (add a note / change the time) instead.
         if (appointment.Customer.CustomerAccountId == CustomerAccountId)
             return BadRequest(new { error = "This is your own appointment" });
-        if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+        // Nor for a slot their own booking already sits in, under another appointment (QA run 7).
+        if (await db.Appointments.AnyAsync(a => a.BusinessId == business.Id && a.Date == appointment.Date && a.Id != appointment.Id
+                && a.Status == AppointmentStatus.CONFIRMED && a.Customer.CustomerAccountId == CustomerAccountId
+                && string.Compare(a.StartTime, appointment.EndTime) < 0 && string.Compare(a.EndTime, appointment.StartTime) > 0))
+            return BadRequest(new { error = "This is your own appointment" });
+        // One already under way never frees a slot anyone could still book (QA run 7).
+        if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED"
+            || WaitlistService.HasStarted(appointment))
             return Conflict(new { error = "This appointment is not currently booked" });
 
         var exists = await db.WaitlistEntries.AnyAsync(w => w.AppointmentId == appointmentId && w.CustomerAccountId == CustomerAccountId);

@@ -215,7 +215,8 @@ public class AdminController(
             if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Business name is required" });
             b.Name = req.Name.Trim();
         }
-        if (req.Phone is not null) b.Phone = req.Phone;
+        // Blank is "no phone": "   " was stored, and looked set (QA run 7).
+        if (req.Phone is not null) b.Phone = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone.Trim();
         if (req.Description is not null) b.Description = req.Description;
         if (req.Language is not null) b.Language = Enum.Parse<Language>(req.Language);
         // null is a real value for these two (unlimited), not "omitted" -- gated on key presence,
@@ -1227,7 +1228,14 @@ public class AdminController(
         var stillConfirmed = AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED";
         var offeredToWaitlist = req.NotifyWaitlist && !WaitlistService.HasStarted(appt);
         if (!await cancellationService.CancelAsync(appt, notifyWaitlist: offeredToWaitlist))
-            return Conflict(new { error = "This appointment can no longer be modified" });
+        {
+            // A second click (or a cancel that raced this one) finds it cancelled already: the
+            // same OK the customer's own double cancel gets (QA run 7).
+            var current = await db.Appointments.Where(a => a.Id == id).Select(a => a.Status).FirstAsync();
+            return current == AppointmentStatus.CANCELLED
+                ? Ok(new { appt.Id, Status = nameof(AppointmentStatus.CANCELLED) })
+                : Conflict(new { error = "This appointment can no longer be modified" });
+        }
         await db.SaveChangesAsync();
         // Not for a booking that's already over -- that's the owner correcting history.
         if (req.NotifyCustomer && stillConfirmed)
@@ -1316,6 +1324,12 @@ public class AdminController(
             var (resolved, error) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
             if (error is not null) return error;
             customer = resolved!;
+            // Typed in by name/phone, someone already waiting for this slot stayed WAITING on what is
+            // now their own appointment, and was offered it again once they cancelled (QA run 7).
+            if (customer.CustomerAccountId is { } accountId)
+                await db.WaitlistEntries
+                    .Where(w => w.AppointmentId == id && w.CustomerAccountId == accountId && w.Status == WaitlistEntryStatus.WAITING)
+                    .ForEachAsync(w => w.Status = WaitlistEntryStatus.RESOLVED);
         }
 
         // "Replacing" them with themselves cancelled the magic link they already had and sent no

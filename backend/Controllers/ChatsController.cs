@@ -165,6 +165,7 @@ public class ChatsController(
         var fileName = ChatFiles.SafeFileName(file.FileName);
         var ownerLine = I18nService.T(chat!.Language, "whatsapp.fromOwner");
         var data = buffer.ToArray();
+        IActionResult? sendFailure = null;
         try
         {
             await bridge.SendMediaAsync(BusinessId, PhoneNormalizer.ToE164(chat.Phone),
@@ -173,7 +174,9 @@ public class ChatsController(
         catch (Exception ex) when (SendFailure(ex) is { } failure)
         {
             logger.LogWarning(ex, "Chat attachment to a customer of business {BusinessId} failed", BusinessId);
-            return failure;
+            // A timeout may well have gone out: kept, like a text (QA run 7).
+            if (ex is not TaskCanceledException) return failure;
+            sendFailure = failure;
         }
 
         var attachment = new ChatAttachment { BusinessId = BusinessId, FileName = fileName, ContentType = contentType, Data = data };
@@ -183,6 +186,7 @@ public class ChatsController(
         db.ChatMessages.Add(message);
         await ChatLog.OwnerAnsweredAsync(db, BusinessId, chat.Phone);
         await db.SaveChangesAsync();
+        if (sendFailure is not null) return sendFailure;
         this.SetActivityDetail($"Sent a file to {chat.Phone}");
         return Ok(new { ok = true });
     }
@@ -266,7 +270,8 @@ public class ChatsController(
             .ExecuteUpdateAsync(u => u.SetProperty(m => m.IsRead, true));
         await db.SaveChangesAsync();
         this.SetActivityDetail($"Finished the chat with {chat.Phone}");
-        return Ok(new { ok = true });
+        // notified false: the customer wasn't told, which the page says (QA run 7).
+        return Ok(new { ok = true, notified = sent });
     }
 
     // ─── Ready messages ─────────────────────────────────────────────────────
@@ -316,7 +321,7 @@ public class ChatsController(
             await db.SaveChangesAsync();
             return BadRequest(new { error = "You can save up to 100 ready messages" });
         }
-        return Ok(new QuickReplyDto(reply.Id, reply.Title, reply.Text));
+        return StatusCode(201, new QuickReplyDto(reply.Id, reply.Title, reply.Text));
     }
 
     [HttpPut("quick-replies/{id}")]
@@ -403,6 +408,7 @@ public class ChatsController(
             if (ex is TaskCanceledException)
             {
                 db.ChatMessages.Add(ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Owner, text));
+                await ChatLog.OwnerAnsweredAsync(db, BusinessId, chat.Phone);
                 await db.SaveChangesAsync();
             }
             return failure;

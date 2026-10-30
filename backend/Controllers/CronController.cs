@@ -13,13 +13,20 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
     // Daily sweep for PresetSchedule rows: applies any whose StartDate has arrived, reverts any
     // applied one whose EndDate has passed -- see SchedulePresetService.ApplyDueScheduledPresets
     // for the actual mechanics (shared with the owner-triggered endpoints in AdminController).
+    // Constant-time, like the bridge secret: a plain == answers faster the more leading characters
+    // match (QA run 7).
+    private bool IsCronCaller()
+    {
+        var cronSecret = config["CronSecret"];
+        if (string.IsNullOrEmpty(cronSecret)) return false;
+        var auth = System.Text.Encoding.UTF8.GetBytes(Request.Headers.Authorization.FirstOrDefault() ?? "");
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(auth, System.Text.Encoding.UTF8.GetBytes($"Bearer {cronSecret}"));
+    }
+
     [HttpGet("apply-scheduled-presets")]
     public async Task<IActionResult> ApplyScheduledPresets()
     {
-        var cronSecret = config["CronSecret"];
-        var auth = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
-            return Unauthorized(new { error = "Unauthorized" });
+        if (!IsCronCaller()) return Unauthorized(new { error = "Unauthorized" });
 
         var (applied, reverted) = await schedulePresets.ApplyDueScheduledPresets();
         return Ok(new { applied, reverted });
@@ -28,10 +35,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
     [HttpGet("retry-waitlist-notifications")]
     public async Task<IActionResult> RetryWaitlistNotifications()
     {
-        var cronSecret = config["CronSecret"];
-        var auth = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
-            return Unauthorized(new { error = "Unauthorized" });
+        if (!IsCronCaller()) return Unauthorized(new { error = "Unauthorized" });
 
         var (total, sent, failed) = await waitlist.AdvanceQueues();
         await db.SaveChangesAsync();
@@ -43,10 +47,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
     [HttpGet("charge-subscriptions")]
     public async Task<IActionResult> ChargeSubscriptions()
     {
-        var cronSecret = config["CronSecret"];
-        var auth = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
-            return Unauthorized(new { error = "Unauthorized" });
+        if (!IsCronCaller()) return Unauthorized(new { error = "Unauthorized" });
 
         var amount = decimal.Parse(config["Cardcom:MonthlyAmount"] ?? "120");
         var now = DateTime.UtcNow;
@@ -92,10 +93,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
     [HttpGet("generate-recurring")]
     public async Task<IActionResult> GenerateRecurringAppointments()
     {
-        var cronSecret = config["CronSecret"];
-        var auth = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
-            return Unauthorized(new { error = "Unauthorized" });
+        if (!IsCronCaller()) return Unauthorized(new { error = "Unauthorized" });
 
         var (total, created, skipped) = await recurringAppointments.GenerateOccurrences();
         return Ok(new { total, created, skipped });
@@ -104,10 +102,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
     [HttpGet("reminders")]
     public async Task<IActionResult> SendReminders()
     {
-        var cronSecret = config["CronSecret"];
-        var auth = Request.Headers.Authorization.FirstOrDefault();
-        if (string.IsNullOrEmpty(cronSecret) || auth != $"Bearer {cronSecret}")
-            return Unauthorized(new { error = "Unauthorized" });
+        if (!IsCronCaller()) return Unauthorized(new { error = "Unauthorized" });
 
         var appUrl = config["AppUrl"] ?? "";
 
@@ -128,6 +123,10 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             // one's reminder, not an arbitrary one (QA run 5). Each reminder names its own time.
             .OrderBy(a => a.StartTime)
             .ToListAsync();
+        // One starting within the "soon" window gets only the "soon" reminder: booked late for just
+        // after midnight, it got the day-before one and the "soon" one 15 minutes later (QA run 7).
+        var soonCutoff = AppClock.Now.AddHours(3);
+        dayBeforeAppointments = dayBeforeAppointments.Where(a => a.Date.Date.Add(TimeSpan.Parse(a.StartTime)) > soonCutoff).ToList();
 
         var (dayBeforeSent, dayBeforeFailed) = await SendBatchAsync(dayBeforeAppointments, "reminder.message", appUrl,
             (appt) => appt.ReminderSent = true,

@@ -143,8 +143,10 @@ public class PlatformAdminController(
     }
 
     // "Active Directory"-style account lock -- blocks login, password reset/email verification, and
-    // every BusinessOnly action on an already-issued token (BlockDisabledBusinessFilter);
-    // storefront/WhatsApp bot/appointments are unaffected.
+    // every BusinessOnly action on an already-issued token (BlockDisabledBusinessFilter). It also
+    // stops taking bookings (BookingRules: left out of the directory, booking and the bot's links
+    // refused), and gets no reminders or waitlist offers; customers can still see and cancel what
+    // they booked. Owner actions through impersonation still notify customers.
     [HttpPost("businesses/{id}/disable")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> DisableBusiness(string id)
@@ -330,6 +332,10 @@ public class PlatformAdminController(
     {
         var b = await db.Businesses.FindAsync(id);
         if (b is null) return NotFound();
+        // A link page still open could start a new session for 30 minutes after this (QA run 7).
+        var now = DateTime.UtcNow;
+        await db.WhatsAppLinkTokens.Where(t => t.BusinessId == id && t.ExpiresAt > now)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ExpiresAt, now));
 
         // A bridge outage must not block unlinking: clearing WhatsAppNumber alone already stops the
         // bot (inbound messages are matched by it, sends need it). The stale bridge session is
@@ -554,11 +560,17 @@ public class PlatformAdminController(
     public async Task<IActionResult> ListBusinessOwnerRequests([FromQuery] string? status)
     {
         var query = db.BusinessOwnerRequests.AsQueryable();
-        if (Enum.TryParse<BusinessOwnerRequestStatus>(status, ignoreCase: true, out var parsedStatus))
+        // An unknown status listed everything (QA run 7).
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            if (!Enum.TryParse<BusinessOwnerRequestStatus>(status, ignoreCase: true, out var parsedStatus) || int.TryParse(status, out _))
+                return BadRequest(new { error = "Invalid status" });
             query = query.Where(r => r.Status == parsedStatus);
+        }
 
         var requests = await query
             .OrderByDescending(r => r.CreatedAt)
+            .Take(500)
             .Select(ToDto)
             .ToListAsync();
 

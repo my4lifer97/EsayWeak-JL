@@ -399,7 +399,7 @@ public class AdminAppointmentsTests : IntegrationTestBase
     [InlineData(1, "9:00", "Invalid time")]
     public async Task CreateAppointment_ForceTrue_RejectsImpossibleTimes(int daysFromToday, string startTime, string expectedError)
     {
-        var slug = $"admin-force-bad-{daysFromToday}-{startTime.Replace(":", "")}";
+        var slug = $"admin-force-bad-{daysFromToday + 1}-{startTime.Replace(":", "")}";
         var token = await RegisterAndLoginBusiness($"{slug}@example.com", slug);
         var (businessId, itemId, _) = await SeedBusinessWithServiceAndAvailability(token, slug);
 
