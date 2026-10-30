@@ -69,6 +69,13 @@ const STATUS_LABEL: Record<string, TKey> = {
   CANCELLED: 'statusCancelled',
 }
 
+// Whether the minute `m` of the day `dayStr` ("yyyy-MM-dd") has already gone by (browser clock).
+function isPast(dayStr: string, m: number) {
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return dayStr < today || (dayStr === today && m <= now.getHours() * 60 + now.getMinutes())
+}
+
 function timeToMinutes(t: string) {
   const [h, m] = t.split(':').map(Number)
   return h * 60 + m
@@ -257,7 +264,8 @@ export default function WeeklyCalendar({
                   ))}
                   {/* Empty time cells open the new-appointment modal at that time. They sit under
                       the schedule layers and appointments, which keep their own click popups. */}
-                  {onSlotClick && !closed && !fullDayBlock && HALF_HOURS.map((m) => (
+                  {/* Not cells already over: nothing can be booked in the past (QA run 6). */}
+                  {onSlotClick && !closed && !fullDayBlock && HALF_HOURS.filter((m) => !isPast(dayStr, m + 30)).map((m) => (
                     <button key={m} type="button" onClick={() => onSlotClick(dayStr, minutesToTime(m))}
                       aria-label={`${t(lang, 'newAppointment')} ${minutesToTime(m)}`}
                       className="group absolute inset-x-0 hover:bg-coral/10 transition-colors text-start px-1.5"

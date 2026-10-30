@@ -255,7 +255,7 @@ public class AttendanceConfirmationTests : IntegrationTestBase
 
         await Inbound(businessId, "+15553330015", message);
 
-        Assert.Equal(AttendanceQuestion.Asked, (await Load(appointmentId)).AttendanceStatus);
+        Assert.Null((await Load(appointmentId)).AttendanceStatus); // not an answer: the question is dropped (QA run 6: and the badge cleared)
     }
 
     // QA run 5: a second "1"/"2" was read as the opening menu ("2" opened a chat with the owner).
@@ -316,6 +316,115 @@ public class AttendanceConfirmationTests : IntegrationTestBase
         Assert.Contains("1. Haircut", reply);
     }
 
+    // QA run 6 BOT-15: a digit with friendly words around it is that digit.
+    [Theory]
+    [InlineData("1 thanks", AppointmentStatus.CONFIRMED, "CONFIRMED")]
+    [InlineData("1!", AppointmentStatus.CONFIRMED, "CONFIRMED")]
+    [InlineData("1👍", AppointmentStatus.CONFIRMED, "CONFIRMED")]
+    [InlineData("yes 1", AppointmentStatus.CONFIRMED, "CONFIRMED")]
+    [InlineData("2 thanks", AppointmentStatus.CANCELLED, null)]
+    [InlineData("reply 2", AppointmentStatus.CANCELLED, null)]
+    public async Task DigitWithFriendlyWords_IsTheDigit(string answer, AppointmentStatus status, string? attendance)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-digit-{answer.Length}-{answer.GetHashCode():x}", "+15553330020");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330020", answer);
+
+        var appointment = await Load(appointmentId);
+        Assert.Equal(status, appointment.Status);
+        if (attendance is not null) Assert.Equal(attendance, appointment.AttendanceStatus);
+    }
+
+    // QA run 6 BOT-13: questions and lone filler words confirmed the appointment.
+    [Theory]
+    [InlineData("will you be there?")]
+    [InlineData("tomorrow?")]
+    [InlineData("I")]
+    [InlineData("#2")] // BOT-18: a command, not an answer
+    [InlineData("#1")]
+    public async Task QuestionsAndCommands_AreNotAnswers(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-notans-{message.Length}-{message.GetHashCode():x}", "+15553330021");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330021", message);
+
+        var appointment = await Load(appointmentId);
+        Assert.NotEqual(AttendanceQuestion.Confirmed, appointment.AttendanceStatus);
+        Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
+    }
+
+    // QA run 6 BOT-16/17: "not coming" and "no thanks" are asked, not dropped or cancelled at once.
+    [Theory]
+    [InlineData("I can't come")]
+    [InlineData("won't make it")]
+    [InlineData("לא אגיע")]
+    [InlineData("ما رح اجي")]
+    [InlineData("👎")]
+    [InlineData("no thanks")]
+    public async Task NotComing_IsAskedAgain(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-notcoming-{message.Length}-{message.GetHashCode():x}", "+15553330022");
+        await RunReminders();
+
+        var reply = await Inbound(businessId, "+15553330022", message);
+
+        Assert.Contains(AppClock.Now.AddDays(1).ToString("yyyy-MM-dd"), reply);
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await Load(appointmentId)).Status);
+        await Inbound(businessId, "+15553330022", "2");
+        Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+    }
+
+    [Fact]
+    public async Task DontCancel_Twice_KeepsTheAppointment()
+    {
+        var (businessId, _, appointmentId) = await Seed("attend-dont-twice", "+15553330023");
+        await RunReminders();
+        await Inbound(businessId, "+15553330023", "please don't cancel");
+
+        await Inbound(businessId, "+15553330023", "don't cancel");
+
+        var appointment = await Load(appointmentId);
+        Assert.Equal(AttendanceQuestion.Confirmed, appointment.AttendanceStatus);
+        Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
+    }
+
+    // QA run 6 BOT-14: "1" then "2" is a change of mind.
+    [Fact]
+    public async Task OneThenTwo_AsksBeforeCancelling()
+    {
+        var (businessId, _, appointmentId) = await Seed("attend-change-mind", "+15553330024");
+        await RunReminders();
+        await Inbound(businessId, "+15553330024", "1");
+
+        var reply = await Inbound(businessId, "+15553330024", "2");
+
+        Assert.StartsWith("Just to be sure", reply);
+        await Inbound(businessId, "+15553330024", "2");
+        Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+    }
+
+    // QA run 6 ST-3: two overlapping runs both sent every reminder.
+    [Fact]
+    public async Task OverlappingReminderRuns_SendEachReminderOnce()
+    {
+        var (businessId, _, _) = await Seed("attend-overlap", "+15553330025");
+        Factory.WhatsAppSender.Delay = TimeSpan.FromMilliseconds(300);
+        try
+        {
+            using var second = Factory.CreateClient();
+            second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+            await Task.WhenAll(RunReminders(), second.GetAsync("/api/cron/reminders"));
+        }
+        finally
+        {
+            Factory.WhatsAppSender.Delay = TimeSpan.Zero;
+        }
+
+        Assert.Single(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId);
+    }
+
     [Fact]
     public async Task OtherMessage_DropsTheQuestion_AndIsHandledNormally()
     {
@@ -327,7 +436,7 @@ public class AttendanceConfirmationTests : IntegrationTestBase
 
         Assert.Contains("1. Haircut", reply);
         var appointment = await Load(appointmentId);
-        Assert.Equal(AttendanceQuestion.Asked, appointment.AttendanceStatus);
+        Assert.Null(appointment.AttendanceStatus); // dropped question, badge cleared (QA run 6)
         Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
     }
 

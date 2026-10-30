@@ -247,7 +247,20 @@ public class WhatsAppController(
             }
 
             var appUrl = config["AppUrl"] ?? "";
-            var reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, text.Length > 0 ? text : mediaLabel!);
+            string? reply;
+            try
+            {
+                reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, text.Length > 0 ? text : mediaLabel!);
+            }
+            catch (DbUpdateException ex)
+            {
+                // The reminder cron parked its question on this phone's conversation row between
+                // this message's "no row yet" check and its insert (unique per business + phone):
+                // read it again with the row there. It was a 500 and no reply (QA run 6).
+                logger.LogWarning(ex, "Conversation row appeared mid-message for business {BusinessId}; retrying once", business.Id);
+                db.ChangeTracker.Clear();
+                reply = await ProcessMessageLockedAsync(business, appUrl, fromPhone, profileName, text.Length > 0 ? text : mediaLabel!);
+            }
             if (reply is not null && (wasInChat || await ChatLog.IsChatOpenAsync(db, business.Id, fromPhone)))
             {
                 // With the profile name too: a chat that has only this message yet already shows who it is.
@@ -335,8 +348,7 @@ public class WhatsAppController(
     // session that came up with nobody watching (2026-10-25: after a logout had cleared it) left
     // WhatsAppNumber empty -- no confirmations or reminders, and Chats said "not linked".
     // A number another business already has is saved too (that one may just be stale), but the
-    // platform admin is told: two sessions on one WhatsApp account would both answer every
-    // message (QA run 5).
+    // platform admin is told (PlatformAdminAlerts.WarnIfNumberSharedAsync, after the save).
     private async Task<IActionResult> HandleConnectedAsync(BridgeSessionEventRequest req, PlatformAdminAlerts alerts)
     {
         var business = await db.Businesses.FindAsync(req.BusinessId);
@@ -347,15 +359,6 @@ public class WhatsAppController(
         if (business.WhatsAppNumber == number) return Ok();
         var old = business.WhatsAppNumber;
         business.WhatsAppNumber = number;
-        var others = await db.Businesses.Where(b => b.Id != business.Id && b.WhatsAppNumber == number)
-            .Select(b => b.Name + " (" + b.Slug + ")").ToListAsync();
-        if (others.Count > 0)
-        {
-            logger.LogWarning("WhatsApp number of business {BusinessId} is also saved on {Count} other business(es)", business.Id, others.Count);
-            await alerts.SendAsync("A WhatsApp number is linked to two businesses",
-                $"The bot of {business.Name} ({business.Slug}) connected with a number that is also saved on: {string.Join(", ", others)}. "
-                + "Both would answer the same customers. Unlink the one that shouldn't have it.");
-        }
         db.ActivityLogs.Add(new ActivityLog
         {
             BusinessId = business.Id,
@@ -366,6 +369,7 @@ public class WhatsAppController(
             StatusCode = 200,
         });
         await db.SaveChangesAsync();
+        await alerts.WarnIfNumberSharedAsync(business);
         return Ok();
     }
 
@@ -1385,7 +1389,17 @@ public class WhatsAppController(
         // A bare "1"/"2" just after the answer (a double tap), or to a question whose appointment is
         // already cancelled, is about that appointment: read as the opening menu, "2" opened a chat
         // with the owner and "1" sent the service list (QA run 5).
-        if (bareNumber && appointment is not null && (answeredId is not null || !open))
+        if (bareNumber && appointment is not null && answeredId is not null && open
+            && appointment.AttendanceStatus == AttendanceQuestion.Confirmed && ParseNumber(message) == 2 && !message.TrimStart().StartsWith('#'))
+        {
+            // Confirmed, then "2": a change of mind, not a double tap. It answered "Thanks for
+            // confirming" again (QA run 6). Asked like any other cancel, with the question back open.
+            state!.ChatbotMode = AttendanceQuestion.ModePrefix + appointment.Id;
+            state.InvalidAttempts = 1;
+            await db.SaveChangesAsync();
+            return (true, I18nService.T(lang, "whatsapp.attendanceReask", DateTimeArgs(appointment)));
+        }
+        if (bareNumber && appointment is not null && (answeredId is not null || !open) && !message.TrimStart().StartsWith('#'))
         {
             if (appointmentId is not null)
             {
@@ -1410,6 +1424,9 @@ public class WhatsAppController(
         if (!open || answer is not ("1" or "2"))
         {
             db.WhatsAppConversationStates.Remove(state!);
+            // No question is open any more, so the owner's badge stops saying "waiting for a
+            // reply" (QA run 6).
+            if (appointment?.AttendanceStatus == AttendanceQuestion.Asked) appointment.AttendanceStatus = null;
             await db.SaveChangesAsync();
             return (false, null);
         }
@@ -1432,21 +1449,66 @@ public class WhatsAppController(
         return (true, I18nService.T(lang, "whatsapp.attendanceConfirmed", DateTimeArgs(appointment)));
     }
 
-    // "1" (coming), "2" (cancel), "reask" (mentions cancelling but isn't a plain answer), or null
-    // (about something else: a question, a reschedule request).
+    // "1" (coming), "2" (cancel), "reask" (sounds like cancelling but isn't a plain answer: asked
+    // "reply 2 to cancel, 1 to keep"), or null (about something else: a question, a reschedule
+    // request, a "#" command). QA run 6 tightened it:
+    // - a digit with friendly words around it ("2 thanks", "1!", "1👍", "yes 1") is that digit;
+    // - a question ("will you be there?", "tomorrow?") is never an answer;
+    // - "I can't come", "לא אגיע", "ما رح اجي", 👎 sound like cancelling;
+    // - "don't cancel" again after the re-ask keeps it, and "no thanks" is asked instead of cancelling;
+    // - "#1"/"#2" are commands, not answers.
     private static string? AttendanceAnswer(string message, bool reasked)
     {
+        if (message.TrimStart().StartsWith('#')) return null;
         if (ContainsKeyword(message, RescheduleKeywords)) return null;
-        var words = Words(message);
+        // Arabic-Indic and fullwidth digits read as 0-9, like ParseNumber.
+        var words = Words(message)
+            .Select(w => NormalizeDigits(new string(w.Select(c => c is >= '０' and <= '９' ? (char)('0' + (c - '０')) : c).ToArray())))
+            .ToList();
         var cancelAt = words.FindIndex(w => ContainsKeyword(w, CancelKeywords));
-        var negatedCancel = IsNegatedCancel(words, cancelAt);
-        if (cancelAt < 0 && words.Count <= 4 && words.Any(w => KeepWords.Contains(w))
+        if (cancelAt >= 0)
+            return IsNegatedCancel(words, cancelAt) ? (reasked ? "1" : "reask") : (reasked ? "2" : "reask");
+        if (IsNotComing(message, words)) return "reask";
+        if (message.Contains('?') || message.Contains('؟')) return null;
+
+        var digits = words.Where(w => w.All(char.IsDigit)).ToList();
+        if (digits.Count > 0)
+            return digits.Count == 1 && digits[0] is "1" or "2" && words.All(w => w == digits[0] || IsFriendlyWord(w)) ? digits[0] : null;
+
+        if (words.Count <= 4 && words.Any(w => KeepWords.Contains(w))
             && words.All(w => KeepWords.Contains(w) || NoWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w)))
             return "1";
-        if (cancelAt >= 0)
-            return reasked && !negatedCancel ? "2" : "reask";
         if (IsAttendanceAcknowledgement(message, words)) return "1";
-        return ConfirmationAnswer(message);
+        var answer = ConfirmationAnswer(message);
+        return answer == "2" && words.Count > 1 ? "reask" : answer;
+    }
+
+    // Words that can sit around a "1"/"2" without changing it.
+    private static bool IsFriendlyWord(string w) =>
+        AcknowledgementWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w) || w is "reply" or "send" or "answer";
+
+    // "I can't come", "won't make it", "not coming", "לא מגיע", "לא אגיע", "ما رح اجي", "مش جاي", or a
+    // lone 👎/❌. A negation followed within three words by a coming (or keep) word.
+    private static readonly string[] NotComingNegations = ["cannot", "cant", "wont", "not", "never", "לא", "ما", "مش", "مو"];
+    private static readonly string[] ComingWords =
+    [
+        "come", "coming", "make", "be", "attend", "arrive",
+        "מגיע", "מגיעה", "מגיעים", "אגיע", "נגיע", "אהיה", "נהיה",
+        "اجي", "آجي", "أجي", "جاي", "جاية", "بجي", "رح", "بقدر", "اقدر", "أقدر",
+    ];
+    private static readonly string[] NotComingEmoji = ["\U0001F44E", "\u274C", "\u2716"];
+
+    private static bool IsNotComing(string message, List<string> words)
+    {
+        if (words.Count == 0) return NotComingEmoji.Any(message.Contains);
+        for (var i = 0; i < words.Count; i++)
+        {
+            var negation = NotComingNegations.Contains(words[i])
+                || (words[i] == "t" && i > 0 && words[i - 1] is "can" or "won" or "don" or "didn" or "couldn");
+            if (!negation) continue;
+            if (words.Skip(i + 1).Take(3).Any(w => ComingWords.Contains(w) || KeepWords.Contains(w))) return true;
+        }
+        return false;
     }
 
     // A negation right before the first cancel word: "don't cancel", "לא לבטל", "لا تلغي".
@@ -1463,13 +1525,23 @@ public class WhatsAppController(
     // "ok", "thanks", a thumbs up, "I'll be there", "אגיע", "تمام": a short reply that means coming.
     // They dropped the question and got the Book/Ask menu, and the owner's badge stayed on waiting
     // (QA run 5). Every word must be one of these, so "ok but at 11" isn't one.
+    // At least one word that says it on its own ("ok", "thanks", "מגיע"), or "be there" / "see you":
+    // "I", "will", "tomorrow" alone confirmed the appointment (QA run 6).
     private static bool IsAttendanceAcknowledgement(string message, List<string> words)
     {
         if (words.Count == 0)
             return AcknowledgementEmoji.Any(message.Contains) && !message.Any(char.IsDigit);
-        return words.Count <= 6 && words.Any(w => AcknowledgementWords.Contains(w))
+        var says = words.Any(w => AcknowledgementWords.Contains(w) && !WeakAcknowledgementWords.Contains(w))
+            || Follows(words, "be", "there") || Follows(words, "see", "you");
+        return words.Count <= 6 && says
             && words.All(w => AcknowledgementWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w));
     }
+
+    private static readonly string[] WeakAcknowledgementWords =
+        ["i", "ll", "will", "be", "there", "see", "then", "tomorrow", "of", "course", "come", "שם", "מחר", "رح", "بكرا", "بكره"];
+
+    private static bool Follows(List<string> words, string first, string second) =>
+        Enumerable.Range(0, Math.Max(0, words.Count - 1)).Any(i => words[i] == first && words[i + 1] == second);
 
     // The reply that locks the conversation: the "$" reminder, with the lock running LockoutLifetime.
     private static string StartLockout(WhatsAppConversationState state, string lang)

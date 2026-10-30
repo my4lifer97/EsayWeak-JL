@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BarberSaas.Api.Services;
 
-public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, NotificationOutbox notifications, IConfiguration config, ILogger<WaitlistService> logger)
+public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, NotificationOutbox notifications, IConfiguration config, ILogger<WaitlistService> logger,
+    BookingRules bookingRules)
 {
     // Waitlist entries are offered the freed slot one at a time, in the order they joined
     // (CreatedAt): the first gets a message right away, and if the slot is still free
@@ -39,6 +40,9 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
         var business = await db.Businesses.FindAsync(cancelledAppointment.BusinessId);
         if (business is null || !business.WaitlistEnabled) return (0, 0);
         if (business.WhatsAppNumber is null) return (0, 0);
+        // A business that no longer takes bookings (disabled, expired) would refuse the booking
+        // the message links to (QA run 6). The entries stay WAITING in case it reopens.
+        if (!bookingRules.AcceptsBookings(business)) return (0, 0);
 
         var entries = await db.WaitlistEntries
             .Include(w => w.CustomerAccount)

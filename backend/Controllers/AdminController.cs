@@ -398,6 +398,18 @@ public class AdminController(
         return Ok(ToItemDto(item));
     }
 
+    // How many upcoming appointments an item still has, for the delete confirmation: deleting one
+    // said nothing about them (QA run 6). They stay booked and can still be moved or cancelled.
+    [HttpGet("items/{id}/upcoming-appointments")]
+    public async Task<IActionResult> GetItemUpcomingAppointments(string id)
+    {
+        if (!await db.Items.AnyAsync(s => s.Id == id && s.BusinessId == BusinessId)) return NotFound(new { error = "Item not found" });
+        var today = DateTime.SpecifyKind(AppClock.Now.Date, DateTimeKind.Utc);
+        var count = await db.Appointments.CountAsync(a => a.ItemId == id && a.BusinessId == BusinessId
+            && a.Status == AppointmentStatus.CONFIRMED && a.Date >= today);
+        return Ok(new { count });
+    }
+
     [HttpDelete("items/{id}")]
     public async Task<IActionResult> DeleteItem(string id)
     {
@@ -1017,7 +1029,10 @@ public class AdminController(
     public async Task<IActionResult> GetAppointmentAvailability([FromQuery] string date, [FromQuery] string itemId, [FromQuery] string? excludeAppointmentId = null,
         [FromQuery] bool recurring = false)
     {
-        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == BusinessId && s.IsActive);
+        // A deleted item still has times for moving one of its own appointments (excludeAppointmentId):
+        // deleting the item left its upcoming appointments with no times to move to (QA run 6).
+        var item = await db.Items.FirstOrDefaultAsync(s => s.Id == itemId && s.BusinessId == BusinessId
+            && (s.IsActive || (excludeAppointmentId != null && db.Appointments.Any(a => a.Id == excludeAppointmentId && a.ItemId == s.Id))));
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 

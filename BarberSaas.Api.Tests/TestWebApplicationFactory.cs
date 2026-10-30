@@ -61,6 +61,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Jwt__Issuer", JwtIssuer);
         Environment.SetEnvironmentVariable("Jwt__Audience", JwtAudience);
         Environment.SetEnvironmentVariable("CronSecret", CronSecret);
+        // Every test request comes from the same (unknown) IP; RequestQuotaTests cover the limit.
+        Environment.SetEnvironmentVariable("RequestQuota__OtpPerIpPerHour", "100000");
+        Environment.SetEnvironmentVariable("RequestQuota__PhotoUploadsPerIpPerHour", "100000");
         // Matches WhatsAppControllerTests' TwilioToken constant -- one platform-owned Twilio
         // account now signs/validates for every business (see TwilioWhatsAppSender), so this env var
         // is what WhatsAppController.Webhook checks inbound signatures against in tests.

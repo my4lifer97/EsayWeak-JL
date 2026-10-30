@@ -24,7 +24,8 @@ export default function NewAppointmentModal({
   const [date, setDate] = useState(defaultDate ?? '')
   const [slot, setSlot] = useState<Slot | null>(null)
   const [showCustomTime, setShowCustomTime] = useState(false)
-  const [customTime, setCustomTime] = useState('')
+  // The clicked calendar time, ready for a walk-in booking outside the free times.
+  const [customTime, setCustomTime] = useState(defaultTime ?? '')
   const [forceBook, setForceBook] = useState(false)
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -37,20 +38,24 @@ export default function NewAppointmentModal({
   const services = allItems.filter((s) => s.isBookable)
 
   const { data: slots = [], isFetching: slotsLoading } = useQuery<Slot[]>({
-    queryKey: ['admin-availability', date, serviceId],
+    // Not the recurring form's key: that one asks for the 30-minute grid only (QA run 6).
+    queryKey: ['admin-availability', date, serviceId, 'one-off'],
     queryFn: () => api.get(`/admin/appointments/availability?date=${date}&itemId=${serviceId}`).then((r) => r.data.slots),
     enabled: !!date && !!serviceId && !showCustomTime,
   })
 
   // The clicked time is preselected for whichever service the owner picks, as long as they
-  // haven't changed the date. If it isn't free for that service, say so instead.
+  // haven't changed the date. A calendar cell is half an hour, so the first free time starting
+  // inside it counts: with opening at 09:15, or a gap time like 10:45, the exact cell time never
+  // matched (QA run 6). If none is free for that service, say so instead. Only while the owner
+  // hasn't picked a time themselves: a refetch used to replace their choice.
   const wantedTime = defaultTime && date === defaultDate && !showCustomTime ? defaultTime : null
-  const wantedFree = !!wantedTime && slots.some((s) => s.start === wantedTime)
+  const wantedSlot = wantedTime ? slots.find((s) => s.start >= wantedTime && s.start < addMinutes(wantedTime, 30)) : undefined
+  const wantedFree = !!wantedSlot
   useEffect(() => {
-    if (!wantedTime || slotsLoading) return
-    const match = slots.find((s) => s.start === wantedTime)
-    if (match) setSlot(match)
-  }, [wantedTime, slots, slotsLoading])
+    if (!wantedSlot || slotsLoading) return
+    setSlot((current) => current ?? wantedSlot)
+  }, [wantedSlot, slotsLoading])
 
   const startTime = showCustomTime ? customTime : slot?.start ?? ''
   const canSubmit = !!serviceId && !!customer && !!date && !!startTime && (!showCustomTime || forceBook)
@@ -174,4 +179,11 @@ export default function NewAppointmentModal({
       </div>
     </div>
   )
+}
+
+// "HH:mm" plus minutes, as "HH:mm" (past midnight stays above "23:59", so comparisons still work).
+function addMinutes(time: string, minutes: number) {
+  const [h, m] = time.split(':').map(Number)
+  const total = h * 60 + m + minutes
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
 }

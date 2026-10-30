@@ -145,7 +145,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
       // The slot as this page shows it, so a booking that moved since gets a 409, not a place in
       // the queue for its new time.
       await customerApi.post(`/${business.slug}/waitlist/${bookedSlot.appointmentId}`, null,
-        { params: { date, startTime: bookedSlot.start } })
+        { params: { date, startTime: bookedSlot.start, itemId: item?.id } })
       setJoinedWaitlist(true)
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { error?: string; slotChanged?: boolean } } })?.response?.data

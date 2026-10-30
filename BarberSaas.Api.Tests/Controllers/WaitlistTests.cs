@@ -69,6 +69,67 @@ public class WaitlistTests : IntegrationTestBase
         return Client.SendAsync(req);
     }
 
+    private Task<HttpResponseMessage> JoinWaitlistAt(string customerToken, string slug, string appointmentId, string date, string startTime, string? itemId)
+    {
+        var url = $"/api/{slug}/waitlist/{appointmentId}?date={date}&startTime={startTime}" + (itemId is null ? "" : $"&itemId={itemId}");
+        var req = new HttpRequestMessage(HttpMethod.Post, url);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
+        return Client.SendAsync(req);
+    }
+
+    // QA run 6 ST-1: a 60-minute booking at 09:00 also shows as the booked 09:30 slot, but joining
+    // from there was "This time has changed".
+    [Theory]
+    [InlineData("09:30", true, HttpStatusCode.OK)]
+    [InlineData("09:30", false, HttpStatusCode.OK)] // a page without itemId: inside the appointment
+    [InlineData("10:30", true, HttpStatusCode.Conflict)] // past its end
+    public async Task Join_FromAnySlotTheAppointmentCovers(string startTime, bool sendItemId, HttpStatusCode expected)
+    {
+        var slug = $"wl-cover-{startTime.Replace(":", "")}-{sendItemId}".ToLowerInvariant();
+        var token = await RegisterAndLoginBusiness($"{slug}@example.com", slug);
+        var (_, cutId, date) = await SeedWaitlistEnabledBusiness(token, slug);
+        Authorize(Client, token);
+        var longItem = await (await Client.PostAsJsonAsync("/api/admin/items", new CreateItemRequest("Long", "Long", "Long", 60, 50m)))
+            .Content.ReadFromJsonAsync<ItemDto>();
+        Client.DefaultRequestHeaders.Authorization = null;
+        var day = date.ToString("yyyy-MM-dd");
+        var booker = await GetCustomerToken($"+1555700{startTime.Replace(":", "")}{(sendItemId ? 1 : 2)}");
+        var appt = await (await BookAs(booker, slug, longItem!.Id, day, "09:00")).Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        var waiter = await GetCustomerToken($"+1555701{startTime.Replace(":", "")}{(sendItemId ? 1 : 2)}");
+
+        var resp = await JoinWaitlistAt(waiter, slug, appt!.AppointmentId, day, startTime, sendItemId ? cutId : null);
+
+        Assert.Equal(expected, resp.StatusCode);
+    }
+
+    // A 30-minute slot at 09:00 is booked by an appointment that starts at 09:15 (a gap time).
+    [Fact]
+    public async Task Join_FromASlotThatStartsBeforeTheAppointment_WithTheItem()
+    {
+        var token = await RegisterAndLoginBusiness("wl-gap@example.com", "wl-gap-shop");
+        var (_, cutId, date) = await SeedWaitlistEnabledBusiness(token, "wl-gap-shop");
+        var day = date.ToString("yyyy-MM-dd");
+        string appointmentId;
+        using (var db = Db())
+        {
+            var business = db.Businesses.First(b => b.Slug == "wl-gap-shop");
+            var customer = new Customer { BusinessId = business.Id, Name = "Gap", Phone = "+15557020001" };
+            var appointment = new Appointment
+            {
+                BusinessId = business.Id, CustomerId = customer.Id, ItemId = cutId, Date = DateTime.Parse(day + "T00:00:00Z").ToUniversalTime(),
+                StartTime = "09:15", EndTime = "09:30", Status = AppointmentStatus.CONFIRMED,
+            };
+            db.AddRange(customer, appointment);
+            db.SaveChanges();
+            appointmentId = appointment.Id;
+        }
+        var waiter = await GetCustomerToken("+15557020002");
+
+        var resp = await JoinWaitlistAt(waiter, "wl-gap-shop", appointmentId, day, "09:00", cutId);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+    }
+
     [Fact]
     public async Task Join_NoAuth_ReturnsUnauthorized()
     {

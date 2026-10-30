@@ -25,7 +25,7 @@ public class WhatsAppLinkController(WhatsAppLinkingService linking, IWhatsAppBri
         var initial = await bridge.GetStatusAsync(b.Id);
         var status = initial.State == "disconnected" ? await bridge.StartLinkAsync(b.Id) : initial;
         status = await linking.RecordIfConnectedAsync(
-            b, status, linkToken.CreatedByPlatformAdminId, Request.Method, Request.Path.ToString(),
+            b, status, null, Request.Method, Request.Path.ToString(),
             HttpContext.Connection.RemoteIpAddress?.ToString());
 
         return Ok(new { businessName = b.Name, language = b.Language.ToString(), status.State, status.Qr, status.PhoneNumber });

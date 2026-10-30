@@ -31,12 +31,19 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             : PhoneNormalizer.Normalize(config["CustomerAuth:ReviewerPhone"]!);
 
     [HttpPost("otp")]
-    public async Task<IActionResult> RequestOtp([FromBody] RequestCustomerOtpRequest req)
+    public async Task<IActionResult> RequestOtp([FromBody] RequestCustomerOtpRequest req, [FromServices] RequestQuota quota)
     {
         if (string.IsNullOrWhiteSpace(req.Phone))
             return BadRequest(new { error = "Phone is required" });
         if (!PhoneNormalizer.IsValid(req.Phone))
             return BadRequest(new { error = "Please enter a valid phone number" });
+        // Per IP too, not only per phone: each SMS costs money (QA run 6).
+        var (allowed, retryAfter) = quota.TryTake($"otp|{HttpContext.Connection.RemoteIpAddress}", quota.OtpPerIpPerHour, TimeSpan.FromHours(1));
+        if (!allowed)
+        {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+            return StatusCode(429, new { error = "Too many codes were requested from here. Please try again later." });
+        }
 
         var phone = PhoneNormalizer.Normalize(req.Phone);
         var since = DateTime.UtcNow.AddHours(-1);

@@ -45,6 +45,8 @@ public static class ApiErrorTranslations
         ["Send a photo (JPG, PNG, WEBP) or a PDF, Word or Excel file up to 10MB."] = ("أرسل صورة (JPG أو PNG أو WEBP) أو ملف PDF أو Word أو Excel حتى 10MB.", "שלחו תמונה (JPG,‏ PNG,‏ WEBP) או קובץ PDF,‏ Word או Excel עד 10MB."),
         ["This service can't be booked"] = ("لا يمكن حجز هذه الخدمة", "אי אפשר להזמין את השירות הזה"),
         ["Your WhatsApp bot isn't linked, so messages can't be sent"] = ("بوت واتساب غير مربوط، لذلك لا يمكن إرسال الرسائل", "בוט הוואטסאפ לא מחובר, ולכן אי אפשר לשלוח הודעות"),
+        ["Too many codes were requested from here. Please try again later."] = ("طُلبت رموز كثيرة من هنا. حاول مرة أخرى لاحقًا.", "נשלחו מכאן יותר מדי בקשות לקוד. נסו שוב מאוחר יותר."),
+        ["Too many photos were uploaded from here. Please try again later."] = ("رُفعت صور كثيرة من هنا. حاول مرة أخرى لاحقًا.", "הועלו מכאן יותר מדי תמונות. נסו שוב מאוחר יותר."),
         ["The message wasn't sent: the WhatsApp bot isn't connected right now"] = ("لم تُرسل الرسالة: بوت واتساب غير متصل حاليًا", "ההודעה לא נשלחה: בוט הוואטסאפ לא מחובר כרגע"),
         ["WhatsApp didn't answer in time, so the message may or may not have been sent. Check the phone before sending it again."] = (
             "لم يرد واتساب في الوقت المحدد، لذلك ربما أُرسلت الرسالة وربما لا. تحقق من الهاتف قبل إرسالها مرة أخرى.",

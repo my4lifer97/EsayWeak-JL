@@ -124,7 +124,7 @@ public class PlatformAdminController(
 
     private static async Task<PagedResult<T>> Page<T>(IQueryable<T> ordered, int page, int pageSize)
     {
-        page = Math.Max(page, 1);
+        page = Math.Clamp(page, 1, 100_000); // (page - 1) * pageSize overflowed into a 500 (QA run 6)
         pageSize = Math.Clamp(pageSize, 1, 100);
         var total = await ordered.CountAsync();
         var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();

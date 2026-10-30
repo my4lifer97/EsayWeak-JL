@@ -27,7 +27,7 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20)
     {
-        page = Math.Max(1, page);
+        page = Math.Clamp(page, 1, 100_000); // (page - 1) * pageSize overflowed into a 500 (QA run 6)
         pageSize = Math.Clamp(pageSize, 1, 50);
 
         // Only businesses that take bookings: a disabled one or an ended trial used to stay listed.
@@ -125,7 +125,7 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
     [HttpGet("{slug}/reviews")]
     public async Task<IActionResult> GetReviews(string slug, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
     {
-        page = Math.Max(1, page);
+        page = Math.Clamp(page, 1, 100_000);
         pageSize = Math.Clamp(pageSize, 1, 50);
 
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);

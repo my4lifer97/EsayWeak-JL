@@ -95,7 +95,10 @@ export default function ServicesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!(await ask(t(lang, 'deleteConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
+    // Says how many upcoming appointments it still has (they stay booked).
+    const upcoming = await api.get(`/admin/items/${id}/upcoming-appointments`).then((r) => r.data.count as number).catch(() => 0)
+    const question = upcoming > 0 ? `${t(lang, 'deleteConfirm')}\n\n${t(lang, 'deleteItemUpcoming').replace('{n}', String(upcoming))}` : t(lang, 'deleteConfirm')
+    if (!(await ask(question, { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
     await api.delete(`/admin/items/${id}`)
     queryClient.invalidateQueries({ queryKey: ['services'] })
   }

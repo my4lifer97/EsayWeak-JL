@@ -307,7 +307,8 @@ public class PlatformAdminControllerTests : IntegrationTestBase
         var business = db.Businesses.Single(b => b.Id == settings.Id);
         Assert.Equal("+15551234567", business.WhatsAppNumber);
         var log = db.ActivityLogs.Single(a => a.BusinessId == settings.Id && a.Action == "WhatsAppLink.Connected");
-        Assert.NotNull(log.ImpersonatedByPlatformAdminId);
+        Assert.Null(log.ImpersonatedByPlatformAdminId); // the owner connected on the link page themselves (QA run 6)
+        Assert.Contains("link page", log.Description);
     }
 
     [Fact]

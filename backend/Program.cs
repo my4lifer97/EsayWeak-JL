@@ -156,6 +156,7 @@ builder.Services.AddCors(opt =>
         .AllowAnyMethod()));
 
 builder.Services.AddSingleton<LoginThrottle>();
+builder.Services.AddSingleton<RequestQuota>();
 builder.Services.AddSingleton<AiUsageLimiter>();
 builder.Services.AddSingleton<BookingRules>();
 

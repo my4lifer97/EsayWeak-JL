@@ -273,8 +273,15 @@ public class BookingController(
 
     [HttpPost("appointments/photo")]
     [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
-    public async Task<IActionResult> UploadAppointmentPhoto(string slug, IFormFile file)
+    public async Task<IActionResult> UploadAppointmentPhoto(string slug, IFormFile file, [FromServices] RequestQuota quota)
     {
+        // Anonymous, so limited per IP (QA run 6: unlimited 5MB uploads).
+        var (allowed, retryAfter) = quota.TryTake($"photo|{HttpContext.Connection.RemoteIpAddress}", quota.PhotoUploadsPerIpPerHour, TimeSpan.FromHours(1));
+        if (!allowed)
+        {
+            Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+            return StatusCode(429, new { error = "Too many photos were uploaded from here. Please try again later." });
+        }
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
 

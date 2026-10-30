@@ -16,7 +16,8 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
     private string CustomerAccountId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
     [HttpPost("{appointmentId}")]
-    public async Task<IActionResult> Join(string slug, string appointmentId, [FromQuery] string? date = null, [FromQuery] string? startTime = null)
+    public async Task<IActionResult> Join(string slug, string appointmentId, [FromQuery] string? date = null, [FromQuery] string? startTime = null,
+        [FromQuery] string? itemId = null)
     {
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
@@ -29,8 +30,13 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
         // The slot the customer saw on the page. A join from a page loaded before the appointment
         // moved queued them for its new time while the old one stood free (QA run 4). Optional so
         // a page from the previous deploy still works.
+        // The slot only has to still overlap the appointment, for the service the page was showing
+        // (itemId): a 60-minute booking at 09:00 also shows as the booked 09:30 slot, and a gap-time
+        // booking at 09:15 as the 09:00 one; requiring an exact start made both fail (QA run 6).
+        var duration = itemId is null ? null
+            : await db.Items.Where(i => i.Id == itemId && i.BusinessId == business.Id).Select(i => i.DurationMinutes).FirstOrDefaultAsync();
         if ((date is not null && appointment.Date.ToString("yyyy-MM-dd") != date)
-            || (startTime is not null && appointment.StartTime != startTime))
+            || (startTime is not null && !SlotStillCovered(startTime, duration, appointment)))
             return Conflict(new { error = "This time has changed. Please pick it again.", slotChanged = true });
         // Waiting for your own slot makes no sense -- the booking page offers the customer their
         // own appointment (add a note / change the time) instead.
@@ -58,5 +64,16 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
         }
 
         return Ok(new { ok = true });
+    }
+
+    // Without the service's duration (a page from before itemId was sent): the slot must start
+    // inside the appointment.
+    private static bool SlotStillCovered(string startTime, int? duration, Appointment appointment)
+    {
+        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime, @"^\d{2}:\d{2}$")) return false;
+        var end = duration is > 0 ? AvailabilityService.AddMinutes(startTime, duration.Value) : null;
+        return end is not null
+            ? AvailabilityService.Overlaps(startTime, end, appointment.StartTime, appointment.EndTime)
+            : string.CompareOrdinal(startTime, appointment.StartTime) >= 0 && string.CompareOrdinal(startTime, appointment.EndTime) < 0;
     }
 }

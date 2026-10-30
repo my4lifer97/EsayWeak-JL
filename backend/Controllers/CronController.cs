@@ -121,14 +121,20 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             .Include(a => a.Item)
             // A customer cancellation waiting on the owner's approval stays CONFIRMED internally, but the
             // customer already sees it as cancelled -- no reminder for it.
-            .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSent)
+            // Nor for a business the platform disabled (QA run 6).
+            .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSent
+                && !a.Business.IsDisabled)
             // In time order: with two appointments the same day, the question goes with the first
             // one's reminder, not an arbitrary one (QA run 5). Each reminder names its own time.
             .OrderBy(a => a.StartTime)
             .ToListAsync();
 
         var (dayBeforeSent, dayBeforeFailed) = await SendBatchAsync(dayBeforeAppointments, "reminder.message", appUrl,
-            (appt) => appt.ReminderSent = true, askAttendance: true);
+            (appt) => appt.ReminderSent = true,
+            (id, value) => db.Appointments.Where(a => a.Id == id && a.ReminderSent != value)
+                .ExecuteUpdateAsync(u => u.SetProperty(a => a.ReminderSent, value)),
+            askAttendance: true);
+        var sentDayBefore = dayBeforeAppointments.Where(a => a.ReminderSent).Select(a => a.Id).ToHashSet();
 
         // "Soon" window: local start time (Date + StartTime) has just come within 3 hours of now,
         // and hasn't fired yet -- checked every run (this endpoint is called every 15 min by the
@@ -141,14 +147,19 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             .Include(a => a.Customer)
             .Include(a => a.Item)
             .Where(a => a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSentSoon
-                && a.Date >= now.Date && a.Date <= in3Hours.Date)
+                && !a.Business.IsDisabled && a.Date >= now.Date && a.Date <= in3Hours.Date)
             .ToListAsync();
+        // Not one that just got its day-before reminder in this same run: an appointment right
+        // after midnight got both at once (QA run 6). Its "soon" one goes on a later run.
         var soonAppointments = soonCandidates
             .Where(a => a.Date.Date.Add(TimeSpan.Parse(a.StartTime)) is var start && start >= now && start <= in3Hours)
+            .Where(a => !sentDayBefore.Contains(a.Id))
             .ToList();
 
         var (soonSent, soonFailed) = await SendBatchAsync(soonAppointments, "reminder.message.soon", appUrl,
-            (appt) => appt.ReminderSentSoon = true);
+            (appt) => appt.ReminderSentSoon = true,
+            (id, value) => db.Appointments.Where(a => a.Id == id && a.ReminderSentSoon != value)
+                .ExecuteUpdateAsync(u => u.SetProperty(a => a.ReminderSentSoon, value)));
 
         await db.SaveChangesAsync();
         return Ok(new
@@ -160,8 +171,12 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
 
     // askAttendance: the day-before one ends with "will you come? 1/2" when the customer has no
     // live conversation (AttendanceQuestion), at most one question per phone per business.
+    // setSentFlag(id, value): sets the appointment's sent flag in the database only if it isn't
+    // already `value`, returning the rows changed. Each reminder is claimed with it before its send,
+    // so two overlapping runs (a slow run and the next one, or a retry) can't both send it: they
+    // both sent every reminder (QA run 6). A failed send gives the claim back.
     private async Task<(int sent, int failed)> SendBatchAsync(List<Appointment> appointments, string messageKey, string appUrl,
-        Action<Appointment> markSent, bool askAttendance = false)
+        Action<Appointment> markSent, Func<string, bool, Task<int>> setSentFlag, bool askAttendance = false)
     {
         int sent = 0, failed = 0;
         var asked = new HashSet<(string, string)>();
@@ -180,7 +195,10 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
         {
             if (appt.Business.WhatsAppNumber is null)
                 continue;
+            if (await setSentFlag(appt.Id, true) == 0)
+                continue; // another run has it
 
+            var delivered = false;
             try
             {
                 var lang = accounts.FirstOrDefault(a => a.Id == appt.Customer.CustomerAccountId)?.LastMessageLanguage
@@ -214,6 +232,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
                 if (ask) message += $"\n\n{I18nService.T(lang, "reminder.confirmQuestion")}";
 
                 await whatsAppSender.SendAsync(appt.Business, appt.Customer.Phone, message);
+                delivered = true;
 
                 // Saved per reminder, right after its send: one save for the whole run meant any
                 // failure left every ReminderSent unsaved, and the next run sent them all again
@@ -240,6 +259,8 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             {
                 logger.LogError(ex, "Failed to send WhatsApp reminder ({MessageKey}) for appointment {AppointmentId} (business {BusinessId})",
                     messageKey, appt.Id, appt.BusinessId);
+                // Not sent: a later run tries again. Sent but not saved: it stays claimed.
+                if (!delivered) await setSentFlag(appt.Id, false);
                 failed++;
             }
         }
