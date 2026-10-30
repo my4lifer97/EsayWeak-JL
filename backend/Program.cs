@@ -186,6 +186,10 @@ app.Use((context, next) =>
     context.Response.Headers.XContentTypeOptions = "nosniff";
     context.Response.Headers.XFrameOptions = "DENY";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    // API answers (tokens, codes, customer data) are never cached by the browser or a proxy;
+    // public uploads still are (QA run 9).
+    if (!context.Request.Path.StartsWithSegments("/api/uploads"))
+        context.Response.Headers.CacheControl = "no-store";
     return next(context);
 });
 app.UseStaticFiles(new StaticFileOptions

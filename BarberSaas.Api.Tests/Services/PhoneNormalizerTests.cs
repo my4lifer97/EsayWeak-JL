@@ -45,7 +45,7 @@ public class PhoneNormalizerTests
     [Theory]
     [InlineData("050-123-4567", true)]
     [InlineData("+972 (50) 123.4567", true)]
-    [InlineData("1234567", true)]
+    [InlineData("+1234567", true)]          // 7 digits with a country code; "1234567" is a too-short Israeli number (QA run 9)
     [InlineData("123456", false)]           // too short
     [InlineData("1234567890123456", false)] // too long
     [InlineData("ASD", false)]

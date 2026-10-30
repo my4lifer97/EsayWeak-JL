@@ -96,9 +96,10 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             // already-registered customer never shows its occurrences in that customer's own "My
             // Bookings" until they book/reschedule with this business themselves.
             var customerAccountId = (await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == customerPhone))?.Id;
-            // Trimmed like the one-off booking's (QA run 7).
-            var customerName = req.CustomerName.Trim();
-            var customerFamilyName = req.CustomerFamilyName?.Trim();
+            // Cleaned like the one-off booking's (QA run 9: only trimmed).
+            var customerName = TextClean.Name(req.CustomerName);
+            var customerFamilyName = req.CustomerFamilyName is null ? null : TextClean.Name(req.CustomerFamilyName);
+            if (customerName.Length == 0) return BadRequest(new { error = "Customer name and phone are required" });
             if (customer is null)
             {
                 // Saved just before the series (below), on its own, so parallel creates for the same
@@ -169,7 +170,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             ItemId = item.Id,
             DayOfWeek = req.DayOfWeek,
             StartTime = req.StartTime,
-            Notes = req.Notes,
+            Notes = TextClean.Note(req.Notes),
             StartDate = startDate,
             EndDate = endDate,
             Force = req.Force,

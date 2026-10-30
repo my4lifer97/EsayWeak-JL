@@ -212,8 +212,10 @@ public class AdminController(
 
         if (req.Name is not null)
         {
-            if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Business name is required" });
-            b.Name = req.Name.Trim();
+            // Cleaned like customer names: a zero-width or multi-line name was saved (QA run 9).
+            var name = TextClean.Name(req.Name);
+            if (name.Length == 0) return BadRequest(new { error = "Business name is required" });
+            b.Name = name;
         }
         // Blank is "no phone": "   " was stored, and looked set (QA run 7).
         if (req.Phone is not null) b.Phone = string.IsNullOrWhiteSpace(req.Phone) ? null : req.Phone.Trim();
@@ -315,6 +317,14 @@ public class AdminController(
 
     // Shared by create and edit -- edit used to skip the name check, and neither bounded price or
     // duration (a negative price saved; a huge one overflowed the DB column and returned 500).
+    // Item names weren't even trimmed, and took zero-width text and line breaks (QA run 9).
+    private static CreateItemRequest WithCleanNames(CreateItemRequest req) => req with
+    {
+        NameEn = TextClean.Name(req.NameEn ?? ""),
+        NameAr = TextClean.Name(req.NameAr ?? ""),
+        NameHe = TextClean.Name(req.NameHe ?? ""),
+    };
+
     private static string? ItemInputError(CreateItemRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.NameEn) || string.IsNullOrWhiteSpace(req.NameAr) || string.IsNullOrWhiteSpace(req.NameHe))
@@ -334,6 +344,7 @@ public class AdminController(
     [HttpPost("items")]
     public async Task<IActionResult> CreateItem([FromBody] CreateItemRequest req)
     {
+        req = WithCleanNames(req);
         if (ItemInputError(req) is { } inputError)
             return BadRequest(new { error = inputError });
         if (!IsPhotoMode(req.PhotoMode) || !Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
@@ -359,6 +370,7 @@ public class AdminController(
     [HttpPatch("items/{id}")]
     public async Task<IActionResult> UpdateItem(string id, [FromBody] CreateItemRequest req)
     {
+        req = WithCleanNames(req);
         if (ItemInputError(req) is { } inputError)
             return BadRequest(new { error = inputError });
         if (!IsPhotoMode(req.PhotoMode) || !Enum.TryParse<ItemPhotoMode>(req.PhotoMode, out var photoMode))
@@ -805,6 +817,7 @@ public class AdminController(
     [HttpPost("schedule/presets")]
     public async Task<IActionResult> SaveSchedulePreset([FromBody] SaveSchedulePresetRequest req)
     {
+        req = req with { Name = TextClean.Name(req.Name ?? "") };
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
         if (IsReservedPresetName(req.Name)) return BadRequest(new { error = "That name is reserved for the Default schedule" });
         var breaks = req.Breaks ?? [];
@@ -835,6 +848,7 @@ public class AdminController(
     [HttpPut("schedule/presets/{id}")]
     public async Task<IActionResult> UpdateSchedulePreset(string id, [FromBody] UpdateSchedulePresetRequest req)
     {
+        req = req with { Name = TextClean.Name(req.Name ?? "") };
         var preset = await db.SchedulePresets.Include(p => p.Days).Include(p => p.Breaks).FirstOrDefaultAsync(p => p.Id == id && p.BusinessId == BusinessId);
         if (preset is null) return NotFound();
         var breaks = req.Breaks ?? [];
@@ -1080,9 +1094,6 @@ public class AdminController(
         if (item is null) return NotFound(new { error = "Item not found" });
         if (!item.IsBookable || item.DurationMinutes is null) return BadRequest(new { error = "This item is not bookable" });
 
-        var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
-        if (customerError is not null) return customerError;
-
         string? photoUrl = null;
         if ((item.PhotoMode == ItemPhotoMode.OwnerGallery || item.PhotoMode == ItemPhotoMode.Both) && !string.IsNullOrWhiteSpace(req.GalleryPhotoId))
         {
@@ -1116,6 +1127,11 @@ public class AdminController(
             return Conflict(new { error = "This time overlaps an existing appointment" });
         }
 
+        // After the slot checks: a refused booking (slot taken, past date, outside hours) used to
+        // leave the new phone's customer row behind (QA run 9).
+        var (customer, customerError) = await ResolveCustomer(req.CustomerId, req.CustomerName, req.CustomerPhone, req.CustomerFamilyName);
+        if (customerError is not null) return customerError;
+
         var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
         var appointment = new Appointment
         {
@@ -1125,7 +1141,7 @@ public class AdminController(
             Date = requestedDate,
             StartTime = req.StartTime,
             EndTime = endTime,
-            Notes = req.Notes,
+            Notes = TextClean.Note(req.Notes),
             PhotoUrl = photoUrl,
             Status = AppointmentStatus.CONFIRMED,
         };
@@ -1369,6 +1385,8 @@ public class AdminController(
             }
             appt.Status = AppointmentStatus.CANCELLED;
             appt.PendingCancellationApproval = false;
+            // The old customer's "coming?" badge and open question go too, like every cancel (QA run 9).
+            await AttendanceQuestion.ForgetAsync(db, appt);
             await db.SaveChangesAsync();
             db.Appointments.Add(replacement);
             // Whoever is still waiting for this slot keeps waiting -- on the new appointment.

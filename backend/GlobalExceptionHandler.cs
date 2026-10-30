@@ -26,7 +26,10 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHos
 
         // A double-submitted delete or apply: the row the request loaded was changed or removed by
         // the other one before this one saved. It was a 500 with EF's message (QA run 8).
-        if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        // The same race seen as a unique (23505) or foreign-key (23503) violation: two first-time
+        // preset applies both inserting a day's hours, a preset edit racing its delete (QA run 9).
+        if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException
+            || exception is Microsoft.EntityFrameworkCore.DbUpdateException && (FindPostgresError(exception, "23505") || FindPostgresError(exception, "23503")))
         {
             httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
             await httpContext.Response.WriteAsJsonAsync(new { error = Services.ApiErrorTranslations.Translate(lang, "This was just changed. Please refresh and try again.") }, cancellationToken);

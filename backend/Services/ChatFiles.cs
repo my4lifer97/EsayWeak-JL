@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using BarberSaas.Api.Data;
 using BarberSaas.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -134,21 +136,33 @@ public static class ChatFiles
 
     // Plus every other format or private-use character (U+180E, U+FFF9, U+E000...; QA run 7), but
     // not the zero-width joiner/non-joiner: Persian and Arabic-script names and emoji need them.
-    private static bool IsHidden(char c) =>
-        char.IsControl(c) || BidiControls.Contains(c)
-        || CharUnicodeInfo.GetUnicodeCategory(c) is UnicodeCategory.Format or UnicodeCategory.PrivateUse && c is not ('\u200C' or '\u200D')
-        // unassigned code points and non-characters (U+2065, U+FDD0) and the blank Braille cell (QA run 8)
-        || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.OtherNotAssigned || c == '\u2800';
+    // Checked per code point, not per UTF-16 char: tag characters (U+E0000...), plane-15 private
+    // use and U+1D173 came in as surrogate pairs and were kept (QA run 9).
+    private static bool IsHidden(Rune r)
+    {
+        var category = Rune.GetUnicodeCategory(r);
+        return Rune.IsControl(r) || (r.IsBmp && BidiControls.Contains((char)r.Value))
+            || category is UnicodeCategory.Format or UnicodeCategory.PrivateUse && r.Value is not (0x200C or 0x200D)
+            // unassigned code points and non-characters (U+2065, U+FDD0) and the blank Braille cell (QA run 8)
+            || category == UnicodeCategory.OtherNotAssigned || r.Value == 0x2800;
+    }
 
     // Just the name (no path), without characters that break a download header, at most 120 long.
     public static string SafeFileName(string fileName)
     {
         var name = Path.GetFileName(fileName.Replace('\\', '/'));
-        name = new string(name.Where(c => !IsHidden(c)
-            && c is not ('"' or '/' or ':' or '*' or '?' or '<' or '>' or '|')).ToArray()).Trim();
+        var kept = new StringBuilder();
+        foreach (var r in name.EnumerateRunes())
+            if (!IsHidden(r) && r.Value is not ('"' or '/' or ':' or '*' or '?' or '<' or '>' or '|')) kept.Append(r.ToString());
+        // A joiner only joins two letters: at either end or next to a dot it just hides itself
+        // ("<ZWJ>.pdf" showed as ".pdf", and 130 of them pushed the extension out; QA run 9).
+        name = Regex.Replace(kept.ToString(), @"[\u200C\u200D]+(?=\.)|(?<=\.)[\u200C\u200D]+", "").Trim(' ', '\u200C', '\u200D');
         // No trailing dots or spaces ("a.pdf.", ". ."), and a name of only joiners or dots is no name (QA run 8).
-        name = name.TrimEnd('.', ' ');
-        if (name.Trim('.', ' ', '‌', '‍').Length == 0) name = "file";
+        name = name.TrimEnd('.', ' ', '\u200C', '\u200D');
+        // Nor one of only combining marks (a lone U+FE0F or U+0301; QA run 9).
+        if (!name.Any(c => c is not ('.' or ' ' or '\u200C' or '\u200D')
+            && CharUnicodeInfo.GetUnicodeCategory(c) is not (UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.SpacingCombiningMark)))
+            name = "file";
         if (name.Length <= 120) return name;
         // A long "extension" ("a.<200 characters>") is just part of the name.
         var ext = Path.GetExtension(name);

@@ -395,6 +395,10 @@ public class PlatformAdminController(
     {
         if (string.IsNullOrWhiteSpace(req.Subject) || string.IsNullOrWhiteSpace(req.Body))
             return BadRequest(new { error = "Subject and body are required" });
+        // Refused before sending: a NUL went out in the email, then failed the save, so a reset
+        // password was mailed but never stored (QA run 9).
+        if (req.Subject.Contains('\0') || req.Body.Contains('\0'))
+            return BadRequest(new { error = "The text contains characters that aren't allowed." });
 
         var gmailConfigured = !string.IsNullOrEmpty(config["Gmail:ClientId"])
             && !string.IsNullOrEmpty(config["Gmail:ClientSecret"])

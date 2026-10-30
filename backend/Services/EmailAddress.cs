@@ -19,6 +19,19 @@ public static class EmailAddress
             // The plain address only: MailAddress also takes "<a@b.com>", "a(x)@b.com" and
             // "\"a\"@b.com", which were stored as typed and slipped past the duplicate checks (QA run 8).
             && System.Net.Mail.MailAddress.TryCreate(e, out var parsed) && parsed.Address == e
-            && e.All(c => c is not ('"' or '(' or ')' or '<' or '>' or ',' or ';' or '[' or ']' or '\\'));
+            && e.All(c => c is not ('"' or '(' or ')' or '<' or '>' or ',' or ';' or '[' or ']' or '\\'))
+            // Nothing invisible (a zero-width space or RTL override wrote one mailbox several ways),
+            // and a real domain: no label starting or ending with "-", a top level of 2+ letters
+            // ("a@-b.com", "a@b.c" passed; QA run 9).
+            && !e.Any(c => char.IsControl(c) || System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.Format)
+            && ValidDomain(e[(at + 1)..]);
+    }
+
+    private static bool ValidDomain(string domain)
+    {
+        var labels = domain.Split('.');
+        var top = labels[^1];
+        return labels.All(l => l.Length is > 0 and <= 63 && l[0] != '-' && l[^1] != '-')
+            && top.Length >= 2 && top.All(char.IsLetter);
     }
 }

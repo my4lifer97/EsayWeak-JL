@@ -22,7 +22,7 @@ public class ReviewsController(AppDbContext db, ReviewService reviews) : Control
     [HttpGet("eligibility")]
     public async Task<IActionResult> Eligibility([FromQuery] string businessSlug)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == businessSlug);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == businessSlug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         var existing = await db.Reviews
@@ -40,7 +40,7 @@ public class ReviewsController(AppDbContext db, ReviewService reviews) : Control
         var comment = Normalize(req.Comment);
         if (comment is { Length: > MaxCommentLength }) return BadRequest(new { error = $"Comment must be {MaxCommentLength} characters or fewer" });
 
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == req.BusinessSlug);
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == req.BusinessSlug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         if (await db.Reviews.AnyAsync(r => r.BusinessId == business.Id && r.CustomerAccountId == AccountId))

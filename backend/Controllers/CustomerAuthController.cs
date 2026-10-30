@@ -104,8 +104,9 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         var account = await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == phone);
         // Cleaned before the code is used up: a NUL in the name failed the save after the code was
         // already consumed, so the customer had to ask for a new one (QA run 6).
-        var name = req.Name?.Replace("\0", "").Trim();
-        var familyName = req.FamilyName?.Replace("\0", "").Trim();
+        // TextClean also drops zero-width and direction characters (QA run 9).
+        var name = req.Name is null ? null : TextClean.Name(req.Name);
+        var familyName = req.FamilyName is null ? null : TextClean.Name(req.FamilyName);
         if (account is null && (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(familyName)))
             return BadRequest(new { error = "Name and family name required for new customers" });
 
@@ -219,9 +220,10 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
     // customer has no WhatsApp profile name set; they can still correct it in the booking form.
     private static (string Name, string FamilyName) SplitProfileName(string? profileName)
     {
-        if (string.IsNullOrWhiteSpace(profileName))
+        var cleaned = profileName is null ? "" : TextClean.Name(profileName);
+        if (cleaned.Length == 0)
             return ("Customer", "");
-        var parts = profileName.Trim().Split(' ', 2);
+        var parts = cleaned.Split(' ', 2);
         return parts.Length == 2 ? (parts[0], parts[1]) : (parts[0], "");
     }
 }

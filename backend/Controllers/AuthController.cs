@@ -42,7 +42,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     public async Task<IActionResult> Register([FromBody] RegisterRequest req, [FromServices] RequestQuota quota)
     {
         // Trimmed first: "  a  " passed and was stored with its spaces (QA run 8).
-        if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Trim().Length < 2)
+        // Cleaned too: zero-width and multi-line names were stored (QA run 9).
+        req = req with { Name = TextClean.Name(req.Name ?? "") };
+        if (req.Name.Length < 2)
             return BadRequest(new { error = "Name must be at least 2 characters" });
         var email = EmailAddress.Normalize(req.Email);
         // The same check as the Settings email fields; "a@b" used to register (QA run 4).
@@ -69,7 +71,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
         var business = new Business
         {
-            Name = req.Name.Trim(),
+            Name = req.Name,
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             Slug = req.Slug,

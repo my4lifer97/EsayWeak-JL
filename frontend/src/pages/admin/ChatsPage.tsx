@@ -168,7 +168,8 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   const fileInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  // ok: a done message, shown with a check mark; the rest are plain notes (QA run 9: "the message was cut" had one).
+  const [notice, setNotice] = useState<{ text: string; ok?: boolean } | null>(null)
   const [panel, setPanel] = useState<'none' | 'link' | 'finish'>('none')
   const [serviceId, setServiceId] = useState('')
   const [customerMenu, setCustomerMenu] = useState(false)
@@ -261,12 +262,12 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
     setFile(f)
   }
   const sendLink = () => serviceId && act('/admin/chats/booking-link', { itemId: serviceId }, () => {
-    setPanel('none'); setServiceId(''); setNotice(t(lang, 'chatsLinkSent'))
+    setPanel('none'); setServiceId(''); setNotice({ text: t(lang, 'chatsLinkSent'), ok: true })
   })
   // The chat ends either way; if the customer couldn't be told, the owner hears it (QA run 7).
   const finish = (sendServiceList: boolean) => act('/admin/chats/finish', { sendServiceList }, (data) => {
     setPanel('none')
-    if (data.notified === false) setNotice(t(lang, 'chatsFinishedNotNotified'))
+    if (data.notified === false) setNotice({ text: t(lang, 'chatsFinishedNotNotified') })
   })
 
   const canAct = linked && chat?.isOpen
@@ -336,7 +337,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
             // Cut at the limit with a word, not silently (QA run 7).
             const next = draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text
             setDraft(next.slice(0, MAX_TEXT))
-            if (next.length > MAX_TEXT) setNotice(t(lang, 'chatsReadyCut'))
+            if (next.length > MAX_TEXT) setNotice({ text: t(lang, 'chatsReadyCut') })
             setReadyOpen(false)
           }} />
       )}
@@ -379,7 +380,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
       </div>
 
       {error && <div className="px-4 py-2 text-sm text-red-600 border-t border-line bg-surface">{error}</div>}
-      {notice && <div className="px-4 py-2 text-sm text-ink border-t border-line bg-surface">✓ {notice}</div>}
+      {notice && <div className="px-4 py-2 text-sm text-ink border-t border-line bg-surface">{notice.ok && '✓ '}{notice.text}</div>}
       {!chat ? null : !linked ? (
         <div className="px-4 py-3 text-sm text-muted border-t border-line bg-surface">{t(lang, 'chatsNotLinked')}</div>
       ) : !chat.isOpen ? (
@@ -408,7 +409,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
             </button>
             <textarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              onChange={(e) => { setDraft(e.target.value); if (notice && !notice.ok) setNotice(null) }}
               onKeyDown={(e) => {
                 // Enter sends on a keyboard; on a phone Enter is a new line and the button sends.
                 if (e.key === 'Enter' && !e.shiftKey && !onBack) { e.preventDefault(); send() }

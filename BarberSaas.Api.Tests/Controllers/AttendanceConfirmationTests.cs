@@ -566,4 +566,56 @@ public class AttendanceConfirmationTests : IntegrationTestBase
 
         Assert.Equal(AttendanceQuestion.Confirmed, list.Single(a => a.Id == appointmentId).AttendanceStatus);
     }
+
+    // QA run 9 BOT-40/41: a negation glued to "and", or written without an apostrophe, cancelled.
+    [Theory]
+    [InlineData("אני מגיע ואל תבטל")]
+    [InlineData("جاي ولا تلغي")]
+    [InlineData("i wont cancel")]
+    [InlineData("I'm not planning to cancel")]
+    [InlineData("don't ask me to cancel")]
+    [InlineData("I no longer want to cancel")]
+    public async Task NegatedCancel_Twice_Keeps(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-neg9-{message.Length}-{message.GetHashCode():x}", "+15553330051");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330051", message);
+        await Inbound(businessId, "+15553330051", message);
+
+        var appointment = await Load(appointmentId);
+        Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
+        Assert.Equal(AttendanceQuestion.Confirmed, appointment.AttendanceStatus);
+    }
+
+    // QA run 9 BOT-42: a dash or an ellipsis after the "no" kept it.
+    [Theory]
+    [InlineData("לא – תבטל")]
+    [InlineData("لا… الغي")]
+    [InlineData("no, need to cancel")]
+    public async Task NoDashCancel_Twice_Cancels(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-dash9-{message.Length}-{message.GetHashCode():x}", "+15553330052");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330052", message);
+        await Inbound(businessId, "+15553330052", message);
+
+        Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+    }
+
+    // QA run 9 BOT-45: "no, I'm coming" got the Book/Ask menu.
+    [Theory]
+    [InlineData("no, I'm coming")]
+    [InlineData("לא, אני מגיע")]
+    [InlineData("لا، جاي")]
+    public async Task NoImComing_Confirms(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-nocoming9-{message.Length}-{message.GetHashCode():x}", "+15553330053");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330053", message);
+
+        Assert.Equal(AttendanceQuestion.Confirmed, (await Load(appointmentId)).AttendanceStatus);
+    }
 }

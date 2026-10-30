@@ -46,6 +46,15 @@ public static class PhoneNormalizer
         if (Regex.IsMatch(phone, @"[^0-9\s()+\-.]")) return false;
         var digits = Regex.Replace(phone, @"[^0-9]", "").Length;
         // No country code starts with 0: "+0000000000" was accepted.
-        return digits is >= 7 and <= 15 && !Normalize(phone).StartsWith("+0");
+        var normalized = Normalize(phone);
+        if (digits is < 7 or > 15 || normalized.StartsWith("+0")) return false;
+        // An Israeli number is 8-9 digits after +972, not starting with 0: "+9720000000",
+        // "0972501234574" and "1234567" were stored and sent a code (QA run 9).
+        if (normalized.StartsWith("+972"))
+        {
+            var national = normalized[4..];
+            return national.Length is 8 or 9 && national[0] != '0';
+        }
+        return true;
     }
 }

@@ -109,7 +109,12 @@ public class WhatsAppController(
     ];
     private static readonly string[] AcknowledgementEmoji = ["\U0001F44D", "\U0001F44C", "\u2705", "\U0001F64F", "\u2714"];
     // A word before a cancel word that turns it around: "don't cancel", "לא לבטל", "لا تلغي".
-    private static readonly string[] NegationWords = ["dont", "not", "never", "לא", "אל", "لا", "ما", "مش", "بلاش"];
+    // Apostrophe-less English forms and "אין (צורך)", "مو (لازم)", "بدون" too (QA run 9).
+    private static readonly string[] NegationWords =
+    [
+        "dont", "not", "never", "wont", "didnt", "doesnt", "wouldnt", "shouldnt", "isnt", "wasnt",
+        "לא", "אל", "אין", "لا", "ما", "مش", "مو", "بلاش", "بدون",
+    ];
     // "#" since 2026-10-23 (owner's choice, like the #1/#2 commands); "$" still works, since earlier
     // lockout messages in customers' chats name it.
     private const string UnlockKeyword = "#";
@@ -1490,6 +1495,12 @@ public class WhatsAppController(
         if (cancelAt >= 0)
             return IsNegatedCancel(words, cancelAt) ? (reasked ? "1" : "reask") : (reasked ? "2" : "reask");
         if (IsNotComing(message, words)) return "reask";
+        // "no, I'm coming", "לא, אני מגיע", "لا، جاي": the "no" is to cancelling. They got the
+        // Book/Ask menu (QA run 9).
+        // A coming word is needed: "no thanks" isn't one.
+        if (words.Count > 1 && words[0] == "no" && words.Skip(1).Any(w => ComingWords.Contains(w) || w is "there" or "way")
+            && IsAttendanceAcknowledgement(message, words.Skip(1).ToList()))
+            return reasked ? "reask" : "1";
 
         var digits = words.Where(w => w.All(char.IsDigit)).ToList();
         if (digits.Count > 0)
@@ -1520,13 +1531,17 @@ public class WhatsAppController(
 
     // "I can't come", "won't make it", "not coming", "לא מגיע", "לא אגיע", "ما رح اجي", "مش جاي", or a
     // lone 👎/❌. A negation followed within three words by a coming (or keep) word.
-    private static readonly string[] NotComingNegations = ["cannot", "cant", "wont", "not", "never", "unable", "לא", "ما", "مش", "مو", "مش", "لن"];
+    private static readonly string[] NotComingNegations = ["cannot", "cant", "wont", "not", "never", "unable", "לא", "لا", "ما", "مش", "مو", "لن"];
     private static readonly string[] ComingWords =
     [
         "come", "coming", "make", "be", "attend", "arrive",
         "מגיע", "מגיעה", "מגיעים", "אגיע", "נגיע", "אהיה", "נהיה", "להגיע", "לבוא", "אבוא", "נבוא", "בא", "באה",
         "اجي", "آجي", "أجي", "جاي", "جاية", "بجي", "رح", "بقدر", "اقدر", "أقدر",
+        "آتي", "اتي", "أتي", "استطيع", "أستطيع", "الحضور", "احضر", "أحضر",
     ];
+    // "Can't wait to be there", "I won't be late", "לא נורא, אגיע", "ما تقلق جاي" are coming
+    // (QA run 9: read as not coming, then asked again and again).
+    private static readonly string[] NotComingExceptions = ["wait", "late", "worry", "נורא", "לדאוג", "تقلق", "تخاف", "تهتم", "تتأخر"];
     private static readonly string[] NotComingEmoji = ["\U0001F44E", "\u274C", "\u2716"];
 
     private static bool IsNotComing(string message, List<string> words)
@@ -1537,7 +1552,7 @@ public class WhatsAppController(
             var negation = NotComingNegations.Contains(words[i])
                 || (words[i] == "t" && i > 0 && words[i - 1] is "can" or "won" or "don" or "didn" or "couldn" or "isn" or "aren" or "wasn" or "wouldn")
                 || (words[i] == "longer" && i > 0 && words[i - 1] == "no");
-            if (!negation) continue;
+            if (!negation || words.Skip(i + 1).Take(3).Any(NotComingExceptions.Contains)) continue;
             if (words.Skip(i + 1).Take(3).Any(w => ComingWords.Contains(w) || KeepWords.Contains(w))) return true;
             // "sorry can't", "I cannot" with nothing after it (QA run 7).
             if (i == words.Count - 1 && (words[i] is "cannot" or "cant" || words[i] == "t" && words[i - 1] == "can")) return true;
@@ -1552,18 +1567,26 @@ public class WhatsAppController(
     private static bool IsNegatedCancel(List<string> words, int cancelAt)
     {
         var i = cancelAt - 1;
-        while (i >= 0 && cancelAt - i <= 4 && NegatedCancelMiddleWords.Contains(words[i])) i--;
+        while (i >= 0 && cancelAt - i <= 5 && NegatedCancelMiddleWords.Contains(words[i])) i--;
         if (i < 0) return false;
-        if (NegationWords.Contains(words[i])) return true;
-        if (words[i] == "t" && i > 0 && words[i - 1] is "don" or "won" or "didn" or "doesn" or "shouldn" or "wouldn") return true;
+        if (IsNegationWord(words[i])) return true;
+        if (words[i] == "t" && i > 0 && words[i - 1] is "don" or "won" or "didn" or "doesn" or "shouldn" or "wouldn" or "wasn" or "isn" or "aren") return true;
+        // "I no longer want to cancel" (QA run 9).
+        if (words[i] == "longer" && i > 0 && words[i - 1] == "no") return true;
         return words[i] == "no" && i + 1 < cancelAt && words[i + 1] == "need";
     }
+
+    // A negation, also with the "and"/"so" letter glued on: "ואל תבטל", "ולא לבטל", "ولا تلغي",
+    // "وما بدي الغي", "فلا تلغي" cancelled the appointment (QA run 9).
+    private static bool IsNegationWord(string w) =>
+        NegationWords.Contains(w) || (w.Length > 1 && w[0] is 'ו' or 'و' or 'ف' && NegationWords.Contains(w[1..]));
 
     private static readonly string[] NegatedCancelMiddleWords =
     [
         "want", "wanna", "need", "to", "going", "gonna", "please", "have", "wanted", "mean", "meant", "say", "said", "ask", "asked",
-        "רוצה", "רוצים", "צריך", "צריכה", "צריכים",
-        "أريد", "اريد", "بدي", "بدنا", "عايز", "بدك", "لازم", "داعي",
+        "me", "planning", "plan", "intend", "intending",
+        "רוצה", "רוצים", "צריך", "צריכה", "צריכים", "צורך",
+        "أريد", "اريد", "بدي", "بدنا", "عايز", "بدك", "لازم", "داعي", "في", "ناوي", "ناوية",
     ];
 
     private static bool IsNegatedCancel(string message)
@@ -1584,7 +1607,7 @@ public class WhatsAppController(
         var says = words.Any(w => AcknowledgementWords.Contains(w) && !WeakAcknowledgementWords.Contains(w))
             || Follows(words, "be", "there") || Follows(words, "see", "you")
             || Follows(words, "will", "come") || Follows(words, "ll", "come") || Follows(words, "my", "way")
-            || Follows(words, "of", "course");
+            || Follows(words, "of", "course") || Follows(words, "m", "there");
         return words.Count <= 6 && says
             && words.All(w => AcknowledgementWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w));
     }
@@ -1739,8 +1762,12 @@ public class WhatsAppController(
     // A "no" that stands on its own ("לא, תבטל", "لا، الغي", "no. cancel it") answers the question
     // and isn't a negation of the next word: read as "don't cancel" it confirmed the appointment
     // (QA run 8). Written as the English "no", which IsNegatedCancel doesn't count.
-    private static readonly Regex StandaloneNo = new(@"(^|\s)(לא|لا|ما|مش)\s*[,،.!;:\-]+", RegexOptions.Compiled);
-    private static string WithoutStandaloneNo(string message) => StandaloneNo.Replace(message, "$1no ");
+    // Dashes, an ellipsis, "؛" or a line break end it too (QA run 9: "לא – תבטל", "لا… الغي" kept it).
+    private static readonly Regex StandaloneNo = new(@"(^|\s)(לא|لا|ما|مش)(?:\s*[,،.!;:\-–—…؛]+|[ \t]*\r?\n)", RegexOptions.Compiled);
+    // "no, need to cancel" read as "no need to cancel" once the comma was gone (QA run 9).
+    private static readonly Regex StandaloneNoNeed = new(@"(^|\s)no(?:\s*[,،.!;:\-–—…؛]+|[ \t]*\r?\n)\s*need\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static string WithoutStandaloneNo(string message) =>
+        StandaloneNoNeed.Replace(StandaloneNo.Replace(message, "$1no "), "$1no i need");
 
     private static List<string> Words(string message) =>
         Regex.Split(Regex.Replace(message.ToLowerInvariant(), @"\p{Mn}", "").Replace("re-schedul", "reschedul"), @"[^\p{L}\p{Nd}]+")

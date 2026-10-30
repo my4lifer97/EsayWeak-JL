@@ -102,6 +102,9 @@ async function hasLinkedCreds(businessId) {
 // a click during a reconnect, open two sockets on one auth folder -- every message answered twice
 // and a "connection replaced" loop (QA run 6). A second caller gets the same start.
 const starting = new Map()
+// Bumped by every unlink. A start that settles after the unlink gave up waiting for it (60 s)
+// still registered a session and showed a scannable QR (QA run 9); it checks this first.
+const unlinkCount = new Map()
 
 // A business id is a database id: letters, digits, "-" and "_" only, since it names a folder.
 export function isValidBusinessId(businessId) {
@@ -121,9 +124,14 @@ async function startSessionNow(businessId) {
   const existing = sessions.get(businessId)
   if (existing && existing.status !== 'disconnected') return existing
 
+  const unlinksAtStart = unlinkCount.get(businessId) ?? 0
   const authFolder = path.join(SESSIONS_DIR, businessId)
   const { state, saveCreds } = await useMultiFileAuthState(authFolder)
   const { version } = await fetchLatestBaileysVersion()
+  if ((unlinkCount.get(businessId) ?? 0) !== unlinksAtStart) {
+    await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
+    throw new Error('the business was unlinked while its session was starting')
+  }
 
   const sock = makeWASocket({
     version,
@@ -439,6 +447,7 @@ export async function unlinkSession(businessId) {
   // A start still under way would leave a live session (and a scannable QR) behind the unlink
   // (QA run 7), so it finishes first and is then logged out like any other.
   // Bounded: a start that never settles mustn't hang the unlink (QA run 8).
+  unlinkCount.set(businessId, (unlinkCount.get(businessId) ?? 0) + 1)
   const inFlight = starting.get(businessId)
   if (inFlight) await withTimeout(inFlight, 'waiting for a session start').catch(() => {})
   failures.delete(businessId)

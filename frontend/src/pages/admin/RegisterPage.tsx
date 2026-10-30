@@ -145,8 +145,8 @@ export default function RegisterPage() {
           )}
           <form onSubmit={handleVerify} className="space-y-4">
             <input
-              type="text" inputMode="numeric" maxLength={6} required autoFocus dir="ltr"
-              value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              type="text" inputMode="numeric" required autoFocus dir="ltr"
+              value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="123456"
               className="w-full bg-surface border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
             />

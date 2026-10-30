@@ -129,7 +129,8 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
         page = Math.Clamp(page, 1, 100_000);
         pageSize = Math.Clamp(pageSize, 1, 50);
 
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        // A sign-up with no storefront yet has no reviews page either: 200 vs 404 told its slug (QA run 9).
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         var q = db.Reviews.Where(r => r.BusinessId == business.Id && !r.IsHidden);

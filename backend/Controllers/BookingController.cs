@@ -30,7 +30,14 @@ public class BookingController(
         var isRTL = business.Language is Language.AR or Language.HE;
         var activeDays = business.WorkingHours.Select(w => w.DayOfWeek).ToArray();
 
-        var items = business.Items.OrderBy(s => s.NameEn).Select(s => new ItemDto(
+        // By the name in the business's own language (QA run 9: a Hebrew shop's list was sorted by
+        // its English names, so it looked unsorted).
+        var items = business.Items.OrderBy(s => business.Language switch
+            {
+                Language.HE => s.NameHe,
+                Language.AR => s.NameAr,
+                _ => s.NameEn,
+            }, StringComparer.CurrentCultureIgnoreCase).Select(s => new ItemDto(
             s.Id, s.BusinessId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
             s.PhotoMode.ToString(), s.IsBookable, s.GalleryPhotos.Select(p => new ItemGalleryPhotoDto(p.Id, p.Url)).ToList())).ToList();
 
@@ -99,7 +106,13 @@ public class BookingController(
     [HttpPost("appointments")]
     public async Task<IActionResult> BookAppointment(string slug, [FromBody] BookAppointmentRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.CustomerName))
+        // Cleaned like the owner's: a zero-width-only name or an RTL override was saved (QA run 9).
+        req = req with
+        {
+            CustomerName = TextClean.Name(req.CustomerName ?? ""),
+            CustomerFamilyName = req.CustomerFamilyName is null ? null : TextClean.Name(req.CustomerFamilyName),
+        };
+        if (req.CustomerName.Length == 0)
             return BadRequest(new { error = "Please enter your name." });
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
         if (business is null) return NotFound(new { error = "Not found" });
@@ -210,7 +223,7 @@ public class BookingController(
             Date = requestedDate,
             StartTime = req.StartTime,
             EndTime = endTime,
-            Notes = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+            Notes = TextClean.Note(req.Notes),
             PhotoUrl = photoUrl,
             Status = AppointmentStatus.CONFIRMED,
         };
