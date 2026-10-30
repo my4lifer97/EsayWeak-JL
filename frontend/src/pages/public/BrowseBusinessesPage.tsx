@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCustomerAuth } from '../../lib/customerAuth'
@@ -31,7 +31,13 @@ export default function BrowseBusinessesPage() {
   const [sort, setSort] = useState<(typeof SORTS)[number]>('rating')
   const [pending, setPending] = useState<string | null>(null)
 
-  const trimmedQuery = query.trim()
+  // Searched once typing pauses, not on every key (QA run 7).
+  const [trimmedQuery, setTrimmedQuery] = useState('')
+  useEffect(() => {
+    const timer = setTimeout(() => setTrimmedQuery(query.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [query])
+  const [actionError, setActionError] = useState(false)
 
   const { data: businessTypes = [] } = useQuery<BusinessType[]>({
     queryKey: ['business-types'],
@@ -48,7 +54,7 @@ export default function BrowseBusinessesPage() {
   })
 
   const {
-    data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage,
+    data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage,
   } = useInfiniteQuery({
     queryKey: ['business-search', trimmedQuery, categoryKey, city, sort],
     queryFn: ({ pageParam }) =>
@@ -78,6 +84,8 @@ export default function BrowseBusinessesPage() {
     try {
       await customerApi.delete(`/businesses/${slug}/follow`)
       queryClient.invalidateQueries({ queryKey: ['followed-businesses'] })
+    } catch {
+      setActionError(true) // a failed follow was silent (QA run 7)
     } finally { setPending(null) }
   }
 
@@ -86,11 +94,14 @@ export default function BrowseBusinessesPage() {
     // logged-out visitors, so this is just a guard.
     if (!isAuthenticated) return
     setPending(slug)
+    setActionError(false)
     try {
       if (isFollowed) await customerApi.delete(`/businesses/${slug}/follow`)
       else await customerApi.post(`/businesses/${slug}/follow`)
       queryClient.invalidateQueries({ queryKey: ['business-search'] })
       queryClient.invalidateQueries({ queryKey: ['followed-businesses'] })
+    } catch {
+      setActionError(true)
     } finally { setPending(null) }
   }
 
@@ -145,8 +156,12 @@ export default function BrowseBusinessesPage() {
 
         {/* Results */}
         <div className="mt-5 mb-8">
+          {actionError && <p className="text-red-600 text-sm text-center mb-3">{t(lang, 'somethingWentWrong')}</p>}
           {isLoading ? (
             <div className="text-center text-muted py-8">{t(lang, 'loading')}</div>
+          ) : isError ? (
+            // A failed search said "No businesses match" (QA run 7).
+            <div className="text-center text-red-600 py-8">{t(lang, 'somethingWentWrong')}</div>
           ) : results.length === 0 ? (
             <div className="text-center text-muted py-8">{t(lang, 'noBusinessesMatch')}</div>
           ) : (

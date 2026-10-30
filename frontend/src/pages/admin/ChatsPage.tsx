@@ -12,6 +12,7 @@ import UnreadBadge, { CHATS_UNREAD_KEY } from '../../components/admin/UnreadBadg
 import ChatAlertsModal, { type ChatAlertSettings } from '../../components/admin/ChatAlertsModal'
 import NewAppointmentModal from '../../components/admin/NewAppointmentModal'
 import ReadyMessagesModal from '../../components/admin/ReadyMessagesModal'
+import { chatDrafts } from '../../lib/chatDrafts'
 import type { CustomerSelection } from '../../components/admin/CustomerPicker'
 
 type Sender = 'Customer' | 'Bot' | 'Owner' | 'OwnerPhone'
@@ -25,9 +26,7 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024
 type Chat = { phone: string; name: string | null; isOpen: boolean; customerId: string | null; messages: ChatMessage[] }
 const MAX_TEXT = 4000
 
-// The typed text and chosen file of each chat while the page is open: switching chats remounts
-// the conversation, which used to lose them (QA run 5).
-const drafts = new Map<string, { text: string; file: File | null }>()
+const drafts = chatDrafts
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; isBookable: boolean; isActive: boolean }
 
 // Customers who chose to talk to the owner in the WhatsApp chatbot (#2), answered from here
@@ -202,14 +201,14 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   }, [lastId])
 
   // Every action posts, then refreshes this chat and the list/badge.
-  async function act(url: string, body: object, after?: () => void) {
+  async function act(url: string, body: object, after?: (data: { notified?: boolean }) => void) {
     if (busy) return
     setBusy(true)
     setError(null)
     setNotice(null)
     try {
-      await api.post(url, { phone, ...body })
-      after?.()
+      const { data } = await api.post(url, { phone, ...body })
+      after?.(data ?? {})
       await queryClient.invalidateQueries({ queryKey: ['chat', phone] })
       onChanged()
     } catch (err) {
@@ -222,7 +221,13 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   // With a chosen file the text is its caption.
   async function send() {
     if (!file) {
-      if (draft.trim()) await act('/admin/chats/messages', { text: draft.trim() }, () => { setDraft(''); drafts.delete(phone) })
+      // Only the sent text is cleared: anything typed while it was sending stays (QA run 7).
+      const sent = draft
+      if (draft.trim()) await act('/admin/chats/messages', { text: draft.trim() }, () => {
+        // Also when this chat was left meanwhile (QA run 6: the draft came back).
+        if (drafts.get(phone)?.text === sent) drafts.delete(phone)
+        setDraft((d) => (d === sent ? '' : d.startsWith(sent) ? d.slice(sent.length).trimStart() : d))
+      })
       return
     }
     if (busy) return
@@ -232,8 +237,13 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
       form.append('phone', phone)
       form.append('caption', draft.trim())
       form.append('file', file)
+      const sent = draft
+      const sentFile = file
       await api.post('/admin/chats/attachment', form)
-      setDraft(''); setFile(null); drafts.delete(phone)
+      const left = drafts.get(phone)
+      if (left?.text === sent && left.file === sentFile) drafts.delete(phone)
+      setDraft((d) => (d === sent ? '' : d.startsWith(sent) ? d.slice(sent.length).trimStart() : d))
+      setFile((f) => (f === sentFile ? null : f))
       await queryClient.invalidateQueries({ queryKey: ['chat', phone] })
       onChanged()
     } catch (err) {
@@ -253,7 +263,11 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   const sendLink = () => serviceId && act('/admin/chats/booking-link', { itemId: serviceId }, () => {
     setPanel('none'); setServiceId(''); setNotice(t(lang, 'chatsLinkSent'))
   })
-  const finish = (sendServiceList: boolean) => act('/admin/chats/finish', { sendServiceList }, () => setPanel('none'))
+  // The chat ends either way; if the customer couldn't be told, the owner hears it (QA run 7).
+  const finish = (sendServiceList: boolean) => act('/admin/chats/finish', { sendServiceList }, (data) => {
+    setPanel('none')
+    if (data.notified === false) setNotice(t(lang, 'chatsFinishedNotNotified'))
+  })
 
   const canAct = linked && chat?.isOpen
   const selection = chat ? customerSelection(chat) : null
@@ -318,7 +332,13 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
       )}
       {readyOpen && (
         <ReadyMessagesModal lang={lang} phone={phone} onClose={() => setReadyOpen(false)}
-          onPick={(text) => { setDraft((d) => (d.trim() ? `${d.trimEnd()}\n\n${text}` : text).slice(0, MAX_TEXT)); setReadyOpen(false) }} />
+          onPick={(text) => {
+            // Cut at the limit with a word, not silently (QA run 7).
+            const next = draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text
+            setDraft(next.slice(0, MAX_TEXT))
+            if (next.length > MAX_TEXT) setError(t(lang, 'chatsReadyCut'))
+            setReadyOpen(false)
+          }} />
       )}
       {booking && selection && (
         <NewAppointmentModal lang={lang} initialCustomer={selection} onClose={() => setBooking(false)} />
@@ -425,7 +445,7 @@ function Bubble({ m, lang }: { m: ChatMessage; lang: string }) {
     <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
       <div className={`max-w-[80%] rounded-2xl px-3 py-2 ${style}`}>
         {mine && <div className={`text-[11px] mb-0.5 ${m.sender === 'Bot' ? 'text-muted' : 'text-white/80'}`}>{senderLabel(m.sender, lang)}</div>}
-        {m.attachment && <AttachmentView attachment={m.attachment} light={m.sender !== 'Owner' && m.sender !== 'OwnerPhone'} />}
+        {m.attachment && <AttachmentView attachment={m.attachment} light={m.sender !== 'Owner' && m.sender !== 'OwnerPhone'} lang={lang} />}
         {m.text && <div className="text-sm whitespace-pre-wrap break-words" dir="auto">{m.text}</div>}
         <div className={`text-[11px] mt-1 ${m.sender === 'Bot' || m.sender === 'Customer' ? 'text-muted' : 'text-white/80'}`}>
           {when(m.createdAt, lang)}
@@ -438,28 +458,32 @@ function Bubble({ m, lang }: { m: ChatMessage; lang: string }) {
 // A photo or file in the chat (the owner's or the customer's). Its bytes need the owner's token (not
 // a public link), so it's fetched with the api client: a photo shows as a picture, a voice note or
 // video plays here, anything else is a button that saves it.
-function AttachmentView({ attachment, light }: { attachment: ChatAttachment; light: boolean }) {
+function AttachmentView({ attachment, light, lang }: { attachment: ChatAttachment; light: boolean; lang: string }) {
   const kind = attachment.contentType.split('/')[0]
   const inline = kind === 'image' || kind === 'audio' || kind === 'video'
   // Its own object URL, revoked when the bubble goes away: cached ones were never freed, so
   // memory grew over a long session (QA run 5).
   const [url, setUrl] = useState<string>()
+  // A failed load stayed a grey box for good (QA run 7): it shows a retry instead.
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     if (!inline) return
     let href: string | undefined
     let cancelled = false
+    setLoadFailed(false)
     api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
       .then((r) => {
         href = URL.createObjectURL(r.data as Blob)
         if (cancelled) URL.revokeObjectURL(href)
         else setUrl(href)
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) setLoadFailed(true) })
     return () => {
       cancelled = true
       if (href) URL.revokeObjectURL(href)
     }
-  }, [attachment.id, inline])
+  }, [attachment.id, inline, attempt])
 
   const [downloadFailed, setDownloadFailed] = useState(false)
   async function download() {
@@ -479,6 +503,13 @@ function AttachmentView({ attachment, light }: { attachment: ChatAttachment; lig
     setTimeout(() => URL.revokeObjectURL(href), 1000)
   }
 
+  if (inline && !url && loadFailed)
+    return (
+      <button onClick={() => setAttempt((a) => a + 1)}
+        className={`${kind === 'audio' ? 'w-60 h-10' : 'w-48 h-32'} rounded-lg mb-1 bg-black/10 text-sm flex items-center justify-center gap-1`}>
+        <span>⚠️</span><span className="underline">{t(lang, 'chatsRetry')}</span>
+      </button>
+    )
   if (inline && !url) return <div className={`${kind === 'audio' ? 'w-60 h-10' : 'w-48 h-32'} rounded-lg mb-1 bg-black/10`} />
   if (kind === 'image')
     return <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={attachment.fileName} className="rounded-lg max-h-64 mb-1" /></a>

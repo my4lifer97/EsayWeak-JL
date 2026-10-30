@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { formatPrice } from '../../lib/price'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { imageTooLarge } from '../../lib/imageFile'
 import { format, addDays } from 'date-fns'
@@ -96,8 +97,13 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
 
-  // Returns the slots, or null when the request failed.
+  const slotsRequest = useRef(0)
+  // Returns the slots, or null when the request failed (or a newer one replaced it).
   async function fetchSlots(d: string, it: Item): Promise<Slot[] | null> {
+    // Only the latest request's answer is shown: switching dates fast could show the earlier
+    // date's times under the later one (QA run 7).
+    const request = ++slotsRequest.current
+    const stale = () => request !== slotsRequest.current
     setSlotsLoading(true); setSlotsError(false); setSlots([]); setIsBlocked(false); setBlockedReason(null)
     try {
     const [{ data }, mine] = await Promise.all([
@@ -108,6 +114,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           .catch(() => [] as Appointment[])
         : Promise.resolve([] as Appointment[]),
     ])
+    if (stale()) return null
     setMyAppointments(mine.filter((a) => a.status === 'CONFIRMED'))
     setSlots(data.slots ?? [])
     setIsBlocked(!!data.isBlocked)
@@ -115,9 +122,9 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
     return data.slots ?? []
     } catch {
       // A failed request used to leave "Loading times..." on screen for good (QA run 2).
-      setSlotsError(true)
+      if (!stale()) setSlotsError(true)
       return null
-    } finally { setSlotsLoading(false) }
+    } finally { if (!stale()) setSlotsLoading(false) }
   }
 
   function pickDate(d: string) {
@@ -293,7 +300,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                     <div className="font-medium">{itemName(s, lang)}</div>
                     <div className="text-muted text-sm mt-0.5">{s.durationMinutes} {t(lang, 'min')}</div>
                   </div>
-                  <div className="text-coral-dark font-semibold">{s.price !== null ? `₪${Number(s.price).toFixed(0)}` : ''}</div>
+                  <div className="text-coral-dark font-semibold">{s.price !== null ? formatPrice(s.price) : ''}</div>
                 </button>
               ))}
             </div>

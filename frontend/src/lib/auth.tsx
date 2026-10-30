@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { clearChatDrafts } from './chatDrafts'
 import { useQueryClient } from '@tanstack/react-query'
 import { api, ownerSessionChangedElsewhere, setOwnerTabToken } from './api'
 import SessionChangedNotice from '../components/admin/SessionChangedNotice'
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // the previous business's details into theirs.
   function storeSession(data: { token: string; id: string; name: string; email: string; slug: string; mustChangePassword?: boolean }) {
     queryClient.clear()
+    clearChatDrafts()
     localStorage.setItem('token', data.token)
     setOwnerTabToken(data.token)
     setChangedElsewhere(false)
@@ -110,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setChangedElsewhere(false)
     clearImpersonationMarker('business')
     queryClient.clear()
+    clearChatDrafts()
     setUser(null)
   }
 

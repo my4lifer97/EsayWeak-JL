@@ -37,6 +37,7 @@ export default function ServicesPage() {
   const [error, setError] = useState('')
   const [uploadingGallery, setUploadingGallery] = useState(false)
   const [galleryError, setGalleryError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
 
   const { data: services = [] } = useQuery<Item[]>({
     queryKey: ['services'],
@@ -96,10 +97,19 @@ export default function ServicesPage() {
 
   async function handleDelete(id: string) {
     // Says how many upcoming appointments it still has (they stay booked).
-    const upcoming = await api.get(`/admin/items/${id}/upcoming-appointments`).then((r) => r.data.count as number).catch(() => 0)
-    const question = upcoming > 0 ? `${t(lang, 'deleteConfirm')}\n\n${t(lang, 'deleteItemUpcoming').replace('{n}', String(upcoming))}` : t(lang, 'deleteConfirm')
+    setDeleteError('')
+    // A failed count isn't "none": the warning would quietly go missing (QA run 7).
+    const upcoming = await api.get(`/admin/items/${id}/upcoming-appointments`).then((r) => r.data.count as number).catch(() => null)
+    const question = upcoming === null
+      ? `${t(lang, 'deleteConfirm')}\n\n${t(lang, 'deleteItemUpcomingUnknown')}`
+      : upcoming > 0 ? `${t(lang, 'deleteConfirm')}\n\n${t(lang, 'deleteItemUpcoming').replace('{n}', String(upcoming))}` : t(lang, 'deleteConfirm')
     if (!(await ask(question, { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
-    await api.delete(`/admin/items/${id}`)
+    try {
+      await api.delete(`/admin/items/${id}`)
+    } catch (err: unknown) {
+      setDeleteError(apiError(err) ?? t(lang, 'failedToDelete'))
+      return
+    }
     queryClient.invalidateQueries({ queryKey: ['services'] })
   }
 
@@ -134,6 +144,7 @@ export default function ServicesPage() {
   return (
     <div>
       {confirmDialog}
+      {deleteError && <p className="text-red-600 text-sm mb-3">{deleteError}</p>}
       {unsavedDialog}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-ink">{t(lang, 'services')}</h1>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toAsciiDigits } from '../../lib/digits'
 import { useNavigate, useSearchParams, Link, Navigate } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
@@ -116,7 +117,7 @@ export default function CustomerLoginPage() {
 
                 <input
                   type="text" dir="ltr" inputMode="numeric" maxLength={6} required autoFocus={!isNewCustomer}
-                  value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  value={otp} onChange={(e) => setOtp(toAsciiDigits(e.target.value).replace(/[^0-9]/g, ''))}
                   placeholder="123456"
                   className="w-full bg-cream border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
                 />

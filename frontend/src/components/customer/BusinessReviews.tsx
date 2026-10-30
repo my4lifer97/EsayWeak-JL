@@ -58,7 +58,9 @@ export default function BusinessReviews({
   const agg = pages[0]?.rating ?? { count: 0, average: 0 }
   const items = pages.flatMap((p) => p.reviews.items)
   const own = eligibility?.review ?? null
-  const formOpen = editing || (openForm && !own && eligibility?.canReview)
+  // Back closes it for good, also when the page opened at #reviews (QA run 7: it stayed open).
+  const [dismissed, setDismissed] = useState(false)
+  const formOpen = editing || (openForm && !dismissed && !own && eligibility?.canReview)
 
   function startEdit() {
     setRating(own?.rating ?? 0)
@@ -179,7 +181,7 @@ export default function BusinessReviews({
               className="flex-1 bg-coral hover:bg-coral-dark disabled:opacity-50 text-white text-sm font-semibold py-2 rounded-xl transition-colors">
               {own ? t(lang, 'saveReview') : t(lang, 'submitReview')}
             </button>
-            <button onClick={() => setEditing(false)} disabled={busy}
+            <button onClick={() => { setEditing(false); setDismissed(true) }} disabled={busy}
               className="border border-line text-muted hover:bg-cream text-sm font-medium py-2 px-4 rounded-xl transition-colors disabled:opacity-50">
               {t(lang, 'back')}
             </button>

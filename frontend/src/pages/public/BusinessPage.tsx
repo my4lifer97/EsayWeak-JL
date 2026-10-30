@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { formatPrice } from '../../lib/price'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { customerApi } from '../../lib/customerApi'
@@ -64,6 +65,9 @@ export default function BusinessPage() {
     try {
       if (business?.isFollowed) await customerApi.delete(`/businesses/${slug}/follow`)
       else await customerApi.post(`/businesses/${slug}/follow`)
+      queryClient.invalidateQueries({ queryKey: ['business', slug] })
+    } catch {
+      // Silent before, with an unhandled rejection (QA run 7). Refetched so the button shows the truth.
       queryClient.invalidateQueries({ queryKey: ['business', slug] })
     } finally { setFollowLoading(false) }
   }
@@ -137,7 +141,7 @@ export default function BusinessPage() {
 
         <div className="space-y-3">
           {business.acceptsBookings === false && business.items.some((i) => i.isBookable) && (
-            <p className="text-muted text-sm text-center bg-white border border-line rounded-2xl p-4">{t(lang, 'bookingUnavailable')}</p>
+            <p className="text-muted text-sm text-center bg-surface border border-line rounded-2xl p-4">{t(lang, 'bookingUnavailable')}</p>
           )}
           {business.acceptsBookings !== false && business.items.some((i) => i.isBookable) && (
             <button onClick={() => navigate(`/${slug}/book`)}
@@ -189,7 +193,7 @@ export default function BusinessPage() {
                       <div className="text-muted text-xs mt-0.5">{i.durationMinutes} {t(lang, 'min')}</div>
                     )}
                   </div>
-                  {i.price !== null && <span className="text-coral-dark text-sm font-semibold">₪{Number(i.price).toFixed(0)}</span>}
+                  {i.price !== null && <span className="text-coral-dark text-sm font-semibold">{formatPrice(i.price)}</span>}
                 </div>
               ))}
             </div>
@@ -202,7 +206,7 @@ export default function BusinessPage() {
             {business.items.filter((i) => !i.isBookable).map((i) => (
               <div key={i.id} className="bg-surface border border-line rounded-xl px-4 py-3 flex justify-between items-center">
                 <span className="text-ink text-sm">{itemName(i, lang)}</span>
-                {i.price !== null && <span className="text-coral-dark text-sm font-semibold">₪{Number(i.price).toFixed(0)}</span>}
+                {i.price !== null && <span className="text-coral-dark text-sm font-semibold">{formatPrice(i.price)}</span>}
               </div>
             ))}
           </div>

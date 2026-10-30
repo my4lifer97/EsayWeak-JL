@@ -33,7 +33,7 @@ export default function BookPage() {
   // Said up front, instead of a vague "Booking unavailable" after the customer filled in every step.
   if (business.acceptsBookings === false) return (
     <div className="min-h-screen bg-cream flex items-center justify-center p-4" dir={lang === 'EN' ? 'ltr' : 'rtl'}>
-      <div className="bg-white border border-line rounded-2xl p-6 max-w-md w-full text-center space-y-4">
+      <div className="bg-surface border border-line rounded-2xl p-6 max-w-md w-full text-center space-y-4">
         <h1 className="text-ink font-bold text-lg">{business.name}</h1>
         <p className="text-muted">{t(lang, 'bookingUnavailable')}</p>
         <Link to={`/${business.slug}`} className="inline-block text-coral-dark font-semibold">{business.name}</Link>
