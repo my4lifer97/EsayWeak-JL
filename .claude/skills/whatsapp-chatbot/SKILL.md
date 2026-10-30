@@ -367,7 +367,9 @@ messages, reminders and other automated sends are not recorded. The owner (`Chat
   `POST bridge/media-wanted { businessId, fromPhone }` before downloading (open chat + quota; false on
   any error, so an older backend just means names only), and streams the download, stopping at 16MB.
   Quota (`ChatFiles.InboundQuotaAllowsAsync`, rolling 24h): 20 files / 50MB per customer, 500MB per
-  business; past it the file is kept by name only. No retention/cleanup of chats or files yet.
+  business; past it the file is kept by name only. Retention (owner's choice 2026-10-30): chat files
+  (customer and owner) are deleted after 90 days by `ConversationStateCleanupWorker.DeleteOldAttachmentsAsync`
+  (hourly); the message stays, reading `📎 name`. Chat text is kept.
 - `POST .../chats/booking-link` `{ phone, itemId }` -- a normal `WhatsAppBookingToken` link
   (`whatsapp.ownerBookingLink`, same first line) for a bookable service the owner picks; the chat stays open.
 - `POST .../chats/finish` `{ phone, sendServiceList }` -- sends `whatsapp.ownerChatEnded`, plus the

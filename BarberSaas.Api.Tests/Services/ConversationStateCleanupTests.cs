@@ -32,4 +32,43 @@ public class ConversationStateCleanupTests : IntegrationTestBase
             Assert.Equal(["+972500000003", "+972500000004"], left);
         }
     }
+
+    // Chat files go after 90 days (owner's choice); the message stays, naming the file.
+    [Fact]
+    public async Task DeletesChatFilesOlderThan90Days_KeepingTheMessage()
+    {
+        var now = DateTime.UtcNow;
+        string oldMessageId, captionedId, newMessageId;
+        using (var db = Db())
+        {
+            var business = new Business { Name = "Files", Email = $"{Guid.NewGuid():N}@cleanup.test", Slug = $"files-{Guid.NewGuid():N}" };
+            db.Businesses.Add(business);
+            ChatMessage WithFile(string name, string text, DateTime at)
+            {
+                var file = new ChatAttachment { BusinessId = business.Id, FileName = name, ContentType = "image/jpeg", Data = [1, 2, 3], CreatedAt = at };
+                db.ChatAttachments.Add(file);
+                var message = ChatLog.NewMessage(business.Id, "+972500000010", ChatSender.Customer, text);
+                message.AttachmentId = file.Id;
+                db.ChatMessages.Add(message);
+                return message;
+            }
+            oldMessageId = WithFile("old.jpg", "", now.AddDays(-91)).Id;
+            captionedId = WithFile("trip.jpg", "look", now.AddDays(-100)).Id;
+            newMessageId = WithFile("new.jpg", "", now.AddDays(-89)).Id;
+            await db.SaveChangesAsync();
+        }
+
+        using (var db = Db())
+            Assert.Equal(2, await ConversationStateCleanupWorker.DeleteOldAttachmentsAsync(db, now));
+
+        using (var db = Db())
+        {
+            Assert.Equal(["new.jpg"], await db.ChatAttachments.Where(a => a.FileName.EndsWith(".jpg")).Select(a => a.FileName).ToListAsync());
+            var old = await db.ChatMessages.SingleAsync(m => m.Id == oldMessageId);
+            Assert.Null(old.AttachmentId);
+            Assert.Equal("📎 old.jpg", old.Text);
+            Assert.Equal("📎 trip.jpg\nlook", (await db.ChatMessages.SingleAsync(m => m.Id == captionedId)).Text);
+            Assert.NotNull((await db.ChatMessages.SingleAsync(m => m.Id == newMessageId)).AttachmentId);
+        }
+    }
 }
