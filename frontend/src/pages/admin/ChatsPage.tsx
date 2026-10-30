@@ -23,6 +23,11 @@ type ChatMessage = { id: string; sender: Sender; text: string; createdAt: string
 const ACCEPTED_FILES = '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx'
 const MAX_FILE_BYTES = 10 * 1024 * 1024
 type Chat = { phone: string; name: string | null; isOpen: boolean; customerId: string | null; messages: ChatMessage[] }
+const MAX_TEXT = 4000
+
+// The typed text and chosen file of each chat while the page is open: switching chats remounts
+// the conversation, which used to lose them (QA run 5).
+const drafts = new Map<string, { text: string; file: File | null }>()
 type Service = { id: string; nameEn: string; nameAr: string; nameHe: string; isBookable: boolean; isActive: boolean }
 
 // Customers who chose to talk to the owner in the WhatsApp chatbot (#2), answered from here
@@ -154,8 +159,12 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   lang: string; phone: string; linked: boolean; unread: number; onBack?: () => void; onChanged: () => void
 }) {
   const queryClient = useQueryClient()
-  const [draft, setDraft] = useState('')
-  const [file, setFile] = useState<File | null>(null)
+  const [draft, setDraft] = useState(() => drafts.get(phone)?.text ?? '')
+  const [file, setFile] = useState<File | null>(() => drafts.get(phone)?.file ?? null)
+  useEffect(() => {
+    if (draft || file) drafts.set(phone, { text: draft, file })
+    else drafts.delete(phone)
+  }, [phone, draft, file])
   const [readyOpen, setReadyOpen] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -168,10 +177,11 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   const navigate = useNavigate()
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  const { data: chat, isLoading } = useQuery<Chat>({
+  const { data: chat, isLoading, isError } = useQuery<Chat>({
     queryKey: ['chat', phone],
     queryFn: () => api.get('/admin/chats/messages', { params: { phone } }).then((r) => r.data),
     refetchInterval: 3000,
+    retry: false,
   })
   const { data: services = [] } = useQuery<Service[]>({
     queryKey: ['services'],
@@ -306,7 +316,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
       )}
       {readyOpen && (
         <ReadyMessagesModal lang={lang} phone={phone} onClose={() => setReadyOpen(false)}
-          onPick={(text) => { setDraft((d) => (d.trim() ? `${d.trimEnd()}\n\n${text}` : text)); setReadyOpen(false) }} />
+          onPick={(text) => { setDraft((d) => (d.trim() ? `${d.trimEnd()}\n\n${text}` : text).slice(0, MAX_TEXT)); setReadyOpen(false) }} />
       )}
       {booking && selection && (
         <NewAppointmentModal lang={lang} initialCustomer={selection} onClose={() => setBooking(false)} />
@@ -341,15 +351,16 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-cream">
         {isLoading && <div className="text-muted py-12 text-center">{t(lang, 'loading')}</div>}
+        {!chat && isError && <div className="text-muted py-12 text-center text-sm">{t(lang, 'chatsNotFound')}</div>}
         {chat?.messages.map((m) => <Bubble key={m.id} m={m} lang={lang} />)}
         <div ref={bottomRef} />
       </div>
 
       {error && <div className="px-4 py-2 text-sm text-red-600 border-t border-line bg-surface">{error}</div>}
       {notice && <div className="px-4 py-2 text-sm text-ink border-t border-line bg-surface">✓ {notice}</div>}
-      {!linked ? (
+      {!chat ? null : !linked ? (
         <div className="px-4 py-3 text-sm text-muted border-t border-line bg-surface">{t(lang, 'chatsNotLinked')}</div>
-      ) : chat && !chat.isOpen ? (
+      ) : !chat.isOpen ? (
         <div className="px-4 py-3 text-sm text-muted border-t border-line bg-surface">{t(lang, 'chatsEnded')}</div>
       ) : (
         <div className="p-3 border-t border-line bg-surface">
@@ -381,7 +392,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
                 if (e.key === 'Enter' && !e.shiftKey && !onBack) { e.preventDefault(); send() }
               }}
               rows={2}
-              maxLength={4000}
+              maxLength={MAX_TEXT}
               dir="auto"
               placeholder={t(lang, 'chatsPlaceholder')}
               className="flex-1 resize-none rounded-xl border border-line bg-cream px-3 py-2 text-sm text-ink focus:outline-none focus:border-coral"
@@ -428,13 +439,25 @@ function Bubble({ m, lang }: { m: ChatMessage; lang: string }) {
 function AttachmentView({ attachment, light }: { attachment: ChatAttachment; light: boolean }) {
   const kind = attachment.contentType.split('/')[0]
   const inline = kind === 'image' || kind === 'audio' || kind === 'video'
-  const { data: url } = useQuery({
-    queryKey: ['chat-attachment', attachment.id],
-    queryFn: () => api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
-      .then((r) => URL.createObjectURL(r.data as Blob)),
-    staleTime: Infinity,
-    enabled: inline,
-  })
+  // Its own object URL, revoked when the bubble goes away: cached ones were never freed, so
+  // memory grew over a long session (QA run 5).
+  const [url, setUrl] = useState<string>()
+  useEffect(() => {
+    if (!inline) return
+    let href: string | undefined
+    let cancelled = false
+    api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
+      .then((r) => {
+        href = URL.createObjectURL(r.data as Blob)
+        if (cancelled) URL.revokeObjectURL(href)
+        else setUrl(href)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      if (href) URL.revokeObjectURL(href)
+    }
+  }, [attachment.id, inline])
 
   async function download() {
     const r = await api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })

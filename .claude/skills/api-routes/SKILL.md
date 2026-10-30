@@ -21,7 +21,7 @@ description: Every barber-saas backend endpoint with its rules (auth, admin, sch
 - `GET /api/admin/reviews` — this business's reviews (incl. hidden), newest first, with reviewer name + linked item name
 - `POST/DELETE /api/admin/reviews/{id}/reply` — set / clear the owner's public reply
 - `GET /api/admin/chats`, `GET .../chats/unread-count`, `GET .../chats/messages?phone=`, `POST .../chats/read` `{ phone }`, `POST .../chats/messages` `{ phone, text }`, `POST .../chats/booking-link` `{ phone, itemId }`, `POST .../chats/finish` `{ phone, sendServiceList }` (`ChatsController`) — the owner's Chats page, see [Owner Chats page](#owner-chats-page)
-- `GET /api/admin/chatbot-inquiries?unreadOnly=` / `POST .../{id}/read` — the old in-app inbox for Inquiry mode, still written (`ChatbotInquiry`) but no longer shown: the owner reads and answers on `/admin/chats` since 2026-10-25, see [Chatbot Inquiry mode](#chatbot-inquiry-mode-optional-alongside-booking)
+- (`/api/admin/chatbot-inquiries` removed 2026-10-30: the owner reads and answers Inquiry-mode messages on `/admin/chats`.)
 - `GET/POST /api/admin/items` — items CRUD (includes `photoMode` + `galleryPhotos`)
 - `PATCH/DELETE /api/admin/items/{id}` — update / soft-delete (IsActive = false)
 - `POST /api/admin/items/{id}/gallery` — upload a gallery reference photo (JPG/PNG/WEBP, 5MB max)

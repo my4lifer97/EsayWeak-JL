@@ -148,7 +148,13 @@ function MyMessages({ lang, onPick }: { lang: string; onPick: (text: string) => 
 
   async function remove(reply: QuickReply) {
     if (!(await ask(t(lang, 'readyDeleteConfirm'), { yesLabel: t(lang, 'confirmDeleteYes'), noLabel: t(lang, 'chatsCancel') }))) return
-    await api.delete(`/admin/chats/quick-replies/${reply.id}`)
+    setError('')
+    try {
+      await api.delete(`/admin/chats/quick-replies/${reply.id}`)
+    } catch (err) {
+      // A failed delete used to do nothing visible (QA run 5).
+      setError(apiError(err) ?? t(lang, 'failedToDelete'))
+    }
     queryClient.invalidateQueries({ queryKey: ['quick-replies'] })
   }
 
@@ -172,6 +178,7 @@ function MyMessages({ lang, onPick }: { lang: string; onPick: (text: string) => 
   return (
     <div className="space-y-2">
       {confirmDialog}
+      {error && <p className="text-sm text-red-600">{error}</p>}
       <button onClick={() => edit('new')} className="w-full border border-dashed border-coral text-coral-dark hover:bg-coral-tint text-sm font-medium rounded-xl py-2">
         {t(lang, 'readyNew')}
       </button>

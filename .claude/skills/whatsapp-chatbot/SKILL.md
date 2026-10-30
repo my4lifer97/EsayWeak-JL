@@ -325,8 +325,8 @@ reply in the customer's thread) and `InquiryNotifyViaEmail` + `InquiryEmail` (a 
 `IOwnerEmailSender` — the same sender as the owner-email composer; moved off the Brevo
 `IEmailSender` chain 2026-09-29 so every email to a business owner comes from the same account).
 
-Admin API: `GET/POST /api/admin/chatbot-inquiries` (list, `?unreadOnly=true` filter) and
-`POST /api/admin/chatbot-inquiries/{id}/read`. Frontend: `pages/admin/ChatbotSettingsPage.tsx`, its
+The old `/api/admin/chatbot-inquiries` endpoints and the `ChatbotInquiries` writes were removed
+2026-10-30 (QA run 5): the messages live as `ChatMessage`s; the table is left in the database, unused. Frontend: `pages/admin/ChatbotSettingsPage.tsx`, its
 own top-level sidebar page (`/admin/chatbot`, separate from the general `/admin/settings` page) —
 holds the enable toggle, all three chatbot messages and the inquiry toggle (its Inquiries inbox and the
 notification contacts moved to `/admin/chats` 2026-10-25 at the owner's request -- the alert settings are its ⚙️ Settings,

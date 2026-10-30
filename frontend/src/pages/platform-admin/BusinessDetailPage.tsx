@@ -14,7 +14,7 @@ type BusinessDetail = {
   isDisabled: boolean
 }
 
-type WhatsAppLinkStatus = { state: 'qr' | 'connecting' | 'connected' | 'disconnected'; qr: string | null; phoneNumber: string | null }
+type WhatsAppLinkStatus = { state: 'qr' | 'connecting' | 'connected' | 'disconnected' | 'closing'; qr: string | null; phoneNumber: string | null }
 
 type PlatformReview = {
   id: string; rating: number; comment: string | null; reviewerName: string; itemName: string | null

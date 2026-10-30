@@ -139,10 +139,14 @@ export async function startSession(businessId) {
       session.status = 'connected'
       session.qr = null
       session.phoneNumber = sock.user?.id ? `+${sock.user.id.split(':')[0]}` : null
-      console.log(`[${businessId}] WhatsApp connected as ${session.phoneNumber}`)
+      console.log(`[${businessId}] WhatsApp connected as ${maskPhone(session.phoneNumber)}`)
       // The backend saves the number (Business.WhatsAppNumber), which confirmations, reminders and
       // the Chats page rely on -- also when nobody is watching a QR link (restart, reconnect).
-      if (session.phoneNumber) reportSessionEvent(businessId, 'connected', session.phoneNumber)
+      if (session.phoneNumber) {
+        const phone = session.phoneNumber
+        reportSessionEvent(businessId, 'connected', phone,
+          () => sessions.get(businessId) === session && session.status === 'connected' && session.phoneNumber === phone)
+      }
     }
 
     if (connection === 'close') {
@@ -165,10 +169,13 @@ export async function startSession(businessId) {
         session.qr = null
         failures.delete(businessId)
         await fs.rm(authFolder, { recursive: true, force: true }).catch(() => {})
-        sessions.delete(businessId)
+        // Rechecked after the await: a Link click meanwhile may have put a newer session in the
+        // map, which this one must not drop (QA run 5, like 26171aa).
+        if (sessions.get(businessId) === session) sessions.delete(businessId)
         // WhatsApp ended a linked session: tell the backend so the platform admin gets an email.
         // Not for an admin's own Unlink (unlinkSession), which logs out on purpose.
-        if (loggedOut && !session.unlinking) reportSessionEvent(businessId, 'loggedOut', session.phoneNumber)
+        if (loggedOut && !session.unlinking)
+          reportSessionEvent(businessId, 'loggedOut', session.phoneNumber, () => !sessions.has(businessId))
       } else {
         session.status = 'disconnected'
         // DisconnectReason.forbidden means WhatsApp is actively (and temporarily) blocking this
@@ -331,7 +338,7 @@ async function handleInboundMessage(businessId, sock, msg) {
 
   const jid = await resolvePhoneJid(sock, msg)
   if (!jid) {
-    console.error(`[${businessId}] could not resolve a real phone number for LID ${msg.key.remoteJid} -- dropping message rather than saving a bogus phone`)
+    console.error(`[${businessId}] could not resolve a real phone number for a LID -- dropping message rather than saving a bogus phone`)
     return
   }
 
@@ -351,7 +358,15 @@ async function handleInboundMessage(businessId, sock, msg) {
 
 // 'loggedOut' (WhatsApp ended the session) or 'connected'. Best-effort, a few tries a minute
 // apart in case the backend is mid-deploy.
-async function reportSessionEvent(businessId, event, phoneNumber, attempt = 1) {
+// isCurrent: checked before each retry, so a late retry doesn't overwrite a newer logout or
+// re-link the backend already heard about (QA run 5).
+// Phone numbers in logs keep only their last 3 digits (QA run 5).
+function maskPhone(phone) {
+  return phone ? `***${String(phone).slice(-3)}` : phone
+}
+
+async function reportSessionEvent(businessId, event, phoneNumber, isCurrent = () => true, attempt = 1) {
+  if (attempt > 1 && !isCurrent()) return
   try {
     const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/session-event`, {
       method: 'POST',
@@ -362,7 +377,7 @@ async function reportSessionEvent(businessId, event, phoneNumber, attempt = 1) {
     throw new Error(`backend responded ${resp.status}`)
   } catch (err) {
     if (attempt >= 5) return console.error(`[${businessId}] could not report "${event}" to the backend:`, err.message)
-    setTimeout(() => reportSessionEvent(businessId, event, phoneNumber, attempt + 1), 60_000)
+    setTimeout(() => reportSessionEvent(businessId, event, phoneNumber, isCurrent, attempt + 1), 60_000)
   }
 }
 

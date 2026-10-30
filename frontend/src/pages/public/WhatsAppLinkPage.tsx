@@ -7,7 +7,8 @@ import ThemeToggle from '../../components/ThemeToggle'
 type LinkStatus = {
   businessName: string
   language: string
-  state: 'qr' | 'connecting' | 'connected' | 'disconnected'
+  // 'closing': the bridge is ending an old session before a new link (its own status, QA run 5).
+  state: 'qr' | 'connecting' | 'connected' | 'disconnected' | 'closing'
   qr: string | null
   phoneNumber: string | null
 }
