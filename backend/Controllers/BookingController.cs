@@ -145,23 +145,24 @@ public class BookingController(
             }
         }
 
-        var slots = await availability.GetAvailableSlots(business.Id, req.Date, item.DurationMinutes.Value);
-        if (!slots.Any(s => s.Start == req.StartTime))
-            return Conflict(new { error = "Slot no longer available", slotTaken = true });
-
-        var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
-        var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
-
         // Booking needs a logged-in customer (WhatsApp link or phone OTP), and the phone always
         // comes from that verified session, never from the form -- otherwise anyone could book
         // under someone else's number, landing in their My Bookings and overwriting their name.
         // The website already only shows the booking wizard behind CustomerProtectedRoute.
+        // Checked before the slot: a signed-out request for a taken time got 409, not 401 (QA run 6).
         var customerAccountId = User.FindFirst("type")?.Value == "customer" ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null;
         // Normalized again because a session issued before phones were canonicalized can still
         // carry the old local format in its claim.
         var phone = PhoneNormalizer.Normalize(User.FindFirst("phone")?.Value ?? "");
         if (customerAccountId is null || string.IsNullOrEmpty(phone))
             return Unauthorized(new { error = "Please log in to book." });
+
+        var slots = await availability.GetAvailableSlots(business.Id, req.Date, item.DurationMinutes.Value);
+        if (!slots.Any(s => s.Start == req.StartTime))
+            return Conflict(new { error = "Slot no longer available", slotTaken = true });
+
+        var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
+        var requestedDate = DateTime.Parse(req.Date + "T00:00:00Z").ToUniversalTime();
 
         // Booking a business once is enough to follow them — no separate follow click required.
         // Done as its own save (before any Customer/Appointment tracking below) so FollowService
@@ -334,11 +335,17 @@ public class BookingController(
 
         if (appointment is null) return NotFound(new { error = "Not found" });
         if (appointment.CancelToken != token) return StatusCode(403, new { error = "Invalid token" });
-        if (appointment.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
+        // Already cancelled (or asked to be): a second click is the same answer, not an error
+        // right after the first one worked (QA run 6).
+        if (AlreadyCancelled(appointment)) return Ok(new { ok = true });
+        if (AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         if (!await cancellationService.CancelFromCustomerAsync(appointment))
-            return Conflict(new { error = "This appointment can no longer be modified" });
+        {
+            await db.Entry(appointment).ReloadAsync();
+            return AlreadyCancelled(appointment) ? Ok(new { ok = true }) : Conflict(new { error = "This appointment can no longer be modified" });
+        }
         await db.SaveChangesAsync();
 
         // See the equivalent note in CustomerAppointmentsController.Cancel -- this doesn't always
@@ -349,6 +356,9 @@ public class BookingController(
 
         return Ok(new { ok = true });
     }
+
+    private static bool AlreadyCancelled(Appointment appointment) =>
+        appointment.Status == AppointmentStatus.CANCELLED || appointment.PendingCancellationApproval;
 
     [HttpPatch("appointments/{id}")]
     public async Task<IActionResult> RescheduleAppointment(string slug, string id, [FromQuery] string token, [FromBody] RescheduleRequest req)

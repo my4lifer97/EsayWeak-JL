@@ -75,7 +75,7 @@ public record UpdateSettingsRequest(
 
 public record BookAppointmentRequest(
     string ItemId, string Date, string StartTime,
-    string CustomerName, string CustomerPhone, string? Notes,
+    string CustomerName, string? CustomerPhone, string? Notes,
     string? GalleryPhotoId = null, string? CustomerPhotoUrl = null, string? CustomerFamilyName = null);
 
 public record BookAppointmentResponse(string AppointmentId, string CancelToken);

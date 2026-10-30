@@ -10,7 +10,9 @@ public static class SlugValidator
     private static readonly string[] ReservedSlugs =
         // Every top-level frontend route (App.tsx) must be here, or that storefront can never load.
         ["admin", "api", "login", "register", "cron", "whatsapp", "_next", "favicon", "browse", "account",
-         "platform-admin", "admin-platform", "request-business-account", "wa-link"];
+         "platform-admin", "admin-platform", "request-business-account", "wa-link",
+         // API prefixes and words a storefront shouldn't take (QA run 6).
+         "customer", "customers", "businesses", "business-types", "auth", "uploads", "health", "static", "assets", "support", "help"];
 
     public static bool IsValidFormat(string slug) =>
         !string.IsNullOrWhiteSpace(slug) && Regex.IsMatch(slug, @"^[a-z0-9-]+$") && slug.Length is >= 3 and <= MaxLength;

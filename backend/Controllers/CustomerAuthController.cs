@@ -65,7 +65,7 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
         var isReviewer = phone == ReviewerPhone;
         var code = isReviewer
             ? config["CustomerAuth:ReviewerCode"]!
-            : Random.Shared.Next(100000, 999999).ToString();
+            : System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
         db.CustomerOtps.Add(new CustomerOtp
         {
             Phone = phone,

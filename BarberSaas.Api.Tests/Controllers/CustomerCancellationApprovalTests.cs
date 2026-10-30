@@ -145,11 +145,16 @@ public class CustomerCancellationApprovalTests : IntegrationTestBase
         var mine = await Client.GetFromJsonAsync<List<CustomerAppointmentDto>>("/api/customer/appointments?filter=upcoming");
         Assert.Equal("CANCELLATION_PENDING", mine!.Single(a => a.Id == appt.AppointmentId).Status);
 
-        // And a second cancel attempt is rejected, not double-processed.
+        // And a second cancel attempt is not double-processed: the same answer (QA run 6: it was
+        // an error right after the first one worked), still pending, the owner not asked again.
+        var sentBefore = Factory.WhatsAppSender.Sent.Count;
         var secondCancelReq = new HttpRequestMessage(HttpMethod.Post, $"/api/customer/appointments/{appt.AppointmentId}/cancel");
         secondCancelReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", customerToken);
         var secondCancel = await Client.SendAsync(secondCancelReq);
-        Assert.Equal(HttpStatusCode.Conflict, secondCancel.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, secondCancel.StatusCode);
+        Assert.Equal(sentBefore, Factory.WhatsAppSender.Sent.Count);
+        using var after = Db();
+        Assert.True(after.Appointments.Single(a => a.Id == appt.AppointmentId).PendingCancellationApproval);
     }
 
     [Fact]

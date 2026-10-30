@@ -157,7 +157,7 @@ export default function RequestBusinessAccountPage() {
               </p>
               <div className="flex gap-2">
                 <input
-                  type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
+                  type="email" dir="ltr" required value={email} onChange={(e) => setEmail(e.target.value)}
                   placeholder={t(lang, 'reqEmail')} autoComplete="email" className={`flex-1 min-w-0 ${inputClass}`}
                 />
                 <button type="button" onClick={handleSendCode} disabled={!emailLooksValid || sendingCode}

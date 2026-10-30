@@ -52,11 +52,30 @@ public class ValidateInputFilter : IActionFilter
         return null;
     }
 
+    // Longer free text an owner or a platform admin types (QA run 6: no limit at all).
+    private static readonly HashSet<string> LongTextNames = new(StringComparer.OrdinalIgnoreCase) { "note", "businessDescription", "systemNeeds" };
+    public const int MaxLongTextLength = 2000;
+    public const int MaxSubjectLength = 200;
+    public const int MaxBodyLength = 20000;
+
     private static string? Check(string name, string? value)
     {
-        if (string.IsNullOrEmpty(value)) return null;
+        if (value is null) return null;
+        // An empty "date" went on to DateTime.Parse and a 500 (QA run 6). StartDate/EndDate may be
+        // sent empty to mean "none".
+        if (value.Length == 0)
+            return name.Equals("date", StringComparison.OrdinalIgnoreCase) ? "Invalid date. Use the format YYYY-MM-DD." : null;
         if (DateNames.Contains(name) && !IsDate(value))
             return "Invalid date. Use the format YYYY-MM-DD.";
+        // bcrypt only uses the first 72 bytes, so a longer password was cut without a word (QA run 6).
+        if (name.Contains("password", StringComparison.OrdinalIgnoreCase) && System.Text.Encoding.UTF8.GetByteCount(value) > 72)
+            return "Passwords can be at most 72 characters.";
+        if (LongTextNames.Contains(name) && value.Length > MaxLongTextLength)
+            return $"This text can be at most {MaxLongTextLength} characters.";
+        if (name.Equals("subject", StringComparison.OrdinalIgnoreCase) && value.Length > MaxSubjectLength)
+            return $"The subject can be at most {MaxSubjectLength} characters.";
+        if (name.Equals("body", StringComparison.OrdinalIgnoreCase) && value.Length > MaxBodyLength)
+            return $"The message can be at most {MaxBodyLength} characters.";
         if (name.Equals("notes", StringComparison.OrdinalIgnoreCase) && value.Length > MaxNotesLength)
             return $"Notes can be at most {MaxNotesLength} characters.";
         if (name.EndsWith("name", StringComparison.OrdinalIgnoreCase) && value.Length > MaxNameLength)

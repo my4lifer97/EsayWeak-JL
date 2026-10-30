@@ -11,10 +11,19 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
 {
     // The linking calls report a bridge that is down, timing out or answering with an error as one
     // WhatsAppBridgeUnavailableException (a clear 503 via GlobalExceptionHandler, not a bare 500).
+    // A 200 with an empty or unreadable body counts as the bridge not answering: passed on, the
+    // admin page showed "Connecting..." forever (QA run 6).
+    private static async Task<WhatsAppLinkStatusDto> ReadStatusAsync(HttpResponseMessage resp)
+    {
+        var status = await resp.Content.ReadFromJsonAsync<WhatsAppLinkStatusDto>();
+        if (status is null || string.IsNullOrEmpty(status.State)) throw new HttpRequestException("The bridge sent no session status");
+        return status;
+    }
+
     private static async Task<T> Linking<T>(Func<Task<T>> call)
     {
         try { return await call(); }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {
             throw new WhatsAppBridgeUnavailableException(ex);
         }
@@ -44,7 +53,7 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
         {
             var resp = await http.PostAsync($"/sessions/{businessId}/start", null);
             resp.EnsureSuccessStatusCode();
-            return (await resp.Content.ReadFromJsonAsync<WhatsAppLinkStatusDto>())!;
+            return await ReadStatusAsync(resp);
         });
     }
 
@@ -54,7 +63,7 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
         {
             var resp = await http.GetAsync($"/sessions/{businessId}/status");
             resp.EnsureSuccessStatusCode();
-            return (await resp.Content.ReadFromJsonAsync<WhatsAppLinkStatusDto>())!;
+            return await ReadStatusAsync(resp);
         });
     }
 

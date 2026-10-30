@@ -222,7 +222,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
   // With a chosen file the text is its caption.
   async function send() {
     if (!file) {
-      if (draft.trim()) await act('/admin/chats/messages', { text: draft.trim() }, () => setDraft(''))
+      if (draft.trim()) await act('/admin/chats/messages', { text: draft.trim() }, () => { setDraft(''); drafts.delete(phone) })
       return
     }
     if (busy) return
@@ -233,7 +233,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
       form.append('caption', draft.trim())
       form.append('file', file)
       await api.post('/admin/chats/attachment', form)
-      setDraft(''); setFile(null)
+      setDraft(''); setFile(null); drafts.delete(phone)
       await queryClient.invalidateQueries({ queryKey: ['chat', phone] })
       onChanged()
     } catch (err) {
@@ -272,12 +272,14 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
           <div className="text-ink font-medium truncate underline decoration-dotted underline-offset-4">{chat?.name ?? <bdi dir="ltr">{phone}</bdi>}</div>
           {chat?.name && <div className="text-muted text-xs"><bdi dir="ltr">{phone}</bdi></div>}
         </button>
-        {canAct && (
+        {chat?.isOpen && (
           <div className="flex gap-2">
-            <button onClick={() => setPanel(panel === 'link' ? 'none' : 'link')} disabled={busy}
-              className={`${button} border border-line text-ink hover:bg-cream`}>
-              {t(lang, 'chatsSendLink')}
-            </button>
+            {canAct && (
+              <button onClick={() => setPanel(panel === 'link' ? 'none' : 'link')} disabled={busy}
+                className={`${button} border border-line text-ink hover:bg-cream`}>
+                {t(lang, 'chatsSendLink')}
+              </button>
+            )}
             <button onClick={() => setPanel(panel === 'finish' ? 'none' : 'finish')} disabled={busy}
               className={`${button} border border-line text-ink hover:bg-cream`}>
               {t(lang, 'chatsFinish')}
@@ -334,7 +336,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
           <button onClick={() => setPanel('none')} className={`${button} text-muted hover:text-ink`}>{t(lang, 'chatsCancel')}</button>
         </div>
       )}
-      {canAct && panel === 'finish' && (
+      {chat?.isOpen && panel === 'finish' && (
         <div className="px-4 py-3 border-b border-line bg-surface space-y-2">
           <div className="text-sm text-ink">{t(lang, 'chatsFinishQuestion')}</div>
           <div className="flex flex-wrap gap-2">
@@ -459,8 +461,16 @@ function AttachmentView({ attachment, light }: { attachment: ChatAttachment; lig
     }
   }, [attachment.id, inline])
 
+  const [downloadFailed, setDownloadFailed] = useState(false)
   async function download() {
-    const r = await api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
+    setDownloadFailed(false)
+    let r
+    try {
+      r = await api.get(`/admin/chats/attachments/${attachment.id}`, { responseType: 'blob' })
+    } catch {
+      setDownloadFailed(true) // nothing happened at all before (QA run 6)
+      return
+    }
     const href = URL.createObjectURL(r.data as Blob)
     const a = document.createElement('a')
     a.href = href
@@ -478,6 +488,7 @@ function AttachmentView({ attachment, light }: { attachment: ChatAttachment; lig
     <button onClick={download}
       className={`flex items-center gap-2 mb-1 rounded-lg px-2 py-1.5 text-sm text-start ${light ? 'bg-cream text-ink' : 'bg-white/20 text-white'}`}>
       <span>📄</span><span className="underline break-all" dir="auto">{attachment.fileName}</span>
+      {downloadFailed && <span className="text-xs">⚠️</span>}
     </button>
   )
 }

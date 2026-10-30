@@ -1,6 +1,7 @@
 import './redactLogs.js'
 import express from 'express'
-import { statusDto, startSession, restoreSessions, unlinkSession, sendMessage } from './sessionManager.js'
+import { timingSafeEqual } from 'crypto'
+import { statusDto, startSession, restoreSessions, unlinkSession, sendMessage, isValidBusinessId } from './sessionManager.js'
 
 const PORT = process.env.PORT || 3001
 const BRIDGE_SECRET = process.env.BRIDGE_SECRET
@@ -11,13 +12,22 @@ if (!process.env.BACKEND_URL || !BRIDGE_SECRET) {
 }
 
 const app = express()
+// Every request is server-to-server (the backend, over Railway's private network in production) --
+// same shared-secret pattern as the backend's own CronSecret. Checked before the body is read
+// (a stranger could make it parse 15MB bodies) and in constant time (QA run 6).
+const secretBytes = Buffer.from(BRIDGE_SECRET)
+app.use((req, res, next) => {
+  const given = Buffer.from(String(req.headers['x-bridge-secret'] ?? ''))
+  if (given.length !== secretBytes.length || !timingSafeEqual(given, secretBytes)) return res.status(401).json({ error: 'Unauthorized' })
+  next()
+})
+
 // Chat attachments arrive inline (base64): up to 10MB files, a third larger once encoded.
 app.use(express.json({ limit: '15mb' }))
 
-// Every request is server-to-server (the backend, over Railway's private network in production) --
-// same shared-secret pattern as the backend's own CronSecret.
-app.use((req, res, next) => {
-  if (req.headers['x-bridge-secret'] !== BRIDGE_SECRET) return res.status(401).json({ error: 'Unauthorized' })
+// A business id names a session folder, so only plain ids get through (QA run 6).
+app.param('businessId', (req, res, next, businessId) => {
+  if (!isValidBusinessId(businessId)) return res.status(400).json({ error: 'Invalid business id' })
   next()
 })
 

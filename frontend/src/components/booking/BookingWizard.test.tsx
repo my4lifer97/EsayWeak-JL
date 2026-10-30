@@ -348,7 +348,7 @@ describe('BookingWizard', () => {
 
     // With the slot as shown, so a booking that moved since gets a 409 instead (QA run 4).
     await waitFor(() => expect(customerApi.post).toHaveBeenCalledWith('/test-business/waitlist/appt-booked', null,
-      { params: { date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), startTime: '09:00' } }))
+      { params: { date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), startTime: '09:00', itemId: 'svc-1' } }))
     await waitFor(() => expect(screen.getByText(/You're on the waitlist/)).toBeInTheDocument())
   })
 

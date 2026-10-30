@@ -22,7 +22,9 @@ public static class ChatLog
     // links) is left out of the stored copy: the customer has the working link on WhatsApp, and
     // chat history is kept long after (QA run 5).
     public static string WithoutLinkTokens(string text) =>
-        Regex.Replace(Regex.Replace(text, @"/w/[A-Za-z0-9_-]+", "/w/..."), @"([?&]token=)[^&\s]+", "$1...");
+        // Inside links only: "/w/" or "token=" in the owner's own words stays (QA run 6).
+        Regex.Replace(text, @"https?://\S+", m =>
+            Regex.Replace(Regex.Replace(m.Value, @"/w/[A-Za-z0-9_-]+", "/w/..."), @"([?&]token=)[^&\s]+", "$1..."));
 
     public static ChatMessage NewMessage(string businessId, string customerPhone, ChatSender sender, string text, string? customerName = null) => new()
     {

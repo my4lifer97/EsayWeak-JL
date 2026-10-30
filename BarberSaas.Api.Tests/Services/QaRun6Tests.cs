@@ -66,4 +66,47 @@ public class QaRun6Tests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, forMove.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, forNew.StatusCode);
     }
+
+    // PUB-3: an empty date went on to DateTime.Parse and a 500.
+    [Fact]
+    public async Task EmptyDate_IsABadRequest()
+    {
+        var resp = await Client.GetAsync("/api/no-such-shop/availability?date=&itemId=x");
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    // PA-9: bcrypt only uses the first 72 bytes, so a longer password was cut without a word.
+    [Fact]
+    public async Task PasswordOver72Bytes_IsRefused()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/auth/register",
+            new RegisterRequest("Shop", "qa6-longpw@example.com", new string('p', 73), "qa6-longpw-shop"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    // PUB-6
+    [Theory]
+    [InlineData("customer")]
+    [InlineData("businesses")]
+    public void ApiPrefixes_AreReservedSlugs(string slug)
+    {
+        Assert.True(SlugValidator.IsReserved(slug));
+    }
+
+    // SEC-3: only tokens inside links are left out; the owner's own words stay.
+    [Fact]
+    public void LinkTokens_OnlyInsideLinks()
+    {
+        Assert.Equal("use /w/abc and token=xyz", ChatLog.WithoutLinkTokens("use /w/abc and token=xyz"));
+        Assert.Equal("https://x.app/s/w/... ok", ChatLog.WithoutLinkTokens("https://x.app/s/w/AbC123 ok"));
+    }
+
+    // CHAT-8
+    [Fact]
+    public void SafeFileName_DropsZeroWidthCharacters()
+    {
+        Assert.Equal("ab.pdf", ChatFiles.SafeFileName("a\u200Bb\uFEFF.pdf"));
+    }
 }

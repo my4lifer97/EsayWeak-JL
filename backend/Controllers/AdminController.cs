@@ -96,6 +96,11 @@ public class AdminController(
             return "Max bookings per day must be between 1 and 1000, or empty for unlimited";
         if (has("maxBookingsPerWeek") && req.MaxBookingsPerWeek is < 1 or > 1000)
             return "Max bookings per week must be between 1 and 1000, or empty for unlimited";
+        // QA run 6: accepted, though the week limit then always wins.
+        var day = has("maxBookingsPerDay") ? req.MaxBookingsPerDay : b.MaxBookingsPerDay;
+        var week = has("maxBookingsPerWeek") ? req.MaxBookingsPerWeek : b.MaxBookingsPerWeek;
+        if (day is not null && week is not null && day > week)
+            return "Max bookings per day can't be more than per week";
         if (req.Language is not null && !IsLanguage(req.Language))
             return "Language must be EN, AR or HE";
         if (has("chatbotDefaultLanguage") && !string.IsNullOrWhiteSpace(req.ChatbotDefaultLanguage) && !IsLanguage(req.ChatbotDefaultLanguage))
@@ -436,12 +441,17 @@ public class AdminController(
 
     // ─── Item gallery photos ────────────────────────────────────────────────
 
+    private const int MaxGalleryPhotos = 20;
+
     [HttpPost("items/{id}/gallery")]
     [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
     public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
     {
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
+        // QA run 6: no cap (26 on one item).
+        if (await db.ItemGalleryPhotos.CountAsync(p => p.ItemId == item.Id) >= MaxGalleryPhotos)
+            return BadRequest(new { error = $"A service can have up to {MaxGalleryPhotos} photos" });
 
         if (await ImageUpload.ValidateAsync(file) is not { } ext)
             return BadRequest(new { error = ImageUpload.Error });
@@ -1381,6 +1391,9 @@ public class AdminController(
 
         if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerPhone))
             return (null, BadRequest(new { error = "Customer name and phone are required" }));
+        // Stored as typed, spaces and all (QA run 6).
+        customerName = customerName.Trim();
+        customerFamilyName = customerFamilyName?.Trim();
         if (!PhoneNormalizer.IsValid(customerPhone))
             return (null, BadRequest(new { error = "Please enter a valid phone number" }));
         // Same stored format as every other path, so "050..." typed here finds the customer who

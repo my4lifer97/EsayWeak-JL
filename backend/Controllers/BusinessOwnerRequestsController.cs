@@ -59,7 +59,7 @@ public class BusinessOwnerRequestsController(
         if (recent.Count >= EmailOtpMaxPerHour)
             return StatusCode(429, new { error = "Too many requests. Try again later" });
 
-        var code = Random.Shared.Next(100000, 999999).ToString();
+        var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
         var otpRow = new BusinessOwnerRequestEmailOtp
         {
             Email = email,

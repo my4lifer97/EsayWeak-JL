@@ -65,11 +65,17 @@ public class CustomerAppointmentsController(
             .Include(a => a.Item).Include(a => a.Business)
             .FirstOrDefaultAsync(a => a.Id == id && a.Customer.CustomerAccountId == AccountId);
         if (appt is null) return NotFound(new { error = "Not found" });
-        if (appt.PendingCancellationApproval || AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
+        // Already cancelled (or asked to be): a second click is the same answer, not an error
+        // right after the first one worked (QA run 6).
+        if (AlreadyCancelled(appt)) return Ok(new { ok = true });
+        if (AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) != "CONFIRMED")
             return Conflict(new { error = "This appointment can no longer be modified" });
 
         if (!await cancellationService.CancelFromCustomerAsync(appt))
-            return Conflict(new { error = "This appointment can no longer be modified" });
+        {
+            await db.Entry(appt).ReloadAsync();
+            return AlreadyCancelled(appt) ? Ok(new { ok = true }) : Conflict(new { error = "This appointment can no longer be modified" });
+        }
         await db.SaveChangesAsync();
 
         // CancelFromCustomerAsync doesn't always finalize the cancellation -- if the business
@@ -81,6 +87,9 @@ public class CustomerAppointmentsController(
 
         return Ok(new { ok = true });
     }
+
+    private static bool AlreadyCancelled(Appointment appointment) =>
+        appointment.Status == AppointmentStatus.CANCELLED || appointment.PendingCancellationApproval;
 
     [HttpPatch("{id}/reschedule")]
     public async Task<IActionResult> Reschedule(string id, [FromBody] RescheduleRequest req)

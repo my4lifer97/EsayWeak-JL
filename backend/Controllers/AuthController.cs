@@ -285,7 +285,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             return Ok(new { devCode = (string?)null });
         }
 
-        var code = Random.Shared.Next(100000, 999999).ToString();
+        var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
         db.BusinessPasswordResetOtps.Add(new BusinessPasswordResetOtp
         {
             Email = email,
@@ -398,7 +398,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
     private string AddVerificationCode(string email)
     {
-        var code = Random.Shared.Next(100000, 999999).ToString();
+        var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
         db.BusinessEmailOtps.Add(new BusinessEmailOtp
         {
             Email = email,

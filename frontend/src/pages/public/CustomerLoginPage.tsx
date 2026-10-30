@@ -13,7 +13,9 @@ export default function CustomerLoginPage() {
   const { language: lang, requestOtp, verifyOtp, isAuthenticated } = useCustomerAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const next = params.get('next') ?? '/browse'
+  // Only a path inside this site: "//evil.com" or "https://..." sent people elsewhere after login (QA run 6).
+  const wanted = params.get('next')
+  const next = wanted && wanted.startsWith('/') && !wanted.startsWith('//') && !wanted.startsWith('/\\') ? wanted : '/browse'
 
   const [view, setView] = useState<View>('phone')
   const [phone, setPhone] = useState('')

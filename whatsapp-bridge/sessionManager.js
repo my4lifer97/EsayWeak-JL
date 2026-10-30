@@ -22,6 +22,9 @@ const MAX_SENT_IDS = 5000
 // A customer's photo, video, voice note, sticker or file goes to the backend with the message, for
 // the owner's Chats page (kept only while that customer's chat is open). Bigger ones are reported
 // by name only, so one long video can't fill the database.
+// Calls to the backend give up after this, so one slow reply can't hold up every later message
+// (messages are handled one at a time, QA run 6).
+const BACKEND_TIMEOUT_MS = 60_000
 const MEDIA_TYPES = ['imageMessage', 'videoMessage', 'ptvMessage', 'audioMessage', 'documentMessage', 'stickerMessage']
 const MAX_MEDIA_BYTES = 16 * 1024 * 1024
 const silentLogger = pino({ level: 'silent' })
@@ -81,7 +84,26 @@ async function hasLinkedCreds(businessId) {
   }
 }
 
-export async function startSession(businessId) {
+// One start at a time per business: the checks above the first await let a double Link click, or
+// a click during a reconnect, open two sockets on one auth folder -- every message answered twice
+// and a "connection replaced" loop (QA run 6). A second caller gets the same start.
+const starting = new Map()
+
+// A business id is a database id: letters, digits, "-" and "_" only, since it names a folder.
+export function isValidBusinessId(businessId) {
+  return typeof businessId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(businessId)
+}
+
+export function startSession(businessId) {
+  if (!isValidBusinessId(businessId)) return Promise.reject(new Error('Invalid business id'))
+  const inFlight = starting.get(businessId)
+  if (inFlight) return inFlight
+  const start = startSessionNow(businessId).finally(() => starting.delete(businessId))
+  starting.set(businessId, start)
+  return start
+}
+
+async function startSessionNow(businessId) {
   const existing = sessions.get(businessId)
   if (existing && existing.status !== 'disconnected') return existing
 
@@ -195,11 +217,18 @@ export async function startSession(businessId) {
         console.log(`[${businessId}] connection closed, reconnecting in ${Math.round(delayMs / 1000)}s (code ${statusCode}${forbidden ? ', WhatsApp temporary block' : ''})`)
         // Skipped if it was unlinked or restarted meanwhile (that session handles itself).
         // The status is set again here: startSession reuses any session that isn't 'disconnected'.
-        setTimeout(() => {
+        // A failed start (e.g. the version lookup's network call) is retried later: without the
+        // catch it was an unhandled rejection that could take down the bridge for every
+        // business, or leave this one disconnected for good (QA run 6).
+        const reconnect = () => {
           if (sessions.get(businessId) !== session) return
           session.status = 'disconnected'
-          startSession(businessId)
-        }, delayMs)
+          startSession(businessId).catch((err) => {
+            console.error(`[${businessId}] reconnect failed, trying again in 60s:`, err.message)
+            setTimeout(reconnect, 60_000)
+          })
+        }
+        setTimeout(reconnect, delayMs)
       }
     }
   })
@@ -291,6 +320,7 @@ async function mediaWanted(businessId, fromPhone) {
     const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/media-wanted`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
+      signal: AbortSignal.timeout(BACKEND_TIMEOUT_MS),
       body: JSON.stringify({ businessId, fromPhone }),
     })
     return resp.ok && (await resp.json()).wanted === true
@@ -321,6 +351,7 @@ async function reportOwnMessage(businessId, sock, msg) {
   const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/outgoing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
+      signal: AbortSignal.timeout(BACKEND_TIMEOUT_MS),
     body: JSON.stringify({ businessId, toPhone, message: text }),
   })
   if (!resp.ok) throw new Error(`backend responded ${resp.status}`)
@@ -342,13 +373,15 @@ async function handleInboundMessage(businessId, sock, msg) {
     return
   }
 
-  const fromPhone = `+${jid.split('@')[0]}`
+  // Without a ":device" suffix ("15551234567:12"), like the owner's own messages (QA run 6).
+  const fromPhone = `+${jid.split('@')[0].split(':')[0]}`
   const profileName = msg.pushName || null
   const media = mediaInfo && await messageMedia(businessId, sock, msg, mediaInfo, await mediaWanted(businessId, fromPhone))
 
   const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/inbound`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
+      signal: AbortSignal.timeout(BACKEND_TIMEOUT_MS),
     body: JSON.stringify({ businessId, fromPhone, profileName, message: text, media }),
   })
   if (!resp.ok) throw new Error(`backend responded ${resp.status}`)
@@ -371,6 +404,7 @@ async function reportSessionEvent(businessId, event, phoneNumber, isCurrent = ()
     const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/session-event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
+      signal: AbortSignal.timeout(BACKEND_TIMEOUT_MS),
       body: JSON.stringify({ businessId, event, phoneNumber }),
     })
     if (resp.ok || resp.status === 404) return

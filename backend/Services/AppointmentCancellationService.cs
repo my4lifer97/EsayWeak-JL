@@ -55,7 +55,9 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
     public async Task<bool> CancelFromCustomerAsync(Appointment appointment)
     {
         var business = await db.Businesses.FindAsync(appointment.BusinessId);
-        if (business is null || !business.RequireApprovalOnCustomerCancel)
+        // A disabled business's owner can't sign in to decide, so the cancel would hang as
+        // "pending" for good (QA run 6).
+        if (business is null || !business.RequireApprovalOnCustomerCancel || business.IsDisabled)
             return await CancelAsync(appointment, notifyWaitlist: true);
 
         // Each channel the owner turned on, if it can actually reach them. WhatsApp also needs the

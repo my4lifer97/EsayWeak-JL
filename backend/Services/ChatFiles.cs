@@ -125,7 +125,9 @@ public static class ChatFiles
 
     // Direction marks and overrides: "invoice" + U+202E + "fdp.exe" shows as "invoiceexe.pdf" (QA run 5).
     private static readonly HashSet<char> BidiControls =
-        ['\u061C', '\u200E', '\u200F', '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066', '\u2067', '\u2068', '\u2069'];
+        ['\u061C', '\u200E', '\u200F', '\u202A', '\u202B', '\u202C', '\u202D', '\u202E', '\u2066', '\u2067', '\u2068', '\u2069',
+         // and other invisible ones (zero-width space, line/paragraph separators, BOM, soft hyphen; QA run 6)
+         '\u200B', '\u200C', '\u2028', '\u2029', '\u2060', '\uFEFF', '\u00AD'];
 
     // Just the name (no path), without characters that break a download header, at most 120 long.
     public static string SafeFileName(string fileName)

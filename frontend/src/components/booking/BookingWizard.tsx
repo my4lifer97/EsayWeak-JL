@@ -391,7 +391,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
               </div>
               <div>
                 <label htmlFor="booking-phone" className="block text-sm font-medium text-ink mb-1.5">{t(lang, 'phoneNumber')}</label>
-                <input id="booking-phone" type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
+                <input id="booking-phone" type="tel" dir="ltr" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1234567890"
                   disabled={isAuthenticated}
                   className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral disabled:opacity-60" />
               </div>

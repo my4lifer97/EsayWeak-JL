@@ -80,7 +80,8 @@ public class ChatsController(
 
         return Ok(chats
             .Select(c => new ChatSummaryDto(c.Phone, names.GetValueOrDefault(c.Phone),
-                lastMessages[c.Phone].Text.Length == 0 && lastMessages[c.Phone].FileName is { } file ? $"📎 {file}" : lastMessages[c.Phone].Text,
+                // A preview: the whole message (up to 4000 characters) went out for every chat every 5 s (QA run 6).
+                TextCut.Cut(lastMessages[c.Phone].Text.Length == 0 && lastMessages[c.Phone].FileName is { } file ? $"📎 {file}" : lastMessages[c.Phone].Text, 200),
                 lastMessages[c.Phone].Sender.ToString(), c.LastAt, c.Unread, open.Contains(c.Phone)))
             .OrderByDescending(c => c.IsOpen).ThenByDescending(c => c.LastAt));
     }
@@ -229,7 +230,8 @@ public class ChatsController(
     [HttpPost("finish")]
     public async Task<IActionResult> Finish([FromBody] FinishChatRequest req)
     {
-        var (chat, error) = await OpenChatFor(req.Phone);
+        // Also while the bot is unlinked: the chat couldn't be ended at all (QA run 6).
+        var (chat, error) = await OpenChatFor(req.Phone, requireLinkedBot: false);
         if (error is not null) return error;
 
         var business = (await db.Businesses.FindAsync(BusinessId))!;
@@ -243,16 +245,22 @@ public class ChatsController(
         if (db.Entry(chat.State).State != EntityState.Detached && chat.State.ChatbotMode == ServiceListPrompt.InquiryMode)
             db.WhatsAppConversationStates.Remove(chat.State);
 
-        try
+        // Recorded in the chat only when it went out: a failed send showed as delivered (QA run 6).
+        var sent = !string.IsNullOrWhiteSpace(business.WhatsAppNumber);
+        if (sent)
         {
-            await bridge.SendAsync(BusinessId, PhoneNormalizer.ToE164(chat.Phone), text);
+            try
+            {
+                await bridge.SendAsync(BusinessId, PhoneNormalizer.ToE164(chat.Phone), text);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                // Finished anyway: the owner is done, the customer just doesn't get told.
+                logger.LogWarning(ex, "Chat-finished message to a customer of business {BusinessId} failed", BusinessId);
+                sent = ex is TaskCanceledException; // a timeout may well have gone out
+            }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            // Finished anyway: the owner is done, the customer just doesn't get told.
-            logger.LogWarning(ex, "Chat-finished message to a customer of business {BusinessId} failed", BusinessId);
-        }
-        db.ChatMessages.Add(ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Bot, text));
+        if (sent) db.ChatMessages.Add(ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Bot, text));
         await db.ChatMessages
             .Where(m => m.BusinessId == BusinessId && m.CustomerPhone == chat.Phone && !m.IsRead)
             .ExecuteUpdateAsync(u => u.SetProperty(m => m.IsRead, true));
@@ -297,8 +305,12 @@ public class ChatsController(
         db.QuickReplies.Add(reply);
         await db.SaveChangesAsync();
         // Counted again after the insert: two requests at once both passed the check above and
-        // went past the limit (QA run 5). Each one over it takes itself back out.
-        if (await db.QuickReplies.CountAsync(q => q.BusinessId == BusinessId) > MaxQuickReplies)
+        // went past the limit (QA run 5). Only the ones past the first 100 (by when they were made)
+        // take themselves back out; each removing itself on any excess also emptied a free slot
+        // (QA run 6).
+        var keptIds = await db.QuickReplies.Where(q => q.BusinessId == BusinessId)
+            .OrderBy(q => q.CreatedAt).ThenBy(q => q.Id).Take(MaxQuickReplies).Select(q => q.Id).ToListAsync();
+        if (!keptIds.Contains(reply.Id))
         {
             db.QuickReplies.Remove(reply);
             await db.SaveChangesAsync();
@@ -344,7 +356,8 @@ public class ChatsController(
     // The customer's open chat, or the error to answer: 404 for no chat at all, 409 for a finished
     // one (the owner can't start conversations -- messaging numbers out of the blue is what gets a
     // WhatsApp number banned), 400 when no WhatsApp number is linked.
-    private async Task<(OpenChat? Chat, IActionResult? Error)> OpenChatFor(string? phone)
+    // requireLinkedBot false: for finishing, which works without the bot (the customer just isn't told).
+    private async Task<(OpenChat? Chat, IActionResult? Error)> OpenChatFor(string? phone, bool requireLinkedBot = true)
     {
         var customerPhone = PhoneNormalizer.Normalize(phone ?? "");
         if (customerPhone.Length == 0
@@ -356,7 +369,7 @@ public class ChatsController(
         if (state is null) return (null, Conflict(new { error = "This chat has ended" }));
 
         var business = await db.Businesses.FindAsync(BusinessId);
-        if (string.IsNullOrWhiteSpace(business!.WhatsAppNumber))
+        if (requireLinkedBot && string.IsNullOrWhiteSpace(business!.WhatsAppNumber))
             return (null, BadRequest(new { error = "Your WhatsApp bot isn't linked, so messages can't be sent" }));
         return (new OpenChat(customerPhone, state.Language, state), null);
     }
@@ -385,6 +398,13 @@ public class ChatsController(
         catch (Exception ex) when (SendFailure(ex) is { } failure)
         {
             logger.LogWarning(ex, "Chat message to a customer of business {BusinessId} failed", BusinessId);
+            // A timeout may well have been delivered: kept in the chat so the owner sees what they
+            // sent while checking (QA run 6: no trace at all).
+            if (ex is TaskCanceledException)
+            {
+                db.ChatMessages.Add(ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Owner, text));
+                await db.SaveChangesAsync();
+            }
             return failure;
         }
         db.ChatMessages.Add(ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Owner, text));
