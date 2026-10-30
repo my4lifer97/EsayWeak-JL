@@ -96,6 +96,15 @@ public class WhatsAppController(
     // "Keep it" to the reminder's "1 to confirm / 2 to cancel" is a confirm (QA run 5: as a no word
     // it cancelled the appointment).
     private static readonly string[] KeepWords = ["keep", "להשאיר", "השאר", "תשאיר", "תשאירו", "خلي", "خليه", "ابقي", "أبقي", "إبقاء", "ابقاء"];
+    // Short replies to the reminder's question that mean "I'm coming" (IsAttendanceAcknowledgement).
+    private static readonly string[] AcknowledgementWords =
+    [
+        "ok", "okay", "k", "thanks", "thank", "thx", "great", "perfect", "cool", "confirm", "confirmed", "coming", "come",
+        "i", "ll", "will", "be", "there", "see", "then", "tomorrow", "sure", "of", "course",
+        "אוקיי", "אוקי", "בסדר", "תודה", "רבה", "מגיע", "מגיעה", "אגיע", "נגיע", "אהיה", "שם", "מאשר", "מאשרת", "מעולה", "סבבה", "נתראה", "מחר",
+        "تمام", "شكرا", "اوكي", "أوكي", "جاي", "جاية", "رح", "اجي", "آجي", "بجي", "موجود", "منيح", "ممتاز", "بشوفك", "بكرا", "بكره", "اكيد", "أكيد",
+    ];
+    private static readonly string[] AcknowledgementEmoji = ["\U0001F44D", "\U0001F44C", "\u2705", "\U0001F64F", "\u2714"];
     // A word before a cancel word that turns it around: "don't cancel", "לא לבטל", "لا تلغي".
     private static readonly string[] NegationWords = ["dont", "not", "never", "לא", "אל", "لا", "ما", "مش", "بلاش"];
     // "#" since 2026-10-23 (owner's choice, like the #1/#2 commands); "$" still works, since earlier
@@ -1331,29 +1340,58 @@ public class WhatsAppController(
         var state = await db.WhatsAppConversationStates.FirstOrDefaultAsync(s =>
             s.BusinessId == businessId && s.Phone == fromPhone && s.ExpiresAt > DateTime.UtcNow);
         var appointmentId = AttendanceQuestion.AppointmentId(state?.ChatbotMode);
-        if (appointmentId is null) return (false, null);
+        var answeredId = AttendanceQuestion.AnsweredAppointmentId(state?.ChatbotMode);
+        if (appointmentId is null && answeredId is null) return (false, null);
 
         var appointment = await db.Appointments.Include(a => a.Customer)
-            .FirstOrDefaultAsync(a => a.Id == appointmentId && a.BusinessId == businessId && a.Customer.Phone == fromPhone);
+            .FirstOrDefaultAsync(a => a.Id == (appointmentId ?? answeredId) && a.BusinessId == businessId && a.Customer.Phone == fromPhone);
         var open = appointment is not null && appointment.Status == AppointmentStatus.CONFIRMED && !appointment.PendingCancellationApproval
             && AppointmentStatusHelper.EffectiveStatus(appointment.Status, appointment.Date, appointment.EndTime) == "CONFIRMED";
+        var bareNumber = ParseNumber(message) is 1 or 2;
 
-        var answer = AttendanceAnswer(message, reasked: state!.InvalidAttempts > 0);
+        // A bare "1"/"2" just after the answer (a double tap), or to a question whose appointment is
+        // already cancelled, is about that appointment: read as the opening menu, "2" opened a chat
+        // with the owner and "1" sent the service list (QA run 5).
+        if (bareNumber && appointment is not null && (answeredId is not null || !open))
+        {
+            if (appointmentId is not null)
+            {
+                db.WhatsAppConversationStates.Remove(state!);
+                await db.SaveChangesAsync();
+            }
+            return (true, open && appointment.AttendanceStatus == AttendanceQuestion.Confirmed
+                ? I18nService.T(lang, "whatsapp.attendanceConfirmed", DateTimeArgs(appointment))
+                : appointment.Status == AppointmentStatus.CANCELLED || appointment.PendingCancellationApproval
+                    ? CancelResultMessage(appointment, lang)
+                    : I18nService.T(lang, "whatsapp.attendanceNoLongerOpen", DateTimeArgs(appointment)));
+        }
+
+        var answer = answeredId is null ? AttendanceAnswer(message, reasked: state!.InvalidAttempts > 0) : null;
         if (open && answer == "reask")
         {
-            state.InvalidAttempts = 1;
+            state!.InvalidAttempts = 1;
             await db.SaveChangesAsync();
             return (true, I18nService.T(lang, "whatsapp.attendanceReask", DateTimeArgs(appointment!)));
         }
 
-        db.WhatsAppConversationStates.Remove(state);
+        if (!open || answer is not ("1" or "2"))
+        {
+            db.WhatsAppConversationStates.Remove(state!);
+            await db.SaveChangesAsync();
+            return (false, null);
+        }
+
+        // Kept a few minutes as answered, for a repeated "1"/"2" (above).
+        AttendanceQuestion.MarkAnswered(state!, appointmentId!);
         await db.SaveChangesAsync();
-        if (!open || answer is not ("1" or "2")) return (false, null);
 
         if (answer == "2")
         {
-            var cancelled = await CancelConfirmedAppointment(businessId, appointmentId, fromPhone, lang);
-            return cancelled is null ? (false, null) : (true, cancelled);
+            var cancelled = await CancelConfirmedAppointment(businessId, appointmentId!, fromPhone, lang);
+            if (cancelled is not null) return (true, cancelled);
+            db.WhatsAppConversationStates.Remove(state!);
+            await db.SaveChangesAsync();
+            return (false, null);
         }
 
         appointment!.AttendanceStatus = AttendanceQuestion.Confirmed;
@@ -1375,7 +1413,19 @@ public class WhatsAppController(
             return "1";
         if (cancelAt >= 0)
             return reasked && !negatedCancel ? "2" : "reask";
+        if (IsAttendanceAcknowledgement(message, words)) return "1";
         return ConfirmationAnswer(message);
+    }
+
+    // "ok", "thanks", a thumbs up, "I'll be there", "אגיע", "تمام": a short reply that means coming.
+    // They dropped the question and got the Book/Ask menu, and the owner's badge stayed on waiting
+    // (QA run 5). Every word must be one of these, so "ok but at 11" isn't one.
+    private static bool IsAttendanceAcknowledgement(string message, List<string> words)
+    {
+        if (words.Count == 0)
+            return AcknowledgementEmoji.Any(message.Contains) && !message.Any(char.IsDigit);
+        return words.Count <= 6 && words.Any(w => AcknowledgementWords.Contains(w))
+            && words.All(w => AcknowledgementWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w));
     }
 
     // The reply that locks the conversation: the "$" reminder, with the lock running LockoutLifetime.
@@ -1515,13 +1565,7 @@ public class WhatsAppController(
 
     private static string TruncateName(string? name) => name is null ? "" : Cut(name, Filters.ValidateInputFilter.MaxNameLength);
 
-    // Never splits an emoji (surrogate pair): Npgsql refuses to save a lone surrogate, so the
-    // message would 500 and the customer get no reply.
-    private static string Cut(string text, int max)
-    {
-        if (text.Length <= max) return text;
-        return char.IsHighSurrogate(text[max - 1]) ? text[..(max - 1)] : text[..max];
-    }
+    private static string Cut(string text, int max) => TextCut.Cut(text, max);
 
     // Lowercased words, with combining marks (Arabic harakat, Hebrew niqqud) removed: "ألغِ" kept
     // its kasra and missed the keyword list (QA run 4).

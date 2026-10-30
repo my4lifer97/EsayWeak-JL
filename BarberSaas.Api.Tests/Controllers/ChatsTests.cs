@@ -92,6 +92,32 @@ public class ChatsTests : IntegrationTestBase
         Assert.Equal(0, await Unread(token));
     }
 
+    // QA run 5: the newest 100 chats were taken before open ones were sorted first, so an older
+    // open chat disappeared while its unread messages still counted in the badge.
+    [Fact]
+    public async Task OlderOpenChat_StaysInTheList_PastTheNewest100()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-past-100");
+        await OpenChat(businessId, "+15551110099", "Dana");
+        await Inbound(businessId, "+15551110099", "are you open friday?", "Dana");
+        using (var db = Db())
+        {
+            for (var i = 0; i < 101; i++)
+            {
+                var message = BarberSaas.Api.Services.ChatLog.NewMessage(businessId, $"+1555220{i:0000}", BarberSaas.Api.Models.ChatSender.Owner, "hello");
+                message.CreatedAt = DateTime.UtcNow.AddMinutes(5 + i);
+                db.ChatMessages.Add(message);
+            }
+            await db.SaveChangesAsync();
+        }
+
+        Authorize(Client, token);
+        var chats = (await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>("/api/admin/chats"))!;
+
+        Assert.Equal("+15551110099", chats[0].Phone);
+        Assert.True(chats.Count > 100);
+    }
+
     [Fact]
     public async Task TalkingToTheOwner_OpensAChat_WithTheCustomersMessagesUnread()
     {

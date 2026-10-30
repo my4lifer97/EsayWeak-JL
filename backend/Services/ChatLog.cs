@@ -22,7 +22,7 @@ public static class ChatLog
         BusinessId = businessId,
         CustomerPhone = customerPhone,
         Sender = sender,
-        Text = text.Length > MaxTextChars ? text[..MaxTextChars] : text,
+        Text = TextCut.Cut(text, MaxTextChars),
         CustomerName = customerName,
         IsRead = sender != ChatSender.Customer,
     };

@@ -37,7 +37,7 @@ public class OwnerEmailHealth
         lock (_lock)
         {
             _failingSince ??= DateTime.UtcNow;
-            _lastError = error.Length > 500 ? error[..500] : error;
+            _lastError = TextCut.Cut(error, 500);
             _lastCheckedAt = DateTime.UtcNow;
             _recoveryPending = false;
         }

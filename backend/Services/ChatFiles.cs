@@ -85,7 +85,9 @@ public static class ChatFiles
         name = new string(name.Where(c => !char.IsControl(c) && c is not ('"' or '/' or ':' or '*' or '?' or '<' or '>' or '|')).ToArray()).Trim();
         if (name.Length == 0) name = "file";
         if (name.Length <= 120) return name;
+        // A long "extension" ("a.<200 characters>") is just part of the name.
         var ext = Path.GetExtension(name);
-        return name[..(120 - ext.Length)] + ext;
+        if (ext.Length > 20) ext = "";
+        return TextCut.Cut(name[..^ext.Length], 120 - ext.Length) + ext;
     }
 }

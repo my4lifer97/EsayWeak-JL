@@ -46,7 +46,14 @@ public class ChatsController(
     [HttpGet]
     public async Task<IActionResult> GetChats()
     {
-        var chats = await db.ChatMessages
+        // The MaxConversations most recent, plus every open chat and every chat with unread
+        // messages, however old: taking the newest 100 before sorting open ones first hid an older
+        // open chat while its unread messages still counted in the sidebar badge (QA run 5).
+        var openPhones = await db.WhatsAppConversationStates
+            .Where(s => s.BusinessId == BusinessId && s.ChatbotMode == ServiceListPrompt.InquiryMode && s.ExpiresAt > DateTime.UtcNow)
+            .Select(s => s.Phone)
+            .ToListAsync();
+        var grouped = db.ChatMessages
             .Where(m => m.BusinessId == BusinessId)
             .GroupBy(m => m.CustomerPhone)
             .Select(g => new
@@ -54,10 +61,10 @@ public class ChatsController(
                 Phone = g.Key,
                 LastAt = g.Max(m => m.CreatedAt),
                 Unread = g.Count(m => !m.IsRead),
-            })
-            .OrderByDescending(g => g.LastAt)
-            .Take(MaxConversations)
-            .ToListAsync();
+            });
+        var recent = await grouped.OrderByDescending(g => g.LastAt).Take(MaxConversations).ToListAsync();
+        var pinned = await grouped.Where(g => g.Unread > 0 || openPhones.Contains(g.Phone)).ToListAsync();
+        var chats = recent.Concat(pinned).DistinctBy(c => c.Phone).ToList();
 
         var phones = chats.Select(c => c.Phone).ToList();
         var lastMessages = (await db.ChatMessages

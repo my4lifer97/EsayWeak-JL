@@ -19,6 +19,21 @@ public static class AttendanceQuestion
     public static string? AppointmentId(string? chatbotMode) =>
         chatbotMode is not null && chatbotMode.StartsWith(ModePrefix) ? chatbotMode[ModePrefix.Length..] : null;
 
+    // After the answer the row stays a few minutes as "AttendanceAnswered:{id}", so a repeated
+    // "1"/"2" (a double tap) is answered about the appointment instead of opening the menu.
+    public const string AnsweredPrefix = "AttendanceAnswered:";
+    public static readonly TimeSpan AnsweredWindow = TimeSpan.FromMinutes(10);
+
+    public static string? AnsweredAppointmentId(string? chatbotMode) =>
+        chatbotMode is not null && chatbotMode.StartsWith(AnsweredPrefix) ? chatbotMode[AnsweredPrefix.Length..] : null;
+
+    public static void MarkAnswered(WhatsAppConversationState state, string appointmentId)
+    {
+        state.ChatbotMode = AnsweredPrefix + appointmentId;
+        state.InvalidAttempts = 0;
+        state.ExpiresAt = DateTime.UtcNow.Add(AnsweredWindow);
+    }
+
     // Whether the question can be parked for this phone now: no live conversation row. Returns the
     // expired row to reuse (the (BusinessId, Phone) index is unique), or null to add one.
     public static async Task<(bool CanAsk, WhatsAppConversationState? Existing)> CanAskAsync(AppDbContext db, string businessId, string phone)

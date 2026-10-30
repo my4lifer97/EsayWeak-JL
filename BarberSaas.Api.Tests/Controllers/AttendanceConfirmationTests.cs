@@ -225,6 +225,97 @@ public class AttendanceConfirmationTests : IntegrationTestBase
         Assert.Null(appointment.AttendanceStatus);
     }
 
+    // QA run 5: these dropped the question and got the Book/Ask menu.
+    [Theory]
+    [InlineData("ok")]
+    [InlineData("thanks!")]
+    [InlineData("👍")]
+    [InlineData("I'll be there")]
+    [InlineData("ok see you tomorrow")]
+    [InlineData("אגיע, תודה")]
+    [InlineData("تمام")]
+    public async Task Acknowledgement_ConfirmsTheAppointment(string answer)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-ack-{answer.Length}-{answer.GetHashCode():x}", "+15553330014");
+        await RunReminders();
+
+        var reply = await Inbound(businessId, "+15553330014", answer);
+
+        Assert.NotNull(reply);
+        Assert.Equal(AttendanceQuestion.Confirmed, (await Load(appointmentId)).AttendanceStatus);
+    }
+
+    [Theory]
+    [InlineData("ok but can it be at 11?")]
+    [InlineData("I will be late")]
+    public async Task AcknowledgementWithMore_IsNotAnAnswer(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-ack-more-{message.Length}", "+15553330015");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330015", message);
+
+        Assert.Equal(AttendanceQuestion.Asked, (await Load(appointmentId)).AttendanceStatus);
+    }
+
+    // QA run 5: a second "1"/"2" was read as the opening menu ("2" opened a chat with the owner).
+    [Fact]
+    public async Task DoubleTap_AfterConfirming_IsAnsweredAboutTheAppointment()
+    {
+        var (businessId, _, _) = await Seed("attend-double-1", "+15553330016", inquiry: true);
+        await RunReminders();
+        await Inbound(businessId, "+15553330016", "1");
+
+        var again = await Inbound(businessId, "+15553330016", "1");
+
+        Assert.StartsWith("Thanks for confirming!", again);
+    }
+
+    [Fact]
+    public async Task DoubleTap_AfterCancelling_DoesNotOpenAChatWithTheOwner()
+    {
+        var (businessId, _, appointmentId) = await Seed("attend-double-2", "+15553330017", inquiry: true);
+        await RunReminders();
+        await Inbound(businessId, "+15553330017", "2");
+
+        var again = await Inbound(businessId, "+15553330017", "2");
+
+        Assert.Contains("cancelled", again);
+        Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+        using var db = Db();
+        Assert.False(await db.WhatsAppConversationStates.AnyAsync(s => s.BusinessId == businessId && s.ChatbotMode == ServiceListPrompt.InquiryMode));
+    }
+
+    [Fact]
+    public async Task AnswerAfterTheOwnerCancelled_IsAnsweredAboutTheAppointment()
+    {
+        var (businessId, _, appointmentId) = await Seed("attend-gone", "+15553330018");
+        await RunReminders();
+        using (var db = Db())
+        {
+            var appointment = await db.Appointments.SingleAsync(a => a.Id == appointmentId);
+            appointment.Status = AppointmentStatus.CANCELLED;
+            await db.SaveChangesAsync();
+        }
+
+        var reply = await Inbound(businessId, "+15553330018", "1");
+
+        Assert.Contains("cancelled", reply);
+        Assert.DoesNotContain("1. Haircut", reply);
+    }
+
+    [Fact]
+    public async Task AfterTheAnswer_AnotherMessageIsHandledNormally()
+    {
+        var (businessId, _, _) = await Seed("attend-after", "+15553330019");
+        await RunReminders();
+        await Inbound(businessId, "+15553330019", "1");
+
+        var reply = await Inbound(businessId, "+15553330019", "hi");
+
+        Assert.Contains("1. Haircut", reply);
+    }
+
     [Fact]
     public async Task OtherMessage_DropsTheQuestion_AndIsHandledNormally()
     {
