@@ -109,7 +109,7 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
     public async Task<IActionResult> GetFollowed()
     {
         var results = await db.Follows
-            .Where(f => f.CustomerAccountId == CustomerAccountId)
+            .Where(f => f.CustomerAccountId == CustomerAccountId && f.Business.EmailVerified)
             .OrderByDescending(f => f.CreatedAt)
             .Select(f => new BusinessSearchResultDto(
                 f.Business.Slug, f.Business.Name, f.Business.Description, f.Business.Logo,
@@ -164,7 +164,8 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
     [Authorize(Policy = "CustomerOnly")]
     public async Task<IActionResult> Follow(string slug)
     {
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug);
+        // Not a sign-up that has no storefront yet (QA run 8).
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == slug && b.EmailVerified);
         if (business is null) return NotFound(new { error = "Not found" });
 
         await followService.EnsureFollowed(CustomerAccountId!, business.Id);

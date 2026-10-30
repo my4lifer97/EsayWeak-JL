@@ -112,10 +112,7 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
                 // retry cron and the worker) both picked the same entry and sent the offer
                 // several times (QA run 7). The run that loses leaves this queue alone.
                 var claimedAt = DateTime.UtcNow;
-                var claimed = await db.WaitlistEntries
-                    .Where(w => w.Id == entry.Id && w.Status == WaitlistEntryStatus.WAITING)
-                    .ExecuteUpdateAsync(s => s.SetProperty(w => w.Status, WaitlistEntryStatus.NOTIFIED).SetProperty(w => w.NotifiedAt, claimedAt));
-                if (claimed == 0) return (0, failed);
+                if (!await ClaimTurnAsync(cancelledAppointment.Id, entry.Id, claimedAt)) return (0, failed);
                 entry.Status = WaitlistEntryStatus.NOTIFIED;
                 entry.NotifiedAt = claimedAt;
 
@@ -142,6 +139,24 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
             }
         }
         return (0, failed);
+    }
+
+    // The entry's turn, taken only if nobody in this queue was messaged within NotifyInterval: the
+    // entry claim alone let overlapping runs each message a different customer at once (QA run 8).
+    // On Postgres the check and the claim hold a per-queue lock; SQLite (tests) has one writer.
+    private async Task<bool> ClaimTurnAsync(string appointmentId, string entryId, DateTime claimedAt)
+    {
+        var since = claimedAt - NotifyInterval;
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync() : null;
+        if (db.Database.IsNpgsql())
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({"waitlist:" + appointmentId}))");
+        var someoneHasIt = await db.WaitlistEntries.AnyAsync(w => w.AppointmentId == appointmentId && w.Id != entryId
+            && w.Status == WaitlistEntryStatus.NOTIFIED && w.NotifiedAt > since);
+        var claimed = !someoneHasIt && await db.WaitlistEntries
+            .Where(w => w.Id == entryId && w.Status == WaitlistEntryStatus.WAITING)
+            .ExecuteUpdateAsync(s => s.SetProperty(w => w.Status, WaitlistEntryStatus.NOTIFIED).SetProperty(w => w.NotifiedAt, claimedAt)) == 1;
+        if (tx is not null) await tx.CommitAsync();
+        return claimed;
     }
 
     private void QueueSend(Business business, WaitlistEntry entry, string message, string appointmentId)

@@ -41,7 +41,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest req, [FromServices] RequestQuota quota)
     {
-        if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length < 2)
+        // Trimmed first: "  a  " passed and was stored with its spaces (QA run 8).
+        if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Trim().Length < 2)
             return BadRequest(new { error = "Name must be at least 2 characters" });
         var email = EmailAddress.Normalize(req.Email);
         // The same check as the Settings email fields; "a@b" used to register (QA run 4).
@@ -54,7 +55,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (SlugValidator.IsReserved(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
 
-        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
+        if (quota.RefuseIfOver(HttpContext, "register", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
         await ReleaseAbandonedSignUps(email, req.Slug);
         if (await db.Businesses.AnyAsync(b => b.Email.ToLower() == email))
             return BadRequest(new { error = "Email already registered" });
@@ -68,7 +69,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
 
         var business = new Business
         {
-            Name = req.Name,
+            Name = req.Name.Trim(),
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
             Slug = req.Slug,
@@ -206,7 +207,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     [HttpPost("resend-verification")]
     public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req, [FromServices] RequestQuota quota)
     {
-        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
+        if (quota.RefuseIfOver(HttpContext, "resend-verification", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
         var email = EmailAddress.Normalize(req.Email);
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
         if (business is null) return NotFound(new { error = "Not found" });
@@ -279,7 +280,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     [HttpPost("forgot-password")]
     public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req, [FromServices] NotificationOutbox notifications, [FromServices] RequestQuota quota)
     {
-        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
+        if (quota.RefuseIfOver(HttpContext, "forgot-password", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
         // Same 200 whether or not the email has an account, so this can't be used to find out
         // which emails are registered. A disabled account gets the same silent answer -- resetting
         // its password would otherwise hand a disabled owner a fresh login.

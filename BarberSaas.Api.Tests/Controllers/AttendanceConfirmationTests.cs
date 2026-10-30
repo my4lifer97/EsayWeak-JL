@@ -424,6 +424,38 @@ public class AttendanceConfirmationTests : IntegrationTestBase
         Assert.Equal(AppointmentStatus.CONFIRMED, (await Load(appointmentId)).Status);
     }
 
+    // QA run 8 BOT-30: "no, cancel" in Hebrew/Arabic was read as "don't cancel" and confirmed.
+    [Theory]
+    [InlineData("לא, תבטל")]
+    [InlineData("لا، الغي")]
+    [InlineData("no, cancel")]
+    public async Task NoCommaCancel_Twice_Cancels(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-nocancel8-{message.Length}-{message.GetHashCode():x}", "+15553330041");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330041", message);
+        await Inbound(businessId, "+15553330041", message);
+
+        Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+    }
+
+    // QA run 8 BOT-31: "ok 2" cancelled at once.
+    [Theory]
+    [InlineData("ok 2")]
+    [InlineData("yes 2")]
+    public async Task TwoWithAYes_IsAskedAgain(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-ok2-{message.Replace(' ', '-')}", "+15553330042");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330042", message);
+
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await Load(appointmentId)).Status);
+        await Inbound(businessId, "+15553330042", "2");
+        Assert.Equal(AppointmentStatus.CANCELLED, (await Load(appointmentId)).Status);
+    }
+
     // QA run 7 BOT-22: after "cancel it" was asked again, a "yes"/"ok" confirmed a no-show.
     [Theory]
     [InlineData("yes")]

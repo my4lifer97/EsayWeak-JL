@@ -336,7 +336,7 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
             // Cut at the limit with a word, not silently (QA run 7).
             const next = draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text
             setDraft(next.slice(0, MAX_TEXT))
-            if (next.length > MAX_TEXT) setError(t(lang, 'chatsReadyCut'))
+            if (next.length > MAX_TEXT) setNotice(t(lang, 'chatsReadyCut'))
             setReadyOpen(false)
           }} />
       )}

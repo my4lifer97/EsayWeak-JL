@@ -553,17 +553,19 @@ public class PlatformAdminController(
 
     // ─── Business owner requests ───────────────────────────────────────────
 
-    // status: "Pending" | "Approved" | "Rejected" | "All" (or omitted) -- omitted/unrecognized
-    // defaults to All so the dashboard can show the full history, not just the queue.
+    // status: "Pending" | "Approved" | "Rejected" | "All" (or omitted) -- omitted or All lists
+    // everything, so the dashboard can show the full history; anything else is a 400.
     [HttpGet("business-owner-requests")]
     [Authorize(Policy = "PlatformAdminOnly")]
     public async Task<IActionResult> ListBusinessOwnerRequests([FromQuery] string? status)
     {
         var query = db.BusinessOwnerRequests.AsQueryable();
         // An unknown status listed everything (QA run 7).
-        if (!string.IsNullOrWhiteSpace(status))
+        if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
         {
-            if (!Enum.TryParse<BusinessOwnerRequestStatus>(status, ignoreCase: true, out var parsedStatus) || int.TryParse(status, out _))
+            // One name only: Enum.TryParse also read "Pending,Approved" and numbers (QA run 8).
+            if (!Enum.TryParse<BusinessOwnerRequestStatus>(status, ignoreCase: true, out var parsedStatus)
+                || !Enum.GetNames<BusinessOwnerRequestStatus>().Contains(status, StringComparer.OrdinalIgnoreCase))
                 return BadRequest(new { error = "Invalid status" });
             query = query.Where(r => r.Status == parsedStatus);
         }

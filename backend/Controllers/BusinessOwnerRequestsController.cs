@@ -48,7 +48,7 @@ public class BusinessOwnerRequestsController(
         // To: header, so anyone could add their own headers and text (QA run 7).
         if (!EmailAddress.IsValid(email))
             return BadRequest(new { error = "Invalid email" });
-        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
+        if (quota.RefuseIfOver(HttpContext, "owner-request-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
 
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.BusinessOwnerRequestEmailOtps

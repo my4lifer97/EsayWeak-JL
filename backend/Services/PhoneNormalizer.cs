@@ -13,7 +13,7 @@ public static class PhoneNormalizer
     // rewritten to this format by the NormalizeStoredPhones migration -- keep the two in sync.
     public static string Normalize(string phone)
     {
-        var trimmed = Digits.ToAscii(phone.Trim());
+        var trimmed = Digits.ToAscii(WithoutMarks(phone).Trim());
         var digits = Regex.Replace(trimmed, @"[^0-9]", "");
         if (digits.Length == 0) return "";
         // "(+1) 555...", "+972 050..." (the local 0 kept after the country code) and "972 50..."
@@ -22,9 +22,16 @@ public static class PhoneNormalizer
         if (trimmed.TrimStart('(', ' ').StartsWith('+')) e164 = $"+{digits}";
         else if (digits.StartsWith("00")) e164 = $"+{digits[2..]}";
         else if (digits.Length == 12 && digits.StartsWith("972")) e164 = $"+{digits}";
+        // "972 050..." with no plus and the local 0 kept (QA run 8: stored as +972972050...).
+        else if (digits.Length == 13 && digits.StartsWith("9720")) e164 = $"+{digits}";
         else return $"+972{digits.TrimStart('0')}";
         return e164.StartsWith("+9720") ? $"+972{e164[5..]}" : e164;
     }
+
+    // Direction marks and other invisible format characters a copied number often carries
+    // (U+202A..U+202E, U+200E/U+200F, U+2066..U+2069): "Please enter a valid phone number" (QA run 8).
+    private static string WithoutMarks(string phone) =>
+        new(phone.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.Format).ToArray());
 
     // Kept for the send paths (SMS, WhatsApp), which must hand out E.164 even for a free-text
     // number that was never stored through Normalize (e.g. the owner's own phone in Settings).
@@ -35,7 +42,7 @@ public static class PhoneNormalizer
     public static bool IsValid(string? phone)
     {
         if (string.IsNullOrWhiteSpace(phone)) return false;
-        phone = Digits.ToAscii(phone);
+        phone = Digits.ToAscii(WithoutMarks(phone));
         if (Regex.IsMatch(phone, @"[^0-9\s()+\-.]")) return false;
         var digits = Regex.Replace(phone, @"[^0-9]", "").Length;
         // No country code starts with 0: "+0000000000" was accepted.

@@ -24,6 +24,15 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHos
             return true;
         }
 
+        // A double-submitted delete or apply: the row the request loaded was changed or removed by
+        // the other one before this one saved. It was a 500 with EF's message (QA run 8).
+        if (exception is Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status409Conflict;
+            await httpContext.Response.WriteAsJsonAsync(new { error = Services.ApiErrorTranslations.Translate(lang, "This was just changed. Please refresh and try again.") }, cancellationToken);
+            return true;
+        }
+
         // Postgres refuses a NUL character in text (SQLSTATE 22021); any endpoint that gets one
         // in user input answers with a 400 instead of a 500.
         if (FindPostgresError(exception, "22021"))

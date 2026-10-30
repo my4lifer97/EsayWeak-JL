@@ -110,6 +110,12 @@ public class SchedulePresetService(AppDbContext db)
         if (preset.IsDefault)
             throw new InvalidOperationException("The default schedule is always the baseline -- it can't be scheduled for a date range.");
 
+        // One at a time per business: parallel requests each saw no range yet and all added one, so
+        // hidden extra ranges were left behind (QA run 8). The later one now replaces the earlier.
+        await using var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync() : null;
+        if (db.Database.IsNpgsql())
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({"presets:" + businessId}))");
+
         var defaultPreset = await GetOrCreateDefaultPreset(businessId);
         var startsNow = startDate <= AppClock.Now.Date;
 
@@ -139,6 +145,7 @@ public class SchedulePresetService(AppDbContext db)
         }
 
         await db.SaveChangesAsync();
+        if (tx is not null) await tx.CommitAsync();
         return schedule;
     }
 

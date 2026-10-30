@@ -47,6 +47,8 @@ public static class ApiErrorTranslations
         ["Your WhatsApp bot isn't linked, so messages can't be sent"] = ("بوت واتساب غير مربوط، لذلك لا يمكن إرسال الرسائل", "בוט הוואטסאפ לא מחובר, ולכן אי אפשר לשלוח הודעות"),
         ["Max bookings per day can't be more than per week"] = ("لا يمكن أن يزيد الحد اليومي للحجوزات عن الحد الأسبوعي", "מספר התורים ליום לא יכול להיות גדול מהמספר לשבוע"),
         ["A service can have up to 20 photos"] = ("يمكن أن تحتوي الخدمة على 20 صورة كحد أقصى", "לשירות יכולות להיות עד 20 תמונות"),
+        ["This was just changed. Please refresh and try again."] = ("تم تغيير هذا للتو. حدّث الصفحة وحاول مرة أخرى.", "זה השתנה הרגע. רעננו את הדף ונסו שוב."),
+        ["Invalid status"] = ("حالة غير صالحة", "סטטוס לא תקין"),
         ["Invalid date range"] = ("نطاق تواريخ غير صالح", "טווח תאריכים לא תקין"),
         ["This time isn't one of your bookable times"] = ("هذا الوقت ليس من أوقات الحجز لديك", "השעה הזו אינה אחת משעות ההזמנה שלך"),
         ["This time is already taken on every upcoming week"] = ("هذا الوقت محجوز في كل الأسابيع القادمة", "השעה הזו כבר תפוסה בכל השבועות הקרובים"),

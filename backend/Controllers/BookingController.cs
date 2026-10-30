@@ -30,7 +30,7 @@ public class BookingController(
         var isRTL = business.Language is Language.AR or Language.HE;
         var activeDays = business.WorkingHours.Select(w => w.DayOfWeek).ToArray();
 
-        var items = business.Items.Select(s => new ItemDto(
+        var items = business.Items.OrderBy(s => s.NameEn).Select(s => new ItemDto(
             s.Id, s.BusinessId, s.NameEn, s.NameAr, s.NameHe, s.DurationMinutes, s.Price, s.IsActive,
             s.PhotoMode.ToString(), s.IsBookable, s.GalleryPhotos.Select(p => new ItemGalleryPhotoDto(p.Id, p.Url)).ToList())).ToList();
 

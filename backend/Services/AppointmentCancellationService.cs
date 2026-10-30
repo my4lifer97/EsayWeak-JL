@@ -17,6 +17,8 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
         if (appointment.Status == AppointmentStatus.CANCELLED
             || !await TryClaimAsync(appointment, AppointmentStatus.CANCELLED, pendingApproval: false)) return false;
         appointment.Status = AppointmentStatus.CANCELLED;
+        // The owner's "coming?" badge means nothing once it's cancelled, however that happened (QA run 8).
+        appointment.AttendanceStatus = null;
         appointment.PendingCancellationApproval = false;
         if (notifyWaitlist) await waitlist.NotifyForCancellation(appointment);
         // The owner chose not to offer the slot ("cancel silently", a plain owner cancel, a
@@ -79,6 +81,7 @@ public class AppointmentCancellationService(AppDbContext db, WaitlistService wai
 
         if (!await TryClaimAsync(appointment, AppointmentStatus.CONFIRMED, pendingApproval: true)) return false;
         appointment.PendingCancellationApproval = true;
+        appointment.AttendanceStatus = null;
 
         var customer = await db.Customers.FindAsync(appointment.CustomerId);
         var item = await db.Items.FindAsync(appointment.ItemId);

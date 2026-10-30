@@ -1408,9 +1408,11 @@ public class AdminController(
 
         if (string.IsNullOrWhiteSpace(customerName) || string.IsNullOrWhiteSpace(customerPhone))
             return (null, BadRequest(new { error = "Customer name and phone are required" }));
-        // Stored as typed, spaces and all (QA run 6).
-        customerName = customerName.Trim();
-        customerFamilyName = customerFamilyName?.Trim();
+        // Trimmed (QA run 6), and without line breaks or invisible/direction characters (QA run 8).
+        customerName = TextClean.Name(customerName);
+        customerFamilyName = customerFamilyName is null ? null : TextClean.Name(customerFamilyName);
+        if (customerName.Length == 0)
+            return (null, BadRequest(new { error = "Customer name and phone are required" }));
         if (!PhoneNormalizer.IsValid(customerPhone))
             return (null, BadRequest(new { error = "Please enter a valid phone number" }));
         // Same stored format as every other path, so "050..." typed here finds the customer who

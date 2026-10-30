@@ -438,7 +438,9 @@ async function reportSessionEvent(businessId, event, phoneNumber, isCurrent = ()
 export async function unlinkSession(businessId) {
   // A start still under way would leave a live session (and a scannable QR) behind the unlink
   // (QA run 7), so it finishes first and is then logged out like any other.
-  await starting.get(businessId)?.catch(() => {})
+  // Bounded: a start that never settles mustn't hang the unlink (QA run 8).
+  const inFlight = starting.get(businessId)
+  if (inFlight) await withTimeout(inFlight, 'waiting for a session start').catch(() => {})
   failures.delete(businessId)
   const session = sessions.get(businessId)
   if (session) {

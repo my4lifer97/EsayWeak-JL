@@ -60,7 +60,7 @@ public class BillingController(AppDbContext db, IConfiguration config, ICardcomS
         // result from Cardcom server-to-server before mutating any billing state.
         var lowProfileId = Request.Query["LowProfileId"].FirstOrDefault()
             // Form only for a form body: Request.Form throws on any other content type (QA run 7).
-            ?? (Request.HasFormContentType ? (await Request.ReadFormAsync())["LowProfileId"].FirstOrDefault() : null);
+            ?? await FormLowProfileId();
         if (string.IsNullOrEmpty(lowProfileId))
         {
             logger.LogWarning("Cardcom webhook received without a LowProfileId");
@@ -91,5 +91,13 @@ public class BillingController(AppDbContext db, IConfiguration config, ICardcomS
         await db.SaveChangesAsync();
 
         return Ok();
+    }
+
+    // A malformed form body (a broken multipart boundary) threw out of ReadFormAsync as a 500 (QA run 8).
+    private async Task<string?> FormLowProfileId()
+    {
+        if (!Request.HasFormContentType) return null;
+        try { return (await Request.ReadFormAsync())["LowProfileId"].FirstOrDefault(); }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or BadHttpRequestException) { return null; }
     }
 }

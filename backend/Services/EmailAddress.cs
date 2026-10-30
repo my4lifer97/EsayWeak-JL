@@ -15,7 +15,10 @@ public static class EmailAddress
         var e = (email ?? "").Trim();
         var at = e.IndexOf('@');
         return at > 0 && at <= 64 && e.Length <= 254 && at == e.LastIndexOf('@') && e.IndexOf('.', at) > at + 1
-            && !e.EndsWith('.') && !e.Any(char.IsWhiteSpace)
-            && System.Net.Mail.MailAddress.TryCreate(e, out _);
+            && !e.EndsWith('.') && !e.Any(char.IsWhiteSpace) && !e.Contains("..")
+            // The plain address only: MailAddress also takes "<a@b.com>", "a(x)@b.com" and
+            // "\"a\"@b.com", which were stored as typed and slipped past the duplicate checks (QA run 8).
+            && System.Net.Mail.MailAddress.TryCreate(e, out var parsed) && parsed.Address == e
+            && e.All(c => c is not ('"' or '(' or ')' or '<' or '>' or ',' or ';' or '[' or ']' or '\\'));
     }
 }

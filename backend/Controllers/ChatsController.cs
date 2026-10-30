@@ -265,6 +265,10 @@ public class ChatsController(
             }
         }
         if (sent) db.ChatMessages.Add(ChatLog.NewMessage(BusinessId, chat.Phone, ChatSender.Bot, text));
+        // The customer never saw the service list, so no row waits for a number from it: their next
+        // "1" got a booking link out of nowhere (QA run 8).
+        else if (req.SendServiceList && db.Entry(chat.State).State is EntityState.Unchanged or EntityState.Modified or EntityState.Added)
+            db.WhatsAppConversationStates.Remove(chat.State);
         await db.ChatMessages
             .Where(m => m.BusinessId == BusinessId && m.CustomerPhone == chat.Phone && !m.IsRead)
             .ExecuteUpdateAsync(u => u.SetProperty(m => m.IsRead, true));

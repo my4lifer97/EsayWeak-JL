@@ -77,6 +77,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             return BadRequest(new { error = "Invalid start time" });
 
         Customer? customer;
+        Customer? newCustomer = null;
         if (!string.IsNullOrWhiteSpace(req.CustomerId))
         {
             customer = await db.Customers.FirstOrDefaultAsync(c => c.Id == req.CustomerId && c.BusinessId == BusinessId);
@@ -100,12 +101,14 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             var customerFamilyName = req.CustomerFamilyName?.Trim();
             if (customer is null)
             {
-                customer = new Customer
+                // Saved just before the series (below), on its own, so parallel creates for the same
+                // new phone share it (QA run 8: 500s); removed again if the series is refused.
+                newCustomer = new Customer
                 {
                     Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId,
                     CustomerAccountId = customerAccountId,
                 };
-                db.Customers.Add(customer);
+                customer = newCustomer;
             }
             else
             {
@@ -152,6 +155,13 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             if (endDate.Value.Date < startDate.Date) return BadRequest(new { error = "End date cannot be before start date" });
         }
 
+        string? createdCustomerId = null;
+        if (newCustomer is not null)
+        {
+            customer = await CustomerRows.AddOrGetExistingAsync(db, newCustomer);
+            if (customer == newCustomer) createdCustomerId = customer.Id;
+        }
+
         var series = new RecurringSeries
         {
             BusinessId = BusinessId,
@@ -178,6 +188,10 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             {
                 await tx.RollbackAsync();
                 db.ChangeTracker.Clear();
+                if (createdCustomerId is not null)
+                    await db.Customers.Where(c => c.Id == createdCustomerId && !db.Appointments.Any(a => a.CustomerId == c.Id)
+                            && !db.RecurringSeries.Any(s => s.CustomerId == c.Id))
+                        .ExecuteDeleteAsync();
                 return Conflict(new { error = "This time is already taken on every upcoming week" });
             }
             await tx.CommitAsync();
