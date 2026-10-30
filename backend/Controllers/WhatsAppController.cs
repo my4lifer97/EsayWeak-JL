@@ -181,6 +181,23 @@ public class WhatsAppController(
     public record BridgeInboundMedia(string? Type, string? Mimetype, string? FileName, string? Base64);
     public record BridgeInboundResponse(string? Reply);
 
+    // Asked by the bridge before it downloads a customer's file: only one that will be kept (an
+    // open chat, within the quota) is worth downloading (QA run 5: it downloaded every status post
+    // and photo, up to 16MB each, only for the backend to drop them).
+    public record BridgeMediaWantedRequest(string BusinessId, string FromPhone);
+    public record BridgeMediaWantedResponse(bool Wanted);
+
+    [HttpPost("bridge/media-wanted")]
+    [RequireBridgeSecret]
+    public async Task<IActionResult> BridgeMediaWanted([FromBody] BridgeMediaWantedRequest req)
+    {
+        var fromPhone = PhoneNormalizer.Normalize(req.FromPhone);
+        var wanted = fromPhone.Length > 0
+            && await ChatLog.IsChatOpenAsync(db, req.BusinessId, fromPhone)
+            && await ChatFiles.InboundQuotaAllowsAsync(db, req.BusinessId, fromPhone, 0);
+        return Ok(new BridgeMediaWantedResponse(wanted));
+    }
+
     [HttpPost("bridge/inbound")]
     [RequireBridgeSecret]
     public async Task<IActionResult> BridgeInbound([FromBody] BridgeInboundRequest req)
@@ -215,7 +232,8 @@ public class WhatsAppController(
                     string.IsNullOrWhiteSpace(profileName) ? null : profileName);
                 if (req.Media is not null)
                 {
-                    if (InboundAttachment(business.Id, req.Media) is { } attachment)
+                    if (InboundAttachment(business.Id, req.Media) is { } attachment
+                        && await ChatFiles.InboundQuotaAllowsAsync(db, business.Id, fromPhone, attachment.Data.Length))
                     {
                         db.ChatAttachments.Add(attachment);
                         message.AttachmentId = attachment.Id;

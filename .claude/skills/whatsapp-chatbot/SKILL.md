@@ -363,6 +363,11 @@ messages, reminders and other automated sends are not recorded. The owner (`Chat
   `application/octet-stream`, so HTML/SVG never renders), an unnamed photo/voice note gets `photo.jpg`/
   `voice.ogg`. Without bytes (too big, download failed) the message reads `📎 name`. A caption-less file
   outside a chat gets no reply. The page shows photos, plays audio/video, and downloads the rest.
+  Since QA run 5 the bridge ignores `@broadcast`/`@newsletter` (status, channels), asks
+  `POST bridge/media-wanted { businessId, fromPhone }` before downloading (open chat + quota; false on
+  any error, so an older backend just means names only), and streams the download, stopping at 16MB.
+  Quota (`ChatFiles.InboundQuotaAllowsAsync`, rolling 24h): 20 files / 50MB per customer, 500MB per
+  business; past it the file is kept by name only. No retention/cleanup of chats or files yet.
 - `POST .../chats/booking-link` `{ phone, itemId }` -- a normal `WhatsAppBookingToken` link
   (`whatsapp.ownerBookingLink`, same first line) for a bookable service the owner picks; the chat stays open.
 - `POST .../chats/finish` `{ phone, sendServiceList }` -- sends `whatsapp.ownerChatEnded`, plus the

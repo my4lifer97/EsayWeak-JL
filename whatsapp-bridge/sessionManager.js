@@ -243,21 +243,53 @@ function messageText(msg) {
 }
 
 // { type, mimetype, fileName, base64 } for a message with media, else null. base64 is null when the
-// file is too big or couldn't be downloaded -- the owner then sees its name and opens it on the phone.
-async function messageMedia(businessId, sock, msg) {
+// file isn't wanted (the backend keeps files only in an open chat, within a quota), is too big or
+// couldn't be downloaded -- the owner then sees its name and opens it on the phone.
+function messageMediaInfo(msg) {
   const content = extractMessageContent(msg.message)
   const type = MEDIA_TYPES.find((t) => content?.[t])
   if (!type) return null
   const info = content[type]
-  const media = { type: type.replace('Message', ''), mimetype: info.mimetype || null, fileName: info.fileName || null, base64: null }
-  if (Number(info.fileLength || 0) > MAX_MEDIA_BYTES) return media
+  return { type: type.replace('Message', ''), mimetype: info.mimetype || null, fileName: info.fileName || null, base64: null, fileLength: Number(info.fileLength || 0) }
+}
+
+async function messageMedia(businessId, sock, msg, info, wanted) {
+  const { fileLength, ...media } = info
+  if (!wanted || fileLength > MAX_MEDIA_BYTES) return media
   try {
-    const data = await downloadMediaMessage(msg, 'buffer', {}, { reuploadRequest: sock.updateMediaMessage, logger: silentLogger })
-    if (data.length <= MAX_MEDIA_BYTES) media.base64 = data.toString('base64')
+    // Streamed and stopped at the limit: fileLength is what the sender claims, and a whole-file
+    // buffer of a bigger one could run the bridge out of memory (QA run 5).
+    const stream = await downloadMediaMessage(msg, 'stream', {}, { reuploadRequest: sock.updateMediaMessage, logger: silentLogger })
+    const chunks = []
+    let size = 0
+    for await (const chunk of stream) {
+      size += chunk.length
+      if (size > MAX_MEDIA_BYTES) {
+        stream.destroy()
+        return media
+      }
+      chunks.push(chunk)
+    }
+    media.base64 = Buffer.concat(chunks).toString('base64')
   } catch (err) {
     console.error(`[${businessId}] could not download a customer's ${media.type}:`, err.message)
   }
   return media
+}
+
+// Whether the backend will keep this customer's file. False on any error: the message still goes
+// through, with the file's name only.
+async function mediaWanted(businessId, fromPhone) {
+  try {
+    const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/media-wanted`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
+      body: JSON.stringify({ businessId, fromPhone }),
+    })
+    return resp.ok && (await resp.json()).wanted === true
+  } catch {
+    return false
+  }
 }
 
 // A message the owner typed on the linked phone to a customer: the backend shows it on the
@@ -289,11 +321,13 @@ async function reportOwnMessage(businessId, sock, msg) {
 
 async function handleInboundMessage(businessId, sock, msg) {
   if (!msg.message || msg.key.fromMe) return
-  if (!msg.key.remoteJid || msg.key.remoteJid.endsWith('@g.us')) return // ignore group messages -- chatbot is 1:1 only
+  const remote = msg.key.remoteJid
+  // Groups, status posts and channels aren't conversations with a customer -- chatbot is 1:1 only.
+  if (!remote || remote.endsWith('@g.us') || remote.endsWith('@broadcast') || remote.endsWith('@newsletter')) return
 
   const text = messageText(msg)
-  const media = await messageMedia(businessId, sock, msg)
-  if (!text.trim() && !media) return
+  const mediaInfo = messageMediaInfo(msg)
+  if (!text.trim() && !mediaInfo) return
 
   const jid = await resolvePhoneJid(sock, msg)
   if (!jid) {
@@ -303,6 +337,7 @@ async function handleInboundMessage(businessId, sock, msg) {
 
   const fromPhone = `+${jid.split('@')[0]}`
   const profileName = msg.pushName || null
+  const media = mediaInfo && await messageMedia(businessId, sock, msg, mediaInfo, await mediaWanted(businessId, fromPhone))
 
   const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/inbound`, {
     method: 'POST',

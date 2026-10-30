@@ -92,6 +92,60 @@ public class ChatsTests : IntegrationTestBase
         Assert.Equal(0, await Unread(token));
     }
 
+    private async Task InboundPhoto(string businessId, string fromPhone)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/whatsapp/bridge/inbound")
+        {
+            Content = JsonContent.Create(new WhatsAppController.BridgeInboundRequest(businessId, fromPhone, "Dana", "",
+                new WhatsAppController.BridgeInboundMedia("image", "image/jpeg", null, Convert.ToBase64String(new byte[1024])))),
+        };
+        req.Headers.Add("X-Bridge-Secret", TestWebApplicationFactory.BridgeSecret);
+        (await Client.SendAsync(req)).EnsureSuccessStatusCode();
+    }
+
+    private async Task<bool> MediaWanted(string businessId, string fromPhone)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/whatsapp/bridge/media-wanted")
+        {
+            Content = JsonContent.Create(new WhatsAppController.BridgeMediaWantedRequest(businessId, fromPhone)),
+        };
+        req.Headers.Add("X-Bridge-Secret", TestWebApplicationFactory.BridgeSecret);
+        var resp = await Client.SendAsync(req);
+        return (await resp.Content.ReadFromJsonAsync<WhatsAppController.BridgeMediaWantedResponse>())!.Wanted;
+    }
+
+    // QA run 5: the bridge downloaded every customer file (status posts, photos outside a chat)
+    // only for the backend to drop them.
+    [Fact]
+    public async Task MediaWanted_OnlyInAnOpenChat()
+    {
+        var (businessId, _, _) = await SeedBusiness("chats-media-wanted");
+        await Inbound(businessId, "+15551110080", "hi");
+        Assert.False(await MediaWanted(businessId, "+15551110080"));
+
+        await Inbound(businessId, "+15551110080", "2");
+
+        Assert.True(await MediaWanted(businessId, "+15551110080"));
+    }
+
+    // QA run 5 (SEC-1): unlimited 16MB files could be stored by anyone who opened a chat.
+    [Fact]
+    public async Task CustomerFiles_PastTheDailyQuota_AreKeptByNameOnly()
+    {
+        var (businessId, _, _) = await SeedBusiness("chats-media-quota");
+        await OpenChat(businessId, "+15551110081", "Dana");
+
+        for (var i = 0; i <= BarberSaas.Api.Services.ChatFiles.MaxInboundFilesPerCustomerPerDay; i++)
+            await InboundPhoto(businessId, "+15551110081");
+
+        using var db = Db();
+        var files = await db.ChatMessages.Where(m => m.BusinessId == businessId && m.Sender == BarberSaas.Api.Models.ChatSender.Customer)
+            .OrderBy(m => m.CreatedAt).ToListAsync();
+        Assert.Equal(BarberSaas.Api.Services.ChatFiles.MaxInboundFilesPerCustomerPerDay, files.Count(m => m.AttachmentId != null));
+        Assert.StartsWith("📎", files.Last().Text);
+        Assert.False(await MediaWanted(businessId, "+15551110081"));
+    }
+
     // QA run 5: the newest 100 chats were taken before open ones were sorted first, so an older
     // open chat disappeared while its unread messages still counted in the badge.
     [Fact]

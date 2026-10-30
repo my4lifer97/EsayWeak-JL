@@ -1,3 +1,7 @@
+using BarberSaas.Api.Data;
+using BarberSaas.Api.Models;
+using Microsoft.EntityFrameworkCore;
+
 namespace BarberSaas.Api.Services;
 
 // What the owner may send from the Chats page: photos (sent as WhatsApp images) and common
@@ -47,6 +51,29 @@ public static class ChatFiles
     // A customer's photo, video, voice note, sticker or file, sent with their message by the bridge
     // (kept for the Chats page while their chat is open). The bridge sends bigger ones by name only.
     public const long MaxInboundBytes = 16 * 1024 * 1024;
+
+    // How much of customers' files is stored, per rolling 24 hours (QA run 5: anyone could open a
+    // chat and send unlimited 16MB files into the shared database). Past it, the owner sees the
+    // file's name and opens it on the phone, like a file too big to download.
+    public const int MaxInboundFilesPerCustomerPerDay = 20;
+    public const long MaxInboundBytesPerCustomerPerDay = 50L * 1024 * 1024;
+    public const long MaxInboundBytesPerBusinessPerDay = 500L * 1024 * 1024;
+
+    // Whether one more customer file of `size` bytes (0 when not known yet) may be stored.
+    public static async Task<bool> InboundQuotaAllowsAsync(AppDbContext db, string businessId, string customerPhone, long size)
+    {
+        var since = DateTime.UtcNow.AddDays(-1);
+        var customer = await db.ChatMessages
+            .Where(m => m.BusinessId == businessId && m.CustomerPhone == customerPhone && m.Sender == ChatSender.Customer
+                && m.AttachmentId != null && m.CreatedAt > since)
+            .Select(m => (long)m.Attachment!.Data.Length)
+            .ToListAsync();
+        if (customer.Count >= MaxInboundFilesPerCustomerPerDay || customer.Sum() + size > MaxInboundBytesPerCustomerPerDay) return false;
+        var business = await db.ChatAttachments
+            .Where(a => a.BusinessId == businessId && a.CreatedAt > since)
+            .SumAsync(a => (long)a.Data.Length);
+        return business + size <= MaxInboundBytesPerBusinessPerDay;
+    }
 
     // What a customer's file may be stored as, with the extension for a file WhatsApp sent unnamed
     // (photos, voice notes). Anything else is stored as a plain download, so a customer's file can't
