@@ -355,7 +355,7 @@ public class AvailabilityService(AppDbContext db)
     // whose individual dates are checked as each occurrence is generated.
     public static string? SlotTimeError(string startTime, int durationMinutes)
     {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime ?? "", @"^([01]\d|2[0-3]):[0-5]\d$"))
+        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime ?? "", @"^([01][0-9]|2[0-3]):[0-5][0-9]$"))
             return "Invalid time";
         var startMinutes = int.Parse(startTime![..2]) * 60 + int.Parse(startTime[3..]);
         return startMinutes + durationMinutes > 24 * 60 ? "The appointment must end by midnight" : null;

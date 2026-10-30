@@ -57,6 +57,8 @@ public class ValidateInputFilter : IActionFilter
     public const int MaxLongTextLength = 2000;
     public const int MaxSubjectLength = 200;
     public const int MaxBodyLength = 20000;
+    public const int MaxPhoneLength = 50;
+    public const int MaxEmailLength = 254;
 
     private static string? Check(string name, string? value)
     {
@@ -80,6 +82,11 @@ public class ValidateInputFilter : IActionFilter
             return $"Notes can be at most {MaxNotesLength} characters.";
         if (name.EndsWith("name", StringComparison.OrdinalIgnoreCase) && value.Length > MaxNameLength)
             return $"Names can be at most {MaxNameLength} characters.";
+        // The owner-request form's email and phone had no cap at all (QA run 7).
+        if (name.EndsWith("phone", StringComparison.OrdinalIgnoreCase) && value.Length > MaxPhoneLength)
+            return "Please enter a valid phone number";
+        if (name.EndsWith("email", StringComparison.OrdinalIgnoreCase) && value.Length > MaxEmailLength)
+            return "Invalid email";
         return null;
     }
 

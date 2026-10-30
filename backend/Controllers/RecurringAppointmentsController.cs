@@ -73,7 +73,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
 
         if (req.DayOfWeek < 0 || req.DayOfWeek > 6)
             return BadRequest(new { error = "Invalid day of week" });
-        if (!Regex.IsMatch(req.StartTime, @"^\d{2}:\d{2}$"))
+        if (!Regex.IsMatch(req.StartTime, @"^[0-9]{2}:[0-9]{2}$"))
             return BadRequest(new { error = "Invalid start time" });
 
         Customer? customer;
@@ -95,18 +95,21 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             // already-registered customer never shows its occurrences in that customer's own "My
             // Bookings" until they book/reschedule with this business themselves.
             var customerAccountId = (await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == customerPhone))?.Id;
+            // Trimmed like the one-off booking's (QA run 7).
+            var customerName = req.CustomerName.Trim();
+            var customerFamilyName = req.CustomerFamilyName?.Trim();
             if (customer is null)
             {
                 customer = new Customer
                 {
-                    Name = req.CustomerName, FamilyName = req.CustomerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId,
+                    Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId,
                     CustomerAccountId = customerAccountId,
                 };
                 db.Customers.Add(customer);
             }
             else
             {
-                if (OwnerTypedCustomer.MatchExisting(customer, req.CustomerName, req.CustomerFamilyName) is { } conflict)
+                if (OwnerTypedCustomer.MatchExisting(customer, customerName, customerFamilyName) is { } conflict)
                     return Conflict(new { error = conflict });
                 if (customerAccountId is not null) customer.CustomerAccountId = customerAccountId;
             }

@@ -664,6 +664,43 @@ public class WaitlistTests : IntegrationTestBase
         }
     }
 
+    // QA run 7 ST-1: two overlapping retry runs both sent the same offer. The second run starts
+    // while the first is still sending (SQLite can't run them truly in parallel).
+    [Fact]
+    public async Task RetryEndpoint_OverlappingRuns_SendTheOfferOnce()
+    {
+        var token = await RegisterAndLoginBusiness("wl-retry-twice@example.com", "wl-retry-twice");
+        var (businessId, itemId, date) = await SeedWaitlistEnabledBusiness(token, "wl-retry-twice");
+        var bookerToken = await GetCustomerToken("+15551000030");
+        var booked = await BookAs(bookerToken, "wl-retry-twice", itemId, date.ToString("yyyy-MM-dd"), "09:00");
+        var appt = await booked.Content.ReadFromJsonAsync<BookAppointmentResponse>();
+        var waiterPhone = "+15551000031";
+        await JoinWaitlistAs(await GetCustomerToken(waiterPhone), "wl-retry-twice", appt!.AppointmentId);
+        Factory.WhatsAppSender.ShouldFail = true;
+        Authorize(Client, token);
+        await Client.PatchAsJsonAsync($"/api/admin/appointments/{appt.AppointmentId}", new { status = "CANCELLED", notifyWaitlist = true });
+        Client.DefaultRequestHeaders.Authorization = null;
+        Factory.WhatsAppSender.ShouldFail = false;
+
+        using var second = Factory.CreateClient();
+        second.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", TestWebApplicationFactory.CronSecret);
+        Factory.WhatsAppSender.OnSend = async () =>
+        {
+            Factory.WhatsAppSender.OnSend = null;
+            await second.GetAsync("/api/cron/retry-waitlist-notifications");
+        };
+        try
+        {
+            await AdvanceQueues();
+        }
+        finally
+        {
+            Factory.WhatsAppSender.OnSend = null;
+        }
+
+        Assert.Single(Factory.WhatsAppSender.Sent, s => s.BusinessId == businessId && s.Phone == waiterPhone);
+    }
+
     [Fact]
     public async Task RetryEndpoint_NoAuth_ReturnsUnauthorized()
     {

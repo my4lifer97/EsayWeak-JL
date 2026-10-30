@@ -41,6 +41,7 @@ public class BusinessDiscoveryTests : IntegrationTestBase
             Name = name ?? slug,
             Email = $"{slug}@discovery.test",
             Slug = slug,
+            EmailVerified = true,
             BusinessTypeId = businessTypeId,
             City = city,
             RatingAverage = ratingAverage,
@@ -73,9 +74,14 @@ public class BusinessDiscoveryTests : IntegrationTestBase
         var resp = await Client.PostAsJsonAsync("/api/auth/register",
             new RegisterRequest("Self Reg Shop", "self-reg-discovery@example.com", "password123", "disc-selfreg-shop", barber));
         Assert.Equal(System.Net.HttpStatusCode.Created, resp.StatusCode);
+        var unverified = await Search("?businessTypeKey=disc-selfreg-barber");
+        var code = (await resp.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
+        await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("self-reg-discovery@example.com", code));
 
         var result = await Search("?businessTypeKey=disc-selfreg-barber");
 
+        // Listed only once the email is confirmed (QA run 7).
+        Assert.DoesNotContain(unverified.Items, i => i.Slug == "disc-selfreg-shop");
         Assert.Contains(result.Items, i => i.Slug == "disc-selfreg-shop");
     }
 

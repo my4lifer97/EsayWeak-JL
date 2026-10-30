@@ -24,7 +24,8 @@ public class BookingController(
             .Include(b => b.WorkingHours.Where(w => w.IsActive))
             .FirstOrDefaultAsync(b => b.Slug == slug);
 
-        if (business is null) return NotFound(new { error = "Not found" });
+        // A sign-up whose email was never confirmed has no storefront yet (QA run 7).
+        if (business is null || !business.EmailVerified) return NotFound(new { error = "Not found" });
 
         var isRTL = business.Language is Language.AR or Language.HE;
         var activeDays = business.WorkingHours.Select(w => w.DayOfWeek).ToArray();

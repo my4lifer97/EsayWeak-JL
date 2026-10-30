@@ -234,6 +234,14 @@ public class AttendanceConfirmationTests : IntegrationTestBase
     [InlineData("ok see you tomorrow")]
     [InlineData("אגיע, תודה")]
     [InlineData("تمام")]
+    [InlineData("I'm coming")] // QA run 7 BOT-23
+    [InlineData("I will come")]
+    [InlineData("yes I'm coming")]
+    [InlineData("definitely")]
+    [InlineData("on my way")]
+    [InlineData("אני בא")]
+    [InlineData("אני מגיע")]
+    [InlineData("حاضر")]
     public async Task Acknowledgement_ConfirmsTheAppointment(string answer)
     {
         var (businessId, _, appointmentId) = await Seed($"attend-ack-{answer.Length}-{answer.GetHashCode():x}", "+15553330014");
@@ -324,6 +332,8 @@ public class AttendanceConfirmationTests : IntegrationTestBase
     [InlineData("yes 1", AppointmentStatus.CONFIRMED, "CONFIRMED")]
     [InlineData("2 thanks", AppointmentStatus.CANCELLED, null)]
     [InlineData("reply 2", AppointmentStatus.CANCELLED, null)]
+    [InlineData("1 שלום", AppointmentStatus.CONFIRMED, "CONFIRMED")] // QA run 7 BOT-24
+    [InlineData("\u0968", AppointmentStatus.CANCELLED, null)] // BOT-20: Devanagari 2 was a 500
     public async Task DigitWithFriendlyWords_IsTheDigit(string answer, AppointmentStatus status, string? attendance)
     {
         var (businessId, _, appointmentId) = await Seed($"attend-digit-{answer.Length}-{answer.GetHashCode():x}", "+15553330020");
@@ -363,6 +373,9 @@ public class AttendanceConfirmationTests : IntegrationTestBase
     [InlineData("ما رح اجي")]
     [InlineData("👎")]
     [InlineData("no thanks")]
+    [InlineData("לא יכול להגיע")] // QA run 7 BOT-24
+    [InlineData("לא אבוא")]
+    [InlineData("sorry can't")]
     public async Task NotComing_IsAskedAgain(string message)
     {
         var (businessId, _, appointmentId) = await Seed($"attend-notcoming-{message.Length}-{message.GetHashCode():x}", "+15553330022");
@@ -388,6 +401,45 @@ public class AttendanceConfirmationTests : IntegrationTestBase
         var appointment = await Load(appointmentId);
         Assert.Equal(AttendanceQuestion.Confirmed, appointment.AttendanceStatus);
         Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
+    }
+
+    // QA run 7 BOT-21: only the word right before the cancel word counted, so these, sent twice,
+    // cancelled the appointment.
+    [Theory]
+    [InlineData("I don't want to cancel")]
+    [InlineData("no need to cancel")]
+    [InlineData("I won't cancel")]
+    [InlineData("do not want to cancel")]
+    [InlineData("לא רוצה לבטל")]
+    [InlineData("لا أريد إلغاء")]
+    [InlineData("Did you cancel my appointment?")]
+    public async Task NegatedCancel_Twice_DoesNotCancel(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-neg7-{message.Length}-{message.GetHashCode():x}", "+15553330031");
+        await RunReminders();
+
+        await Inbound(businessId, "+15553330031", message);
+        await Inbound(businessId, "+15553330031", message);
+
+        Assert.Equal(AppointmentStatus.CONFIRMED, (await Load(appointmentId)).Status);
+    }
+
+    // QA run 7 BOT-22: after "cancel it" was asked again, a "yes"/"ok" confirmed a no-show.
+    [Theory]
+    [InlineData("yes")]
+    [InlineData("ok")]
+    [InlineData("thanks")]
+    public async Task AfterTheReask_AnAcknowledgementIsNotAConfirm(string message)
+    {
+        var (businessId, _, appointmentId) = await Seed($"attend-reask7-{message}", "+15553330032");
+        await RunReminders();
+        await Inbound(businessId, "+15553330032", "cancel it");
+
+        await Inbound(businessId, "+15553330032", message);
+
+        var appointment = await Load(appointmentId);
+        Assert.Equal(AppointmentStatus.CONFIRMED, appointment.Status);
+        Assert.NotEqual(AttendanceQuestion.Confirmed, appointment.AttendanceStatus);
     }
 
     // QA run 6 BOT-14: "1" then "2" is a change of mind.

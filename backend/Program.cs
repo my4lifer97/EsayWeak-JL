@@ -16,7 +16,8 @@ builder.Services.AddControllers(opt =>
     opt.Filters.Add<BlockDisabledBusinessFilter>();
     opt.Filters.Add<ValidateInputFilter>();
     opt.Filters.Add<DispatchNotificationsFilter>();
-    opt.Filters.Add<NotFoundBodyFilter>();
+    // Before ClientErrorResultFilter (-2000): see NotFoundBodyFilter.
+    opt.Filters.Add<NotFoundBodyFilter>(NotFoundBodyFilter.FilterOrder);
     opt.Filters.Add<TranslateErrorFilter>();
 }).ConfigureApiBehaviorOptions(opt =>
 {

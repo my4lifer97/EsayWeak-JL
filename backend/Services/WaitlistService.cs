@@ -108,10 +108,30 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
                     return (1, failed);
                 }
 
-                await whatsAppSender.SendAsync(business, entry.CustomerAccount.Phone, message);
-
+                // Claimed in one conditional update before the send: two overlapping runs (the
+                // retry cron and the worker) both picked the same entry and sent the offer
+                // several times (QA run 7). The run that loses leaves this queue alone.
+                var claimedAt = DateTime.UtcNow;
+                var claimed = await db.WaitlistEntries
+                    .Where(w => w.Id == entry.Id && w.Status == WaitlistEntryStatus.WAITING)
+                    .ExecuteUpdateAsync(s => s.SetProperty(w => w.Status, WaitlistEntryStatus.NOTIFIED).SetProperty(w => w.NotifiedAt, claimedAt));
+                if (claimed == 0) return (0, failed);
                 entry.Status = WaitlistEntryStatus.NOTIFIED;
-                entry.NotifiedAt = DateTime.UtcNow;
+                entry.NotifiedAt = claimedAt;
+
+                try
+                {
+                    await whatsAppSender.SendAsync(business, entry.CustomerAccount.Phone, message);
+                }
+                catch
+                {
+                    await db.WaitlistEntries
+                        .Where(w => w.Id == entry.Id && w.Status == WaitlistEntryStatus.NOTIFIED)
+                        .ExecuteUpdateAsync(s => s.SetProperty(w => w.Status, WaitlistEntryStatus.WAITING).SetProperty(w => w.NotifiedAt, (DateTime?)null));
+                    entry.Status = WaitlistEntryStatus.WAITING;
+                    entry.NotifiedAt = null;
+                    throw;
+                }
                 return (1, failed);
             }
             catch (Exception ex)

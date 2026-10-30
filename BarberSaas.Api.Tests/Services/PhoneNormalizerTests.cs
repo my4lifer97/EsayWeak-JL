@@ -16,6 +16,10 @@ public class PhoneNormalizerTests
     [InlineData("+972 50-123-4567", "+972501234567")]
     [InlineData("+15550001234", "+15550001234")]
     [InlineData("  +1 555 000 1234  ", "+15550001234")]
+    [InlineData("+972 050-123-4567", "+972501234567")]
+    [InlineData("972501234567", "+972501234567")]
+    [InlineData("(+1) 555 000 1234", "+15550001234")]
+    [InlineData("\u0660\u0665\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667", "+972501234567")]
     public void Normalize_ProducesExpectedResult(string input, string expected)
     {
         Assert.Equal(expected, PhoneNormalizer.Normalize(input));
@@ -47,6 +51,8 @@ public class PhoneNormalizerTests
     [InlineData("ASD", false)]
     [InlineData("050-ABC-4567", false)]
     [InlineData("+", false)]
+    [InlineData("+0000000000", false)]
+    [InlineData("\u0660\u0665\u0660\u0661\u0662\u0663\u0664\u0665\u0666\u0667", true)]
     [InlineData("", false)]
     [InlineData(null, false)]
     public void IsValid_AcceptsOnlyRealLookingNumbers(string? input, bool expected)

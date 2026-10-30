@@ -91,6 +91,9 @@ public class GmailApiEmailSender(HttpClient http, IConfiguration config, OwnerEm
     // left as plain UTF-8 8bit text (fine within the outer base64url envelope).
     private static string BuildRawMessage(string from, string to, string subject, string body)
     {
+        // Written raw into the headers, so a line break would start a header of the caller's own.
+        if (from.AsSpan().IndexOfAny('\r', '\n') >= 0 || to.AsSpan().IndexOfAny('\r', '\n') >= 0)
+            throw new ArgumentException("An email address can't contain a line break.");
         var encodedSubject = $"=?UTF-8?B?{Convert.ToBase64String(Encoding.UTF8.GetBytes(subject))}?=";
         var message =
             $"From: {from}\r\n" +

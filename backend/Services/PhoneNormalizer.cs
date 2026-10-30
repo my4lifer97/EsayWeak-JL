@@ -13,12 +13,17 @@ public static class PhoneNormalizer
     // rewritten to this format by the NormalizeStoredPhones migration -- keep the two in sync.
     public static string Normalize(string phone)
     {
-        var trimmed = phone.Trim();
-        var digits = Regex.Replace(trimmed, @"[^\d]", "");
+        var trimmed = Digits.ToAscii(phone.Trim());
+        var digits = Regex.Replace(trimmed, @"[^0-9]", "");
         if (digits.Length == 0) return "";
-        if (trimmed.StartsWith('+')) return $"+{digits}";
-        if (digits.StartsWith("00")) return $"+{digits[2..]}";
-        return $"+972{digits.TrimStart('0')}";
+        // "(+1) 555...", "+972 050..." (the local 0 kept after the country code) and "972 50..."
+        // with no plus all came out as a different number (QA run 7).
+        string e164;
+        if (trimmed.TrimStart('(', ' ').StartsWith('+')) e164 = $"+{digits}";
+        else if (digits.StartsWith("00")) e164 = $"+{digits[2..]}";
+        else if (digits.Length == 12 && digits.StartsWith("972")) e164 = $"+{digits}";
+        else return $"+972{digits.TrimStart('0')}";
+        return e164.StartsWith("+9720") ? $"+972{e164[5..]}" : e164;
     }
 
     // Kept for the send paths (SMS, WhatsApp), which must hand out E.164 even for a free-text
@@ -29,8 +34,11 @@ public static class PhoneNormalizer
     // to an empty phone (and create an account with no number).
     public static bool IsValid(string? phone)
     {
-        if (string.IsNullOrWhiteSpace(phone) || Regex.IsMatch(phone, @"[^\d\s()+\-.]")) return false;
-        var digits = Regex.Replace(phone, @"[^\d]", "").Length;
-        return digits is >= 7 and <= 15;
+        if (string.IsNullOrWhiteSpace(phone)) return false;
+        phone = Digits.ToAscii(phone);
+        if (Regex.IsMatch(phone, @"[^0-9\s()+\-.]")) return false;
+        var digits = Regex.Replace(phone, @"[^0-9]", "").Length;
+        // No country code starts with 0: "+0000000000" was accepted.
+        return digits is >= 7 and <= 15 && !Normalize(phone).StartsWith("+0");
     }
 }

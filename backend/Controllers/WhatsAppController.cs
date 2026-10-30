@@ -101,8 +101,10 @@ public class WhatsAppController(
     [
         "ok", "okay", "k", "thanks", "thank", "thx", "great", "perfect", "cool", "confirm", "confirmed", "coming", "come",
         "i", "ll", "will", "be", "there", "see", "then", "tomorrow", "sure", "of", "course",
+        "m", "am", "definitely", "on", "my", "way",
         "אוקיי", "אוקי", "בסדר", "תודה", "רבה", "מגיע", "מגיעה", "אגיע", "נגיע", "אהיה", "שם", "מאשר", "מאשרת", "מעולה", "סבבה", "נתראה", "מחר",
-        "تمام", "شكرا", "اوكي", "أوكي", "جاي", "جاية", "رح", "اجي", "آجي", "بجي", "موجود", "منيح", "ممتاز", "بشوفك", "بكرا", "بكره", "اكيد", "أكيد",
+        "אני", "בא", "באה", "בדרך",
+        "تمام", "شكرا", "اوكي", "أوكي", "جاي", "جاية", "رح", "اجي", "آجي", "بجي", "موجود", "منيح", "ممتاز", "بشوفك", "بكرا", "بكره", "اكيد", "أكيد", "حاضر",
     ];
     private static readonly string[] AcknowledgementEmoji = ["\U0001F44D", "\U0001F44C", "\u2705", "\U0001F64F", "\u2714"];
     // A word before a cancel word that turns it around: "don't cancel", "לא לבטל", "لا تلغي".
@@ -681,7 +683,7 @@ public class WhatsAppController(
         var text = new string(NormalizeDigits(message.Trim())
             .Where(c => c is not ('️' or '⃣') && !IsDirectionMark(c))
             .Select(c => c is >= '０' and <= '９' ? (char)('0' + (c - '０')) : c).ToArray());
-        var match = Regex.Match(text, @"^#?(\d{1,3})[.)]?$");
+        var match = Regex.Match(text, @"^#?([0-9]{1,3})[.)]?$");
         return match.Success ? int.Parse(match.Groups[1].Value) : null;
     }
 
@@ -693,9 +695,10 @@ public class WhatsAppController(
             state = new WhatsAppConversationState { BusinessId = businessId, Phone = phone };
             db.WhatsAppConversationStates.Add(state);
         }
+        // A repeated "#2" while already asking kept resetting this, so the owner was alerted again (QA run 7).
+        if (state.ChatbotMode != InquiryMode || state.ExpiresAt <= DateTime.UtcNow) state.InquiryNotified = false;
         state.ChatbotMode = InquiryMode;
         state.Language = lang;
-        state.InquiryNotified = false;
         state.InvalidAttempts = 0;
         state.AwaitingBookingCompletion = false;
         state.ExpiresAt = DateTime.UtcNow.Add(InquiryStateLifetime);
@@ -1200,13 +1203,7 @@ public class WhatsAppController(
 
     private static string NormalizeDigits(string text)
     {
-        var chars = text.Select(c => c switch
-        {
-            >= ArabicIndicDigitStart and <= ArabicIndicDigitEnd => (char)('0' + (c - ArabicIndicDigitStart)),
-            >= ExtendedArabicIndicDigitStart and <= ExtendedArabicIndicDigitEnd => (char)('0' + (c - ExtendedArabicIndicDigitStart)),
-            _ => c,
-        }).ToArray();
-        return new string(chars);
+        return Digits.ToAscii(text);
     }
 
     private async Task RememberCustomerLanguage(string fromPhone, string replyLanguage)
@@ -1347,6 +1344,8 @@ public class WhatsAppController(
         }
         else
         {
+            // "#1"/"#2" are the menu commands, not an answer (QA run 7: "#1" cancelled).
+            if (message.TrimStart().StartsWith('#')) return (CancelPromptOutcome.NotAnswer, null);
             // "don't cancel" is a keep: as a cancel word it dropped the question (QA run 5).
             var answer = IsNegatedCancel(message) ? "2" : ConfirmationAnswer(message);
             if (answer == "2") return (CancelPromptOutcome.Done, I18nService.T(lang, "whatsapp.cancelKept"));
@@ -1465,11 +1464,13 @@ public class WhatsAppController(
         var words = Words(message)
             .Select(w => NormalizeDigits(new string(w.Select(c => c is >= '０' and <= '９' ? (char)('0' + (c - '０')) : c).ToArray())))
             .ToList();
+        // A question is never an answer, a cancel word in it included: "Did you cancel my
+        // appointment?" cancelled it after the re-ask (QA run 7).
+        if (message.Contains('?') || message.Contains('؟')) return null;
         var cancelAt = words.FindIndex(w => ContainsKeyword(w, CancelKeywords));
         if (cancelAt >= 0)
             return IsNegatedCancel(words, cancelAt) ? (reasked ? "1" : "reask") : (reasked ? "2" : "reask");
         if (IsNotComing(message, words)) return "reask";
-        if (message.Contains('?') || message.Contains('؟')) return null;
 
         var digits = words.Where(w => w.All(char.IsDigit)).ToList();
         if (digits.Count > 0)
@@ -1478,14 +1479,18 @@ public class WhatsAppController(
         if (words.Count <= 4 && words.Any(w => KeepWords.Contains(w))
             && words.All(w => KeepWords.Contains(w) || NoWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w)))
             return "1";
-        if (IsAttendanceAcknowledgement(message, words)) return "1";
+        // After the re-ask (the customer had written "cancel it" or "I can't come"), only a digit,
+        // "keep" or the cancel word answers: a "yes" / "ok" / "thanks" confirmed a no-show (QA run 7).
+        if (IsAttendanceAcknowledgement(message, words)) return reasked ? "reask" : "1";
         var answer = ConfirmationAnswer(message);
+        if (reasked && answer is not null) return "reask";
         return answer == "2" && words.Count > 1 ? "reask" : answer;
     }
 
     // Words that can sit around a "1"/"2" without changing it.
     private static bool IsFriendlyWord(string w) =>
-        AcknowledgementWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w) || w is "reply" or "send" or "answer";
+        AcknowledgementWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w)
+        || w is "reply" or "send" or "answer" or "hi" or "hello" or "שלום" or "היי" or "مرحبا" or "اهلا" or "أهلا";
 
     // "I can't come", "won't make it", "not coming", "לא מגיע", "לא אגיע", "ما رح اجي", "مش جاي", or a
     // lone 👎/❌. A negation followed within three words by a coming (or keep) word.
@@ -1493,7 +1498,7 @@ public class WhatsAppController(
     private static readonly string[] ComingWords =
     [
         "come", "coming", "make", "be", "attend", "arrive",
-        "מגיע", "מגיעה", "מגיעים", "אגיע", "נגיע", "אהיה", "נהיה",
+        "מגיע", "מגיעה", "מגיעים", "אגיע", "נגיע", "אהיה", "נהיה", "להגיע", "לבוא", "אבוא", "נבוא", "בא", "באה",
         "اجي", "آجي", "أجي", "جاي", "جاية", "بجي", "رح", "بقدر", "اقدر", "أقدر",
     ];
     private static readonly string[] NotComingEmoji = ["\U0001F44E", "\u274C", "\u2716"];
@@ -1507,14 +1512,32 @@ public class WhatsAppController(
                 || (words[i] == "t" && i > 0 && words[i - 1] is "can" or "won" or "don" or "didn" or "couldn");
             if (!negation) continue;
             if (words.Skip(i + 1).Take(3).Any(w => ComingWords.Contains(w) || KeepWords.Contains(w))) return true;
+            // "sorry can't", "I cannot" with nothing after it (QA run 7).
+            if (i == words.Count - 1 && (words[i] is "cannot" or "cant" || words[i] == "t" && words[i - 1] == "can")) return true;
         }
         return false;
     }
 
-    // A negation right before the first cancel word: "don't cancel", "לא לבטל", "لا تلغي".
-    private static bool IsNegatedCancel(List<string> words, int cancelAt) =>
-        cancelAt > 0 && NegationWords.Contains(words[cancelAt - 1])
-        || cancelAt > 1 && words[cancelAt - 1] == "t" && words[cancelAt - 2] == "don";
+    // A negation before the first cancel word: "don't cancel", "לא לבטל", "لا تلغي", and with
+    // "want"/"need" words between: "I don't want to cancel", "no need to cancel", "I won't cancel",
+    // "לא רוצה לבטל", "لا أريد إلغاء" (QA run 7: only the word right before counted, and those
+    // sentences cancelled the appointment at the reminder question).
+    private static bool IsNegatedCancel(List<string> words, int cancelAt)
+    {
+        var i = cancelAt - 1;
+        while (i >= 0 && cancelAt - i <= 4 && NegatedCancelMiddleWords.Contains(words[i])) i--;
+        if (i < 0) return false;
+        if (NegationWords.Contains(words[i])) return true;
+        if (words[i] == "t" && i > 0 && words[i - 1] is "don" or "won" or "didn" or "doesn" or "shouldn") return true;
+        return words[i] == "no" && i + 1 < cancelAt && words[i + 1] == "need";
+    }
+
+    private static readonly string[] NegatedCancelMiddleWords =
+    [
+        "want", "wanna", "need", "to", "going", "gonna", "please", "have",
+        "רוצה", "רוצים", "צריך", "צריכה", "צריכים",
+        "أريد", "اريد", "بدي", "بدنا", "عايز", "بدك", "لازم", "داعي",
+    ];
 
     private static bool IsNegatedCancel(string message)
     {
@@ -1532,13 +1555,14 @@ public class WhatsAppController(
         if (words.Count == 0)
             return AcknowledgementEmoji.Any(message.Contains) && !message.Any(char.IsDigit);
         var says = words.Any(w => AcknowledgementWords.Contains(w) && !WeakAcknowledgementWords.Contains(w))
-            || Follows(words, "be", "there") || Follows(words, "see", "you");
+            || Follows(words, "be", "there") || Follows(words, "see", "you")
+            || Follows(words, "will", "come") || Follows(words, "ll", "come") || Follows(words, "my", "way");
         return words.Count <= 6 && says
             && words.All(w => AcknowledgementWords.Contains(w) || YesWords.Contains(w) || AnswerFillerWords.Contains(w));
     }
 
     private static readonly string[] WeakAcknowledgementWords =
-        ["i", "ll", "will", "be", "there", "see", "then", "tomorrow", "of", "course", "come", "שם", "מחר", "رح", "بكرا", "بكره"];
+        ["i", "ll", "will", "be", "there", "see", "then", "tomorrow", "of", "course", "come", "m", "am", "on", "my", "way", "שם", "מחר", "אני", "رح", "بكرا", "بكره"];
 
     private static bool Follows(List<string> words, string first, string second) =>
         Enumerable.Range(0, Math.Max(0, words.Count - 1)).Any(i => words[i] == first && words[i + 1] == second);

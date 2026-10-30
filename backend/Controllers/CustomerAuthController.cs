@@ -37,14 +37,6 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
             return BadRequest(new { error = "Phone is required" });
         if (!PhoneNormalizer.IsValid(req.Phone))
             return BadRequest(new { error = "Please enter a valid phone number" });
-        // Per IP too, not only per phone: each SMS costs money (QA run 6).
-        var (allowed, retryAfter) = quota.TryTake($"otp|{HttpContext.Connection.RemoteIpAddress}", quota.OtpPerIpPerHour, TimeSpan.FromHours(1));
-        if (!allowed)
-        {
-            Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
-            return StatusCode(429, new { error = "Too many codes were requested from here. Please try again later." });
-        }
-
         var phone = PhoneNormalizer.Normalize(req.Phone);
         var since = DateTime.UtcNow.AddHours(-1);
 
@@ -59,6 +51,9 @@ public class CustomerAuthController(AppDbContext db, CustomerJwtService jwt, Wha
 
         if (recent.Count >= OtpMaxPerHour)
             return StatusCode(429, new { error = "Too many requests. Try again later" });
+        // Per IP too, not only per phone: each SMS costs money (QA run 6). After the per-phone
+        // checks, so a "please wait" doesn't use up the IP's quota (QA run 7).
+        if (quota.RefuseIfOver(HttpContext, "otp", quota.OtpPerIpPerHour) is { } refused) return refused;
 
         var isNew = !await db.CustomerAccounts.AnyAsync(a => a.Phone == phone);
 

@@ -31,7 +31,8 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
         pageSize = Math.Clamp(pageSize, 1, 50);
 
         // Only businesses that take bookings: a disabled one or an ended trial used to stay listed.
-        var q = db.Businesses.Where(b => b.IsListed).Where(bookingRules.AcceptsBookingsQuery());
+        // And only verified sign-ups: one with an unconfirmed (or mistyped) email was listed (QA run 7).
+        var q = db.Businesses.Where(b => b.IsListed && b.EmailVerified).Where(bookingRules.AcceptsBookingsQuery());
 
         // Case-insensitive substring / exact match via lower() rather than EF.Functions.ILike --
         // ILike is Npgsql-only and can't run under the SQLite provider the tests use. lower()
@@ -93,7 +94,7 @@ public class BusinessesController(AppDbContext db, FollowService followService, 
     public async Task<IActionResult> GetCities()
     {
         var cities = await db.Businesses
-            .Where(b => b.IsListed && b.City != null && b.City != "")
+            .Where(b => b.IsListed && b.EmailVerified && b.City != null && b.City != "")
             .Where(bookingRules.AcceptsBookingsQuery())
             .Select(b => b.City!.Trim())
             .Distinct()

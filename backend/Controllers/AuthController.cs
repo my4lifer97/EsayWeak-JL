@@ -19,8 +19,27 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     private const int EmailOtpMaxAttempts = 5;
     private const int EmailOtpExpiryMinutes = 10;
 
+    // A sign-up never confirmed within a day gives up its email and URL: a mistyped email held
+    // them forever, and anyone could hold a URL that way (QA run 7). The row is kept (an admin
+    // can still see it); only the two values are moved out of the way.
+    private static readonly TimeSpan AbandonedSignUpAge = TimeSpan.FromDays(1);
+
+    private async Task ReleaseAbandonedSignUps(string email, string slug)
+    {
+        var cutoff = DateTime.UtcNow - AbandonedSignUpAge;
+        var stale = await db.Businesses
+            .Where(b => !b.EmailVerified && b.CreatedAt < cutoff && (b.Email.ToLower() == email || b.Slug == slug))
+            .ToListAsync();
+        foreach (var b in stale)
+        {
+            b.Email = $"abandoned-{b.Id}@invalid.local";
+            b.Slug = $"abandoned-{b.Id}";
+        }
+        if (stale.Count > 0) await db.SaveChangesAsync();
+    }
+
     [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest req)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest req, [FromServices] RequestQuota quota)
     {
         if (string.IsNullOrWhiteSpace(req.Name) || req.Name.Length < 2)
             return BadRequest(new { error = "Name must be at least 2 characters" });
@@ -35,6 +54,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         if (SlugValidator.IsReserved(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
 
+        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
+        await ReleaseAbandonedSignUps(email, req.Slug);
         if (await db.Businesses.AnyAsync(b => b.Email.ToLower() == email))
             return BadRequest(new { error = "Email already registered" });
         if (await db.Businesses.AnyAsync(b => b.Slug == req.Slug))
@@ -183,8 +204,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     }
 
     [HttpPost("resend-verification")]
-    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req)
+    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req, [FromServices] RequestQuota quota)
     {
+        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
         var email = EmailAddress.Normalize(req.Email);
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
         if (business is null) return NotFound(new { error = "Not found" });
@@ -255,8 +277,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     }
 
     [HttpPost("forgot-password")]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req, [FromServices] NotificationOutbox notifications)
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest req, [FromServices] NotificationOutbox notifications, [FromServices] RequestQuota quota)
     {
+        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
         // Same 200 whether or not the email has an account, so this can't be used to find out
         // which emails are registered. A disabled account gets the same silent answer -- resetting
         // its password would otherwise hand a disabled owner a fresh login.

@@ -719,7 +719,7 @@ public class AdminController(
 
     // A partial block needs both times, in order. Null/null is a full-day block. One missing time
     // used to quietly become a full-day block, and 15:00-10:00 was accepted.
-    private const string TimePattern = @"^([01]\d|2[0-3]):[0-5]\d$";
+    private const string TimePattern = @"^([01][0-9]|2[0-3]):[0-5][0-9]$";
 
     private static string? BlockedReasonError(string? reason) =>
         reason is { Length: > MaxReasonLength } ? $"Reason can be at most {MaxReasonLength} characters" : null;
@@ -1098,6 +1098,9 @@ public class AdminController(
 
         if (req.Force && AvailabilityService.ForcedSlotError(req.Date, req.StartTime, item.DurationMinutes.Value) is { } forcedError)
             return BadRequest(new { error = forcedError });
+        // Without force too: AddMinutes parses the time, and "zz" was a 500 (QA run 7).
+        if (AvailabilityService.SlotTimeError(req.StartTime, item.DurationMinutes.Value) is { } timeError)
+            return BadRequest(new { error = timeError });
 
         var endTime = AvailabilityService.AddMinutes(req.StartTime, item.DurationMinutes.Value);
 
@@ -1408,8 +1411,8 @@ public class AdminController(
         var customerAccountId = (await db.CustomerAccounts.FirstOrDefaultAsync(a => a.Phone == customerPhone))?.Id;
         if (customer is null)
         {
-            customer = new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId, CustomerAccountId = customerAccountId };
-            db.Customers.Add(customer);
+            customer = await CustomerRows.AddOrGetExistingAsync(db,
+                new Customer { Name = customerName, FamilyName = customerFamilyName ?? "", Phone = customerPhone, BusinessId = BusinessId, CustomerAccountId = customerAccountId });
         }
         else
         {

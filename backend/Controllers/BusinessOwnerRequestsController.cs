@@ -41,11 +41,14 @@ public class BusinessOwnerRequestsController(
     // platform-admin panel's owner-email composer, so it visibly comes from a real account rather
     // than a generic no-reply address.
     [HttpPost("api/business-owner-requests/send-email-code")]
-    public async Task<IActionResult> SendEmailCode([FromBody] SendBusinessOwnerRequestEmailCodeRequest req)
+    public async Task<IActionResult> SendEmailCode([FromBody] SendBusinessOwnerRequestEmailCodeRequest req, [FromServices] RequestQuota quota)
     {
         var email = EmailAddress.Normalize(req.Email);
-        if (!email.Contains('@'))
+        // The full check, not just an "@": a line break in the address went on into the email's
+        // To: header, so anyone could add their own headers and text (QA run 7).
+        if (!EmailAddress.IsValid(email))
             return BadRequest(new { error = "Invalid email" });
+        if (quota.RefuseIfOver(HttpContext, "email-code", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
 
         var since = DateTime.UtcNow.AddHours(-1);
         var recent = await db.BusinessOwnerRequestEmailOtps
@@ -100,13 +103,15 @@ public class BusinessOwnerRequestsController(
         if (!EnglishNameRegex.IsMatch(firstName) || !EnglishNameRegex.IsMatch(familyName))
             return BadRequest(new { error = "First name and family name must be in English letters" });
         var email = EmailAddress.Normalize(req.Email);
-        if (!email.Contains('@'))
+        // The full check, not just an "@": a line break in the address went on into the email's
+        // To: header, so anyone could add their own headers and text (QA run 7).
+        if (!EmailAddress.IsValid(email))
             return BadRequest(new { error = "Invalid email" });
         if (string.IsNullOrWhiteSpace(req.Phone))
             return BadRequest(new { error = "Phone is required" });
         // Digit count only (not a full E.164 check) -- catches an obviously-truncated or junk
         // entry ("12", "0") without rejecting real numbers in whatever local format someone types.
-        var phoneDigits = Regex.Replace(req.Phone, @"[^\d]", "");
+        var phoneDigits = Regex.Replace(Digits.ToAscii(req.Phone), @"[^0-9]", "");
         if (phoneDigits.Length < 7 || phoneDigits.Length > 15)
             return BadRequest(new { error = "Please enter a valid phone number" });
         if (string.IsNullOrWhiteSpace(req.BusinessTypeId))
