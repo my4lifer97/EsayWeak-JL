@@ -15,7 +15,7 @@ import { useUnsavedChangesGuard } from '../../components/admin/useUnsavedChanges
 type BusinessSettings = {
   name: string; phone: string | null; description: string | null; slug: string; logo: string | null
   language: 'EN' | 'AR' | 'HE'; whatsAppNumber: string | null
-  trialEndsAt: string; subscriptionStatus: string
+  trialEndsAt: string; subscriptionStatus: string; paidUntil: string | null
   maxBookingsPerDay: number | null; maxBookingsPerWeek: number | null
   waitlistEnabled: boolean
   requireApprovalOnCustomerCancel: boolean
@@ -223,6 +223,9 @@ export default function SettingsPage() {
   const trialDate = parseISO(business.trialEndsAt)
   const isTrialActive = business.subscriptionStatus === 'TRIAL' && trialDate > new Date()
   const trialDaysLeft = Math.max(0, Math.ceil((trialDate.getTime() - Date.now()) / 86400000))
+  const dateLocale = lang === 'AR' ? ar : lang === 'HE' ? he : enUS
+  const paidUntilLabel = business.paidUntil ? format(parseISO(business.paidUntil), 'd MMM yyyy', { locale: dateLocale }) : ''
+  const paidPeriodEnded = !!business.paidUntil && business.paidUntil < format(new Date(), 'yyyy-MM-dd')
 
   return (
     <div>
@@ -250,13 +253,16 @@ export default function SettingsPage() {
         <div className="bg-surface border border-line rounded-2xl p-6">
           <h2 className="text-ink font-semibold mb-3">{t(lang, 'subscription')}</h2>
           <div className={`text-sm px-4 py-2 rounded-lg inline-block ${
-            business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+            paidPeriodEnded ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+              : business.subscriptionStatus === 'ACTIVE' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
               : isTrialActive ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
           }`}>
-            {business.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionActive')
+            {paidPeriodEnded ? t(lang, 'subscriptionPaidEnded').replace('{date}', paidUntilLabel)
+              : business.paidUntil && business.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionPaidUntil').replace('{date}', paidUntilLabel)
+              : business.subscriptionStatus === 'ACTIVE' ? t(lang, 'subscriptionActive')
               : isTrialActive ? t(lang, 'subscriptionTrial')
                 .replace('{days}', String(trialDaysLeft))
-                .replace('{date}', format(trialDate, 'd MMM yyyy', { locale: lang === 'AR' ? ar : lang === 'HE' ? he : enUS }))
+                .replace('{date}', format(trialDate, 'd MMM yyyy', { locale: dateLocale }))
               : t(lang, 'subscriptionExpired')}
           </div>
           {business.subscriptionStatus !== 'ACTIVE' && (

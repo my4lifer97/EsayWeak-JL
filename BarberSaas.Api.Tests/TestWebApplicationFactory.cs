@@ -80,6 +80,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         // Background sends run right away, so a test sees them as soon as the response arrives.
         Environment.SetEnvironmentVariable("Notifications__Inline", inlineNotifications ? "true" : "false");
         Environment.SetEnvironmentVariable("OwnerEmailHealth__WorkerEnabled", "false");
+        Environment.SetEnvironmentVariable("PaidPeriod__WorkerEnabled", "false");
         Environment.SetEnvironmentVariable("ConversationCleanup__WorkerEnabled", "false");
 
         // Force DevEmailSender regardless of the developer's local `dotnet user-secrets` store —

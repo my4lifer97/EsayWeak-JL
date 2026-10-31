@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using BarberSaas.Api.Data;
@@ -151,7 +152,63 @@ public class PlatformAdminController(
         if (b is null) return NotFound();
         return Ok(new PlatformAdminBusinessDetailDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone, b.Username,
-            b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber, b.IsDisabled));
+            b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.CreatedAt, b.WhatsAppNumber, b.IsDisabled, b.PaidUntil));
+    }
+
+    // Owners who pay the admin directly (not through Cardcom). A date makes the business ACTIVE;
+    // clearing it returns one that never paid by card to TRIAL. A date in the past is refused: it
+    // would alert straight away, and the owner's page would call a paid account ended.
+    [HttpPut("businesses/{id}/paid-until")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> SetPaidUntil(string id, [FromBody] SetPaidUntilRequest req)
+    {
+        var b = await db.Businesses.FindAsync(id);
+        if (b is null) return NotFound();
+
+        DateOnly? paidUntil = null;
+        if (!string.IsNullOrWhiteSpace(req.PaidUntil))
+        {
+            if (!DateOnly.TryParseExact(req.PaidUntil.Trim(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                return BadRequest(new { error = "Invalid date" });
+            if (parsed < DateOnly.FromDateTime(AppClock.Now))
+                return BadRequest(new { error = "The date can't be in the past" });
+            paidUntil = parsed;
+        }
+        if (b.PaidUntil == paidUntil) return Ok(new { b.Id, b.PaidUntil, SubscriptionStatus = b.SubscriptionStatus.ToString() });
+
+        var previous = b.PaidUntil;
+        b.PaidUntil = paidUntil;
+        if (paidUntil is not null) b.SubscriptionStatus = SubStatus.ACTIVE;
+        else if (b.CardcomToken is null) b.SubscriptionStatus = SubStatus.TRIAL;
+
+        db.ActivityLogs.Add(new ActivityLog
+        {
+            BusinessId = b.Id,
+            ImpersonatedByPlatformAdminId = AdminId,
+            Action = $"{nameof(PlatformAdminController)}.{nameof(SetPaidUntil)}",
+            Description = $"Paid until: {previous?.ToString("yyyy-MM-dd") ?? "none"} → {paidUntil?.ToString("yyyy-MM-dd") ?? "none"}",
+            Method = "PUT",
+            Path = Request.Path.ToString(),
+            StatusCode = 200,
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString(),
+            UserAgent = AdminUserAgent,
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { b.Id, b.PaidUntil, SubscriptionStatus = b.SubscriptionStatus.ToString() });
+    }
+
+    // The dashboard's list, so a missed alert email still leaves a visible record.
+    [HttpGet("paid-period-ended")]
+    [Authorize(Policy = "PlatformAdminOnly")]
+    public async Task<IActionResult> GetPaidPeriodEnded()
+    {
+        var today = DateOnly.FromDateTime(AppClock.Now);
+        return Ok(await db.Businesses
+            .Where(b => !b.IsDisabled && b.PaidUntil != null && b.PaidUntil < today)
+            .OrderBy(b => b.PaidUntil)
+            .Select(b => new PaidPeriodEndedDto(b.Id, b.Name, b.Slug, b.PaidUntil!.Value))
+            .ToListAsync());
     }
 
     // "Active Directory"-style account lock -- blocks login, password reset/email verification, and

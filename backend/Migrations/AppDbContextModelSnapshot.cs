@@ -351,6 +351,12 @@ namespace BarberSaas.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateOnly?>("PaidUntil")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly?>("PaidUntilAlertSentFor")
+                        .HasColumnType("date");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");

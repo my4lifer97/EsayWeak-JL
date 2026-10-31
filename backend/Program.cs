@@ -149,6 +149,10 @@ builder.Services.AddScoped<OwnerEmailMonitor>();
 builder.Services.AddScoped<PlatformAdminAlerts>();
 if (builder.Configuration.GetValue("OwnerEmailHealth:WorkerEnabled", true))
     builder.Services.AddHostedService<OwnerEmailHealthWorker>();
+// Tells the platform admin when a business's paid period ends -- see PaidPeriodMonitor.
+builder.Services.AddScoped<PaidPeriodMonitor>();
+if (builder.Configuration.GetValue("PaidPeriod:WorkerEnabled", true))
+    builder.Services.AddHostedService<PaidPeriodWorker>();
 
 builder.Services.AddCors(opt =>
     opt.AddDefaultPolicy(p => p

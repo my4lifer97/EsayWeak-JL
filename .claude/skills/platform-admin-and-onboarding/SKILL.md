@@ -142,6 +142,17 @@ WhatsApp via Baileys instead of a paid Business API) it sidesteps Railway's outb
 block instead of relying on a third-party relay (Brevo) the recipient has never heard of. See the
 `Gmail:*` config keys below for the one-time OAuth setup.
 
+**Paid period** (added 2026-10-31, for owners who pay the admin directly while Cardcom is off):
+`Business.PaidUntil` is the last paid day (`DateOnly`, Israeli date, inclusive), set on the platform-admin
+business page. Saving a date makes the business `ACTIVE` (past dates are refused); clearing it returns it
+to `TRIAL` unless it has a `CardcomToken`. The owner's Settings shows "active until {date}", then a red
+"paid period ended" once it passes. **Passing the date only tells the admin, it never stops the business:**
+`PaidPeriodWorker` runs `PaidPeriodMonitor` hourly, which emails one alert per business through
+`PlatformAdminAlerts` (Brevo, so a broken Gmail doesn't matter) the day after `PaidUntil`.
+`PaidUntilAlertSentFor` records the date alerted, so a new date re-arms it; a failed send retries next run,
+and disabled businesses are skipped. `PaidPeriodEndedBanner` on the dashboard lists every ended, not-disabled
+business until it's renewed or disabled. Worker off in tests (`PaidPeriod__WorkerEnabled=false`).
+
 **Gmail health alert** (added 2026-10-11, after the refresh token expired silently for days):
 `OwnerEmailHealth` (in-memory singleton) tracks whether the Gmail channel works. `GmailApiEmailSender`
 reports every send into it (a 400 from the send call is ignored, since that's one bad recipient, not

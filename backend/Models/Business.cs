@@ -44,6 +44,13 @@ public class Business
     // Drives the recurring-charge cron job (GET /api/cron/charge-subscriptions): null until the
     // first successful charge, then bumped by exactly 1 month on each successful recurring charge.
     public DateTime? CardcomNextChargeAt { get; set; }
+    // Last paid day (Israeli date, inclusive) for owners who pay the platform admin directly, set
+    // on the platform-admin business page. Null for everyone else. When it passes the business
+    // keeps working: PaidPeriodMonitor tells the admin, who renews or disables it.
+    public DateOnly? PaidUntil { get; set; }
+    // The PaidUntil value the admin was last alerted about, so each date alerts once and a new
+    // date re-arms it.
+    public DateOnly? PaidUntilAlertSentFor { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool EmailVerified { get; set; } = false;
 

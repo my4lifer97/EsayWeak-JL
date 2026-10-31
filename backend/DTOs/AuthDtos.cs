@@ -41,7 +41,7 @@ public record SettingsDto(
     // WhatsAppNumber is read-only here -- assigned automatically once the platform admin links a
     // number by QR code (see UpdateSettingsRequest, which omits it).
     string? Description, string? Logo, string Language, string? WhatsAppNumber,
-    DateTime TrialEndsAt, string SubscriptionStatus,
+    DateTime TrialEndsAt, string SubscriptionStatus, DateOnly? PaidUntil,
     int? MaxBookingsPerDay, int? MaxBookingsPerWeek, bool WaitlistEnabled, bool RequireApprovalOnCustomerCancel,
     bool ChatbotEnabled,
     string? ChatbotWelcomeMessageEn, string? ChatbotWelcomeMessageAr, string? ChatbotWelcomeMessageHe,
@@ -162,9 +162,12 @@ public record PlatformAdminLoginRequest(string Email, string Password);
 public record PlatformAdminLoginResponse(string Token, string Id, string Name, string Email);
 
 public record PlatformAdminBusinessSummaryDto(string Id, string Name, string Email, string Slug, string SubscriptionStatus);
+public record PaidPeriodEndedDto(string Id, string Name, string Slug, DateOnly PaidUntil);
+// PaidUntil is "yyyy-MM-dd"; null clears it.
+public record SetPaidUntilRequest(string? PaidUntil);
 public record PlatformAdminBusinessDetailDto(
     string Id, string Name, string Email, string Slug, string? Phone, string? Username,
-    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? WhatsAppNumber, bool IsDisabled);
+    DateTime TrialEndsAt, string SubscriptionStatus, DateTime CreatedAt, string? WhatsAppNumber, bool IsDisabled, DateOnly? PaidUntil);
 
 public record WhatsAppLinkStatusDto(string State, string? Qr, string? PhoneNumber);
 

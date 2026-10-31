@@ -36,7 +36,7 @@ public class AdminController(
         return Ok(new SettingsDto(
             b.Id, b.Name, b.Email, b.Slug, b.Phone,
             b.Description, b.Logo, b.Language.ToString(), b.WhatsAppNumber,
-            b.TrialEndsAt, b.SubscriptionStatus.ToString(),
+            b.TrialEndsAt, b.SubscriptionStatus.ToString(), b.PaidUntil,
             b.MaxBookingsPerDay, b.MaxBookingsPerWeek, b.WaitlistEnabled, b.RequireApprovalOnCustomerCancel,
             b.ChatbotEnabled,
             b.ChatbotWelcomeMessageEn, b.ChatbotWelcomeMessageAr, b.ChatbotWelcomeMessageHe,

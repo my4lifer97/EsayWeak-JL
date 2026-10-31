@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { format, parseISO } from 'date-fns'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { startImpersonation } from '../../lib/impersonation'
 import { ActivityLogTable, type ActivityLogEntry } from '../../components/platform-admin/ActivityLogTable'
@@ -11,7 +12,7 @@ import { useConfirmDialog } from '../../components/ConfirmDialog'
 type BusinessDetail = {
   id: string; name: string; email: string; slug: string; phone: string | null; username: string | null
   trialEndsAt: string; subscriptionStatus: string; createdAt: string; whatsAppNumber: string | null
-  isDisabled: boolean
+  isDisabled: boolean; paidUntil: string | null
 }
 
 type WhatsAppLinkStatus = { state: 'qr' | 'connecting' | 'connected' | 'disconnected' | 'closing'; qr: string | null; phoneNumber: string | null }
@@ -45,12 +46,17 @@ export default function PlatformAdminBusinessDetailPage() {
   const [generatingLink, setGeneratingLink] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [showEmailComposer, setShowEmailComposer] = useState(false)
+  const [paidUntilInput, setPaidUntilInput] = useState('')
+  const [savingPaidUntil, setSavingPaidUntil] = useState(false)
+  const [paidUntilError, setPaidUntilError] = useState('')
   const [ask, confirmDialog] = useConfirmDialog('EN')
 
   const { data: business, isError: businessMissing } = useQuery<BusinessDetail>({
     queryKey: ['platform-admin-business', id],
     queryFn: () => platformAdminApi.get(`/platform-admin/businesses/${id}`).then((r) => r.data),
   })
+
+  useEffect(() => { setPaidUntilInput(business?.paidUntil ?? '') }, [business?.paidUntil])
 
   const { data: linkStatus } = useQuery<WhatsAppLinkStatus>({
     queryKey: ['platform-admin-business-whatsapp-status', id],
@@ -130,6 +136,22 @@ export default function PlatformAdminBusinessDetailPage() {
     await navigator.clipboard.writeText(shareableLink)
     setLinkCopied(true)
   }
+
+  async function savePaidUntil(paidUntil: string | null) {
+    if (!business) return
+    setPaidUntilError(''); setSavingPaidUntil(true)
+    try {
+      await platformAdminApi.put(`/platform-admin/businesses/${business.id}/paid-until`, { paidUntil })
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-business', id] })
+      queryClient.invalidateQueries({ queryKey: ['platform-admin-paid-period-ended'] })
+      refreshActivity()
+    } catch (err: unknown) {
+      setPaidUntilError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Could not save the date')
+    } finally {
+      setSavingPaidUntil(false)
+    }
+  }
+
   async function handleToggleDisabled() {
     if (!business) return
     // Re-enabling is harmless; disabling signs the owner out of their dashboard.
@@ -229,6 +251,8 @@ export default function PlatformAdminBusinessDetailPage() {
   if (businessMissing) return <div className="min-h-screen bg-cream text-ink p-6">Business not found. <Link to="/platform-admin" className="text-coral underline">Back to dashboard</Link></div>
   if (!business) return <div className="min-h-screen bg-cream text-ink p-6">Loading...</div>
 
+  const today = format(new Date(), 'yyyy-MM-dd')
+
   return (
     <div className="min-h-screen bg-cream text-ink p-6">
       <div className="max-w-3xl mx-auto">
@@ -265,10 +289,37 @@ export default function PlatformAdminBusinessDetailPage() {
         </div>
 
         <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
+          <h2 className="font-semibold mb-1">Payment</h2>
+          <p className="text-muted text-sm mb-3">
+            {!business.paidUntil
+              ? 'No paid date set. Enter the last paid day when the owner pays you.'
+              : business.paidUntil < today
+                ? `Paid period ended on ${format(parseISO(business.paidUntil), 'd MMM yyyy')}. The business keeps working until you set a new date or disable it.`
+                : `Paid until ${format(parseISO(business.paidUntil), 'd MMM yyyy')}. You'll get an email the day after.`}
+          </p>
+          {paidUntilError && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-3">{paidUntilError}</div>}
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="paid-until" className="text-sm font-medium">Paid until</label>
+            <input id="paid-until" type="date" min={today} value={paidUntilInput} onChange={(e) => setPaidUntilInput(e.target.value)}
+              className="bg-cream border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
+            <button onClick={() => savePaidUntil(paidUntilInput)} disabled={savingPaidUntil || !paidUntilInput || paidUntilInput === business.paidUntil}
+              className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+              {savingPaidUntil ? 'Saving...' : 'Save'}
+            </button>
+            {business.paidUntil && (
+              <button onClick={() => savePaidUntil(null)} disabled={savingPaidUntil}
+                className="border border-line text-ink hover:bg-cream disabled:opacity-50 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-surface border border-line rounded-2xl p-6 mb-6">
           <h2 className="font-semibold mb-1">Account</h2>
           <p className="text-muted text-sm mb-3">
             {business.isDisabled
-              ? 'This account is disabled — the owner cannot sign in to their dashboard. The storefront and WhatsApp bot are unaffected.'
+              ? 'This account is disabled — the owner cannot sign in, and the business takes no new bookings. Customers can still see and cancel what they booked.'
               : 'The owner can sign in normally.'}
           </p>
           {accountError && <div className="bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-800/50 dark:text-red-400 text-sm rounded-lg px-4 py-3 mb-3">{accountError}</div>}
