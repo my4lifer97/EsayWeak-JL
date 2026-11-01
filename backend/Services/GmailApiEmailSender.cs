@@ -96,7 +96,7 @@ public class GmailApiEmailSender(HttpClient http, IConfiguration config, OwnerEm
             throw new ArgumentException("An email address can't contain a line break.");
         var encodedSubject = $"=?UTF-8?B?{Convert.ToBase64String(Encoding.UTF8.GetBytes(subject))}?=";
         var message =
-            $"From: {from}\r\n" +
+            $"From: EsayWeek <{from}>\r\n" +
             $"To: {to}\r\n" +
             $"Subject: {encodedSubject}\r\n" +
             "MIME-Version: 1.0\r\n" +

@@ -265,7 +265,7 @@ OpenAI:ApiKey               Enables the optional LLM-driven WhatsApp chatbot lay
 OpenAI:Model                Chat model to use (optional, defaults to "gpt-4o-mini" -- check current OpenAI model availability/pricing before relying on this default)
 Gmail:ClientId               OAuth2 client ID for the platform-admin owner-email composer's Gmail sender (GmailApiEmailSender) -- a "Web application"-type OAuth client (Desktop-app type won't let the OAuth Playground register a redirect URI for the one-time token step)
 Gmail:ClientSecret           OAuth2 client secret paired with Gmail:ClientId
-Gmail:RefreshToken           Long-lived refresh token for the Gmail account owner-emails are sent from, obtained once via https://developers.google.com/oauthplayground (gear icon -> "Use your own OAuth credentials" -> scope gmail.send -> Authorize -> Exchange authorization code for tokens); the app must be in "Testing" publishing status with that Gmail account added as a test user, or authorization is rejected
+Gmail:RefreshToken           Long-lived refresh token for the Gmail account owner-emails are sent from, obtained once via https://developers.google.com/oauthplayground (gear icon -> "Use your own OAuth credentials" -> scope gmail.send -> Authorize -> Exchange authorization code for tokens); the OAuth app must be published ("In production") BEFORE creating the token, since tokens issued in "Testing" expire after 7 days. Google shows an "unverified app" warning during sign-in: Advanced -> Go to (app name)
 Gmail:FromEmail               The Gmail address the refresh token was issued for (the actual From on sent mail)
 ```
 

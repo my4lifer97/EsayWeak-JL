@@ -172,6 +172,7 @@ export default function RequestBusinessAccountPage() {
                     value={emailCode} onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     placeholder={t(lang, 'reqCodePlaceholder')} inputMode="numeric" className={inputClass}
                   />
+                  <p className="text-xs text-muted mt-1">{t(lang, 'reqCheckSpam')}</p>
                   {devCode && (
                     <p className="text-xs text-muted mt-1">{t(lang, 'authDevCode')} <span className="font-mono font-bold">{devCode}</span></p>
                   )}
