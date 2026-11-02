@@ -141,8 +141,11 @@ builder.Services.AddHttpClient<ICardcomService, CardcomService>();
 // constructor needs no config at construction time); the controller checks Gmail:ClientId/
 // ClientSecret/RefreshToken are all set before calling it, same pattern as CardcomService/
 // BillingController for a not-yet-configured integration.
-builder.Services.AddHttpClient<IOwnerEmailSender, GmailApiEmailSender>();
-// Watches that Gmail channel and alerts the platform admin (via the IEmailSender chain above) when
+if (BrevoOwnerEmailSender.IsSelected(builder.Configuration))
+    builder.Services.AddHttpClient<IOwnerEmailSender, BrevoOwnerEmailSender>();
+else
+    builder.Services.AddHttpClient<IOwnerEmailSender, GmailApiEmailSender>();
+// Watches that channel and alerts the platform admin (via the IEmailSender chain above) when
 // it breaks -- see OwnerEmailHealth. Worker off in the tests, same as the waitlist worker.
 builder.Services.AddSingleton<OwnerEmailHealth>();
 builder.Services.AddScoped<OwnerEmailMonitor>();

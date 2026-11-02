@@ -7,7 +7,7 @@ namespace BarberSaas.Api.Services;
 // Gmail API rather than a third-party relay -- same reasoning as self-hosting WhatsApp via Baileys
 // instead of a paid Business API: the Gmail API is a plain HTTPS call (unlike SMTP, which Railway
 // blocks below the Pro plan), authenticated as a real personal account instead of a service the
-// recipient has never heard of.
+// recipient has never heard of. BrevoOwnerEmailSender replaces it when OwnerEmail:Provider=brevo.
 public interface IOwnerEmailSender
 {
     Task SendAsync(string toEmail, string subject, string body);

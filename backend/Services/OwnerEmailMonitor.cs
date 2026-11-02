@@ -1,8 +1,9 @@
 namespace BarberSaas.Api.Services;
 
-// Checks the Gmail owner-email channel and tells the platform admin when it breaks (see
+// Checks the owner-email channel and tells the platform admin when it breaks (see
 // OwnerEmailHealth). The alert goes through the system IEmailSender chain (Brevo in production),
-// not Gmail -- the broken channel can't report its own failure.
+// so with OwnerEmail:Provider=brevo a Brevo outage can't email its own alert; the platform-admin
+// dashboard banner still shows it.
 public class OwnerEmailMonitor(
     OwnerEmailHealth health, IOwnerEmailSender ownerEmailSender, PlatformAdminAlerts alerts,
     IConfiguration config, ILogger<OwnerEmailMonitor> logger)
@@ -31,7 +32,7 @@ public class OwnerEmailMonitor(
         var snapshot = health.GetSnapshot();
         var (subject, body) = pending == OwnerEmailHealth.Notification.Failing
             ? ("Action needed: business owner emails are failing",
-                "Emails to business owners (sent through Gmail) are failing" +
+                "Emails to business owners are failing" +
                 $"{(snapshot.FailingSince is { } since ? $" since {since:yyyy-MM-dd HH:mm} UTC" : "")}.\n\n" +
                 $"Last error: {snapshot.LastError}\n\n" +
                 "Until this is fixed, owner login details, business-request email codes, " +

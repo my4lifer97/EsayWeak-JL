@@ -477,7 +477,7 @@ public class PlatformAdminController(
         var gmailConfigured = !string.IsNullOrEmpty(config["Gmail:ClientId"])
             && !string.IsNullOrEmpty(config["Gmail:ClientSecret"])
             && !string.IsNullOrEmpty(config["Gmail:RefreshToken"]);
-        if (!gmailConfigured)
+        if (!gmailConfigured && !BrevoOwnerEmailSender.IsSelected(config))
             return StatusCode(503, new { error = "Gmail isn't configured yet -- set Gmail:ClientId/ClientSecret/RefreshToken/FromEmail." });
 
         // Only apply a password the owner will actually see in this email.
