@@ -3,6 +3,7 @@ import { useCustomerAuth } from '../lib/customerAuth'
 import { t } from '../lib/i18n'
 import LanguageSwitcher from '../components/customer/LanguageSwitcher'
 import ThemeToggle from '../components/ThemeToggle'
+import LegalLinks from '../components/LegalLinks'
 
 export default function HomePage() {
   const { language: lang } = useCustomerAuth()
@@ -100,6 +101,7 @@ export default function HomePage() {
 
       <footer className="border-t border-line py-8 text-center text-muted text-sm">
         {t(lang, 'homeFooter')}
+        <LegalLinks lang={lang} className="mt-3" />
       </footer>
     </div>
   )

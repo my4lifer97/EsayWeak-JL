@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { t, type TKey } from '../../lib/i18n'
 import OwnerAuthShell from '../../components/admin/OwnerAuthShell'
 import WithEmail from '../../components/WithEmail'
+import { ConsentCheckbox } from '../../components/LegalConsent'
 
 type View = 'form' | 'verify'
 type BusinessType = { id: string; key: string; displayNameEn: string; displayNameAr: string; displayNameHe: string }
@@ -25,6 +26,7 @@ export default function RegisterPage() {
   // A translation key, or the server's own message (which is not translated).
   const [error, setError] = useState<{ key: TKey } | { text: string } | null>(null)
   const [loading, setLoading] = useState(false)
+  const [agreed, setAgreed] = useState(false)
 
   function set(field: string) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [field]: e.target.value }))
@@ -39,6 +41,10 @@ export default function RegisterPage() {
     }
     if (!form.businessTypeId) {
       setError({ key: 'authChooseBusinessType' })
+      return
+    }
+    if (!agreed) {
+      setError({ key: 'consentRequired' })
       return
     }
     setLoading(true)
@@ -129,6 +135,7 @@ export default function RegisterPage() {
               <option key={bt.id} value={bt.id}>{typeName(bt)}</option>
             ))}
           </select>
+          <ConsentCheckbox lang={lang} checked={agreed} onChange={setAgreed} />
           <button type="submit" disabled={loading}
             className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-3 rounded-xl transition-colors">
             {loading ? '...' : t(lang, 'authCreateAccount')}

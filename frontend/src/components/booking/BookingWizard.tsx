@@ -16,6 +16,7 @@ import BookingSuccessModal from './BookingSuccessModal'
 import AppointmentCard, { type Appointment } from '../customer/AppointmentCard'
 import { useEscapeKey } from '../useEscapeKey'
 import { formatDay } from '../../lib/dateLocale'
+import { ConsentNotice } from '../LegalConsent'
 
 type GalleryPhoto = { id: string; url: string }
 type Item = {
@@ -459,6 +460,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                 className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-bold py-4 rounded-2xl transition-colors">
                 {confirmLoading ? '...' : t(lang, 'confirm')}
               </button>
+              <ConsentNotice lang={lang} />
             </div>
           </div>
         )}

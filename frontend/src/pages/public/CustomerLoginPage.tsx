@@ -7,6 +7,7 @@ import { apiError } from '../../lib/apiError'
 import BackButton from '../../components/BackButton'
 import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
 import ThemeToggle from '../../components/ThemeToggle'
+import { ConsentNotice } from '../../components/LegalConsent'
 
 type View = 'phone' | 'otp'
 
@@ -86,6 +87,7 @@ export default function CustomerLoginPage() {
                 className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors">
                 {loading ? '...' : t(lang, 'sendCode')}
               </button>
+              <ConsentNotice lang={lang} />
             </form>
           )}
 

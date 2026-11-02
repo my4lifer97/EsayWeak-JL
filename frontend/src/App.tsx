@@ -25,6 +25,7 @@ import BrowseBusinessesPage from './pages/public/BrowseBusinessesPage'
 import MyBookingsPage from './pages/public/MyBookingsPage'
 import RequestBusinessAccountPage from './pages/public/RequestBusinessAccountPage'
 import CustomerLoginPage from './pages/public/CustomerLoginPage'
+import LegalPage from './pages/public/LegalPage'
 import HomePage from './pages/HomePage'
 import NotFoundPage from './pages/NotFoundPage'
 import { lazyPage } from './lib/lazyPage'
@@ -89,6 +90,9 @@ const router = createBrowserRouter(createRoutesFromElements(
         having already messaged the business on WhatsApp. */}
     <Route path="/login" element={<CustomerLoginPage />} />
     <Route path="/browse" element={<BrowseBusinessesPage />} />
+    <Route path="/terms" element={<LegalPage doc="terms" />} />
+    <Route path="/privacy" element={<LegalPage doc="privacy" />} />
+    <Route path="/accessibility" element={<LegalPage doc="accessibility" />} />
     {/* Public, read-only storefront — a logged-out visitor who finds a business via
         the directory can view it; booking still needs the WhatsApp-link session. */}
     <Route path="/:slug" element={<BusinessPage />} />

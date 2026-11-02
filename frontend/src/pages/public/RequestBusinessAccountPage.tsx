@@ -5,6 +5,7 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { t, type TKey } from '../../lib/i18n'
 import OwnerAuthShell from '../../components/admin/OwnerAuthShell'
+import { ConsentCheckbox } from '../../components/LegalConsent'
 
 type BusinessType = { id: string; key: string; displayNameEn: string; displayNameAr: string; displayNameHe: string }
 // A translation key, or the server's own message (which is not translated).
@@ -27,6 +28,7 @@ export default function RequestBusinessAccountPage() {
   const [error, setError] = useState<Message | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [agreed, setAgreed] = useState(false)
 
   const [emailCode, setEmailCode] = useState('')
   const [codeSentForEmail, setCodeSentForEmail] = useState<string | null>(null)
@@ -95,6 +97,10 @@ export default function RequestBusinessAccountPage() {
     }
     if (!businessTypeId) {
       setError({ key: 'reqChooseType' })
+      return
+    }
+    if (!agreed) {
+      setError({ key: 'consentRequired' })
       return
     }
     setLoading(true)
@@ -214,6 +220,8 @@ export default function RequestBusinessAccountPage() {
               />
             </div>
           </div>
+
+          <ConsentCheckbox lang={lang} checked={agreed} onChange={setAgreed} />
 
           <button
             type="submit" disabled={loading || !!nameError}

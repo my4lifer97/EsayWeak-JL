@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { useAuth } from '../../lib/auth'
 import LanguagePicker from '../LanguagePicker'
 import ThemeToggle from '../ThemeToggle'
+import LegalLinks from '../LegalLinks'
 
 // Frame for the signed-out owner pages (login, register, forgot/set password, account request):
 // centered column, theme toggle + language picker in the corner, rtl for AR/HE. The language is
@@ -15,7 +16,10 @@ export default function OwnerAuthShell({ children, wide }: { children: ReactNode
         <LanguagePicker value={language} onChange={setLang} />
         <ThemeToggle lang={language} />
       </div>
-      <div className={wide ? 'w-full max-w-md py-16' : 'w-full max-w-sm py-16'}>{children}</div>
+      <div className={wide ? 'w-full max-w-md py-16' : 'w-full max-w-sm py-16'}>
+        {children}
+        <LegalLinks lang={language} className="mt-8" />
+      </div>
     </div>
   )
 }

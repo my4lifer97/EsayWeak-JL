@@ -10,7 +10,7 @@ public static class SlugValidator
     private static readonly string[] ReservedSlugs =
         // Every top-level frontend route (App.tsx) must be here, or that storefront can never load.
         ["admin", "api", "login", "register", "cron", "whatsapp", "_next", "favicon", "browse", "account",
-         "platform-admin", "admin-platform", "request-business-account", "wa-link",
+         "platform-admin", "admin-platform", "request-business-account", "wa-link", "terms", "privacy", "accessibility",
          // API prefixes and words a storefront shouldn't take (QA run 6).
          "customer", "customers", "businesses", "business-types", "auth", "uploads", "health", "static", "assets", "support", "help",
          "reviews", "business-owner-requests"];
