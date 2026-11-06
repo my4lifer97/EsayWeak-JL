@@ -12,14 +12,19 @@ now and then anyway: GitHub disables scheduled workflows after 60 days with no r
 
 ## Setup (once)
 
-1. Railway -> Postgres service -> Settings -> Networking -> **TCP Proxy** -> enable it on port 5432.
-   Railway then adds `DATABASE_PUBLIC_URL` to the Postgres service's Variables.
+1. Railway -> Postgres service -> Settings -> Networking -> **Add Public Access**.
+   Note: Railway's own `DATABASE_PUBLIC_URL` there is only `host:port`, not a full URL.
 2. GitHub repo -> Settings -> Secrets and variables -> Actions -> New repository secret:
-   - `DATABASE_PUBLIC_URL` = that value (`postgresql://postgres:...@xxx.proxy.rlwy.net:NNNNN/railway`)
-   - `BACKUP_PASSPHRASE` = a long random string (at least 20 characters)
+   - `DATABASE_PUBLIC_URL` = `postgresql://PGUSER:PGPASSWORD@RAILWAY_TCP_PROXY_DOMAIN:RAILWAY_TCP_PROXY_PORT/PGDATABASE?sslmode=require`
+     (values from the Postgres service's Variables). Without opening it on screen:
+     ```bash
+     eval "$(railway variables -s Postgres --kv | tr -d '' | grep -E '^(PGUSER|PGPASSWORD|PGDATABASE|RAILWAY_TCP_PROXY_DOMAIN|RAILWAY_TCP_PROXY_PORT)=' | sed 's/^/export /')"
+     printf 'postgresql://%s:%s@%s:%s/%s?sslmode=require' "$PGUSER" "$PGPASSWORD" "$RAILWAY_TCP_PROXY_DOMAIN" "$RAILWAY_TCP_PROXY_PORT" "$PGDATABASE" | gh secret set DATABASE_PUBLIC_URL
+     ```
+   - `BACKUP_PASSPHRASE` = a long random string (at least 20 characters), e.g. `openssl rand -base64 32`
 3. Run the workflow once by hand and check that it is green.
 
-Whenever the Postgres password changes, update `DATABASE_PUBLIC_URL` in GitHub as well.
+Whenever the Postgres password (or the proxy port) changes, re-run the `DATABASE_PUBLIC_URL` command above.
 
 ## Restore
 
