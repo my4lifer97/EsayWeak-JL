@@ -18,7 +18,7 @@ now and then anyway: GitHub disables scheduled workflows after 60 days with no r
    - `DATABASE_PUBLIC_URL` = `postgresql://PGUSER:PGPASSWORD@RAILWAY_TCP_PROXY_DOMAIN:RAILWAY_TCP_PROXY_PORT/PGDATABASE?sslmode=require`
      (values from the Postgres service's Variables). Without opening it on screen:
      ```bash
-     eval "$(railway variables -s Postgres --kv | tr -d '' | grep -E '^(PGUSER|PGPASSWORD|PGDATABASE|RAILWAY_TCP_PROXY_DOMAIN|RAILWAY_TCP_PROXY_PORT)=' | sed 's/^/export /')"
+     eval "$(railway variables -s Postgres --kv | tr -d '\r' | grep -E '^(PGUSER|PGPASSWORD|PGDATABASE|RAILWAY_TCP_PROXY_DOMAIN|RAILWAY_TCP_PROXY_PORT)=' | sed 's/^/export /')"
      printf 'postgresql://%s:%s@%s:%s/%s?sslmode=require' "$PGUSER" "$PGPASSWORD" "$RAILWAY_TCP_PROXY_DOMAIN" "$RAILWAY_TCP_PROXY_PORT" "$PGDATABASE" | gh secret set DATABASE_PUBLIC_URL
      ```
    - `BACKUP_PASSPHRASE` = a long random string (at least 20 characters), e.g. `openssl rand -base64 32`
