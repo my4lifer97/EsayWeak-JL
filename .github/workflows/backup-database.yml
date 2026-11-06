@@ -1,0 +1,80 @@
+name: Back up production database
+
+# Nightly pg_dump of the prod Railway Postgres, encrypted and kept as a workflow artifact.
+# This repo is PUBLIC: artifacts and logs can be seen by others, so the dump is encrypted
+# (AES-256, gpg symmetric) before upload and nothing secret is ever echoed.
+# Restore steps: see BACKUPS.md at the repo root.
+#
+# Secrets:
+#   DATABASE_PUBLIC_URL  postgresql://USER:PASSWORD@HOST.proxy.rlwy.net:PORT/railway
+#                        (Railway Postgres TCP proxy; update it whenever the DB password changes)
+#   BACKUP_PASSPHRASE    long random passphrase; keep a copy outside GitHub, or backups are unreadable
+
+on:
+  schedule:
+    - cron: '30 2 * * *'   # 02:30 UTC, before the 03:00 cron jobs touch data
+  workflow_dispatch: {}
+
+concurrency:
+  group: backup-database
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check secrets
+        env:
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          [ -n "$DATABASE_PUBLIC_URL" ] || { echo "DATABASE_PUBLIC_URL secret is not set"; exit 1; }
+          [ ${#BACKUP_PASSPHRASE} -ge 20 ] || { echo "BACKUP_PASSPHRASE secret is missing or shorter than 20 chars"; exit 1; }
+
+      - name: Install PostgreSQL 18 client
+        # A newer pg_dump can dump any older server; the Ubuntu default may be older than the server.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-18
+          /usr/lib/postgresql/18/bin/pg_dump --version
+
+      - name: Dump
+        env:
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          stamp=$(date -u +%Y-%m-%dT%H%MZ)
+          echo "STAMP=$stamp" >> "$GITHUB_ENV"
+          /usr/lib/postgresql/18/bin/pg_dump --format=custom --no-owner --no-privileges \
+            --dbname="$DATABASE_PUBLIC_URL" --file=db.dump
+          # Sanity check: the archive must be readable and contain the core tables' data.
+          list=$(/usr/lib/postgresql/18/bin/pg_restore --list db.dump)
+          tables=$(echo "$list" | grep -c 'TABLE DATA' || true)
+          echo "Dump size: $(du -h db.dump | cut -f1), tables with data: $tables"
+          for t in Businesses Appointments __EFMigrationsHistory; do
+            echo "$list" | grep -Eq "TABLE DATA public \"?$t\"?( |\$)" || { echo "Table $t missing from dump"; exit 1; }
+          done
+
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir out
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output "out/esayweek-db-$STAMP.dump.gpg" db.dump
+          shred -u db.dump
+          ls -l out
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: esayweek-db-${{ env.STAMP }}
+          path: out/*.gpg
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: error
