@@ -13,7 +13,7 @@ jobs:
         run: |
           status=$(curl -s -o response.json -w "%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            https://esayweak-jl-production.up.railway.app/api/cron/apply-scheduled-presets)
+            https://api.esayweek.co.il/api/cron/apply-scheduled-presets)
           echo "Response body:"
           cat response.json
           if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
