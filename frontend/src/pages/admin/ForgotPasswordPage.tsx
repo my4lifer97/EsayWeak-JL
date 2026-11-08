@@ -103,19 +103,22 @@ export default function ForgotPasswordPage() {
             </div>
           )}
           <form onSubmit={handleReset} className="space-y-4">
+            {/* Tells the password manager whose password this is, so it stops autofilling the
+                saved email into the code box (an address like "name185@..." left "185" after the digit filter). */}
+            <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
             <input
-              type="text" inputMode="numeric" required autoFocus dir="ltr"
+              type="text" inputMode="numeric" autoComplete="one-time-code" required autoFocus dir="ltr"
               value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="123456"
               className="w-full bg-surface border border-line rounded-xl px-4 py-4 text-ink text-center text-2xl tracking-widest font-mono placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral"
             />
             <input
-              type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+              type="password" autoComplete="new-password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
               placeholder={t(lang, 'authNewPassword')}
               className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
             <input
-              type="password" required value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)}
+              type="password" autoComplete="new-password" required value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)}
               placeholder={t(lang, 'authConfirmNewPassword')}
               className="w-full bg-surface border border-line rounded-xl px-4 py-3 text-ink focus:outline-none focus:ring-2 focus:ring-coral"
             />
