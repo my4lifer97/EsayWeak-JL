@@ -6,7 +6,10 @@ using System.Text;
 using BarberSaas.Api.Controllers;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
@@ -658,6 +661,29 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var resp = await Client.SendAsync(req);
 
         Assert.Equal((HttpStatusCode)403, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task NoAuthToken_WebhookIsOff_EvenWithEmptyKeySignature()
+    {
+        await SeedBusinessWithServices("wa-webhook-notoken@example.com", "wa-webhook-notoken");
+        using var noToken = Factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration((_, cfg) =>
+            cfg.AddInMemoryCollection(new Dictionary<string, string?> { ["Twilio:AuthToken"] = "" })));
+        var client = noToken.CreateClient();
+        var parms = new Dictionary<string, string>
+        {
+            ["To"] = $"whatsapp:{TwilioNumber}",
+            ["From"] = "whatsapp:+15558880099",
+            ["Body"] = "hi",
+        };
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/whatsapp/webhook") { Content = new FormUrlEncodedContent(parms) };
+        req.Headers.Add("X-Twilio-Signature", ComputeTwilioSignature(WebhookUrl, "", parms));
+
+        var resp = await client.SendAsync(req);
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        using var db = Db();
+        Assert.False(await db.WhatsAppConversationStates.AnyAsync(s => s.Phone == "+15558880099"));
     }
 
     [Theory]

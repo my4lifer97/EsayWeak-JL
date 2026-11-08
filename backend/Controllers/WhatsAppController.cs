@@ -135,6 +135,12 @@ public class WhatsAppController(
     [HttpPost("webhook")]
     public async Task<IActionResult> Webhook()
     {
+        // No token means this path is off. Without this, an empty key would validate any request
+        // signed with an empty HMAC key, which anyone can compute.
+        var authToken = config["Twilio:AuthToken"];
+        if (string.IsNullOrEmpty(authToken))
+            return NotFound("Not configured");
+
         using var reader = new StreamReader(Request.Body);
         var rawBody = await reader.ReadToEndAsync();
         var form = System.Web.HttpUtility.ParseQueryString(rawBody);
@@ -159,7 +165,7 @@ public class WhatsAppController(
         // One platform-owned Twilio account handles every business's WhatsApp number now (see
         // TwilioWhatsAppSender) -- the signature is always checked against that single account's
         // Auth Token, not a per-business one.
-        var validator = new RequestValidator(config["Twilio:AuthToken"] ?? "");
+        var validator = new RequestValidator(authToken);
         if (!validator.Validate(webhookUrl, parms, signature))
             return StatusCode(403, "Invalid signature");
 
