@@ -2,6 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- The old Railway address moves visitors to the real domain, same path and query, before
+         anything loads. `serve` can't redirect by host, so it happens here. -->
+    <script>
+      if (location.hostname === 'frontend-production-5885.up.railway.app')
+        location.replace('https://www.esayweek.co.il' + location.pathname + location.search + location.hash);
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
