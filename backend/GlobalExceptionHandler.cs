@@ -55,6 +55,11 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger, IHos
         return true;
     }
 
+    // Two requests writing the same new rows at once: a unique violation or a deadlock. Lets an
+    // action retry once instead of answering 409 (SaveWorkingHours, QA run 11).
+    public static bool IsWriteRace(Exception exception) =>
+        FindPostgresError(exception, "23505") || FindPostgresError(exception, "40P01");
+
     private static bool FindPostgresError(Exception? exception, string sqlState)
     {
         for (var e = exception; e is not null; e = e.InnerException)

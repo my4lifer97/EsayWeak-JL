@@ -563,10 +563,11 @@ public class AdminController(
         {
             await schedulePresets.UpsertWorkingHours(BusinessId, days);
         }
-        catch (DbUpdateException)
+        catch (Exception ex) when (ex is DbUpdateException || GlobalExceptionHandler.IsWriteRace(ex))
         {
-            // A parallel first save (a double click) inserted the same new days first: they exist
-            // now, so this save updates them. It answered 409 though it had worked (QA run 11).
+            // A parallel first save (a double click) inserted the same new days first, or the two
+            // deadlocked: the days exist now, so this save updates them. It answered 409 though it
+            // had worked (QA run 11).
             db.ChangeTracker.Clear();
             await schedulePresets.UpsertWorkingHours(BusinessId, days);
         }

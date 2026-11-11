@@ -159,7 +159,8 @@ public class QaRun11Tests : IntegrationTestBase
     [InlineData("בקשה לשינוי תור")]
     [InlineData("להקדים את התור")]
     [InlineData("הזזה של התור")]
-    [InlineData("can we do it earlier?")]
+    [InlineData("can I rebook it?")]
+    [InlineData("ممكن تقديم الموعد")]
     public async Task RescheduleWordings_SendTheChangeTimeLink(string message)
     {
         var (businessId, _, _, itemId) = await SeedBusiness("q11-he-move");

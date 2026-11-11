@@ -128,7 +128,7 @@ export default function AppointmentPage() {
     <div className="min-h-screen bg-cream flex items-center justify-center p-4" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="w-full max-w-sm">
         <BackButton lang={lang} />
-        <h1 className="text-2xl font-bold text-ink text-center mb-2 mt-3">{appt.business.name}</h1>
+        <h1 className="text-2xl font-bold text-ink text-center mb-2 mt-3 wrap-anywhere">{appt.business.name}</h1>
         <p className="text-muted text-center text-sm mb-8">{t(lang, 'yourAppointment')}</p>
 
         <div className="bg-surface border border-line rounded-2xl p-6 space-y-4 mb-6">

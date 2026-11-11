@@ -97,7 +97,10 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   one is. A booking that **overlaps** the freed slot (`ResolveForRebooking`, not only an identical
   start) flips every remaining entry to `RESOLVED`, which ends the queue. Each send also re-checks
   that no CONFIRMED appointment overlaps the slot (`IsSlotTaken`) and ends the queue if one does,
-  which covers paths that don't call `ResolveForRebooking`, such as recurring generation. The follow-up sends come from `Services/WaitlistQueueWorker.cs`, an
+  which covers paths that don't call `ResolveForRebooking`, such as recurring generation. It also
+  ends the queue when the booking page would refuse the time (`IsStillBookable`: the same
+  `GetAvailableSlots` check `BookAppointment` makes, so a blocked day, a new break, changed hours or
+  a service switched off; QA run 11 ST-61). The follow-up sends come from `Services/WaitlistQueueWorker.cs`, an
   in-process `BackgroundService` polling `WaitlistService.AdvanceQueues` every
   `Waitlist:WorkerPollSeconds` (default 30) — the 15-minute external cron is too coarse for a
   5-minute gap. Disabled in tests via `Waitlist__WorkerEnabled=false`. A slot whose start time
@@ -131,7 +134,8 @@ Two related, independently-toggleable `Business` settings (`Settings > Booking L
   immediate-cancel automatically if no enabled channel can reach the owner (WhatsApp also needs the
   business's linked `WhatsAppNumber` to send from). `AppointmentStatusHelper.CustomerFacingStatus`
   returns `CANCELLATION_PENDING` for a frozen appointment (shown as "Cancellation requested"), not
-  `CONFIRMED` and not yet `CANCELLED`. The owner's options for a request (`CancelOptionsModal`):
+  `CONFIRMED` and not yet `CANCELLED`, until its end time passes: then `COMPLETED`, as the owner's list
+  shows it. Keeping a request on a visit that is already over sends no "still on" notice (QA run 11). The owner's options for a request (`CancelOptionsModal`):
   **keep it** (`POST /api/admin/appointments/{id}/keep`, clears the flag), offer the slot to the
   waitlist, cancel silently, or **replace the customer** (`PATCH .../{id}/customer`). Replacing
   cancels the original row, which stays with the original customer and their magic-link token, and

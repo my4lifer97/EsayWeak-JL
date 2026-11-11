@@ -399,7 +399,12 @@ editable in `CustomerPicker`, which now starts on a value it's given.
 Replying (dashboard or phone) marks the chat read and keeps the Inquiry row alive for another
 `InquiryStateLifetime`. The bridge reports messages typed on the linked phone (`fromMe`, minus the
 ids it sent: `sendTracked` picks the id before sending, since Baileys echoes on `process.nextTick`)
-to `POST /api/whatsapp/bridge/outgoing`, recorded as `OwnerPhone` only in an open chat. The page polls
+to `POST /api/whatsapp/bridge/outgoing`, recorded as `OwnerPhone` only in an open chat. Open or not,
+it also keeps the bot out of that customer's conversation for `Chatbot:OwnerQuietMinutes` (default 30,
+`Services/OwnerTalkingWindow`, in memory; 0 turns it off): `BridgeInbound` answers nothing, not even
+"1"/"2" to an open question (QA run 11 CHAT-60). Turning `ChatbotInquiryEnabled` off deletes the
+business's Inquiry rows, which ends every open chat (CHAT-61). The bridge also reports a shared location
+or contact card as one line of text, only while that customer's chat is open (BR-60). The page polls
 (list 5 s, open chat 3 s, sidebar count 10 s); `POST .../chats/read` is `[SkipActivityLog]`.
 
 ### Customer login via WhatsApp

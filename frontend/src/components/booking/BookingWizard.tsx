@@ -280,10 +280,10 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold mb-2">{business.name}</h1>
+        <h1 className="text-2xl font-bold mb-2 wrap-anywhere">{business.name}</h1>
 
         {isFromLink && step > 1 && item && (
-          <button onClick={() => setStep(1)} className="text-sm text-muted hover:text-ink mb-6 -mt-1 block">
+          <button onClick={() => setStep(1)} className="text-sm text-muted hover:text-ink mb-6 -mt-1 block wrap-anywhere text-start">
             {itemName(item, lang)} · <span className="text-coral-dark">{t(lang, 'changeService')}</span>
           </button>
         )}
@@ -296,9 +296,9 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
                 <button key={s.id} onClick={() => {
                   setItem(s); setSelectedGalleryPhotoId(null); setUploadedPhotoUrl(null); setPhotoError(''); setStep(2)
                 }}
-                  className="w-full bg-surface hover:bg-cream border border-line hover:border-coral rounded-xl px-5 py-4 flex justify-between items-center transition-colors text-start">
-                  <div>
-                    <div className="font-medium">{itemName(s, lang)}</div>
+                  className="w-full bg-surface hover:bg-cream border border-line hover:border-coral rounded-xl px-5 py-4 flex justify-between items-center gap-3 transition-colors text-start">
+                  <div className="min-w-0">
+                    <div className="font-medium wrap-anywhere">{itemName(s, lang)}</div>
                     <div className="text-muted text-sm mt-0.5">{s.durationMinutes} {t(lang, 'min')}</div>
                   </div>
                   <div className="text-coral-dark font-semibold">{s.price !== null ? formatPrice(s.price) : ''}</div>
@@ -451,7 +451,7 @@ export default function BookingWizard({ business }: { business: BusinessInfo }) 
 
               {item && slot && (
                 <div className="bg-surface border border-line rounded-xl p-4 text-sm space-y-1">
-                  <div className="flex justify-between"><span className="text-muted">{t(lang, 'service')}</span><span className="text-ink">{itemName(item, lang)}</span></div>
+                  <div className="flex justify-between gap-3"><span className="text-muted shrink-0">{t(lang, 'service')}</span><span className="text-ink min-w-0 wrap-anywhere text-end">{itemName(item, lang)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'date')}</span><span className="text-ink">{date && formatDay(new Date(`${date}T00:00:00`), lang, 'shortYear')}</span></div>
                   <div className="flex justify-between"><span className="text-muted">{t(lang, 'time')}</span><bdi dir="ltr" className="text-ink">{slot.start} – {slot.end}</bdi></div>
                 </div>

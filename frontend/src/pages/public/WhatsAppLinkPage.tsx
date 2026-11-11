@@ -40,7 +40,7 @@ export default function WhatsAppLinkPage() {
           <p className="text-muted">{t(lang, 'waLinkExpired')}</p>
         ) : (
           <div className="bg-surface border border-line rounded-2xl p-6">
-            <h1 className="text-xl font-bold mb-1">{data.businessName}</h1>
+            <h1 className="text-xl font-bold mb-1 wrap-anywhere">{data.businessName}</h1>
             <p className="text-muted text-sm mb-5">WhatsApp</p>
 
             {data.state === 'connected' ? (

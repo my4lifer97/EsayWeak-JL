@@ -34,9 +34,9 @@ export default function BookPage() {
   if (business.acceptsBookings === false) return (
     <div className="min-h-screen bg-cream flex items-center justify-center p-4" dir={lang === 'EN' ? 'ltr' : 'rtl'}>
       <div className="bg-surface border border-line rounded-2xl p-6 max-w-md w-full text-center space-y-4">
-        <h1 className="text-ink font-bold text-lg">{business.name}</h1>
+        <h1 className="text-ink font-bold text-lg wrap-anywhere">{business.name}</h1>
         <p className="text-muted">{t(lang, 'bookingUnavailable')}</p>
-        <Link to={`/${business.slug}`} className="inline-block text-coral-dark font-semibold">{business.name}</Link>
+        <Link to={`/${business.slug}`} className="inline-block text-coral-dark font-semibold wrap-anywhere">{business.name}</Link>
       </div>
     </div>
   )

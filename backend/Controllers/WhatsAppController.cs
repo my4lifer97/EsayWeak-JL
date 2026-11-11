@@ -64,9 +64,10 @@ public class WhatsAppController(
         "שינוי", "לשנות", "תשנה", "אשנה", "להזיז", "תזיז", "לדחות", "תדחה",
         // QA run 11 (BOT-60/61). Hebrew prefix letters are handled in ContainsKeyword.
         "הזזה", "להקדים", "תקדים", "הקדמה", "לדחייה", "דחייה", "נשנה", "נזיז", "נקדים", "נדחה",
-        "rebook", "earlier", "switch", "rearrange",
-        // "اجل" is left out: it also means "yes".
-        "تغيير", "اغير", "أغير", "نغير", "تأجيل", "تاجيل", "غيرلي", "تغيرلي", "تبديل", "نبدل", "تقديم", "نقدم", "اقدم", "أقدم", "نأجل", "اأجل", "أأجل",
+        // "earlier" and "switch" are left out: they'd also turn "yes, as I said earlier" at the
+        // reminder question into a reschedule request. "اجل" too ("yes"), and "أقدم" ("older").
+        "rebook", "rearrange",
+        "تغيير", "اغير", "أغير", "نغير", "تأجيل", "تاجيل", "غيرلي", "تغيرلي", "تبديل", "نبدل", "تقديم", "نقدم", "نأجل", "اأجل", "أأجل",
     ];
     // A cancel keyword never cancels on its own: it asks "reply 1 to cancel / 2 to keep" and parks
     // the appointment id in WhatsAppConversationState.ChatbotMode as "ConfirmCancel:{id}" until the

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import LegalPage from './LegalPage'
 import { useCustomerAuth } from '../../lib/customerAuth'
@@ -22,6 +22,15 @@ describe('LegalPage', () => {
     vi.mocked(useCustomerAuth).mockReturnValue({ language: 'HE' } as ReturnType<typeof useCustomerAuth>)
     render(<MemoryRouter initialEntries={['/terms?lang=EN']}><LegalPage doc="terms" /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Terms of Use')
+  })
+
+  it('picking the stored language on this page drops ?lang=', () => {
+    const setLang = vi.fn()
+    vi.mocked(useCustomerAuth).mockReturnValue({ language: 'HE', setLang } as unknown as ReturnType<typeof useCustomerAuth>)
+    render(<MemoryRouter initialEntries={['/terms?lang=EN']}><LegalPage doc="terms" /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'עברית' }))
+    expect(setLang).toHaveBeenCalledWith('HE')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('תנאי שימוש')
   })
 
   it('shows English terms', () => {

@@ -1,24 +1,25 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
 import { legalText, LEGAL_UPDATED, type LegalDoc } from '../../lib/legalContent'
-import LanguageSwitcher from '../../components/customer/LanguageSwitcher'
+import LanguagePicker from '../../components/LanguagePicker'
 import ThemeToggle from '../../components/ThemeToggle'
 import BackButton from '../../components/BackButton'
 import LegalLinks from '../../components/LegalLinks'
 
 // /terms, /privacy, /accessibility. Public; uses the customer language like the home page.
 export default function LegalPage({ doc }: { doc: LegalDoc }) {
-  const { language: customerLang } = useCustomerAuth()
+  const { language: customerLang, setLang } = useCustomerAuth()
   // ?lang= from the page that linked here (an owner form uses the owner language). Picking a
-  // language on this page drops it.
-  const [searchParams] = useSearchParams()
+  // language on this page drops it and saves the choice like the customer switcher does.
+  const [searchParams, setSearchParams] = useSearchParams()
   const asked = searchParams.get('lang')?.toUpperCase()
-  const [override, setOverride] = useState(asked === 'HE' || asked === 'AR' || asked === 'EN' ? asked : null)
-  const initialCustomerLang = useRef(customerLang)
-  useEffect(() => { if (customerLang !== initialCustomerLang.current) setOverride(null) }, [customerLang])
-  const lang = override ?? customerLang
+  const lang = asked === 'HE' || asked === 'AR' || asked === 'EN' ? asked : customerLang
+  function pick(l: string) {
+    setLang(l)
+    if (searchParams.has('lang')) setSearchParams((p) => { p.delete('lang'); return p }, { replace: true })
+  }
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const text = legalText(lang, doc)
 
@@ -30,7 +31,7 @@ export default function LegalPage({ doc }: { doc: LegalDoc }) {
         <div className="flex items-center justify-between mb-8">
           <BackButton lang={lang} />
           <div className="flex items-center gap-2">
-            <LanguageSwitcher />
+            <LanguagePicker value={lang} onChange={pick} />
             <ThemeToggle lang={lang} />
           </div>
         </div>
