@@ -19,6 +19,9 @@ const failures = new Map()
 // as fromMe like the ones the owner types on the phone, and only the latter are reported.
 const sentIds = new Set()
 const MAX_SENT_IDS = 5000
+// Ids of the owner's phone messages already reported: Baileys can deliver one twice (notify, then
+// append after a reconnect), and it was recorded twice on the Chats page (QA run 11).
+const reportedIds = new Set()
 // A customer's photo, video, voice note, sticker or file goes to the backend with the message, for
 // the owner's Chats page (kept only while that customer's chat is open). Bigger ones are reported
 // by name only, so one long video can't fill the database.
@@ -310,6 +313,30 @@ function messageText(msg) {
     || ''
 }
 
+// A shared location or contact card as one line of text, else ''. Only for an open owner chat:
+// they were dropped silently there (QA run 11), and outside one the chatbot has nothing to answer.
+function sharedItemText(msg) {
+  const content = extractMessageContent(msg.message)
+  const location = content?.locationMessage || content?.liveLocationMessage
+  if (location && location.degreesLatitude != null && location.degreesLongitude != null) {
+    const label = [location.name, location.address].filter(Boolean).join(', ')
+    return `📍 ${label ? `${label} ` : ''}https://maps.google.com/?q=${location.degreesLatitude},${location.degreesLongitude}`
+  }
+  const contact = content?.contactMessage
+  if (contact) return `👤 ${contact.displayName || 'Contact'}${vcardPhone(contact.vcard)}`
+  const contacts = content?.contactsArrayMessage
+  if (contacts) {
+    const names = (contacts.contacts || []).map((c) => `${c.displayName || 'Contact'}${vcardPhone(c.vcard)}`)
+    return `👤 ${names.join('\n👤 ') || contacts.displayName || 'Contacts'}`
+  }
+  return ''
+}
+
+function vcardPhone(vcard) {
+  const match = /TEL[^:]*:([+0-9 ()-]{5,})/.exec(vcard || '')
+  return match ? ` ${match[1].trim()}` : ''
+}
+
 // { type, mimetype, fileName, base64 } for a message with media, else null. base64 is null when the
 // file isn't wanted (the backend keeps files only in an open chat, within a quota), is too big or
 // couldn't be downloaded -- the owner then sees its name and opens it on the phone.
@@ -372,7 +399,7 @@ async function mediaWanted(businessId, fromPhone) {
 // Not ours (sentIds), not a group, not the owner's chat with themselves, and only fresh ones --
 // a reconnect can replay older messages.
 async function reportOwnMessage(businessId, sock, msg) {
-  if (!msg.message || sentIds.has(msg.key.id)) return
+  if (!msg.message || sentIds.has(msg.key.id) || reportedIds.has(msg.key.id)) return
   const remote = msg.key.remoteJid
   if (!remote || remote.endsWith('@g.us') || remote.endsWith('@broadcast') || remote.endsWith('@newsletter')) return
   const text = messageText(msg)
@@ -386,6 +413,8 @@ async function reportOwnMessage(businessId, sock, msg) {
   const ownPhone = sock.user?.id ? `+${sock.user.id.split(':')[0].split('@')[0]}` : null
   if (toPhone === ownPhone) return
 
+  reportedIds.add(msg.key.id)
+  if (reportedIds.size > MAX_SENT_IDS) reportedIds.delete(reportedIds.values().next().value)
   const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/outgoing`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Bridge-Secret': BRIDGE_SECRET },
@@ -401,9 +430,10 @@ async function handleInboundMessage(businessId, sock, msg) {
   // Groups, status posts and channels aren't conversations with a customer -- chatbot is 1:1 only.
   if (!remote || remote.endsWith('@g.us') || remote.endsWith('@broadcast') || remote.endsWith('@newsletter')) return
 
-  const text = messageText(msg)
+  let text = messageText(msg)
   const mediaInfo = messageMediaInfo(msg)
-  if (!text.trim() && !mediaInfo) return
+  const shared = !text.trim() && !mediaInfo ? sharedItemText(msg) : ''
+  if (!text.trim() && !mediaInfo && !shared) return
 
   const jid = await resolvePhoneJid(sock, msg)
   if (!jid) {
@@ -414,6 +444,10 @@ async function handleInboundMessage(businessId, sock, msg) {
   // Without a ":device" suffix ("15551234567:12"), like the owner's own messages (QA run 6).
   const fromPhone = `+${jid.split('@')[0].split(':')[0]}`
   const profileName = msg.pushName || null
+  if (shared) {
+    if (!(await mediaWanted(businessId, fromPhone))) return
+    text = shared
+  }
   const media = mediaInfo && await messageMedia(businessId, sock, msg, mediaInfo, await mediaWanted(businessId, fromPhone))
 
   const resp = await fetch(`${BACKEND_URL}/api/whatsapp/bridge/inbound`, {
