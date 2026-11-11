@@ -14,7 +14,7 @@ public class AuthorizationPolicyTests : IntegrationTestBase
 
     private async Task<string> GetBusinessToken()
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "policy-business@example.com", "password123", "policy-business"));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "policy-business@example.com", "password123", "policy-business", AcceptedTerms: true));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("policy-business@example.com", registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();

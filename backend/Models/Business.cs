@@ -51,6 +51,10 @@ public class Business
     // The PaidUntil value the admin was last alerted about, so each date alerts once and a new
     // date re-arms it.
     public DateOnly? PaidUntilAlertSentFor { get; set; }
+    // When the owner agreed to the terms and privacy policy on the sign-up form, and which version
+    // (LegalTerms.Version). Null for accounts from before this was stored (QA run 11).
+    public DateTime? TermsAcceptedAt { get; set; }
+    public string? TermsVersion { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool EmailVerified { get; set; } = false;
 

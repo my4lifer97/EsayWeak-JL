@@ -14,7 +14,7 @@ public class InputValidationTests : IntegrationTestBase
 
     private async Task<(string Token, string ItemId)> SetUpBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code));
         var token = (await verify.Content.ReadFromJsonAsync<LoginResponse>())!.Token;
@@ -67,7 +67,7 @@ public class InputValidationTests : IntegrationTestBase
     [InlineData("admin-platform")]
     public async Task Register_RejectsSlugsThatAreFrontendPages(string slug)
     {
-        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", $"{slug}@example.com", "password123", slug));
+        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", $"{slug}@example.com", "password123", slug, AcceptedTerms: true));
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
@@ -118,7 +118,7 @@ public class InputValidationTests : IntegrationTestBase
     [Fact]
     public async Task Register_UnknownBusinessType_Returns400AndCreatesNothing()
     {
-        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "input-type@example.com", "password123", "input-type-shop", "nonexistent"));
+        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "input-type@example.com", "password123", "input-type-shop", "nonexistent", AcceptedTerms: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         using var db = Db();
@@ -217,8 +217,8 @@ public class InputValidationTests : IntegrationTestBase
     [Fact]
     public async Task Register_Settings_AndBlocks_RejectTheLooseValues()
     {
-        var weakEmail = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "a@b", "password123", "weak-email-shop"));
-        var longSlug = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "long-slug@example.com", "password123", new string('a', 61)));
+        var weakEmail = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "a@b", "password123", "weak-email-shop", AcceptedTerms: true));
+        var longSlug = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "long-slug@example.com", "password123", new string('a', 61), AcceptedTerms: true));
         Assert.Equal(HttpStatusCode.BadRequest, weakEmail.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, longSlug.StatusCode);
 

@@ -234,7 +234,7 @@ public class PaidPeriodTests : IntegrationTestBase
     [Fact]
     public async Task OwnerSettings_IncludeTheDate()
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Owner Shop", "owner-paid@example.com", "password123", "owner-paid"));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Owner Shop", "owner-paid@example.com", "password123", "owner-paid", AcceptedTerms: true));
         var body = await register.Content.ReadFromJsonAsync<RegisterDevCode>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("owner-paid@example.com", body!.DevCode!));
         var login = await verify.Content.ReadFromJsonAsync<LoginResponse>();

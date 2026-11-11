@@ -8,7 +8,7 @@ test('business can log in and land on the dashboard', async ({ page }) => {
   const api = await request.newContext()
 
   const register = await api.post(`${API}/auth/register`, {
-    data: { name: 'E2E Admin Business', email, password: 'password123', slug },
+    data: { name: 'E2E Admin Business', email, password: 'password123', slug, acceptedTerms: true },
   })
   const { devCode } = await register.json()
   // Registration leaves the business unverified; verify via API so this test exercises a normal

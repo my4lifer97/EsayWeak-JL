@@ -56,6 +56,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             return BadRequest(new { error = "Slug must be lowercase letters, numbers and hyphens (3-60 characters)" });
         if (SlugValidator.IsReserved(req.Slug))
             return BadRequest(new { error = "This URL is reserved" });
+        // The form's checkbox alone didn't stop a script or an old client (QA run 11).
+        if (!req.AcceptedTerms)
+            return BadRequest(new { error = LegalTerms.NotAcceptedError });
 
         if (quota.RefuseIfOver(HttpContext, "register", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
         await ReleaseAbandonedSignUps(email, req.Slug);
@@ -81,6 +84,8 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             // business shows up under category filters in /browse the same as an admin-approved
             // one, but existing callers that don't send it (older clients, tests) still work.
             BusinessTypeId = req.BusinessTypeId,
+            TermsAcceptedAt = DateTime.UtcNow,
+            TermsVersion = LegalTerms.Version,
         };
 
         db.Businesses.Add(business);

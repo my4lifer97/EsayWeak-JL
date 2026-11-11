@@ -18,7 +18,7 @@ test('opening a WhatsApp booking link logs the customer in with no sign-up step 
   const api = await request.newContext()
 
   const register = await api.post(`${API}/auth/register`, {
-    data: { name: 'E2E WA Business', email, password: 'password123', slug },
+    data: { name: 'E2E WA Business', email, password: 'password123', slug, acceptedTerms: true },
   })
   const { devCode } = await register.json()
   // Registration leaves the business unverified; verify via API to get a token directly.

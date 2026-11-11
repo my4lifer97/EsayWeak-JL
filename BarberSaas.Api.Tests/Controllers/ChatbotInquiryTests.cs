@@ -18,7 +18,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
 
     private async Task<(string BusinessId, string Token)> SeedBusinessWithService(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug, AcceptedTerms: true));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var businessBody = await verify.Content.ReadFromJsonAsync<LoginResponse>();
@@ -156,7 +156,7 @@ public class ChatbotInquiryTests : IntegrationTestBase
         // for this same message, it would find no state left to read (just cleared) and wrongly fall
         // back to the business's default language, even though "1" was clearly sent as part of an
         // Arabic conversation moments earlier.
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "inquiry-gate-lang@example.com", "password123", "inquiry-gate-lang"));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "inquiry-gate-lang@example.com", "password123", "inquiry-gate-lang", AcceptedTerms: true));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("inquiry-gate-lang@example.com", registerBody!.DevCode!));
         var businessBody = await verify.Content.ReadFromJsonAsync<LoginResponse>();

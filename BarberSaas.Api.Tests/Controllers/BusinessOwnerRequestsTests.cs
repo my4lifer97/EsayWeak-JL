@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using BarberSaas.Api.DTOs;
 using BarberSaas.Api.Models;
+using BarberSaas.Api.Services;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Controllers;
@@ -42,7 +44,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         string typeId, string email = "prospect@example.com", string first = "Jamel", string family = "Marie")
     {
         var code = await SeedVerifiedEmailCode(email);
-        return new("Prospect Barbershop", first, family, email, "+15551230000", typeId, "We cut hair", "Online booking", code);
+        return new("Prospect Barbershop", first, family, email, "+15551230000", typeId, "We cut hair", "Online booking", code, AcceptedTerms: true);
     }
 
     private async Task<string> BootstrapAdmin(string email = "owner@example.com")
@@ -61,6 +63,21 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId));
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        using var db = Db();
+        var stored = await db.BusinessOwnerRequests.SingleAsync();
+        Assert.NotNull(stored.TermsAcceptedAt);
+        Assert.Equal(LegalTerms.Version, stored.TermsVersion);
+    }
+
+    // QA run 11 PA-60: the form's checkbox alone didn't stop a script.
+    [Fact]
+    public async Task Create_WithoutAcceptingTheTerms_IsRefused()
+    {
+        var typeId = await SeedBusinessType();
+
+        var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", (await ValidRequest(typeId)) with { AcceptedTerms = false });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     // ─── Email verification (send-email-code) ────────────────────────────────
@@ -115,7 +132,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
 
         var resp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            new CreateBusinessOwnerRequestRequest("Prospect Barbershop", "Jamel", "Marie", "unverified@example.com", "+15551230000", typeId, null, null, "000000"));
+            new CreateBusinessOwnerRequestRequest("Prospect Barbershop", "Jamel", "Marie", "unverified@example.com", "+15551230000", typeId, null, null, "000000", AcceptedTerms: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
@@ -130,7 +147,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var typeId = await SeedBusinessType();
 
         var resp = await Client.PostAsJsonAsync("/api/business-owner-requests",
-            new CreateBusinessOwnerRequestRequest("Prospect Barbershop", "Jamel", "Marie", "no-code@example.com", "+15551230000", typeId, null, null, null));
+            new CreateBusinessOwnerRequestRequest("Prospect Barbershop", "Jamel", "Marie", "no-code@example.com", "+15551230000", typeId, null, null, null, AcceptedTerms: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<ErrorResponse>();
@@ -195,7 +212,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
     public async Task Create_EmailAlreadyHasRealAccount_ReturnsBadRequest()
     {
         var typeId = await SeedBusinessType();
-        await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Existing Business", "existing@example.com", "password123", "existing-shop"));
+        await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Existing Business", "existing@example.com", "password123", "existing-shop", AcceptedTerms: true));
 
         var resp = await Client.PostAsJsonAsync("/api/business-owner-requests", await ValidRequest(typeId, email: "existing@example.com"));
 

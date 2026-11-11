@@ -385,6 +385,12 @@ namespace BarberSaas.Api.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("TermsAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TermsVersion")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("TrialEndsAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -502,6 +508,12 @@ namespace BarberSaas.Api.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("SystemNeeds")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("TermsAcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TermsVersion")
                         .HasColumnType("text");
 
                     b.HasKey("Id");

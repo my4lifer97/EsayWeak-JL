@@ -20,7 +20,7 @@ public class QaRun11Tests : IntegrationTestBase
     private async Task<(string BusinessId, string Slug, string Token, string ItemId)> SeedBusiness(string slug, Action<Business>? configure = null)
     {
         var email = $"{slug}@example.com";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code));
         var token = (await verify.Content.ReadFromJsonAsync<LoginResponse>())!.Token;
@@ -79,10 +79,30 @@ public class QaRun11Tests : IntegrationTestBase
     [InlineData("qa11-shop\n")]
     public async Task Register_SlugWithATrailingNewline_IsRefused(string slug)
     {
-        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "nl@example.com", "password123", slug));
+        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "nl@example.com", "password123", slug, AcceptedTerms: true));
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         using var db = Db();
         Assert.False(await db.Businesses.AnyAsync(b => b.Email == "nl@example.com"));
+    }
+
+    // PA-60 / OWN-60
+    [Fact]
+    public async Task Register_WithoutAcceptingTheTerms_IsRefused()
+    {
+        var resp = await Client.PostAsJsonAsync("/api/auth/register", new { name = "Shop", email = "noterms@example.com", password = "password123", slug = "no-terms-shop" });
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        using var db = Db();
+        Assert.False(await db.Businesses.AnyAsync(b => b.Email == "noterms@example.com"));
+    }
+
+    [Fact]
+    public async Task Register_StoresWhenAndWhichTermsWereAccepted()
+    {
+        var (businessId, _, _, _) = await SeedBusiness("q11-terms");
+        using var db = Db();
+        var business = await db.Businesses.SingleAsync(b => b.Id == businessId);
+        Assert.NotNull(business.TermsAcceptedAt);
+        Assert.Equal(LegalTerms.Version, business.TermsVersion);
     }
 
     // ST-61

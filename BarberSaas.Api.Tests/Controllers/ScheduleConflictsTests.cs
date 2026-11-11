@@ -18,7 +18,7 @@ public class ScheduleConflictsTests : IntegrationTestBase
     private async Task<(string BusinessId, string ItemId)> SeedOwner(string slug)
     {
         var email = $"{slug}@example.com";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code));
         Authorize(Client, (await verify.Content.ReadFromJsonAsync<LoginResponse>())!.Token);

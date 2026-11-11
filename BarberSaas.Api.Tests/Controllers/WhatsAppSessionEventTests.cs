@@ -15,7 +15,7 @@ public class WhatsAppSessionEventTests : IntegrationTestBase
 
     private async Task<string> SeedBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Bot Shop", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Bot Shop", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code));
         await Client.PostAsJsonAsync("/api/platform-admin/bootstrap",

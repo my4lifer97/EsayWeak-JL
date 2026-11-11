@@ -12,7 +12,7 @@ public class AuthControllerTests : IntegrationTestBase
     private record ErrorResponse(string Error);
 
     private static RegisterRequest ValidRegister(string email = "business@example.com", string slug = "my-business-shop") =>
-        new("Business Name", email, "password123", slug);
+        new("Business Name", email, "password123", slug, AcceptedTerms: true);
 
     private async Task<string> RegisterAndGetDevCode(string email, string slug)
     {
@@ -30,7 +30,7 @@ public class AuthControllerTests : IntegrationTestBase
     [InlineData("Valid Name", "a@example.com", "password123", "has spaces")] // slug invalid chars
     public async Task Register_WithInvalidInput_ReturnsBadRequest(string name, string email, string password, string slug)
     {
-        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(name, email, password, slug));
+        var resp = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest(name, email, password, slug, AcceptedTerms: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }

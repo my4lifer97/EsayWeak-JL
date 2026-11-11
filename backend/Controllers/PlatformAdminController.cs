@@ -725,6 +725,9 @@ public class PlatformAdminController(
             EmailVerified = true,
             BusinessTypeId = request.BusinessTypeId,
             MustChangePassword = true,
+            // What the owner agreed to on the request form.
+            TermsAcceptedAt = request.TermsAcceptedAt,
+            TermsVersion = request.TermsVersion,
         };
         db.Businesses.Add(business);
 

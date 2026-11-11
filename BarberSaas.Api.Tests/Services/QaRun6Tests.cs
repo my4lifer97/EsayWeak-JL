@@ -42,7 +42,7 @@ public class QaRun6Tests : IntegrationTestBase
     [Fact]
     public async Task DeletedItem_StillHasTimesForMovingItsOwnAppointments()
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa6-del@example.com", "password123", "qa6-del-shop"));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa6-del@example.com", "password123", "qa6-del-shop", AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var token = (await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("qa6-del@example.com", code)))
             .Content.ReadFromJsonAsync<LoginResponse>())!.Token;
@@ -81,7 +81,7 @@ public class QaRun6Tests : IntegrationTestBase
     public async Task PasswordOver72Bytes_IsRefused()
     {
         var resp = await Client.PostAsJsonAsync("/api/auth/register",
-            new RegisterRequest("Shop", "qa6-longpw@example.com", new string('p', 73), "qa6-longpw-shop"));
+            new RegisterRequest("Shop", "qa6-longpw@example.com", new string('p', 73), "qa6-longpw-shop", AcceptedTerms: true));
 
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }

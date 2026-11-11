@@ -26,6 +26,10 @@ public class BusinessOwnerRequest
     // shown to the admin on the request detail view, not used anywhere else.
     public string? BusinessDescription { get; set; }
     public string? SystemNeeds { get; set; }
+    // When the owner agreed to the terms and privacy policy on the sign-up form, and which version
+    // (LegalTerms.Version). Null for accounts from before this was stored (QA run 11).
+    public DateTime? TermsAcceptedAt { get; set; }
+    public string? TermsVersion { get; set; }
     public BusinessOwnerRequestStatus Status { get; set; } = BusinessOwnerRequestStatus.Pending;
     public string? RejectionNote { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

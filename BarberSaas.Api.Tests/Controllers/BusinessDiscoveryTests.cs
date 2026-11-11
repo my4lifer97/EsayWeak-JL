@@ -12,7 +12,7 @@ public class BusinessDiscoveryTests : IntegrationTestBase
 
     private async Task<string> RegisterAndLoginBusiness(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug, AcceptedTerms: true));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
         var body = await verify.Content.ReadFromJsonAsync<LoginResponse>();
@@ -72,7 +72,7 @@ public class BusinessDiscoveryTests : IntegrationTestBase
         var barber = SeedBusinessType("disc-selfreg-barber", "Barber");
 
         var resp = await Client.PostAsJsonAsync("/api/auth/register",
-            new RegisterRequest("Self Reg Shop", "self-reg-discovery@example.com", "password123", "disc-selfreg-shop", barber));
+            new RegisterRequest("Self Reg Shop", "self-reg-discovery@example.com", "password123", "disc-selfreg-shop", barber, AcceptedTerms: true));
         Assert.Equal(System.Net.HttpStatusCode.Created, resp.StatusCode);
         var unverified = await Search("?businessTypeKey=disc-selfreg-barber");
         var code = (await resp.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;

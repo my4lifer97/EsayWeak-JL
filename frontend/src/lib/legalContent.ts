@@ -1,6 +1,7 @@
 // Text of the /terms, /privacy and /accessibility pages, per language. Kept out of i18n.ts because
 // it is long prose, not UI strings. This is a starting draft: have it reviewed by an Israeli lawyer
-// before relying on it, and update LEGAL_UPDATED whenever the text changes.
+// before relying on it, and update LEGAL_UPDATED whenever the text changes, together with
+// LegalTerms.Version in the backend (the version a sign-up's consent is stored with).
 
 export type LegalDoc = 'terms' | 'privacy' | 'accessibility'
 type Lang = 'EN' | 'AR' | 'HE'
@@ -8,7 +9,7 @@ type Section = { h: string; p: string[] }
 type DocText = { title: string; intro: string; sections: Section[] }
 
 export const LEGAL_CONTACT_EMAIL = 'esayweekpasskey@gmail.com'
-export const LEGAL_UPDATED = '2026-11-02'
+export const LEGAL_UPDATED = '2026-11-11'
 
 const E = LEGAL_CONTACT_EMAIL
 

@@ -7,7 +7,7 @@ async function seedBusiness(api: Awaited<ReturnType<typeof request.newContext>>,
   const slug = `e2e-store-${Date.now()}-${Math.floor(Math.random() * 1000)}`
   const email = `${slug}@example.com`
   const register = await api.post(`${API}/auth/register`, {
-    data: { name: 'E2E Storefront Co', email, password: 'password123', slug },
+    data: { name: 'E2E Storefront Co', email, password: 'password123', slug, acceptedTerms: true },
   })
   const { devCode } = await register.json()
   const verify = await api.post(`${API}/auth/verify-email`, { data: { email, code: devCode } })

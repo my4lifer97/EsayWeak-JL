@@ -16,7 +16,7 @@ public class ChatbotFinalMessageTests : IntegrationTestBase
     private async Task<(string BusinessId, string ItemId, string Date)> SeedBusiness(string slug, string finalMessage)
     {
         var email = $"{slug}@example.com";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var login = await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code))).Content.ReadFromJsonAsync<LoginResponse>();
         Authorize(Client, login!.Token);

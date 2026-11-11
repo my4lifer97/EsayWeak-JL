@@ -19,7 +19,7 @@ public class ChatReadyMessagesTests : IntegrationTestBase
     private async Task<(string BusinessId, string Token, string ItemId)> SeedBusiness(string slug)
     {
         var email = $"{slug}@example.com";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Ready Shop", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Ready Shop", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var verify = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code));
         var token = (await verify.Content.ReadFromJsonAsync<LoginResponse>())!.Token;

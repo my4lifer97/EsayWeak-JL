@@ -8,7 +8,7 @@ description: Every barber-saas backend endpoint with its rules (auth, admin, sch
 ### Backend API Routes
 
 **Auth (no JWT)**
-- `POST /api/auth/register` — self-service business signup (`EmailVerified = false`); auto-creates Mon–Fri 09:00–18:00 working hours for an `Appointment`/`Both`-model business; sends a 6-digit email verification code (`devCode` in the response body in Development, matching `DevEmailSender`'s no-op-in-dev pattern)
+- `POST /api/auth/register` — self-service business signup (`EmailVerified = false`); needs `acceptedTerms: true` (400 otherwise; stores `TermsAcceptedAt` + `LegalTerms.Version`); auto-creates Mon–Fri 09:00–18:00 working hours for an `Appointment`/`Both`-model business; sends a 6-digit email verification code (`devCode` in the response body in Development, matching `DevEmailSender`'s no-op-in-dev pattern)
 - `POST /api/auth/login` — `{ email, password }` where the `email` field's value is matched against either the business's real email **or** its system-generated `Username` (field name kept as `email` for compatibility — see [Business owner onboarding](#business-owner-onboarding-self-service--admin-approved)); returns JWT token (30 days, carries a `mustChangePassword` claim); **403 `{ emailNotVerified: true }`** if not yet verified (frontend responds by requesting a fresh code and dropping into the verify-code view)
 - `POST /api/auth/verify-email` — `{ email, code }`; marks the business verified and returns a JWT (`LoginResponse`), logging them in directly
 - `POST /api/auth/resend-verification` — `{ email }`; 45s cooldown + 5/hour cap
@@ -77,7 +77,7 @@ description: Every barber-saas backend endpoint with its rules (auth, admin, sch
 
 **Business owner onboarding (no JWT except the review side)**
 - `POST /api/business-owner-requests/send-email-code` — public `{ email }`; sends a 6-digit code via the admin's Gmail (`IOwnerEmailSender`); rate-limited (45s cooldown, 5/hour)
-- `POST /api/business-owner-requests` — public submission `{ businessName, ownerFirstName, ownerFamilyName, email, phone, businessTypeId, businessDescription?, systemNeeds?, code }`; `code` must match an unconsumed, unexpired row from `send-email-code` for that email (400 otherwise); names must be English-letters-only (the username is derived from them); phone must be 7–15 digits; 400 on an email that already has a `Business`, 409 on a second concurrent `Pending` request for the same email; best-effort admin-notification email
+- `POST /api/business-owner-requests` — public submission `{ businessName, ownerFirstName, ownerFamilyName, email, phone, businessTypeId, businessDescription?, systemNeeds?, code, acceptedTerms }`; `acceptedTerms` must be true (400, stored as `TermsAcceptedAt`/`TermsVersion` and copied to the business on approval); `code` must match an unconsumed, unexpired row from `send-email-code` for that email (400 otherwise); names must be English-letters-only (the username is derived from them); phone must be 7–15 digits; 400 on an email that already has a `Business`, 409 on a second concurrent `Pending` request for the same email; best-effort admin-notification email
 - Platform-admin review side is under `/api/platform-admin` — see [Platform admin](#platform-admin) below
 
 **Reviews (customer JWT, `CustomerOnly`)**

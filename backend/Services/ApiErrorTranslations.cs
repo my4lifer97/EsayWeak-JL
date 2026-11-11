@@ -23,6 +23,7 @@ public static class ApiErrorTranslations
         ["Invalid week"] = ("أسبوع غير صالح", "שבוע לא תקין"),
         ["You can't block a date in the past"] = ("لا يمكن حجب تاريخ في الماضي", "אי אפשר לחסום תאריך שכבר עבר"),
         ["This date is already blocked"] = ("هذا التاريخ محجوب بالفعل", "התאריך הזה כבר חסום"),
+        [LegalTerms.NotAcceptedError] = ("يرجى الموافقة على شروط الاستخدام وسياسة الخصوصية", "יש לאשר את תנאי השימוש ומדיניות הפרטיות"),
         ["Each day can appear only once"] = ("يمكن أن يظهر كل يوم مرة واحدة فقط", "כל יום יכול להופיע רק פעם אחת"),
         ["This break overlaps another break on that day"] = ("هذه الاستراحة تتداخل مع استراحة أخرى في ذلك اليوم", "ההפסקה הזו חופפת להפסקה אחרת באותו יום"),
         ["You already have a schedule with this name"] = ("لديك بالفعل جدول بهذا الاسم", "כבר יש לך לוח זמנים בשם הזה"),

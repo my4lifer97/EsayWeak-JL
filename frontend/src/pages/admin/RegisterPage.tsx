@@ -50,7 +50,7 @@ export default function RegisterPage() {
     setLoading(true)
     try {
       const { name, email, password, slug, businessTypeId } = form
-      const { data } = await api.post('/auth/register', { name, email, password, slug, businessTypeId })
+      const { data } = await api.post('/auth/register', { name, email, password, slug, businessTypeId, acceptedTerms: agreed })
       if (data.devCode) { setDevCode(data.devCode); setCode(data.devCode) }
       setView('verify')
     } catch (err: unknown) {

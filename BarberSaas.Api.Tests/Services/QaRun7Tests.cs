@@ -14,7 +14,7 @@ public class QaRun7Tests : IntegrationTestBase
 
     private async Task<string> RegisterAndVerify(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         return (await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code)))
             .Content.ReadFromJsonAsync<LoginResponse>())!.Token;
@@ -132,9 +132,9 @@ public class QaRun7Tests : IntegrationTestBase
     [Fact]
     public async Task UnverifiedSignUp_HasNoStorefront_AndGivesUpItsUrlAfterADay()
     {
-        await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa7-typo@exmaple.com", "password123", "qa7-held"));
+        await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa7-typo@exmaple.com", "password123", "qa7-held", AcceptedTerms: true));
         var info = await Client.GetAsync("/api/qa7-held/info");
-        var tooSoon = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa7-real@example.com", "password123", "qa7-held"));
+        var tooSoon = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa7-real@example.com", "password123", "qa7-held", AcceptedTerms: true));
         using (var db = Db())
         {
             var held = await db.Businesses.SingleAsync(b => b.Slug == "qa7-held");
@@ -142,7 +142,7 @@ public class QaRun7Tests : IntegrationTestBase
             await db.SaveChangesAsync();
         }
 
-        var later = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa7-real@example.com", "password123", "qa7-held"));
+        var later = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", "qa7-real@example.com", "password123", "qa7-held", AcceptedTerms: true));
 
         Assert.Equal(HttpStatusCode.NotFound, info.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, tooSoon.StatusCode);

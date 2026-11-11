@@ -115,6 +115,7 @@ export default function RequestBusinessAccountPage() {
         businessDescription: description || null,
         systemNeeds: systemNeeds || null,
         code: emailCode.trim(),
+        acceptedTerms: agreed,
       })
       setSubmitted(true)
     } catch (err: unknown) {

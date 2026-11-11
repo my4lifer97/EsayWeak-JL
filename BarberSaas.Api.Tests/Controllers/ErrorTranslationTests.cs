@@ -92,7 +92,7 @@ public class ErrorTranslationTests : IntegrationTestBase
     public async Task BadInput_NamesOnlyTheField_AndAHugeWeekIsA400()
     {
         var email = "err-owner@example.com";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", "err-owner-shop"));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", "err-owner-shop", AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("devCode").GetString();
         var login = await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code!))).Content.ReadFromJsonAsync<LoginResponse>();
         Authorize(Client, login!.Token);

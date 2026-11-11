@@ -120,6 +120,9 @@ public class BusinessOwnerRequestsController(
             return BadRequest(new { error = "Please enter a valid phone number" });
         if (string.IsNullOrWhiteSpace(req.BusinessTypeId))
             return BadRequest(new { error = "Business type is required" });
+        // The form's checkbox alone didn't stop a script or an old client (QA run 11).
+        if (!req.AcceptedTerms)
+            return BadRequest(new { error = LegalTerms.NotAcceptedError });
         // Non-nullable string params would otherwise trigger [ApiController]'s automatic
         // ModelState validation (a generic ValidationProblemDetails body, no "error" field the
         // frontend knows to show) if this field is ever missing -- e.g. a stale client-side bundle
@@ -166,6 +169,8 @@ public class BusinessOwnerRequestsController(
             BusinessTypeId = businessType.Id,
             BusinessDescription = TextClean.Note(req.BusinessDescription),
             SystemNeeds = TextClean.Note(req.SystemNeeds),
+            TermsAcceptedAt = DateTime.UtcNow,
+            TermsVersion = LegalTerms.Version,
         };
         db.BusinessOwnerRequests.Add(request);
         await db.SaveChangesAsync();

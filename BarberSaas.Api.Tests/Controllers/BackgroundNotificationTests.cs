@@ -28,7 +28,7 @@ public class BackgroundNotificationTests : IntegrationTestBase
     public async Task OwnerCancel_DoesNotWaitForTheWaitlistMessage()
     {
         const string slug = "bg-notify-shop";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "bg-notify@example.com", "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", "bg-notify@example.com", "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var owner = (await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("bg-notify@example.com", code))).Content.ReadFromJsonAsync<LoginResponse>())!.Token;
         Authorize(Client, owner);

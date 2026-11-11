@@ -22,7 +22,7 @@ public class QaRun10Tests : IntegrationTestBase
     private async Task<(string BusinessId, string Slug, string Token, string ItemId)> SeedBusiness(string slug, bool verified = true)
     {
         var email = $"{slug}@example.com";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Shop", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var token = "";
         if (verified)

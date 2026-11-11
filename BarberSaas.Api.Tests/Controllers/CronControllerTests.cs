@@ -55,7 +55,7 @@ public class CronControllerTests : IntegrationTestBase
     private async Task<(string businessId, string phone, string appointmentId)> SeedConfirmedAppointment(
         string email, string slug, DateTime date, string startTime)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug, AcceptedTerms: true));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
 
@@ -249,7 +249,7 @@ public class CronControllerTests : IntegrationTestBase
 
     private async Task<string> SeedActiveBusinessDueForCharge(string email, string slug)
     {
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Business", email, "password123", slug, AcceptedTerms: true));
         var registerBody = await register.Content.ReadFromJsonAsync<RegisterResponse>();
         await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, registerBody!.DevCode!));
 

@@ -21,7 +21,7 @@ public class OwnerActionCustomerNoticeTests : IntegrationTestBase
     private async Task<(string Token, string Slug, string ItemId, string Date, string AppointmentId)> Seed(string slug)
     {
         var email = $"{slug}@example.com";
-        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Notice Shop", email, "password123", slug));
+        var register = await Client.PostAsJsonAsync("/api/auth/register", new RegisterRequest("Notice Shop", email, "password123", slug, AcceptedTerms: true));
         var code = (await register.Content.ReadFromJsonAsync<RegisterResponse>())!.DevCode!;
         var token = (await (await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest(email, code))).Content.ReadFromJsonAsync<LoginResponse>())!.Token;
         Authorize(Client, token);

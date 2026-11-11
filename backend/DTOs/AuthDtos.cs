@@ -1,6 +1,6 @@
 namespace BarberSaas.Api.DTOs;
 
-public record RegisterRequest(string Name, string Email, string Password, string Slug, string? BusinessTypeId = null);
+public record RegisterRequest(string Name, string Email, string Password, string Slug, string? BusinessTypeId = null, bool AcceptedTerms = false);
 public record LoginRequest(string Email, string Password);
 public record LoginResponse(string Token, string Id, string Name, string Email, string Slug, bool MustChangePassword = false);
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
@@ -188,7 +188,7 @@ public record BusinessTypeDto(string Id, string Key, string DisplayNameEn, strin
 
 public record CreateBusinessOwnerRequestRequest(
     string BusinessName, string OwnerFirstName, string OwnerFamilyName, string Email, string Phone,
-    string BusinessTypeId, string? BusinessDescription, string? SystemNeeds, string? Code);
+    string BusinessTypeId, string? BusinessDescription, string? SystemNeeds, string? Code, bool AcceptedTerms = false);
 
 public record SendBusinessOwnerRequestEmailCodeRequest(string Email);
 
