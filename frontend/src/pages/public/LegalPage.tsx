@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
 import { legalText, LEGAL_UPDATED, type LegalDoc } from '../../lib/legalContent'
@@ -10,7 +10,15 @@ import LegalLinks from '../../components/LegalLinks'
 
 // /terms, /privacy, /accessibility. Public; uses the customer language like the home page.
 export default function LegalPage({ doc }: { doc: LegalDoc }) {
-  const { language: lang } = useCustomerAuth()
+  const { language: customerLang } = useCustomerAuth()
+  // ?lang= from the page that linked here (an owner form uses the owner language). Picking a
+  // language on this page drops it.
+  const [searchParams] = useSearchParams()
+  const asked = searchParams.get('lang')?.toUpperCase()
+  const [override, setOverride] = useState(asked === 'HE' || asked === 'AR' || asked === 'EN' ? asked : null)
+  const initialCustomerLang = useRef(customerLang)
+  useEffect(() => { if (customerLang !== initialCustomerLang.current) setOverride(null) }, [customerLang])
+  const lang = override ?? customerLang
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const text = legalText(lang, doc)
 

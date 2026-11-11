@@ -368,7 +368,7 @@ public class WhatsAppControllerTests : IntegrationTestBase
         var phone = "+15558880041";
         var appointmentId = await AddUpcomingAppointment(businessId, phone, serviceIds[0]);
 
-        var question = await SendWhatsAppMessage(phone, "Don't cancel, I'm just confirming I'll come");
+        var question = await SendWhatsAppMessage(phone, "Cancel it, I can't come after all");
         Assert.Contains("Reply 1 to cancel", question);
 
         var reply = await SendWhatsAppMessage(phone, "2");

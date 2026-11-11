@@ -134,13 +134,13 @@ export default function AppointmentCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           {showBusinessName && <div className="font-semibold text-ink truncate">{appt.businessName}</div>}
-          <div className="text-muted text-sm mt-1">{itemName(appt.item, lang)}</div>
+          <div className="text-muted text-sm mt-1 wrap-anywhere">{itemName(appt.item, lang)}</div>
           <div className="text-muted text-sm mt-1">
             {formatDay(parseISO(appt.date), lang, 'shortYear')}
             {' · '}<bdi dir="ltr">{appt.startTime}–{appt.endTime}</bdi>
           </div>
           {appt.notes && !expandedNotes && (
-            <div className="text-muted text-sm mt-1 italic">"{appt.notes}"</div>
+            <div className="text-muted text-sm mt-1 italic wrap-anywhere">"{appt.notes}"</div>
           )}
           {appt.photoUrl && (
             <a href={mediaUrl(appt.photoUrl)} target="_blank" rel="noreferrer" className="inline-block mt-2">

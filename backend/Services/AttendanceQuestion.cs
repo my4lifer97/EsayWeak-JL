@@ -72,6 +72,9 @@ public static class AttendanceQuestion
         state.ShownItemIds = null;
         state.HistoryJson = null;
         var localStart = DateTime.SpecifyKind(appointment.Date.Date.Add(TimeSpan.Parse(appointment.StartTime)), DateTimeKind.Unspecified);
+        // A start in the hour skipped at the spring clock change doesn't exist locally and threw
+        // (QA run 11): that wall-clock time is an hour later in real time.
+        if (AppClock.Zone.IsInvalidTime(localStart)) localStart = localStart.AddHours(1);
         state.ExpiresAt = TimeZoneInfo.ConvertTimeToUtc(localStart, AppClock.Zone);
         appointment.AttendanceStatus = Asked;
         return state;

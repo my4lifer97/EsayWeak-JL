@@ -136,11 +136,11 @@ export default function BusinessReviews({
         <div className="bg-surface border border-coral/30 rounded-2xl p-4 mb-4">
           <div className="text-xs text-muted mb-1">{t(lang, 'yourReview')}</div>
           <StarRating value={own.rating} size="sm" lang={lang} />
-          {own.comment && <p className="text-ink text-sm mt-2">{own.comment}</p>}
+          {own.comment && <p className="text-ink text-sm mt-2 wrap-anywhere">{own.comment}</p>}
           {own.ownerReply && (
             <div className="mt-3 border-s-2 border-line ps-3">
               <div className="text-xs text-muted">{t(lang, 'ownerReply')}</div>
-              <p className="text-muted text-sm mt-0.5">{own.ownerReply}</p>
+              <p className="text-muted text-sm mt-0.5 wrap-anywhere">{own.ownerReply}</p>
             </div>
           )}
           <div className="flex gap-2 mt-3">
@@ -197,15 +197,15 @@ export default function BusinessReviews({
           {items.map((r) => (
             <div key={r.id} className="bg-surface border border-line rounded-2xl p-4">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-ink text-sm font-medium">{r.reviewerName}</span>
+                <span className="text-ink text-sm font-medium min-w-0 wrap-anywhere">{r.reviewerName}</span>
                 <span className="text-muted text-xs">{format(parseISO(r.createdAt), 'MMM d, yyyy', { locale })}</span>
               </div>
               <div className="mt-1"><StarRating value={r.rating} size="sm" lang={lang} /></div>
-              {r.comment && <p className="text-ink text-sm mt-2">{r.comment}</p>}
+              {r.comment && <p className="text-ink text-sm mt-2 wrap-anywhere">{r.comment}</p>}
               {r.ownerReply && (
                 <div className="mt-3 border-s-2 border-line ps-3">
                   <div className="text-xs text-muted">{t(lang, 'ownerReply')}</div>
-                  <p className="text-muted text-sm mt-0.5">{r.ownerReply}</p>
+                  <p className="text-muted text-sm mt-0.5 wrap-anywhere">{r.ownerReply}</p>
                 </div>
               )}
             </div>

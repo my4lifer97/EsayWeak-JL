@@ -9,6 +9,13 @@ namespace BarberSaas.Api.Services;
 // own side too).
 public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
 {
+    public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(15);
+    // Up to ~14MB of base64 that the bridge then uploads to WhatsApp (its own WHATSAPP_TIMEOUT_MS
+    // is 60 s): 15 s told the owner "may not have been sent" on a slow link (QA run 11).
+    public static readonly TimeSpan MediaTimeout = TimeSpan.FromSeconds(60);
+
+    private static CancellationToken Within(TimeSpan timeout) => new CancellationTokenSource(timeout).Token;
+
     // The linking calls report a bridge that is down, timing out or answering with an error as one
     // WhatsAppBridgeUnavailableException (a clear 503 via GlobalExceptionHandler, not a bare 500).
     // A 200 with an empty or unreadable body counts as the bridge not answering: passed on, the
@@ -31,7 +38,7 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
 
     public async Task SendAsync(string businessId, string toPhone, string message)
     {
-        var resp = await http.PostAsJsonAsync("/send", new { businessId, toPhone, message });
+        var resp = await http.PostAsJsonAsync("/send", new { businessId, toPhone, message }, Within(DefaultTimeout));
         resp.EnsureSuccessStatusCode();
     }
 
@@ -43,7 +50,7 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
         {
             businessId, toPhone, message = caption,
             media = new { base64 = Convert.ToBase64String(data), mimetype = contentType, fileName },
-        });
+        }, Within(MediaTimeout));
         resp.EnsureSuccessStatusCode();
     }
 
@@ -51,7 +58,7 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
     {
         return await Linking(async () =>
         {
-            var resp = await http.PostAsync($"/sessions/{businessId}/start", null);
+            var resp = await http.PostAsync($"/sessions/{businessId}/start", null, Within(DefaultTimeout));
             resp.EnsureSuccessStatusCode();
             return await ReadStatusAsync(resp);
         });
@@ -61,7 +68,7 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
     {
         return await Linking(async () =>
         {
-            var resp = await http.GetAsync($"/sessions/{businessId}/status");
+            var resp = await http.GetAsync($"/sessions/{businessId}/status", Within(DefaultTimeout));
             resp.EnsureSuccessStatusCode();
             return await ReadStatusAsync(resp);
         });
@@ -71,7 +78,7 @@ public class WhatsAppBridgeClient(HttpClient http) : IWhatsAppBridgeClient
     {
         await Linking(async () =>
         {
-            var resp = await http.DeleteAsync($"/sessions/{businessId}");
+            var resp = await http.DeleteAsync($"/sessions/{businessId}", Within(DefaultTimeout));
             resp.EnsureSuccessStatusCode();
             return true;
         });

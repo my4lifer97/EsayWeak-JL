@@ -8,7 +8,10 @@ public static class ImageUpload
     public const long MaxBytes = 5 * 1024 * 1024;
     // For [RequestSizeLimit]: the whole multipart body, so the file itself can be up to MaxBytes
     // (a 5,242,830-byte image was refused at exactly MaxBytes, QA run 3).
-    public const long MaxRequestBytes = MaxBytes + 64 * 1024;
+    // Three times the file limit, and the file parameter nullable, so a 6MB image reaches
+    // ValidateAsync and gets Error instead of the framework's untranslated "Invalid request"
+    // (QA run 11; same as ChatFiles.MaxRequestBodyBytes).
+    public const long MaxRequestBytes = 3 * MaxBytes;
     public const string Error = "Please upload a JPG, PNG, or WEBP image up to 5MB.";
 
     private static readonly Dictionary<string, string> AllowedTypes = new()
@@ -20,10 +23,11 @@ public static class ImageUpload
     // Exactly what POST /{slug}/appointments/photo returns. A prefix check let
     // "/api/uploads/appointment-photos/../../secret" through (QA run 3).
     public static bool IsCustomerPhotoUrl(string? url) =>
-        url is not null && System.Text.RegularExpressions.Regex.IsMatch(url, @"^/api/uploads/appointment-photos/[0-9a-f]{32}\.(jpg|jpeg|png|webp)$");
+        url is not null && System.Text.RegularExpressions.Regex.IsMatch(url, @"\A/api/uploads/appointment-photos/[0-9a-f]{32}\.(jpg|jpeg|png|webp)\z");
 
-    public static async Task<string?> ValidateAsync(IFormFile file)
+    public static async Task<string?> ValidateAsync(IFormFile? file)
     {
+        if (file is null) return null;
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (file.Length == 0 || file.Length > MaxBytes
             || !AllowedTypes.TryGetValue(ext, out var expectedContentType)

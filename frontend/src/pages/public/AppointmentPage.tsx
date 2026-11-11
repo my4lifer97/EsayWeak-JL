@@ -135,13 +135,13 @@ export default function AppointmentPage() {
           {rows.map(({ label, value }) => (
             <div key={label} className="flex justify-between text-sm">
               <span className="text-muted">{label}</span>
-              <span className="text-ink"><bdi>{value}</bdi></span>
+              <span className="text-ink min-w-0 wrap-anywhere"><bdi>{value}</bdi></span>
             </div>
           ))}
           {appt.notes && (
             <div className="text-sm pt-2 border-t border-line">
               <span className="text-muted block mb-1">{t(lang, 'notesLabel')}</span>
-              <span className="text-ink">{appt.notes}</span>
+              <span className="text-ink wrap-anywhere">{appt.notes}</span>
             </div>
           )}
           <div className="flex justify-between text-sm pt-2 border-t border-line">

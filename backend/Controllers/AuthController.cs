@@ -339,8 +339,6 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         var email = EmailAddress.Normalize(req.Email);
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
         if (business is null) return BadRequest(new { error = "Invalid or expired code" });
-        // Also covers a reset code issued before the account was disabled.
-        if (business.IsDisabled) return AccountDisabled();
 
         var entry = await db.BusinessPasswordResetOtps
             .Where(o => o.Email == email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
@@ -356,6 +354,10 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             }
             return BadRequest(new { error = "Invalid or expired code" });
         }
+        // Also covers a reset code issued before the account was disabled. Only after the code
+        // checked out: before, any code showed that the email belongs to a disabled account
+        // (QA run 11), which forgot-password hides.
+        if (business.IsDisabled) return AccountDisabled();
 
         entry.Consumed = true;
         business.PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.NewPassword);

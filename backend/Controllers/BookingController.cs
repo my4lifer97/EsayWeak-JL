@@ -288,7 +288,7 @@ public class BookingController(
 
     [HttpPost("appointments/photo")]
     [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
-    public async Task<IActionResult> UploadAppointmentPhoto(string slug, IFormFile file, [FromServices] RequestQuota quota)
+    public async Task<IActionResult> UploadAppointmentPhoto(string slug, IFormFile? file, [FromServices] RequestQuota quota)
     {
         // Anonymous, so limited per IP (QA run 6: unlimited 5MB uploads).
         var (allowed, retryAfter) = quota.TryTake($"photo|{HttpContext.Connection.RemoteIpAddress}", quota.PhotoUploadsPerIpPerHour, TimeSpan.FromHours(1));
@@ -308,7 +308,7 @@ public class BookingController(
 
         var fileName = $"{Guid.NewGuid():N}{ext}";
         await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
-            await file.CopyToAsync(stream);
+            await file!.CopyToAsync(stream);
 
         return Ok(new { url = $"/api/uploads/appointment-photos/{fileName}" });
     }

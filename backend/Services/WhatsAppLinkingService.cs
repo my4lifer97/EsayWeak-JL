@@ -51,7 +51,7 @@ public class WhatsAppLinkingService(AppDbContext db, IWhatsAppBridgeClient bridg
                 BusinessId = b.Id,
                 ImpersonatedByPlatformAdminId = actingPlatformAdminId,
                 Action = "WhatsAppLink.Connected",
-                Description = $"WhatsApp number: \"{old}\" → \"{b.WhatsAppNumber}\"" + (actingPlatformAdminId is null ? " (the owner's link page)" : ""),
+                Description = $"WhatsApp number: {(string.IsNullOrEmpty(old) ? "(none)" : $"\"{old}\"")} → \"{b.WhatsAppNumber}\"" + (actingPlatformAdminId is null ? " (the owner's link page)" : ""),
                 Method = method,
                 Path = path,
                 StatusCode = 200,

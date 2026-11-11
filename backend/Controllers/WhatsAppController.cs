@@ -23,6 +23,7 @@ public class WhatsAppController(
     NotificationOutbox notifications,
     BookingRules bookingRules,
     ServiceListPrompt serviceList,
+    OwnerTalkingWindow ownerTalking,
     ILogger<WhatsAppController> logger) : ControllerBase
 {
     // Literal commands, not natural language -- deliberately simple so a business can explain them
@@ -53,13 +54,19 @@ public class WhatsAppController(
         "ביטול", "בטל", "לבטל", "תבטל", "תבטלי", "תבטלו", "בטלו", "בטלי",
         "بطل", "إلغاء", "الغاء", "والغاء", "وإلغاء", "الغي", "ألغي", "إلغي", "الغيه", "ألغيه", "الغيلي", "تلغي", "ألغ", "الغ", "إلغ",
         "نلغي", "نلغيه", "بلغي", "لغي", "ابطل", "احذف", "امسح", "كنسل",
+        // QA run 11 (BOT-61).
+        "اكنسل", "نكنسل", "الغيت", "ألغيت", "ألغيلي", "تلغيلي", "تلغيه", "لاغي", "الغاءه", "إلغاءه",
     ];
     // "غير" ("change!") is left out on purpose: it also means "other"/"not" and is very common.
     private static readonly string[] RescheduleKeywords =
     [
         "reschedule", "rescheduling", "change", "move", "postpone",
         "שינוי", "לשנות", "תשנה", "אשנה", "להזיז", "תזיז", "לדחות", "תדחה",
-        "تغيير", "اغير", "أغير", "نغير", "تأجيل", "تاجيل",
+        // QA run 11 (BOT-60/61). Hebrew prefix letters are handled in ContainsKeyword.
+        "הזזה", "להקדים", "תקדים", "הקדמה", "לדחייה", "דחייה", "נשנה", "נזיז", "נקדים", "נדחה",
+        "rebook", "earlier", "switch", "rearrange",
+        // "اجل" is left out: it also means "yes".
+        "تغيير", "اغير", "أغير", "نغير", "تأجيل", "تاجيل", "غيرلي", "تغيرلي", "تبديل", "نبدل", "تقديم", "نقدم", "اقدم", "أقدم", "نأجل", "اأجل", "أأجل",
     ];
     // A cancel keyword never cancels on its own: it asks "reply 1 to cancel / 2 to keep" and parks
     // the appointment id in WhatsAppConversationState.ChatbotMode as "ConfirmCancel:{id}" until the
@@ -230,7 +237,9 @@ public class WhatsAppController(
             var business = await db.Businesses.FindAsync(req.BusinessId);
             if (business is null) return NotFound();
 
-            if (fromPhone.Length == 0) return Ok(new BridgeInboundResponse(null));
+            // The bridge drops unresolved WhatsApp ids, but a non-number here would become a
+            // customer phone that reminders and links go to (QA run 11).
+            if (fromPhone.Length == 0 || !PhoneNormalizer.IsValid(fromPhone)) return Ok(new BridgeInboundResponse(null));
 
             // The owner's Chats page (ChatsController) shows only the part of a conversation where
             // the customer chose to talk to the owner (Inquiry mode, "#2"): their messages there,
@@ -263,6 +272,9 @@ public class WhatsAppController(
                 db.ChatMessages.Add(message);
                 await db.SaveChangesAsync();
             }
+
+            // The owner is answering this customer from the phone: the bot keeps out (QA run 11).
+            if (ownerTalking.IsQuiet(business.Id, fromPhone, DateTime.UtcNow)) return Ok(new BridgeInboundResponse(null));
 
             var appUrl = config["AppUrl"] ?? "";
             string? reply;
@@ -316,7 +328,8 @@ public class WhatsAppController(
 
     // The owner wrote to a customer on the linked phone itself (the bridge reports those; it skips
     // what it sent for us). Kept for the Chats page when that customer's chat is open; other
-    // messages from the phone aren't the platform's business.
+    // messages from the phone aren't the platform's business. Either way the bot keeps out of that
+    // conversation for Chatbot:OwnerQuietMinutes (OwnerTalkingWindow).
     [HttpPost("bridge/outgoing")]
     [RequireBridgeSecret]
     public async Task<IActionResult> BridgeOutgoing([FromBody] BridgeOutgoingRequest req)
@@ -325,6 +338,8 @@ public class WhatsAppController(
         var message = req.Message.Replace("\0", "").Trim();
         if (toPhone.Length == 0 || message.Length == 0) return BadRequest(new { error = "Invalid request" });
         if (!await db.Businesses.AnyAsync(b => b.Id == req.BusinessId)) return NotFound();
+        // In or out of an open chat: the owner took over this conversation by hand.
+        ownerTalking.OwnerWrote(req.BusinessId, toPhone, DateTime.UtcNow);
         if (!await ChatLog.IsChatOpenAsync(db, req.BusinessId, toPhone)) return Ok(new { ok = true, recorded = false });
 
         db.ChatMessages.Add(ChatLog.NewMessage(req.BusinessId, toPhone, ChatSender.OwnerPhone, message));
@@ -381,7 +396,7 @@ public class WhatsAppController(
         {
             BusinessId = business.Id,
             Action = "WhatsAppLink.Connected",
-            Description = $"WhatsApp number: \"{old}\" → \"{number}\" (the bot connected)",
+            Description = $"WhatsApp number: {(string.IsNullOrEmpty(old) ? "(none)" : $"\"{old}\"")} → \"{number}\" (the bot connected)",
             Method = "POST",
             Path = Request.Path.ToString(),
             StatusCode = 200,
@@ -730,7 +745,7 @@ public class WhatsAppController(
         var tail = I18nService.T(lang, "whatsapp.modeGatePrompt");
         return string.IsNullOrWhiteSpace(welcomeMessage)
             ? I18nService.T(lang, "whatsapp.modeGate", new() { ["businessName"] = business.Name })
-            : $"{welcomeMessage}\n\n{tail}";
+            : $"{I18nService.Fill(welcomeMessage, new() { ["businessName"] = business.Name })}\n\n{tail}";
     }
 
     // Best-effort on both channels -- a failed notification must never break the customer's own
@@ -846,12 +861,26 @@ public class WhatsAppController(
                 return null;
         }
 
-        if (AsksToCancel(incomingMsg))
+        // "Don't cancel, I'm coming" was answered with "Reply 1 to cancel it" (QA run 11).
+        var negatedCancel = AsksToCancel(incomingMsg) && IsNegatedCancel(incomingMsg);
+        if (negatedCancel && !ContainsKeyword(incomingMsg, RescheduleKeywords))
+        {
+            var (kept, keptPending) = await FindUpcomingAppointments(business.Id, fromPhone);
+            if (kept.Count > 0 || keptPending is not null)
+            {
+                await ClearConversationState(business.Id, fromPhone);
+                return I18nService.T(lang, kept.Count + (keptPending is null ? 0 : 1) > 1 ? "whatsapp.cancelKeptAll" : "whatsapp.cancelKept");
+            }
+        }
+        else if (AsksToCancel(incomingMsg) && !negatedCancel)
             return await HandleCancel(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
 
         if (ContainsKeyword(incomingMsg, RescheduleKeywords))
         {
             await ClearConversationState(business.Id, fromPhone);
+            // The page would refuse the move (403) while the business takes no bookings (QA run 11).
+            if (!bookingRules.AcceptsBookings(business))
+                return I18nService.T(lang, "whatsapp.bookingUnavailable", new() { ["businessName"] = business.Name });
             // An upcoming appointment is moved on its own page (the reminder link), not replaced by
             // a second booking: the customer used to end up holding both slots (QA run 3).
             // With several, each gets its link (QA run 4: only the nearest one could be reached).
@@ -1116,6 +1145,10 @@ public class WhatsAppController(
         var inquiryNote = business.ChatbotInquiryEnabled
             ? "\n\nIf the customer asks something you can't help with, or wants to reach the owner directly, tell them to reply \"#2\" to talk to the owner directly."
             : "";
+        // The owner's welcome text from Settings, which the rule-based bot shows (QA run 11).
+        var welcome = business.ResolveChatbotWelcomeMessage(lang);
+        var welcomeNote = string.IsNullOrWhiteSpace(welcome) ? ""
+            : $"\n\nWhen the customer starts a conversation (a greeting, no earlier messages), begin your reply with this welcome text from the business, unchanged: \"{I18nService.Fill(welcome.Replace("\"", "'"), new() { ["businessName"] = business.Name })}\"";
 
         return $"""
             You are {business.Name}'s WhatsApp booking assistant. Always reply in {languageName}, in plain WhatsApp-friendly text (no markdown).
@@ -1135,7 +1168,7 @@ public class WhatsAppController(
             To reschedule: call cancel_upcoming_appointment first; once the customer has confirmed, help them book a new time via create_booking_link.
 
             Keep replies short and friendly. Never invent prices, links, dates, or services that aren't listed above or returned by a tool.
-            Never say an appointment was cancelled, booked or changed unless a tool's message in this turn says so. A cancellation only happens when the customer answers the confirmation question; if their message isn't an answer to it, the question is closed and nothing was cancelled.{inquiryNote}
+            Never say an appointment was cancelled, booked or changed unless a tool's message in this turn says so. A cancellation only happens when the customer answers the confirmation question; if their message isn't an answer to it, the question is closed and nothing was cancelled.{inquiryNote}{welcomeNote}
             """;
     }
 
@@ -1828,9 +1861,14 @@ public class WhatsAppController(
         var withoutUrls = Regex.Replace(reply, @"https?://[^\s)\]>""'\P{IsBasicLatin}]*[^\s)\]>""'.,!?:;\P{IsBasicLatin}]",
             m => Known(m.Value) ? m.Value : "", RegexOptions.IgnoreCase);
         return Regex.Replace(withoutUrls,
-            @"(?<![\w@./-])(?:www\.)?(?:[a-z0-9-]+\.)+(?:com|net|org|io|co|il|me|app|info|biz|xyz|link|ly|to|ru|cn|top|site|online|shop|store)\b(?:/[^\s)\]>""'\P{IsBasicLatin}]*[^\s)\]>""'.,!?:;\P{IsBasicLatin}])?",
-            m => Known(m.Value) || IsInsideKnownUrl(withoutUrls, m) ? m.Value : "", RegexOptions.IgnoreCase).Trim();
+            @"(?<![\w@./-])(?:www\.)?(?:[a-z0-9-]+\.)+(?:com|net|org|io|co|il|me|app|info|biz|xyz|link|ly|to|ru|cn|top|site|online|shop|store)\b(?!-)(?:/[^\s)\]>""'\P{IsBasicLatin}]*[^\s)\]>""'.,!?:;\P{IsBasicLatin}])?",
+            m => Known(m.Value) || IsInsideKnownUrl(withoutUrls, m) || IsSentenceJoin(m.Value) ? m.Value : "", RegexOptions.IgnoreCase).Trim();
     }
+
+    // "Sunday.To book" or "Hello.Shop" is a missing space after a full stop, not a domain: one word,
+    // a dot, then a capital (QA run 11). Real links come as "example.com" or with a path or "www.".
+    private static bool IsSentenceJoin(string match) =>
+        Regex.IsMatch(match, @"\A[\p{L}\d]*\p{Ll}\.\p{Lu}\p{L}*\z");
 
     // The host part of a full URL the first pass kept ("https://frontend.up.railway.app/x").
     private static bool IsInsideKnownUrl(string text, Match m) =>
@@ -1838,7 +1876,8 @@ public class WhatsAppController(
 
     private sealed class AiDailyCapReachedException : Exception;
 
-    private static string TruncateName(string? name) => name is null ? "" : Cut(name, Filters.ValidateInputFilter.MaxNameLength);
+    // One line, no direction overrides: it goes into the owner's inquiry alert (QA run 11).
+    private static string TruncateName(string? name) => name is null ? "" : Cut(TextClean.Name(name), Filters.ValidateInputFilter.MaxNameLength);
 
     private static string Cut(string text, int max) => TextCut.Cut(text, max);
 
@@ -1860,10 +1899,26 @@ public class WhatsAppController(
 
     // Whole words only. An Arabic word also matches without its "و" (and) or "ال" (the) prefix:
     // "والغاء", "الإلغاء".
+    // A Hebrew word also matches without one or two prefix letters (ו ש ל ב ה מ כ): "לביטול",
+    // "ולבטל", "שתבטל", "לשינוי" got the service list (QA run 11). The confirmation question keeps
+    // a wrong match harmless.
     private static bool ContainsKeyword(string message, string[] keywords) =>
         Words(message).Any(w => keywords.Contains(w)
             || (w.Length > 2 && w[0] == 'و' && keywords.Contains(w[1..]))
-            || (w.Length > 3 && w.StartsWith("ال") && keywords.Contains(w[2..])));
+            || (w.Length > 3 && w.StartsWith("ال") && keywords.Contains(w[2..]))
+            || HebrewPrefixMatch(w, keywords));
+
+    private const string HebrewPrefixLetters = "ושלבהמכ";
+
+    private static bool HebrewPrefixMatch(string word, string[] keywords)
+    {
+        for (var cut = 1; cut <= 2 && word.Length - cut >= 3; cut++)
+        {
+            if (!HebrewPrefixLetters.Contains(word[cut - 1])) return false;
+            if (keywords.Contains(word[cut..])) return true;
+        }
+        return false;
+    }
 
     // Whether the booking link the bot is staying quiet for can still be used: bookings are open
     // and its service is still active and bookable.

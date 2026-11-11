@@ -29,7 +29,10 @@ public static class AppointmentStatusHelper
     // special color.
     public static string CustomerFacingStatus(AppointmentStatus status, bool pendingCancellationApproval, DateTime date, string endTime)
     {
-        if (pendingCancellationApproval) return "CANCELLATION_PENDING";
-        return EffectiveStatus(status, date, endTime);
+        var effective = EffectiveStatus(status, date, endTime);
+        // A request nobody decided doesn't stay "pending" after the visit is over: the owner's
+        // list already reads COMPLETED there (QA run 11).
+        if (pendingCancellationApproval && effective != "COMPLETED") return "CANCELLATION_PENDING";
+        return effective;
     }
 }

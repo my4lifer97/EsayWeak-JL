@@ -17,7 +17,7 @@ public static class SlugValidator
 
     // Hyphens only between letters/digits: "a--b" and "shop-" were accepted (QA run 7).
     public static bool IsValidFormat(string slug) =>
-        !string.IsNullOrWhiteSpace(slug) && Regex.IsMatch(slug, @"^[a-z0-9]+(-[a-z0-9]+)*$") && slug.Length is >= 3 and <= MaxLength;
+        !string.IsNullOrWhiteSpace(slug) && Regex.IsMatch(slug, @"\A[a-z0-9]+(-[a-z0-9]+)*\z") && slug.Length is >= 3 and <= MaxLength;
 
     // A 300-character slug registered (QA run 4); it goes into every link we send.
     public const int MaxLength = 60;

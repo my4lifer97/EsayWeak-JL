@@ -14,7 +14,14 @@ describe('LegalPage', () => {
     const { container } = render(<MemoryRouter><LegalPage doc="privacy" /></MemoryRouter>)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('מדיניות פרטיות')
     expect(container.firstElementChild).toHaveAttribute('dir', 'rtl')
-    expect(screen.getAllByRole('link', { name: 'הצהרת נגישות' })[0]).toHaveAttribute('href', '/accessibility')
+    expect(screen.getAllByRole('link', { name: 'הצהרת נגישות' })[0]).toHaveAttribute('href', '/accessibility?lang=HE')
+  })
+
+  // QA run 11 PA-65: an owner form in English links here with ?lang=EN.
+  it('uses ?lang= from the page that linked here', () => {
+    vi.mocked(useCustomerAuth).mockReturnValue({ language: 'HE' } as ReturnType<typeof useCustomerAuth>)
+    render(<MemoryRouter initialEntries={['/terms?lang=EN']}><LegalPage doc="terms" /></MemoryRouter>)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Terms of Use')
   })
 
   it('shows English terms', () => {
@@ -28,7 +35,7 @@ describe('ConsentCheckbox', () => {
   it('is required and links both documents', () => {
     render(<MemoryRouter><ConsentCheckbox lang="EN" checked={false} onChange={() => {}} /></MemoryRouter>)
     expect(screen.getByRole('checkbox')).toBeRequired()
-    expect(screen.getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', '/terms')
-    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy')
+    expect(screen.getByRole('link', { name: 'Terms of Use' })).toHaveAttribute('href', '/terms?lang=EN')
+    expect(screen.getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy?lang=EN')
   })
 })

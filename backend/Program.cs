@@ -83,7 +83,9 @@ builder.Services.AddHttpClient<IWhatsAppBridgeClient, WhatsAppBridgeClient>(clie
     client.DefaultRequestHeaders.Add("X-Bridge-Secret", builder.Configuration["WhatsAppBridge:Secret"] ?? "");
     // Sends happen inside customer-facing requests (cancel, book) -- a hung bridge used to keep the
     // customer's button spinning for the default 100s. A healthy send takes about a second.
-    client.Timeout = TimeSpan.FromSeconds(15);
+    // The cap is the file send's (WhatsAppBridgeClient.MediaTimeout); every other call stops after
+    // WhatsAppBridgeClient.DefaultTimeout.
+    client.Timeout = WhatsAppBridgeClient.MediaTimeout + TimeSpan.FromSeconds(5);
 });
 builder.Services.AddScoped<IWhatsAppSender, BridgeWhatsAppSender>();
 // Optional LLM layer on top of the WhatsApp chatbot (see WhatsAppController.ProcessMessageAsync) --
@@ -167,6 +169,7 @@ builder.Services.AddCors(opt =>
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<RequestQuota>();
 builder.Services.AddSingleton<AiUsageLimiter>();
+builder.Services.AddSingleton<OwnerTalkingWindow>();
 builder.Services.AddSingleton<BookingRules>();
 
 var app = builder.Build();

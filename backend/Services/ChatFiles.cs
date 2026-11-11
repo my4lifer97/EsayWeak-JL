@@ -138,6 +138,12 @@ public static class ChatFiles
     // not the zero-width joiner/non-joiner: Persian and Arabic-script names and emoji need them.
     // Checked per code point, not per UTF-16 char: tag characters (U+E0000...), plane-15 private
     // use and U+1D173 came in as surrogate pairs and were kept (QA run 9).
+    // At least one character that shows: a zero-width space, direction marks or a blank Braille cell sent the
+    // customer an empty message (QA run 11).
+    public static bool HasVisibleText(string text) =>
+        text.EnumerateRunes().Any(r => !IsHidden(r) && !Rune.IsWhiteSpace(r)
+            && Rune.GetUnicodeCategory(r) is not (UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.SpacingCombiningMark));
+
     private static bool IsHidden(Rune r)
     {
         var category = Rune.GetUnicodeCategory(r);

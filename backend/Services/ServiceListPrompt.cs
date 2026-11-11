@@ -60,7 +60,8 @@ public class ServiceListPrompt(AppDbContext db, BookingRules bookingRules)
         if (!string.IsNullOrWhiteSpace(welcomeMessage))
         {
             var tail = I18nService.T(lang, "whatsapp.selectServicePrompt", new() { ["list"] = list });
-            return $"{welcomeMessage}\n\n{tail}{escapeHatch}";
+            // {businessName} works here too, as in the final-booking message (QA run 11).
+            return $"{I18nService.Fill(welcomeMessage, new() { ["businessName"] = businessName })}\n\n{tail}{escapeHatch}";
         }
         return I18nService.T(lang, "whatsapp.selectService", new() { ["businessName"] = businessName, ["list"] = list }) + escapeHatch;
     }

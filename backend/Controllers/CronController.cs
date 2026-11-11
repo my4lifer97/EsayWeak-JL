@@ -117,8 +117,10 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             // A customer cancellation waiting on the owner's approval stays CONFIRMED internally, but the
             // customer already sees it as cancelled -- no reminder for it.
             // Nor for a business the platform disabled (QA run 6).
+            // Without a linked number nothing can be sent; counting those in "total" on every run
+            // made the output useless as a health check (QA run 11).
             .Where(a => a.Date == tomorrow && a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSent
-                && !a.Business.IsDisabled)
+                && !a.Business.IsDisabled && a.Business.WhatsAppNumber != null)
             // In time order: with two appointments the same day, the question goes with the first
             // one's reminder, not an arbitrary one (QA run 5). Each reminder names its own time.
             .OrderBy(a => a.StartTime)
@@ -146,7 +148,7 @@ public class CronController(AppDbContext db, IConfiguration config, ILogger<Cron
             .Include(a => a.Customer)
             .Include(a => a.Item)
             .Where(a => a.Status == AppointmentStatus.CONFIRMED && !a.PendingCancellationApproval && !a.ReminderSentSoon
-                && !a.Business.IsDisabled && a.Date >= now.Date && a.Date <= in3Hours.Date)
+                && !a.Business.IsDisabled && a.Business.WhatsAppNumber != null && a.Date >= now.Date && a.Date <= in3Hours.Date)
             .ToListAsync();
         // Not one that just got its day-before reminder in this same run: an appointment right
         // after midnight got both at once (QA run 6). Its "soon" one goes on a later run.

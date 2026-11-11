@@ -73,7 +73,7 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
 
         if (req.DayOfWeek < 0 || req.DayOfWeek > 6)
             return BadRequest(new { error = "Invalid day of week" });
-        if (!Regex.IsMatch(req.StartTime, @"^[0-9]{2}:[0-9]{2}$"))
+        if (!Regex.IsMatch(req.StartTime, @"\A[0-9]{2}:[0-9]{2}\z"))
             return BadRequest(new { error = "Invalid start time" });
 
         Customer? customer;

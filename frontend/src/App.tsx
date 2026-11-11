@@ -16,6 +16,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import CustomerProtectedRoute from './components/CustomerProtectedRoute'
 import PlatformAdminProtectedRoute from './components/PlatformAdminProtectedRoute'
 import ImpersonationBanner from './components/ImpersonationBanner'
+import DocumentLanguage from './components/DocumentLanguage'
 import BusinessPage from './pages/public/BusinessPage'
 import BookPage from './pages/public/BookPage'
 import AppointmentPage from './pages/public/AppointmentPage'
@@ -63,7 +64,7 @@ const queryClient = new QueryClient({
 // A data router (not <BrowserRouter>) so pages can use useBlocker -- the admin forms ask before
 // leaving with unsaved edits (components/admin/useUnsavedChangesGuard).
 const router = createBrowserRouter(createRoutesFromElements(
-  <Route errorElement={<RouteErrorPage />} element={<><ImpersonationBanner /><Suspense fallback={null}><Outlet /></Suspense></>}>
+  <Route errorElement={<RouteErrorPage />} element={<><DocumentLanguage /><ImpersonationBanner /><Suspense fallback={null}><Outlet /></Suspense></>}>
     <Route path="/" element={<HomePage />} />
     <Route path="/admin/login" element={<LoginPage />} />
     <Route path="/admin/register" element={<RegisterPage />} />

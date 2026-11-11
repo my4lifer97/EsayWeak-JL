@@ -99,17 +99,17 @@ export default function BusinessPage() {
           ) : (
             <div className="text-5xl mb-4">✂️</div>
           )}
-          <h1 className="text-3xl font-bold text-ink">{business.name}</h1>
+          <h1 className="text-3xl font-bold text-ink wrap-anywhere">{business.name}</h1>
           {business.ratingCount > 0 && (
             <div className="flex justify-center mt-2">
               <StarRating value={business.ratingAverage} count={business.ratingCount} size="sm" lang={lang} />
             </div>
           )}
           {business.description && (
-            <p className="text-muted mt-2 text-sm">{business.description}</p>
+            <p className="text-muted mt-2 text-sm wrap-anywhere">{business.description}</p>
           )}
           {(business.city || business.addressLine || business.mapUrl) && (
-            <div className="text-muted text-sm mt-3 space-y-0.5">
+            <div className="text-muted text-sm mt-3 space-y-0.5 wrap-anywhere">
               {(business.city || business.addressLine) && (
                 <div>📍 <bdi>{[business.addressLine, business.city].filter(Boolean).join(', ')}</bdi></div>
               )}
@@ -186,9 +186,9 @@ export default function BusinessPage() {
             <h2 className="text-sm font-semibold text-muted uppercase tracking-wide mb-2">{t(lang, 'ourServices')}</h2>
             <div className="space-y-2">
               {business.items.filter((i) => i.isBookable).map((i) => (
-                <div key={i.id} className="bg-surface border border-line rounded-xl px-4 py-3 flex justify-between items-center">
-                  <div>
-                    <div className="text-ink text-sm font-medium">{itemName(i, lang)}</div>
+                <div key={i.id} className="bg-surface border border-line rounded-xl px-4 py-3 flex justify-between items-center gap-3">
+                  <div className="min-w-0">
+                    <div className="text-ink text-sm font-medium wrap-anywhere">{itemName(i, lang)}</div>
                     {i.durationMinutes !== null && (
                       <div className="text-muted text-xs mt-0.5">{i.durationMinutes} {t(lang, 'min')}</div>
                     )}
@@ -204,8 +204,8 @@ export default function BusinessPage() {
         {business.items.some((i) => !i.isBookable) && (
           <div className="space-y-2 mt-6">
             {business.items.filter((i) => !i.isBookable).map((i) => (
-              <div key={i.id} className="bg-surface border border-line rounded-xl px-4 py-3 flex justify-between items-center">
-                <span className="text-ink text-sm">{itemName(i, lang)}</span>
+              <div key={i.id} className="bg-surface border border-line rounded-xl px-4 py-3 flex justify-between items-center gap-3">
+                <span className="text-ink text-sm min-w-0 wrap-anywhere">{itemName(i, lang)}</span>
                 {i.price !== null && <span className="text-coral-dark text-sm font-semibold">{formatPrice(i.price)}</span>}
               </div>
             ))}

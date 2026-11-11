@@ -131,7 +131,7 @@ export default function AppointmentsPage() {
             </button>
           ))}
         </div>
-        <input type="text" placeholder={t(lang, 'searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)}
+        <input type="text" dir="auto" placeholder={t(lang, 'searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)}
           className="bg-surface border border-line rounded-lg px-3 py-1.5 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
       </div>
 

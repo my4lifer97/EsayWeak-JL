@@ -11,6 +11,11 @@ public class OpenAiChatClient(IConfiguration config) : IOpenAiChatClient
     // trips (decide to call a tool, then compose final text from the result).
     private const int MaxToolRoundTrips = 4;
 
+    // The whole turn, every round trip included. The caller holds the customer's conversation lock
+    // (shared by other customers on the same stripe) meanwhile, and the bridge has long given up by
+    // then (QA run 11). A timeout throws, and the caller falls back to the rule-based bot.
+    private static readonly TimeSpan TurnTimeout = TimeSpan.FromSeconds(20);
+
     public async Task<string> GetReplyAsync(
         string systemPrompt,
         IReadOnlyList<OpenAiTurn> history,
@@ -29,9 +34,10 @@ public class OpenAiChatClient(IConfiguration config) : IOpenAiChatClient
         foreach (var tool in tools)
             options.Tools.Add(ChatTool.CreateFunctionTool(tool.Name, tool.Description, BinaryData.FromString(tool.ParametersJsonSchema)));
 
+        using var timeout = new CancellationTokenSource(TurnTimeout);
         for (var i = 0; i < MaxToolRoundTrips; i++)
         {
-            ChatCompletion completion = await client.CompleteChatAsync(messages, options);
+            ChatCompletion completion = await client.CompleteChatAsync(messages, options, timeout.Token);
 
             if (completion.FinishReason != ChatFinishReason.ToolCalls)
                 return completion.Content.Count > 0 ? completion.Content[0].Text : "";

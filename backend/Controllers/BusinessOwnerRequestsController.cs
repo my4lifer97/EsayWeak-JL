@@ -34,7 +34,7 @@ public class BusinessOwnerRequestsController(
 
     // First name / family name are restricted to English letters (plus space, hyphen, apostrophe)
     // because the backend derives the login username from them -- see UsernameGenerator.
-    private static readonly Regex EnglishNameRegex = new(@"^[A-Za-z][A-Za-z '-]*$", RegexOptions.Compiled);
+    private static readonly Regex EnglishNameRegex = new(@"\A[A-Za-z][A-Za-z '-]*\z", RegexOptions.Compiled);
 
     // Proves the requester actually controls the email address before their request ever reaches
     // the admin's review queue -- sent via the admin's own Gmail (IOwnerEmailSender), same as the
@@ -96,7 +96,10 @@ public class BusinessOwnerRequestsController(
         var firstName = (req.OwnerFirstName ?? "").Trim();
         var familyName = (req.OwnerFamilyName ?? "").Trim();
 
-        if (string.IsNullOrWhiteSpace(req.BusinessName))
+        // Cleaned like a self-service sign-up's name: line breaks went on into Business.Name and an
+        // email subject (QA run 11).
+        var businessName = TextClean.Name(req.BusinessName ?? "");
+        if (businessName.Length == 0)
             return BadRequest(new { error = "Business name is required" });
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(familyName))
             return BadRequest(new { error = "First name and family name are required" });
@@ -111,8 +114,9 @@ public class BusinessOwnerRequestsController(
             return BadRequest(new { error = "Phone is required" });
         // Digit count only (not a full E.164 check) -- catches an obviously-truncated or junk
         // entry ("12", "0") without rejecting real numbers in whatever local format someone types.
+        // Only what a phone number is written with: "abcdefghij1234567 DROP" was stored (QA run 11).
         var phoneDigits = Regex.Replace(Digits.ToAscii(req.Phone), @"[^0-9]", "");
-        if (phoneDigits.Length < 7 || phoneDigits.Length > 15)
+        if (phoneDigits.Length < 7 || phoneDigits.Length > 15 || Regex.IsMatch(Digits.ToAscii(req.Phone.Trim()), @"[^0-9+\-().\s]"))
             return BadRequest(new { error = "Please enter a valid phone number" });
         if (string.IsNullOrWhiteSpace(req.BusinessTypeId))
             return BadRequest(new { error = "Business type is required" });
@@ -154,14 +158,14 @@ public class BusinessOwnerRequestsController(
 
         var request = new BusinessOwnerRequest
         {
-            BusinessName = req.BusinessName.Trim(),
+            BusinessName = businessName,
             OwnerFirstName = firstName,
             OwnerFamilyName = familyName,
             Email = email,
             Phone = req.Phone.Trim(),
             BusinessTypeId = businessType.Id,
-            BusinessDescription = string.IsNullOrWhiteSpace(req.BusinessDescription) ? null : req.BusinessDescription.Trim(),
-            SystemNeeds = string.IsNullOrWhiteSpace(req.SystemNeeds) ? null : req.SystemNeeds.Trim(),
+            BusinessDescription = TextClean.Note(req.BusinessDescription),
+            SystemNeeds = TextClean.Note(req.SystemNeeds),
         };
         db.BusinessOwnerRequests.Add(request);
         await db.SaveChangesAsync();

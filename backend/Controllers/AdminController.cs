@@ -52,7 +52,7 @@ public class AdminController(
 
     [HttpPost("settings/logo")]
     [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
-    public async Task<IActionResult> UploadLogo(IFormFile file)
+    public async Task<IActionResult> UploadLogo(IFormFile? file)
     {
         var b = await db.Businesses.FindAsync(BusinessId);
         if (b is null) return NotFound();
@@ -73,7 +73,7 @@ public class AdminController(
         // showing the cached old logo at the same URL.
         var fileName = $"{b.Id}-{Guid.NewGuid():N}{ext}";
         await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
-            await file.CopyToAsync(stream);
+            await file!.CopyToAsync(stream);
 
         b.Logo = $"/api/uploads/logos/{fileName}";
         await db.SaveChangesAsync();
@@ -264,6 +264,13 @@ public class AdminController(
         if (Has("cancelApprovalEmail")) b.CancelApprovalEmail = string.IsNullOrWhiteSpace(req.CancelApprovalEmail) ? null : req.CancelApprovalEmail.Trim();
 
         await db.SaveChangesAsync();
+        // "Ask a question" switched off ends the open owner chats: they stayed open on the Chats
+        // page while the bot answered inside them (QA run 11). The customer's next message starts
+        // a normal booking conversation. The chat history is kept.
+        if (oldChatbotInquiryEnabled && !b.ChatbotInquiryEnabled)
+            await db.WhatsAppConversationStates
+                .Where(s => s.BusinessId == b.Id && s.ChatbotMode == ServiceListPrompt.InquiryMode)
+                .ExecuteDeleteAsync();
 
         var changes = new List<string>();
         if (b.Name != oldName) changes.Add($"name: \"{oldName}\" → \"{b.Name}\"");
@@ -328,6 +335,9 @@ public class AdminController(
         NameHe = TextClean.Name(req.NameHe ?? ""),
     };
 
+    // Shekels and agorot: 10.555 was stored as is (QA run 11).
+    private static decimal? RoundPrice(decimal? price) => price is { } p ? Math.Round(p, 2, MidpointRounding.AwayFromZero) : null;
+
     private static string? ItemInputError(CreateItemRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.NameEn) || string.IsNullOrWhiteSpace(req.NameAr) || string.IsNullOrWhiteSpace(req.NameHe))
@@ -360,7 +370,7 @@ public class AdminController(
             NameAr = req.NameAr,
             NameHe = req.NameHe,
             DurationMinutes = req.IsBookable ? req.DurationMinutes : null,
-            Price = req.Price,
+            Price = RoundPrice(req.Price),
             PhotoMode = photoMode,
             IsBookable = req.IsBookable,
         };
@@ -398,7 +408,7 @@ public class AdminController(
         item.NameAr = req.NameAr;
         item.NameHe = req.NameHe;
         item.DurationMinutes = req.IsBookable ? req.DurationMinutes : null;
-        item.Price = req.Price;
+        item.Price = RoundPrice(req.Price);
         item.PhotoMode = photoMode;
         item.IsBookable = req.IsBookable;
 
@@ -461,7 +471,7 @@ public class AdminController(
 
     [HttpPost("items/{id}/gallery")]
     [RequestSizeLimit(ImageUpload.MaxRequestBytes)]
-    public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile file)
+    public async Task<IActionResult> UploadGalleryPhoto(string id, IFormFile? file)
     {
         var item = await db.Items.FirstOrDefaultAsync(s => s.Id == id && s.BusinessId == BusinessId && s.IsActive);
         if (item is null) return NotFound(new { error = "Item not found" });
@@ -477,7 +487,7 @@ public class AdminController(
 
         var fileName = $"{Guid.NewGuid():N}{ext}";
         await using (var stream = new FileStream(Path.Combine(uploadsDir, fileName), FileMode.Create))
-            await file.CopyToAsync(stream);
+            await file!.CopyToAsync(stream);
 
         var photo = new ItemGalleryPhoto
         {
@@ -533,6 +543,8 @@ public class AdminController(
     {
         // [null] was a 500 (QA run 10).
         if (hours.Any(h => h is null || h.DayOfWeek is < 0 or > 6)) return BadRequest(new { error = "Invalid day of week" });
+        // Two rows for one day: the last silently won (QA run 11).
+        if (hours.GroupBy(h => h.DayOfWeek).Any(g => g.Count() > 1)) return BadRequest(new { error = "Each day can appear only once" });
         if (hours.Where(h => h.IsActive).Select(h => TimeRangeError(h.StartTime, h.EndTime)).FirstOrDefault(e => e is not null) is { } hoursError)
             return BadRequest(new { error = hoursError });
 
@@ -543,10 +555,21 @@ public class AdminController(
 
         // A closed day keeps its times for when it reopens; ones that aren't real times ("zz", "")
         // were stored as sent (QA run 4) and get the default hours instead.
-        await schedulePresets.UpsertWorkingHours(BusinessId, hours.Select(h =>
+        var days = hours.Select(h =>
             h.IsActive || TimeRangeError(h.StartTime, h.EndTime) is null
                 ? (h.DayOfWeek, h.StartTime, h.EndTime, h.IsActive)
-                : (h.DayOfWeek, "09:00", "18:00", false)));
+                : (h.DayOfWeek, "09:00", "18:00", false)).ToList();
+        try
+        {
+            await schedulePresets.UpsertWorkingHours(BusinessId, days);
+        }
+        catch (DbUpdateException)
+        {
+            // A parallel first save (a double click) inserted the same new days first: they exist
+            // now, so this save updates them. It answered 409 though it had worked (QA run 11).
+            db.ChangeTracker.Clear();
+            await schedulePresets.UpsertWorkingHours(BusinessId, days);
+        }
 
         var changes = new List<string>();
         foreach (var h in hours.OrderBy(h => h.DayOfWeek))
@@ -573,6 +596,11 @@ public class AdminController(
     {
         if (req.DayOfWeek is < 0 or > 6) return BadRequest(new { error = "Invalid day of week" });
         if (TimeRangeError(req.StartTime, req.EndTime) is { } breakError) return BadRequest(new { error = breakError });
+        // The same break twice, or two that overlap, were both saved (QA run 11).
+        var sameDay = await db.Breaks.Where(b => b.BusinessId == BusinessId && b.DayOfWeek == req.DayOfWeek)
+            .Select(b => new { b.StartTime, b.EndTime }).ToListAsync();
+        if (sameDay.Any(b => AvailabilityService.Overlaps(b.StartTime, b.EndTime, req.StartTime, req.EndTime)))
+            return Conflict(new { error = "This break overlaps another break on that day" });
         var br = new Break { BusinessId = BusinessId, DayOfWeek = req.DayOfWeek, StartTime = req.StartTime, EndTime = req.EndTime };
         db.Breaks.Add(br);
         await db.SaveChangesAsync();
@@ -590,6 +618,11 @@ public class AdminController(
         this.SetActivityDetail($"Deleted break: {(DayOfWeek)br.DayOfWeek}s {br.StartTime}–{br.EndTime}");
         return Ok(new { ok = true });
     }
+
+    // Shown on the Schedule page and in the booking page's "closed" note: one line, no invisible
+    // characters (QA run 11).
+    private static string? CleanReason(string? reason) =>
+        reason is null ? null : TextClean.Name(reason) is { Length: > 0 } cleaned ? cleaned : null;
 
     [HttpPost("schedule/blocked")]
     public async Task<IActionResult> AddBlockedSlot([FromBody] CreateBlockedSlotRequest req)
@@ -610,7 +643,7 @@ public class AdminController(
             Date = date,
             StartTime = req.StartTime,
             EndTime = req.EndTime,
-            Reason = req.Reason,
+            Reason = CleanReason(req.Reason),
         };
         db.BlockedSlots.Add(slot);
         await db.SaveChangesAsync();
@@ -718,7 +751,7 @@ public class AdminController(
         for (var d = start; d <= end; d = d.AddDays(1))
         {
             if (alreadyFullDay.Contains(d)) continue;
-            var slot = new BlockedSlot { BusinessId = BusinessId, Date = d, StartTime = req.StartTime, EndTime = req.EndTime, Reason = req.Reason };
+            var slot = new BlockedSlot { BusinessId = BusinessId, Date = d, StartTime = req.StartTime, EndTime = req.EndTime, Reason = CleanReason(req.Reason) };
             db.BlockedSlots.Add(slot);
             created.Add(slot);
         }
@@ -726,7 +759,7 @@ public class AdminController(
         await tx.CommitAsync();
 
         var timeRange = req.StartTime is not null && req.EndTime is not null ? $" {req.StartTime}–{req.EndTime}" : " (full day)";
-        var reasonSuffix = string.IsNullOrWhiteSpace(req.Reason) ? "" : $" — {req.Reason}";
+        var reasonSuffix = CleanReason(req.Reason) is { } cleanReason ? $" — {cleanReason}" : "";
         this.SetActivityDetail($"Blocked date range {req.StartDate}–{req.EndDate}{timeRange}{reasonSuffix}");
 
         return StatusCode(201, created.OrderBy(s => s.Date)
@@ -800,6 +833,13 @@ public class AdminController(
     // A second preset called "Default" next to the real one was confusing (QA run 3).
     private static bool IsReservedPresetName(string name) => name.Trim().Equals("Default", StringComparison.OrdinalIgnoreCase);
 
+    // Two presets both called "P1" can't be told apart in the picker (QA run 11).
+    private Task<bool> PresetNameTaken(string name, string? exceptId)
+    {
+        var lower = name.Trim().ToLower();
+        return db.SchedulePresets.AnyAsync(p => p.BusinessId == BusinessId && p.Id != exceptId && p.Name.ToLower() == lower);
+    }
+
     private static void ValidateDays(List<SchedulePresetDayDto> days)
     {
         if (days.Count != 7 || days.Select(d => d.DayOfWeek).Distinct().Count() != 7 || days.Any(d => d.DayOfWeek is < 0 or > 6))
@@ -824,6 +864,7 @@ public class AdminController(
         req = req with { Name = TextClean.Name(req.Name ?? "") };
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
         if (IsReservedPresetName(req.Name)) return BadRequest(new { error = "That name is reserved for the Default schedule" });
+        if (await PresetNameTaken(req.Name, null)) return Conflict(new { error = "You already have a schedule with this name" });
         var breaks = req.Breaks ?? [];
         try
         {
@@ -868,6 +909,7 @@ public class AdminController(
         {
             if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest(new { error = "Name is required" });
             if (IsReservedPresetName(req.Name)) return BadRequest(new { error = "That name is reserved for the Default schedule" });
+            if (await PresetNameTaken(req.Name, preset.Id)) return Conflict(new { error = "You already have a schedule with this name" });
             preset.Name = req.Name.Trim();
         }
         foreach (var d in req.Days)
@@ -1323,7 +1365,9 @@ public class AdminController(
             return Conflict(new { error = "This appointment can no longer be modified" });
         appt.PendingCancellationApproval = false;
         await db.SaveChangesAsync();
-        if (notifyCustomer) await customerNotifier.QueueCancellationDeclined(appt);
+        // "Still on" about a visit that's already over says nothing useful (QA run 11), same rule as cancel.
+        if (notifyCustomer && AppointmentStatusHelper.EffectiveStatus(appt.Status, appt.Date, appt.EndTime) == "CONFIRMED")
+            await customerNotifier.QueueCancellationDeclined(appt);
 
         this.SetActivityDetail(
             $"Declined cancellation request: {appt.Item.NameEn} on {appt.Date:yyyy-MM-dd} at {appt.StartTime}");

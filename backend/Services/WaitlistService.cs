@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BarberSaas.Api.Services;
 
 public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, NotificationOutbox notifications, IConfiguration config, ILogger<WaitlistService> logger,
-    BookingRules bookingRules)
+    BookingRules bookingRules, AvailabilityService availability)
 {
     // Waitlist entries are offered the freed slot one at a time, in the order they joined
     // (CreatedAt): the first gets a message right away, and if the slot is still free
@@ -68,7 +68,14 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
             return (0, 0);
         }
 
+        // Nor offer a time the booking page would refuse: the owner blocked the day, added a
+        // break or changed the hours after the customer joined, or the service is gone (QA run 11).
         var item = await db.Items.FindAsync(cancelledAppointment.ItemId);
+        if (!await IsStillBookable(cancelledAppointment, item))
+        {
+            foreach (var entry in entries) entry.Status = WaitlistEntryStatus.RESOLVED;
+            return (0, 0);
+        }
 
         var appUrl = config["AppUrl"] ?? "";
         var dateStr = cancelledAppointment.Date.ToString("yyyy-MM-dd");
@@ -289,6 +296,15 @@ public class WaitlistService(AppDbContext db, IWhatsAppSender whatsAppSender, No
         // "HH:MM" strings are zero-padded, so ordinal comparison is time order.
         foreach (var entry in entries.Where(w => Overlaps(w.Appointment.StartTime, w.Appointment.EndTime, startTime, endTime)))
             entry.Status = WaitlistEntryStatus.RESOLVED;
+    }
+
+    // The same check BookingController.BookAppointment makes. The freed appointment is excluded,
+    // since the caller may not have saved its cancellation yet.
+    private async Task<bool> IsStillBookable(Appointment freed, Item? item)
+    {
+        if (item is null || !item.IsActive || !item.IsBookable || item.DurationMinutes is not { } duration) return false;
+        var slots = await availability.GetAvailableSlots(freed.BusinessId, freed.Date.ToString("yyyy-MM-dd"), duration, freed.Id);
+        return slots.Any(s => s.Start == freed.StartTime);
     }
 
     private async Task<bool> IsSlotTaken(Appointment freed)

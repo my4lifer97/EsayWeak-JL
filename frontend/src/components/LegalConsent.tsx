@@ -12,7 +12,7 @@ function WithLegalLinks({ lang, textKey }: { lang: string; textKey: TKey }) {
         if (part === '{terms}' || part === '{privacy}') {
           const terms = part === '{terms}'
           return (
-            <Link key={i} to={terms ? '/terms' : '/privacy'} target="_blank" rel="noopener"
+            <Link key={i} to={`${terms ? '/terms' : '/privacy'}?lang=${lang}`} target="_blank" rel="noopener"
               className="text-coral-dark hover:underline">
               {t(lang, terms ? 'legalTerms' : 'legalPrivacy')}
             </Link>

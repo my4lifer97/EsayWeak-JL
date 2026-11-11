@@ -143,13 +143,13 @@ export default function BrowseBusinessesPage() {
         <div className="flex gap-2 mt-3">
           <select
             value={city} onChange={(e) => setCity(e.target.value)}
-            className="flex-1 bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
+            className="flex-1 min-w-0 max-w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
             <option value="">{t(lang, 'allCities')}</option>
             {cities.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
           <select
             value={sort} onChange={(e) => setSort(e.target.value as (typeof SORTS)[number])}
-            className="flex-1 bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
+            className="flex-1 min-w-0 max-w-full bg-surface border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral">
             {SORTS.map((s) => <option key={s} value={s}>{t(lang, SORT_KEY[s])}</option>)}
           </select>
         </div>

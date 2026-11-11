@@ -302,7 +302,7 @@ export default function PlatformAdminBusinessDetailPage() {
             <label htmlFor="paid-until" className="text-sm font-medium">Paid until</label>
             <input id="paid-until" type="date" min={today} value={paidUntilInput} onChange={(e) => setPaidUntilInput(e.target.value)}
               className="bg-cream border border-line rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral" />
-            <button onClick={() => savePaidUntil(paidUntilInput)} disabled={savingPaidUntil || !paidUntilInput || paidUntilInput === business.paidUntil}
+            <button onClick={() => savePaidUntil(paidUntilInput)} disabled={savingPaidUntil || !paidUntilInput || (paidUntilInput === business.paidUntil && business.subscriptionStatus === 'ACTIVE')}
               className="bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
               {savingPaidUntil ? 'Saving...' : 'Save'}
             </button>

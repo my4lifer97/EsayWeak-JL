@@ -172,9 +172,14 @@ public class PlatformAdminController(
                 return BadRequest(new { error = "Invalid date" });
             if (parsed < DateOnly.FromDateTime(AppClock.Now))
                 return BadRequest(new { error = "The date can't be in the past" });
+            // A year typo (2062 for 2026) would mean the "ended" alert never comes (QA run 11).
+            if (parsed > DateOnly.FromDateTime(AppClock.Now).AddYears(MaxPaidYearsAhead))
+                return BadRequest(new { error = $"The date can be at most {MaxPaidYearsAhead} years ahead" });
             paidUntil = parsed;
         }
-        if (b.PaidUntil == paidUntil) return Ok(new { b.Id, b.PaidUntil, SubscriptionStatus = b.SubscriptionStatus.ToString() });
+        // The same date again still revives an EXPIRED business (QA run 11).
+        if (b.PaidUntil == paidUntil && (paidUntil is null || b.SubscriptionStatus == SubStatus.ACTIVE))
+            return Ok(new { b.Id, b.PaidUntil, SubscriptionStatus = b.SubscriptionStatus.ToString() });
 
         var previous = b.PaidUntil;
         b.PaidUntil = paidUntil;
@@ -197,6 +202,8 @@ public class PlatformAdminController(
 
         return Ok(new { b.Id, b.PaidUntil, SubscriptionStatus = b.SubscriptionStatus.ToString() });
     }
+
+    private const int MaxPaidYearsAhead = 2;
 
     // The dashboard's list, so a missed alert email still leaves a visible record.
     [HttpGet("paid-period-ended")]

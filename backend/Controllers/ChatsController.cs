@@ -130,7 +130,7 @@ public class ChatsController(
     public async Task<IActionResult> SendMessage([FromBody] SendChatMessageRequest req)
     {
         var text = (req.Text ?? "").Replace("\0", "").Trim();
-        if (text.Length == 0) return BadRequest(new { error = "Write a message first" });
+        if (!ChatFiles.HasVisibleText(text)) return BadRequest(new { error = "Write a message first" });
         if (text.Length > ChatLog.MaxTextChars) return BadRequest(new { error = "This message is too long" });
 
         var (chat, error) = await OpenChatFor(req.Phone);
@@ -152,6 +152,7 @@ public class ChatsController(
     public async Task<IActionResult> SendAttachment([FromForm] string? phone, [FromForm] string? caption, IFormFile? file)
     {
         var text = (caption ?? "").Replace("\0", "").Trim();
+        if (!ChatFiles.HasVisibleText(text)) text = "";
         if (text.Length > ChatLog.MaxTextChars) return BadRequest(new { error = "This message is too long" });
         if (file is null) return BadRequest(new { error = ChatFiles.Error });
         var contentType = await ChatFiles.ValidateAsync(file);
@@ -310,7 +311,7 @@ public class ChatsController(
         if (QuickReplyError(req) is { } error) return BadRequest(new { error });
         if (await db.QuickReplies.CountAsync(q => q.BusinessId == BusinessId) >= MaxQuickReplies)
             return BadRequest(new { error = "You can save up to 100 ready messages" });
-        var reply = new QuickReply { BusinessId = BusinessId, Title = req.Title.Trim(), Text = req.Text.Trim() };
+        var reply = new QuickReply { BusinessId = BusinessId, Title = TextClean.Name(req.Title), Text = req.Text.Trim() };
         db.QuickReplies.Add(reply);
         await db.SaveChangesAsync();
         // Counted again after the insert: two requests at once both passed the check above and
@@ -334,7 +335,7 @@ public class ChatsController(
         if (QuickReplyError(req) is { } error) return BadRequest(new { error });
         var reply = await db.QuickReplies.FirstOrDefaultAsync(q => q.Id == id && q.BusinessId == BusinessId);
         if (reply is null) return NotFound(new { error = "Not found" });
-        reply.Title = req.Title.Trim();
+        reply.Title = TextClean.Name(req.Title);
         reply.Text = req.Text.Trim();
         await db.SaveChangesAsync();
         return Ok(new QuickReplyDto(reply.Id, reply.Title, reply.Text));
@@ -352,9 +353,10 @@ public class ChatsController(
 
     private static string? QuickReplyError(SaveQuickReplyRequest req)
     {
-        var title = (req.Title ?? "").Trim();
+        // The name is one line with no invisible characters (QA run 11), like other names.
+        var title = TextClean.Name(req.Title ?? "");
         var text = (req.Text ?? "").Trim();
-        if (title.Length == 0 || text.Length == 0) return "Write a name and a message";
+        if (title.Length == 0 || !ChatFiles.HasVisibleText(title) || !ChatFiles.HasVisibleText(text)) return "Write a name and a message";
         if (title.Length > MaxQuickReplyTitleChars) return "The name is too long";
         if (text.Length > ChatLog.MaxTextChars) return "This message is too long";
         return null;

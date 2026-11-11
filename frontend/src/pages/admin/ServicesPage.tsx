@@ -68,7 +68,15 @@ export default function ServicesPage() {
   }
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); setLoading(true); setError('')
+    e.preventDefault()
+    // Unticking "bookable" on a service with upcoming bookings: they stay booked but can't be
+    // moved, and its weekly series stop (QA run 11). The delete flow already warned; this didn't.
+    if (editing?.isBookable && !form.isBookable) {
+      const upcoming = await api.get(`/admin/items/${editing.id}/upcoming-appointments`).then((r) => r.data.count as number).catch(() => 0)
+      if (upcoming > 0 && !(await ask(t(lang, 'unbookableItemUpcoming').replace('{n}', String(upcoming)),
+        { yesLabel: t(lang, 'unbookableItemUpcomingYes'), noLabel: t(lang, 'confirmCancelNo') }))) return
+    }
+    setLoading(true); setError('')
     const wasCreating = !editing
     try {
       const payload = {

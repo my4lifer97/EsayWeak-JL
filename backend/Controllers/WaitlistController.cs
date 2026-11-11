@@ -77,7 +77,7 @@ public class WaitlistController(AppDbContext db, BookingRules bookingRules) : Co
     // inside the appointment.
     private static bool SlotStillCovered(string startTime, int? duration, Appointment appointment)
     {
-        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime, @"^[0-9]{2}:[0-9]{2}$")) return false;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(startTime, @"\A[0-9]{2}:[0-9]{2}\z")) return false;
         var end = duration is > 0 ? AvailabilityService.AddMinutes(startTime, duration.Value) : null;
         return end is not null
             ? AvailabilityService.Overlaps(startTime, end, appointment.StartTime, appointment.EndTime)

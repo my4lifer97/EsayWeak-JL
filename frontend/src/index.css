@@ -33,6 +33,9 @@
 }
 
 * { box-sizing: border-box; }
+/* Text people type (notes, reviews, names, descriptions): a long link or a run of letters wraps
+   instead of pushing a phone-width page sideways (QA run 11). */
+.wrap-anywhere { overflow-wrap: anywhere; }
 body {
   margin: 0;
   background: rgb(var(--color-cream));
