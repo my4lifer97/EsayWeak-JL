@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCustomerAuth } from '../../lib/customerAuth'
 import { t } from '../../lib/i18n'
@@ -7,6 +6,7 @@ import LanguagePicker from '../../components/LanguagePicker'
 import ThemeToggle from '../../components/ThemeToggle'
 import BackButton from '../../components/BackButton'
 import LegalLinks from '../../components/LegalLinks'
+import { useDocumentTitle } from '../../lib/documentTitle'
 
 // /terms, /privacy, /accessibility. Public; uses the customer language like the home page.
 export default function LegalPage({ doc }: { doc: LegalDoc }) {
@@ -23,7 +23,7 @@ export default function LegalPage({ doc }: { doc: LegalDoc }) {
   const dir = lang === 'AR' || lang === 'HE' ? 'rtl' : 'ltr'
   const text = legalText(lang, doc)
 
-  useEffect(() => { document.title = `${text.title} · EsayWeek` }, [text.title])
+  useDocumentTitle(text.title)
 
   return (
     <div className="min-h-screen bg-cream text-ink" dir={dir}>

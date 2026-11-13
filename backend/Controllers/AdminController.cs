@@ -1070,11 +1070,20 @@ public class AdminController(
 
     // ─── Appointments ────────────────────────────────────────────────────────
 
+    // At most this many rows per request; the page asks for more with a bigger `take` (QA run 11
+    // OWN-67: "all" and "past" returned the whole history).
+    public const int AppointmentsPageSize = 100;
+    public const int AppointmentsMaxTake = 1000;
+
     [HttpGet("appointments")]
-    public async Task<IActionResult> GetAppointments([FromQuery] string? filter = null)
+    public async Task<IActionResult> GetAppointments([FromQuery] string? filter = null, [FromQuery] string? search = null,
+        [FromQuery] string? itemId = null, [FromQuery] string? status = null, [FromQuery] string? type = null,
+        [FromQuery] string? startDate = null, [FromQuery] string? endDate = null, [FromQuery] int? take = null)
     {
         // Same local-vs-UTC reasoning as GetDashboard above.
-        var today = AppClock.Now.Date;
+        var now = AppClock.Now;
+        var today = now.Date;
+        var nowTime = now.ToString("HH:mm");
         var query = db.Appointments
             .Include(a => a.Customer)
             .Include(a => a.Item)
@@ -1088,11 +1097,45 @@ public class AdminController(
             _ => query
         };
 
+        // The page's filters run here, so a match older than the first page is still found
+        // (a chat's "their appointments" searches by phone over the whole history).
+        if (DateTime.TryParse(startDate, out var from)) query = query.Where(a => a.Date >= from.Date);
+        if (DateTime.TryParse(endDate, out var to)) query = query.Where(a => a.Date <= to.Date);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var q = search.Trim().ToLower();
+            query = query.Where(a => (a.Customer.Name.ToLower() + " " + a.Customer.FamilyName.ToLower()).Contains(q)
+                || a.Customer.Phone.Contains(q));
+        }
+        if (!string.IsNullOrEmpty(itemId)) query = query.Where(a => a.ItemId == itemId);
+        if (type == "recurring") query = query.Where(a => a.RecurringSeriesId != null);
+        else if (type == "onetime") query = query.Where(a => a.RecurringSeriesId == null);
+        // By the status the list shows (AppointmentStatusHelper.EffectiveStatus): a confirmed
+        // appointment that has ended reads COMPLETED.
+        switch (status)
+        {
+            case "CONFIRMED":
+                query = query.Where(a => a.Status == AppointmentStatus.CONFIRMED
+                    && (a.Date > today || (a.Date == today && string.Compare(a.EndTime, nowTime) > 0)));
+                break;
+            case "COMPLETED":
+                query = query.Where(a => a.Status == AppointmentStatus.COMPLETED
+                    || (a.Status == AppointmentStatus.CONFIRMED
+                        && (a.Date < today || (a.Date == today && string.Compare(a.EndTime, nowTime) <= 0))));
+                break;
+            case "CANCELLED":
+                query = query.Where(a => a.Status == AppointmentStatus.CANCELLED);
+                break;
+        }
+
         // Upcoming and today read soonest first; past and all, newest first.
         var ordered = filter is "upcoming" or "today"
-            ? query.OrderBy(a => a.Date).ThenBy(a => a.StartTime)
-            : query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime);
-        var appointments = await ordered.ToListAsync();
+            ? query.OrderBy(a => a.Date).ThenBy(a => a.StartTime).ThenBy(a => a.Id)
+            : query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime).ThenBy(a => a.Id);
+        var total = await query.CountAsync();
+        var limit = Math.Clamp(take ?? AppointmentsPageSize, 1, AppointmentsMaxTake);
+        var appointments = await ordered.Take(limit).ToListAsync();
+        Response.Headers["X-Total-Count"] = total.ToString();
 
         return Ok(appointments.Select(a => new DashboardAppointmentDto(
             a.Id, a.Date.ToString("yyyy-MM-dd"), a.StartTime, a.EndTime,

@@ -10,6 +10,12 @@ namespace BarberSaas.Api.Services;
 // network) addresses are skipped.
 public static class ClientIp
 {
+    // On Railway (it sets RAILWAY_ENVIRONMENT) the proxy headers are trusted; anywhere else only when
+    // ClientIp:TrustForwardedHeaders is true (e.g. a local QA run that fakes many client IPs).
+    public static bool TrustForwardedHeaders(IConfiguration config) =>
+        config.GetValue<bool?>("ClientIp:TrustForwardedHeaders")
+            ?? !string.IsNullOrEmpty(config["RAILWAY_ENVIRONMENT"]);
+
     public static IPAddress? Resolve(IHeaderDictionary headers)
     {
         var candidates = headers["X-Forwarded-For"].ToString()

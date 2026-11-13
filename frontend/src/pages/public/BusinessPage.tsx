@@ -14,6 +14,7 @@ import BusinessReviews from '../../components/customer/BusinessReviews'
 import StarRating from '../../components/customer/StarRating'
 import NotFoundPage from '../NotFoundPage'
 import RouteErrorPage from '../../components/RouteErrorPage'
+import { useDocumentTitle } from '../../lib/documentTitle'
 
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
@@ -41,6 +42,7 @@ export default function BusinessPage() {
     queryKey: ['business', slug],
     queryFn: () => customerApi.get(`/${slug}/info`).then((r) => r.data),
   })
+  useDocumentTitle(business?.name)
 
   const { data: myAppointments = [] } = useQuery<Appointment[]>({
     queryKey: ['business-appointments', slug],

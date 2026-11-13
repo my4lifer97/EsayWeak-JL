@@ -279,6 +279,66 @@ public class AdminAppointmentsTests : IntegrationTestBase
         Assert.Equal(2, pastDates.Count);
     }
 
+    // QA run 11 OWN-67: "all"/"past" returned the whole history; the page's filters ran in the browser.
+    [Fact]
+    public async Task GetAppointments_IsCapped_AndFiltersOnTheServer()
+    {
+        var slug = "admin-list-page";
+        var token = await RegisterAndLoginBusiness("admin-list-page@example.com", slug);
+        var (businessId, itemId, _) = await SeedBusinessWithServiceAndAvailability(token, slug);
+        using (var db = Db())
+        {
+            var dana = new Customer { BusinessId = businessId, Name = "Dana", FamilyName = "Cohen", Phone = "+972501112233" };
+            var omer = new Customer { BusinessId = businessId, Name = "Omer", Phone = "+972509998877" };
+            db.Customers.AddRange(dana, omer);
+            for (var i = 1; i <= 120; i++)
+                db.Appointments.Add(new Appointment
+                {
+                    BusinessId = businessId, CustomerId = omer.Id, ItemId = itemId,
+                    Date = AppClock.Now.Date.AddDays(-i), StartTime = "09:00", EndTime = "09:30",
+                    Status = AppointmentStatus.CONFIRMED,
+                });
+            // The oldest appointment, beyond the first page.
+            db.Appointments.Add(new Appointment
+            {
+                BusinessId = businessId, CustomerId = dana.Id, ItemId = itemId,
+                Date = AppClock.Now.Date.AddDays(-400), StartTime = "10:00", EndTime = "10:30",
+                Status = AppointmentStatus.CANCELLED, RecurringSeriesId = null,
+            });
+            db.SaveChanges();
+        }
+        Authorize(Client, token);
+
+        var first = await Client.GetAsync("/api/admin/appointments?filter=all");
+        var firstPage = await first.Content.ReadFromJsonAsync<List<System.Text.Json.JsonElement>>();
+        Assert.Equal(AdminController.AppointmentsPageSize, firstPage!.Count);
+        Assert.Equal("121", first.Headers.GetValues("X-Total-Count").Single());
+
+        var more = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=all&take=200");
+        Assert.Equal(121, more!.Count);
+
+        // Search by family name or phone reaches past the first page.
+        var byName = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=all&search=cohen");
+        Assert.Equal("Dana", Assert.Single(byName!).GetProperty("customer").GetProperty("name").GetString());
+        var byPhone = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=all&search=1112233");
+        Assert.Single(byPhone!);
+
+        // Status is the one the list shows: past confirmed ones read COMPLETED.
+        var completed = await Client.GetAsync("/api/admin/appointments?filter=past&status=COMPLETED&take=1");
+        Assert.Equal("120", completed.Headers.GetValues("X-Total-Count").Single());
+        var confirmed = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=past&status=CONFIRMED");
+        Assert.Empty(confirmed!);
+        var cancelled = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=all&status=CANCELLED");
+        Assert.Single(cancelled!);
+
+        var recurring = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=all&type=recurring");
+        Assert.Empty(recurring!);
+
+        var range = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>(
+            $"/api/admin/appointments?filter=all&startDate={AppClock.Now.Date.AddDays(-5):yyyy-MM-dd}&endDate={AppClock.Now.Date.AddDays(-1):yyyy-MM-dd}");
+        Assert.Equal(5, range!.Count);
+    }
+
     [Fact]
     public async Task CreateAppointment_GarbagePhone_ReturnsBadRequest()
     {

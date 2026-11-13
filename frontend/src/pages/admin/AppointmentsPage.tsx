@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import AttendanceBadge from '../../components/admin/AttendanceBadge'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { dateLocale } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
@@ -38,6 +38,8 @@ const STATUS_BADGE: Record<string, string> = {
 }
 const STATUS_OPTIONS: TKey[] = ['statusConfirmed', 'statusCompleted', 'statusCancelled']
 const STATUS_VALUES = ['CONFIRMED', 'COMPLETED', 'CANCELLED']
+// Rows per request; "Load more" asks for the next ones (the server caps the list, QA run 11 OWN-67).
+const PAGE_SIZE = 100
 
 export default function AppointmentsPage() {
   const { language: lang } = useAuth()
@@ -60,10 +62,35 @@ export default function AppointmentsPage() {
   const [rescheduleTarget, setRescheduleTarget] = useState<{ id: string; itemId: string } | null>(null)
   const queryClient = useQueryClient()
 
-  const { data: appointments = [] } = useQuery<Appointment[]>({
-    queryKey: ['appointments', filter],
-    queryFn: () => api.get(`/admin/appointments?filter=${filter}`).then((r) => r.data),
+  // The filters run on the server (search matches "First Last" and the phone), so a match older
+  // than the loaded rows is still found.
+  const [debouncedSearch, setDebouncedSearch] = useState(search)
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(id)
+  }, [search])
+  const [take, setTake] = useState(PAGE_SIZE)
+  // A new filter starts from the first page again.
+  useEffect(() => setTake(PAGE_SIZE), [filter, debouncedSearch, serviceFilter, statusFilter, typeFilter])
+
+  const { data: page, isFetching } = useQuery<{ items: Appointment[]; total: number }>({
+    queryKey: ['appointments', filter, debouncedSearch, serviceFilter, statusFilter, typeFilter, take],
+    queryFn: () => {
+      const params = new URLSearchParams({ filter, take: String(take) })
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      if (serviceFilter) params.set('itemId', serviceFilter)
+      if (statusFilter) params.set('status', statusFilter)
+      if (typeFilter !== 'all') params.set('type', typeFilter)
+      return api.get(`/admin/appointments?${params}`).then((r) => {
+        const items = r.data as Appointment[]
+        const total = Number(r.headers['x-total-count'])
+        return { items, total: Number.isFinite(total) ? total : items.length }
+      })
+    },
+    placeholderData: keepPreviousData,
   })
+  const appointments = page?.items ?? []
+  const total = page?.total ?? 0
 
   const { data: services = [] } = useQuery<Item[]>({
     queryKey: ['services'],
@@ -80,19 +107,6 @@ export default function AppointmentsPage() {
     COMPLETED: 'statusCompleted',
     CANCELLED: 'statusCancelled',
   }
-
-  const filtered = appointments.filter((a) => {
-    // Match against the concatenated "First Last" rather than just customer.name -- the search
-    // box previously never checked familyName at all, so searching a customer's last name (or
-    // their full name) matched nothing even though they were right there in the list.
-    const fullName = `${a.customer.name} ${a.customer.familyName}`.toLowerCase()
-    if (search && !fullName.includes(search.toLowerCase()) && !a.customer.phone.includes(search)) return false
-    if (serviceFilter && a.item.id !== serviceFilter) return false
-    if (statusFilter && a.status !== statusFilter) return false
-    if (typeFilter === 'recurring' && !a.recurringSeriesId) return false
-    if (typeFilter === 'onetime' && a.recurringSeriesId) return false
-    return true
-  })
 
   const hasActiveFilters = !!search || !!serviceFilter || !!statusFilter || typeFilter !== 'all'
   function clearFilters() {
@@ -152,10 +166,10 @@ export default function AppointmentsPage() {
         {hasActiveFilters && (
           <button onClick={clearFilters} className="text-sm text-coral-dark hover:text-coral">{t(lang, 'clearFilters')}</button>
         )}
-        <span className="text-muted text-xs ms-auto">{filtered.length} / {appointments.length} {t(lang, 'appointments')}</span>
+        <span className="text-muted text-xs ms-auto"><bdi dir="ltr">{appointments.length} / {total}</bdi> {t(lang, 'appointments')}</span>
       </div>
 
-      {filtered.length === 0 ? (
+      {appointments.length === 0 ? (
         <div className="text-center text-muted py-16">{t(lang, 'noAppointments')}</div>
       ) : (
         <div className="bg-surface rounded-2xl border border-line overflow-x-auto">
@@ -168,7 +182,7 @@ export default function AppointmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((a) => (
+              {appointments.map((a) => (
                 <tr key={a.id} className="border-b border-line hover:bg-cream">
                   <td className="px-4 py-3 text-ink">{format(parseISO(a.date.slice(0, 10)), 'MMM d, yyyy', { locale: dateLocale(lang) })}</td>
                   <td className="px-4 py-3 text-muted"><bdi dir="ltr">{a.startTime}–{a.endTime}</bdi></td>
@@ -218,6 +232,14 @@ export default function AppointmentsPage() {
               ))}
             </tbody>
           </table>
+          {appointments.length < total && (
+            <div className="p-3 text-center border-t border-line">
+              <button onClick={() => setTake((n) => n + PAGE_SIZE)} disabled={isFetching}
+                className="text-sm text-coral-dark hover:text-coral disabled:opacity-50">
+                {t(lang, 'loadMore')}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {showNewAppointment && (

@@ -1,5 +1,6 @@
 using BarberSaas.Api.Services;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace BarberSaas.Api.Tests.Services;
@@ -36,4 +37,21 @@ public class ClientIpTests
     [Fact]
     public void Ipv6Client_IsKept() =>
         Assert.Equal("2001:db8::1", Resolve(xff: "2001:db8::1, 66.33.22.11"));
+
+    private static bool Trust(params (string Key, string Value)[] values) =>
+        ClientIp.TrustForwardedHeaders(new ConfigurationBuilder()
+            .AddInMemoryCollection(values.ToDictionary(v => v.Key, v => (string?)v.Value)).Build());
+
+    [Fact]
+    public void ForwardedHeaders_AreIgnored_OffRailway() => Assert.False(Trust());
+
+    [Fact]
+    public void ForwardedHeaders_AreTrusted_OnRailway() => Assert.True(Trust(("RAILWAY_ENVIRONMENT", "production")));
+
+    [Fact]
+    public void Setting_OverridesTheRailwayDefault()
+    {
+        Assert.True(Trust(("ClientIp:TrustForwardedHeaders", "true")));
+        Assert.False(Trust(("RAILWAY_ENVIRONMENT", "production"), ("ClientIp:TrustForwardedHeaders", "false")));
+    }
 }

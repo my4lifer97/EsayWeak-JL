@@ -9,6 +9,7 @@ import { localToday } from '../../lib/localDate'
 import { parseISO } from 'date-fns'
 import { formatDay } from '../../lib/dateLocale'
 import { useCustomerAuth } from '../../lib/customerAuth'
+import { useDocumentTitle } from '../../lib/documentTitle'
 
 type AppointmentDetail = {
   id: string; date: string; startTime: string; endTime: string; status: string; notes: string | null; cancelToken: string
@@ -39,6 +40,7 @@ export default function AppointmentPage() {
     queryKey: ['appointment', id],
     queryFn: () => api.get(`/${slug}/appointments/${id}?token=${token}`).then((r) => r.data),
   })
+  useDocumentTitle(appt?.business.name)
 
   const { data: availability, isFetching: loadingSlots, isError: slotsFailed, refetch: refetchSlots } = useQuery<SlotsResponse>({
     queryKey: ['reschedule-slots', id, rescheduleDate],

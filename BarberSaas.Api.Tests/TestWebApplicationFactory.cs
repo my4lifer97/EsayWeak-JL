@@ -65,6 +65,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("RequestQuota__OtpPerIpPerHour", "100000");
         Environment.SetEnvironmentVariable("RequestQuota__PhotoUploadsPerIpPerHour", "100000");
         Environment.SetEnvironmentVariable("RequestQuota__EmailCodesPerIpPerHour", "100000");
+        // Tests stand in for Railway's proxy: they pick the client IP with X-Forwarded-For (LoginThrottleTests).
+        Environment.SetEnvironmentVariable("ClientIp__TrustForwardedHeaders", "true");
         // Matches WhatsAppControllerTests' TwilioToken constant -- one platform-owned Twilio
         // account now signs/validates for every business (see TwilioWhatsAppSender), so this env var
         // is what WhatsAppController.Webhook checks inbound signatures against in tests.

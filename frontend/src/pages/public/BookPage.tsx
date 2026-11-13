@@ -6,6 +6,7 @@ import { t } from '../../lib/i18n'
 import BookingWizard from '../../components/booking/BookingWizard'
 import NotFoundPage from '../NotFoundPage'
 import RouteErrorPage from '../../components/RouteErrorPage'
+import { useDocumentTitle } from '../../lib/documentTitle'
 
 type BusinessInfo = {
   slug: string; name: string; description: string | null; logo: string | null
@@ -25,6 +26,7 @@ export default function BookPage() {
     queryKey: ['business', slug],
     queryFn: () => customerApi.get(`/${slug}/info`).then((r) => r.data),
   })
+  useDocumentTitle(business?.name)
 
   if (isLoading) return <div className="min-h-screen bg-cream flex items-center justify-center"><div className="text-muted">{t(lang, 'loading')}</div></div>
   // Same as BusinessPage: the 404 page for an unknown slug, a reload page for anything else.

@@ -164,7 +164,8 @@ builder.Services.AddCors(opt =>
         .WithOrigins((builder.Configuration["AllowedOrigin"] ?? "http://localhost:5173")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         .AllowAnyHeader()
-        .AllowAnyMethod()));
+        .AllowAnyMethod()
+        .WithExposedHeaders("X-Total-Count")));
 
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<RequestQuota>();
@@ -178,9 +179,13 @@ var uploadsPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "
 Directory.CreateDirectory(uploadsPath);
 
 // Railway's proxy sits in front of the app, so RemoteIpAddress is the proxy's -- see ClientIp.
+// The forwarded headers are only trusted behind that proxy: Railway's edge rebuilds X-Forwarded-For
+// as "client, edge" (checked 2026-11-14, a client-sent value is dropped), but without the proxy a
+// client could write its own address and dodge every per-IP quota (QA run 11 OWN-61).
+var trustForwardedHeaders = ClientIp.TrustForwardedHeaders(app.Configuration);
 app.Use((context, next) =>
 {
-    var ip = ClientIp.Resolve(context.Request.Headers);
+    var ip = trustForwardedHeaders ? ClientIp.Resolve(context.Request.Headers) : null;
     if (ip is not null) context.Connection.RemoteIpAddress = ip;
     // Raw proxy headers on sign-in requests, to check what Railway sends when the IPs look wrong.
     if (context.Request.Path.Value?.EndsWith("/login", StringComparison.OrdinalIgnoreCase) == true)
