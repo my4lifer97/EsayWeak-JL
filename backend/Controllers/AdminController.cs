@@ -1070,15 +1070,15 @@ public class AdminController(
 
     // ─── Appointments ────────────────────────────────────────────────────────
 
-    // At most this many rows per request; the page asks for more with a bigger `take` (QA run 11
-    // OWN-67: "all" and "past" returned the whole history).
+    // At most this many rows per request; the page asks for the next ones with `skip` (QA run 11
+    // OWN-67: "all" and "past" returned the whole history). X-Total-Count has the full count.
     public const int AppointmentsPageSize = 100;
     public const int AppointmentsMaxTake = 1000;
 
     [HttpGet("appointments")]
     public async Task<IActionResult> GetAppointments([FromQuery] string? filter = null, [FromQuery] string? search = null,
         [FromQuery] string? itemId = null, [FromQuery] string? status = null, [FromQuery] string? type = null,
-        [FromQuery] string? startDate = null, [FromQuery] string? endDate = null, [FromQuery] int? take = null)
+        [FromQuery] string? startDate = null, [FromQuery] string? endDate = null, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         // Same local-vs-UTC reasoning as GetDashboard above.
         var now = AppClock.Now;
@@ -1134,7 +1134,7 @@ public class AdminController(
             : query.OrderByDescending(a => a.Date).ThenBy(a => a.StartTime).ThenBy(a => a.Id);
         var total = await query.CountAsync();
         var limit = Math.Clamp(take ?? AppointmentsPageSize, 1, AppointmentsMaxTake);
-        var appointments = await ordered.Take(limit).ToListAsync();
+        var appointments = await ordered.Skip(Math.Max(skip ?? 0, 0)).Take(limit).ToListAsync();
         Response.Headers["X-Total-Count"] = total.ToString();
 
         return Ok(appointments.Select(a => new DashboardAppointmentDto(

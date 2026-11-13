@@ -28,9 +28,12 @@ const TITLES: Record<string, TKey> = {
   '/browse': 'browseBusinesses',
   '/account/bookings': 'myBookingsTitle',
 }
-// Pages that set their own title: a business's page, booking and appointment (its name, through
+// Pages that set their own title: a business's page and appointment (its name, through
 // useDocumentTitle) and the legal pages (their heading).
-const OWN_TITLE = [/^\/[^/]+$/, /^\/[^/]+\/book$/, /^\/[^/]+\/appointments\/[^/]+$/]
+const OWN_TITLE = [/^\/[^/]+$/, /^\/[^/]+\/appointments\/[^/]+$/]
+// Booking: BookPage puts the business name on it after this runs; signed out, the sign-in
+// notice shows instead of BookPage and this one stays.
+const BOOK_PATH = /^\/[^/]+\/book$/
 
 // Keeps <html lang dir> on the language the page is shown in, for screen readers (QA run 11: it
 // was always "en"), and the tab title on the page's name. Pages still set dir on their own root.
@@ -55,6 +58,7 @@ export default function DocumentLanguage() {
     const key = TITLES[pathname]
     if (key) document.title = pageTitle(t(lang, key))
     else if (pathname.startsWith('/platform-admin')) document.title = pageTitle('Platform admin')
+    else if (BOOK_PATH.test(pathname)) document.title = pageTitle(t(lang, 'bookAppointment'))
     else if (!LEGAL_PATHS.includes(pathname) && !OWN_TITLE.some((r) => r.test(pathname))) document.title = pageTitle()
   }, [pathname, lang])
   return null

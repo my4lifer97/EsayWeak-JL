@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import AttendanceBadge from '../../components/admin/AttendanceBadge'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import { dateLocale } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
@@ -38,7 +38,7 @@ const STATUS_BADGE: Record<string, string> = {
 }
 const STATUS_OPTIONS: TKey[] = ['statusConfirmed', 'statusCompleted', 'statusCancelled']
 const STATUS_VALUES = ['CONFIRMED', 'COMPLETED', 'CANCELLED']
-// Rows per request; "Load more" asks for the next ones (the server caps the list, QA run 11 OWN-67).
+// Rows per request; "Load more" asks for the next ones (the server pages the list, QA run 11 OWN-67).
 const PAGE_SIZE = 100
 
 export default function AppointmentsPage() {
@@ -69,14 +69,12 @@ export default function AppointmentsPage() {
     const id = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(id)
   }, [search])
-  const [take, setTake] = useState(PAGE_SIZE)
-  // A new filter starts from the first page again.
-  useEffect(() => setTake(PAGE_SIZE), [filter, debouncedSearch, serviceFilter, statusFilter, typeFilter])
-
-  const { data: page, isFetching } = useQuery<{ items: Appointment[]; total: number }>({
-    queryKey: ['appointments', filter, debouncedSearch, serviceFilter, statusFilter, typeFilter, take],
-    queryFn: () => {
-      const params = new URLSearchParams({ filter, take: String(take) })
+  // Each "Load more" fetches the next PAGE_SIZE rows (skip = rows already loaded).
+  const { data, isFetching, hasNextPage, fetchNextPage } = useInfiniteQuery({
+    queryKey: ['appointments', filter, debouncedSearch, serviceFilter, statusFilter, typeFilter],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }): Promise<{ items: Appointment[]; total: number }> => {
+      const params = new URLSearchParams({ filter, skip: String(pageParam), take: String(PAGE_SIZE) })
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (serviceFilter) params.set('itemId', serviceFilter)
       if (statusFilter) params.set('status', statusFilter)
@@ -87,10 +85,14 @@ export default function AppointmentsPage() {
         return { items, total: Number.isFinite(total) ? total : items.length }
       })
     },
+    getNextPageParam: (last, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
+      return last.items.length > 0 && loaded < last.total ? loaded : undefined
+    },
     placeholderData: keepPreviousData,
   })
-  const appointments = page?.items ?? []
-  const total = page?.total ?? 0
+  const appointments = data?.pages.flatMap((p) => p.items) ?? []
+  const total = data?.pages[data.pages.length - 1]?.total ?? 0
 
   const { data: services = [] } = useQuery<Item[]>({
     queryKey: ['services'],
@@ -232,9 +234,9 @@ export default function AppointmentsPage() {
               ))}
             </tbody>
           </table>
-          {appointments.length < total && (
+          {hasNextPage && (
             <div className="p-3 text-center border-t border-line">
-              <button onClick={() => setTake((n) => n + PAGE_SIZE)} disabled={isFetching}
+              <button onClick={() => fetchNextPage()} disabled={isFetching}
                 className="text-sm text-coral-dark hover:text-coral disabled:opacity-50">
                 {t(lang, 'loadMore')}
               </button>

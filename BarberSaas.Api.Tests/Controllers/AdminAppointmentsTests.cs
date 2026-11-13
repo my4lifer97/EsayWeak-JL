@@ -317,6 +317,17 @@ public class AdminAppointmentsTests : IntegrationTestBase
         var more = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=all&take=200");
         Assert.Equal(121, more!.Count);
 
+        // The next page continues where the first stopped, with no overlap.
+        var second = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>(
+            $"/api/admin/appointments?filter=all&skip={AdminController.AppointmentsPageSize}");
+        Assert.Equal(21, second!.Count);
+        var ids = firstPage.Concat(second).Select(a => a.GetProperty("id").GetString()).ToList();
+        Assert.Equal(121, ids.Distinct().Count());
+        Assert.Equal(more.Select(a => a.GetProperty("id").GetString()), ids);
+        // A take above the cap is clamped, not refused.
+        var capped = await Client.GetAsync($"/api/admin/appointments?filter=all&take={AdminController.AppointmentsMaxTake + 500}");
+        Assert.Equal(HttpStatusCode.OK, capped.StatusCode);
+
         // Search by family name or phone reaches past the first page.
         var byName = await Client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/admin/appointments?filter=all&search=cohen");
         Assert.Equal("Dana", Assert.Single(byName!).GetProperty("customer").GetProperty("name").GetString());
