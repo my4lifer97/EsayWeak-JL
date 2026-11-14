@@ -26,12 +26,14 @@ public class ChatsController(
 
     private const int MaxConversations = 100;
     private const int MaxMessages = 200;
+    // Matches a search returns (QA run 11 CHAT-62: a chat past the newest 100 was out of reach).
+    private const int MaxSearchResults = 50;
 
     public record ChatSummaryDto(string Phone, string? Name, string LastText, string LastSender, DateTime LastAt, int Unread, bool IsOpen);
     public record ChatAttachmentDto(string Id, string FileName, string ContentType);
     public record ChatMessageDto(string Id, string Sender, string Text, DateTime CreatedAt, ChatAttachmentDto? Attachment);
     // CustomerId: the business's Customer row for this phone, if any (booking from the chat uses it).
-    public record ChatDto(string Phone, string? Name, bool IsOpen, string? CustomerId, List<ChatMessageDto> Messages);
+    public record ChatDto(string Phone, string? Name, bool IsOpen, string? CustomerId, List<ChatMessageDto> Messages, bool HasOlder = false);
     public record ChatPhoneRequest(string Phone);
     public record SendChatMessageRequest(string Phone, string Text);
     public record SendBookingLinkRequest(string Phone, string ItemId);
@@ -44,27 +46,35 @@ public class ChatsController(
 
     // Open chats first, then the newest.
     [HttpGet]
-    public async Task<IActionResult> GetChats()
+    public async Task<IActionResult> GetChats([FromQuery] string? q = null)
     {
-        // The MaxConversations most recent, plus every open chat and every chat with unread
-        // messages, however old: taking the newest 100 before sorting open ones first hid an older
-        // open chat while its unread messages still counted in the sidebar badge (QA run 5).
-        var openPhones = await db.WhatsAppConversationStates
-            .Where(s => s.BusinessId == BusinessId && s.ChatbotMode == ServiceListPrompt.InquiryMode && s.ExpiresAt > DateTime.UtcNow)
-            .Select(s => s.Phone)
-            .ToListAsync();
         var grouped = db.ChatMessages
             .Where(m => m.BusinessId == BusinessId)
             .GroupBy(m => m.CustomerPhone)
-            .Select(g => new
-            {
-                Phone = g.Key,
-                LastAt = g.Max(m => m.CreatedAt),
-                Unread = g.Count(m => !m.IsRead),
-            });
-        var recent = await grouped.OrderByDescending(g => g.LastAt).Take(MaxConversations).ToListAsync();
-        var pinned = await grouped.Where(g => g.Unread > 0 || openPhones.Contains(g.Phone)).ToListAsync();
-        var chats = recent.Concat(pinned).DistinctBy(c => c.Phone).ToList();
+            .Select(g => new ChatGroup { Phone = g.Key, LastAt = g.Max(m => m.CreatedAt), Unread = g.Count(m => !m.IsRead) });
+        var search = q?.Trim().ToLower() ?? "";
+        List<ChatGroup> chats;
+        if (search.Length > 0)
+        {
+            // A search covers every chat, not just the listed ones: by the customer's name (theirs
+            // in Customers, else their WhatsApp profile name) or by phone digits.
+            var matches = SearchPhones(search);
+            chats = await grouped.Where(g => matches.Contains(g.Phone))
+                .OrderByDescending(g => g.LastAt).Take(MaxSearchResults).ToListAsync();
+        }
+        else
+        {
+            // The MaxConversations most recent, plus every open chat and every chat with unread
+            // messages, however old: taking the newest 100 before sorting open ones first hid an older
+            // open chat while its unread messages still counted in the sidebar badge (QA run 5).
+            var openPhones = await db.WhatsAppConversationStates
+                .Where(s => s.BusinessId == BusinessId && s.ChatbotMode == ServiceListPrompt.InquiryMode && s.ExpiresAt > DateTime.UtcNow)
+                .Select(s => s.Phone)
+                .ToListAsync();
+            var recent = await grouped.OrderByDescending(g => g.LastAt).Take(MaxConversations).ToListAsync();
+            var pinned = await grouped.Where(g => g.Unread > 0 || openPhones.Contains(g.Phone)).ToListAsync();
+            chats = recent.Concat(pinned).DistinctBy(c => c.Phone).ToList();
+        }
 
         var phones = chats.Select(c => c.Phone).ToList();
         var lastMessages = (await db.ChatMessages
@@ -86,32 +96,66 @@ public class ChatsController(
             .OrderByDescending(c => c.IsOpen).ThenByDescending(c => c.LastAt));
     }
 
+    // Init properties, not a positional record: EF can sort on these after the GroupBy.
+    private class ChatGroup
+    {
+        public string Phone { get; init; } = "";
+        public DateTime LastAt { get; init; }
+        public int Unread { get; init; }
+    }
+
+    // The chat phones whose customer name, WhatsApp profile name or phone matches (search is lowercase).
+    private IQueryable<string> SearchPhones(string search)
+    {
+        var digits = new string(search.Where(char.IsAsciiDigit).ToArray());
+        var byCustomer = db.Customers
+            .Where(c => c.BusinessId == BusinessId && (c.Name.ToLower() + " " + c.FamilyName.ToLower()).Contains(search))
+            .Select(c => c.Phone);
+        var byChat = db.ChatMessages
+            .Where(m => m.BusinessId == BusinessId
+                && ((m.CustomerName != null && m.CustomerName.ToLower().Contains(search))
+                    || (digits.Length >= 3 && m.CustomerPhone.Contains(digits))))
+            .Select(m => m.CustomerPhone);
+        return byCustomer.Concat(byChat);
+    }
+
     // The sidebar badge.
     [HttpGet("unread-count")]
     public async Task<IActionResult> GetUnreadCount() =>
         Ok(new { count = await db.ChatMessages.CountAsync(m => m.BusinessId == BusinessId && !m.IsRead) });
 
-    // The last MaxMessages messages, oldest first. The phone is a query value, not a route part,
-    // because of its "+".
+    // The last MaxMessages messages, oldest first, or with `before` (a message id) the MaxMessages
+    // before that one; HasOlder says whether more remain (QA run 11 CHAT-62: older messages were
+    // out of reach). The phone is a query value, not a route part, because of its "+".
     [HttpGet("messages")]
-    public async Task<IActionResult> GetMessages([FromQuery] string phone)
+    public async Task<IActionResult> GetMessages([FromQuery] string phone, [FromQuery] string? before = null)
     {
         var customerPhone = PhoneNormalizer.Normalize(phone ?? "");
+        var query = db.ChatMessages.Where(m => m.BusinessId == BusinessId && m.CustomerPhone == customerPhone);
+        if (!string.IsNullOrEmpty(before))
+        {
+            var cursor = await query.Where(m => m.Id == before).Select(m => new { m.CreatedAt, m.Id }).FirstOrDefaultAsync();
+            if (cursor is null) return NotFound(new { error = "Not found" });
+            query = query.Where(m => m.CreatedAt < cursor.CreatedAt
+                || (m.CreatedAt == cursor.CreatedAt && string.Compare(m.Id, cursor.Id) < 0));
+        }
         // Projected: an attachment's file bytes stay in the database (GetAttachment serves them).
-        var messages = await db.ChatMessages
-            .Where(m => m.BusinessId == BusinessId && m.CustomerPhone == customerPhone)
-            .OrderByDescending(m => m.CreatedAt).Take(MaxMessages)
+        // One extra row tells whether older messages remain.
+        var messages = await query
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id).Take(MaxMessages + 1)
             .Select(m => new ChatMessageDto(m.Id, m.Sender.ToString(), m.Text, m.CreatedAt,
                 m.Attachment == null ? null : new ChatAttachmentDto(m.Attachment.Id, m.Attachment.FileName, m.Attachment.ContentType)))
             .ToListAsync();
-        if (messages.Count == 0) return NotFound(new { error = "Not found" });
+        var hasOlder = messages.Count > MaxMessages;
+        if (hasOlder) messages.RemoveAt(MaxMessages);
+        if (messages.Count == 0 && before is null) return NotFound(new { error = "Not found" });
 
         var names = await NamesFor([customerPhone]);
         var customerId = await db.Customers.Where(c => c.BusinessId == BusinessId && c.Phone == customerPhone)
             .Select(c => c.Id).FirstOrDefaultAsync();
         return Ok(new ChatDto(customerPhone, names.GetValueOrDefault(customerPhone),
             await ChatLog.IsChatOpenAsync(db, BusinessId, customerPhone), customerId,
-            messages.OrderBy(m => m.CreatedAt).ToList()));
+            messages.OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).ToList(), hasOlder));
     }
 
     // Called by the open chat whenever it shows unread messages, so not an activity-log row each time.

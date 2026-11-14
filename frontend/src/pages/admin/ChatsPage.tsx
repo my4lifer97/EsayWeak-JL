@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { format, isToday, parseISO } from 'date-fns'
 import { dateLocale } from '../../lib/dateLocale'
 import { api } from '../../lib/api'
@@ -23,7 +23,7 @@ type ChatMessage = { id: string; sender: Sender; text: string; createdAt: string
 // Same list as the server's ChatFiles (10MB, checked there too).
 const ACCEPTED_FILES = '.jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx'
 const MAX_FILE_BYTES = 10 * 1024 * 1024
-type Chat = { phone: string; name: string | null; isOpen: boolean; customerId: string | null; messages: ChatMessage[] }
+type Chat = { phone: string; name: string | null; isOpen: boolean; customerId: string | null; messages: ChatMessage[]; hasOlder: boolean }
 const MAX_TEXT = 4000
 
 const drafts = chatDrafts
@@ -39,10 +39,19 @@ export default function ChatsPage() {
   const [params, setParams] = useSearchParams()
   const selected = params.get('phone')
 
+  // The list shows the newest chats plus open/unread ones; a search covers every chat on the
+  // server, by name or phone (QA run 11 CHAT-62: older ended chats were out of reach).
+  const [search, setSearch] = useState('')
+  const [query, setQuery] = useState('')
+  useEffect(() => {
+    const id = setTimeout(() => setQuery(search.trim()), 300)
+    return () => clearTimeout(id)
+  }, [search])
   const { data: chats = [], isLoading } = useQuery<ChatSummary[]>({
-    queryKey: ['chats'],
-    queryFn: () => api.get('/admin/chats').then((r) => r.data),
+    queryKey: ['chats', query],
+    queryFn: () => api.get('/admin/chats', { params: query ? { q: query } : {} }).then((r) => r.data),
     refetchInterval: 5000,
+    placeholderData: keepPreviousData,
   })
   const [alertsOpen, setAlertsOpen] = useState(false)
   const { data: settings } = useQuery<{ whatsAppNumber: string | null; chatbotInquiryEnabled: boolean } & ChatAlertSettings>({
@@ -69,7 +78,14 @@ export default function ChatsPage() {
     </div>
   )
   const list = (
-    <ChatList lang={lang} chats={chats} isLoading={isLoading} selected={selected} onOpen={open} />
+    <>
+      <div className="p-3 border-b border-line">
+        <input type="search" dir="auto" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder={t(lang, 'searchPlaceholder')} aria-label={t(lang, 'searchPlaceholder')}
+          className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink text-sm placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral" />
+      </div>
+      <ChatList lang={lang} chats={chats} isLoading={isLoading} selected={selected} onOpen={open} searching={!!query} />
+    </>
   )
   const conversation = selected ? (
     <Conversation
@@ -107,11 +123,11 @@ export default function ChatsPage() {
   )
 }
 
-function ChatList({ lang, chats, isLoading, selected, onOpen }: {
-  lang: string; chats: ChatSummary[]; isLoading: boolean; selected: string | null; onOpen: (phone: string) => void
+function ChatList({ lang, chats, isLoading, selected, onOpen, searching }: {
+  lang: string; chats: ChatSummary[]; isLoading: boolean; selected: string | null; onOpen: (phone: string) => void; searching: boolean
 }) {
   if (isLoading) return <div className="text-muted py-12 text-center">{t(lang, 'loading')}</div>
-  if (chats.length === 0) return <div className="text-muted py-12 px-4 text-center text-sm">{t(lang, 'chatsEmpty')}</div>
+  if (chats.length === 0) return <div className="text-muted py-12 px-4 text-center text-sm">{t(lang, searching ? 'chatsNoMatches' : 'chatsEmpty')}</div>
 
   return (
     <ul className="divide-y divide-line">
@@ -195,6 +211,44 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
     api.post('/admin/chats/read', { phone }).then(onChanged).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phone, unread])
+
+  // Older messages, loaded 200 at a time above the latest ones the poll keeps fresh (QA run 11
+  // CHAT-62). Once some are loaded, every polled message is kept too, so one that slides out of
+  // the latest 200 doesn't leave a gap.
+  const [older, setOlder] = useState<ChatMessage[]>([])
+  const [olderHasMore, setOlderHasMore] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+  const keepScrollFrom = useRef<number | null>(null)
+  useEffect(() => {
+    if (chat && older.length > 0) setOlder((prev) => mergeMessages(prev, chat.messages))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat])
+  const messages = older.length > 0 ? mergeMessages(older, chat?.messages ?? []) : chat?.messages ?? []
+  const hasOlder = older.length > 0 ? olderHasMore : !!chat?.hasOlder
+
+  async function loadOlder() {
+    const first = messages[0]
+    if (!first) return
+    setLoadingOlder(true)
+    try {
+      const { data } = await api.get<Chat>('/admin/chats/messages', { params: { phone, before: first.id } })
+      keepScrollFrom.current = listRef.current?.scrollHeight ?? null
+      setOlder((prev) => mergeMessages(mergeMessages(prev, chat?.messages ?? []), data.messages))
+      setOlderHasMore(data.hasOlder)
+    } catch (err) {
+      setError(apiError(err) ?? t(lang, 'somethingWentWrong'))
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
+  // Messages added on top keep the view where it was.
+  useLayoutEffect(() => {
+    const before = keepScrollFrom.current
+    if (before === null || !listRef.current) return
+    keepScrollFrom.current = null
+    listRef.current.scrollTop += listRef.current.scrollHeight - before
+  }, [older])
 
   const lastId = chat?.messages.at(-1)?.id
   useEffect(() => {
@@ -372,10 +426,18 @@ function Conversation({ lang, phone, linked, unread, onBack, onChanged }: {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-cream">
+      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-cream">
         {isLoading && <div className="text-muted py-12 text-center">{t(lang, 'loading')}</div>}
         {!chat && isError && <div className="text-muted py-12 text-center text-sm">{t(lang, 'chatsNotFound')}</div>}
-        {chat?.messages.map((m) => <Bubble key={m.id} m={m} lang={lang} />)}
+        {chat && hasOlder && (
+          <div className="text-center">
+            <button onClick={loadOlder} disabled={loadingOlder}
+              className="text-xs text-coral-dark hover:text-coral border border-line bg-surface rounded-full px-3 py-1 disabled:opacity-50">
+              {loadingOlder ? t(lang, 'loading') : t(lang, 'chatsLoadOlder')}
+            </button>
+          </div>
+        )}
+        {chat && messages.map((m) => <Bubble key={m.id} m={m} lang={lang} />)}
         <div ref={bottomRef} />
       </div>
 
@@ -523,6 +585,17 @@ function AttachmentView({ attachment, light, lang }: { attachment: ChatAttachmen
       {downloadFailed && <span className="text-xs">⚠️</span>}
     </button>
   )
+}
+
+// The union of two message lists, oldest first (the server's order: time, then id).
+function mergeMessages(a: ChatMessage[], b: ChatMessage[]): ChatMessage[] {
+  const byId = new Map<string, ChatMessage>()
+  for (const m of a) byId.set(m.id, m)
+  for (const m of b) byId.set(m.id, m)
+  return [...byId.values()].sort((x, y) => {
+    const dt = new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime()
+    return dt !== 0 ? dt : x.id < y.id ? -1 : x.id > y.id ? 1 : 0
+  })
 }
 
 function fileSize(bytes: number) {

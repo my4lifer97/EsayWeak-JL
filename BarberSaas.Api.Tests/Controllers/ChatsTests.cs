@@ -146,6 +146,102 @@ public class ChatsTests : IntegrationTestBase
         Assert.False(await MediaWanted(businessId, "+15551110081"));
     }
 
+    // QA run 11 CHAT-62: an ended, read chat past the newest 100 couldn't be reached.
+    [Fact]
+    public async Task Search_FindsAChatPastTheNewest100_ByNameProfileOrPhone()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-search");
+        using (var db = Db())
+        {
+            var old = BarberSaas.Api.Services.ChatLog.NewMessage(businessId, "+15553334455", BarberSaas.Api.Models.ChatSender.Customer, "an old question");
+            old.CustomerName = "Yossi WhatsApp";
+            old.IsRead = true;
+            old.CreatedAt = DateTime.UtcNow.AddDays(-90);
+            db.ChatMessages.Add(old);
+            var named = BarberSaas.Api.Services.ChatLog.NewMessage(businessId, "+15556667788", BarberSaas.Api.Models.ChatSender.Owner, "see you");
+            named.CreatedAt = DateTime.UtcNow.AddDays(-80);
+            db.ChatMessages.Add(named);
+            db.Customers.Add(new BarberSaas.Api.Models.Customer { BusinessId = businessId, Name = "Rina", FamilyName = "Levi", Phone = "+15556667788" });
+            for (var i = 0; i < 101; i++)
+            {
+                var message = BarberSaas.Api.Services.ChatLog.NewMessage(businessId, $"+1555220{i:0000}", BarberSaas.Api.Models.ChatSender.Owner, "hello");
+                message.CreatedAt = DateTime.UtcNow.AddMinutes(-i);
+                db.ChatMessages.Add(message);
+            }
+            await db.SaveChangesAsync();
+        }
+        Authorize(Client, token);
+
+        var list = (await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>("/api/admin/chats"))!;
+        Assert.DoesNotContain(list, c => c.Phone == "+15553334455");
+
+        async Task<List<ChatsController.ChatSummaryDto>> Search(string q) =>
+            (await Client.GetFromJsonAsync<List<ChatsController.ChatSummaryDto>>($"/api/admin/chats?q={Uri.EscapeDataString(q)}"))!;
+        Assert.Equal("+15553334455", Assert.Single(await Search("yossi")).Phone);
+        Assert.Equal("+15553334455", Assert.Single(await Search("333 4455".Replace(" ", ""))).Phone);
+        var byName = Assert.Single(await Search("rina lev"));
+        Assert.Equal("+15556667788", byName.Phone);
+        Assert.Equal("Rina Levi", byName.Name);
+        Assert.Empty(await Search("nobody here"));
+        // Two digits are too few to search by phone (they'd match nearly everyone).
+        Assert.Empty(await Search("55"));
+    }
+
+    // QA run 11 CHAT-62: only the last 200 messages were reachable.
+    [Fact]
+    public async Task OlderMessages_ComePageByPage_WithNoGapOrOverlap()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-older");
+        var start = DateTime.UtcNow.AddDays(-1);
+        using (var db = Db())
+        {
+            for (var i = 0; i < 450; i++)
+            {
+                var message = BarberSaas.Api.Services.ChatLog.NewMessage(businessId, "+15558889900", BarberSaas.Api.Models.ChatSender.Customer, $"m{i}");
+                // Pairs share a timestamp, so the id breaks the tie.
+                message.CreatedAt = start.AddSeconds(i / 2);
+                db.ChatMessages.Add(message);
+            }
+            await db.SaveChangesAsync();
+        }
+
+        var latest = await GetChat(token, "+15558889900");
+        Assert.Equal(200, latest.Messages.Count);
+        Assert.True(latest.HasOlder);
+        Assert.Contains(latest.Messages[^1].Text, new[] { "m448", "m449" });
+
+        var seen = latest.Messages.Select(m => m.Id).ToList();
+        var before = latest.Messages[0].Id;
+        var pages = 0;
+        while (true)
+        {
+            var page = (await Client.GetFromJsonAsync<ChatsController.ChatDto>(
+                $"/api/admin/chats/messages?phone={Uri.EscapeDataString("+15558889900")}&before={before}"))!;
+            pages++;
+            seen.InsertRange(0, page.Messages.Select(m => m.Id));
+            if (!page.HasOlder) break;
+            before = page.Messages[0].Id;
+        }
+
+        Assert.Equal(2, pages);
+        Assert.Equal(450, seen.Count);
+        Assert.Equal(450, seen.Distinct().Count());
+        using var verify = Db();
+        var expected = verify.ChatMessages.Where(m => m.CustomerPhone == "+15558889900")
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id).Select(m => m.Id).ToList();
+        Assert.Equal(expected, seen);
+    }
+
+    [Fact]
+    public async Task OlderMessages_UnknownCursor_IsNotFound()
+    {
+        var (businessId, token, _) = await SeedBusiness("chats-older-404");
+        await OpenChat(businessId, "+15558889911");
+        Authorize(Client, token);
+        var resp = await Client.GetAsync($"/api/admin/chats/messages?phone={Uri.EscapeDataString("+15558889911")}&before=nope");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
     // QA run 5: the newest 100 chats were taken before open ones were sorted first, so an older
     // open chat disappeared while its unread messages still counted in the badge.
     [Fact]
