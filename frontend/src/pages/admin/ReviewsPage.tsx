@@ -67,7 +67,7 @@ export default function ReviewsPage() {
             <div key={r.id} className={`bg-surface border rounded-2xl p-4 ${r.isHidden ? 'border-line opacity-60' : 'border-line'}`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-ink text-sm font-medium">{r.reviewerName}</span>
+                  <span className="text-ink text-sm font-medium min-w-0 wrap-anywhere">{r.reviewerName}</span>
                   {r.isHidden && (
                     <span className="text-xs px-2 py-0.5 rounded-full bg-cream text-muted border border-line">
                       {t(lang, 'reviewHidden')}
@@ -78,14 +78,15 @@ export default function ReviewsPage() {
               </div>
               <div className="mt-1 flex items-center gap-2">
                 <StarRating value={r.rating} size="sm" lang={lang} />
-                {r.itemName && <span className="text-muted text-xs">· {(lang === 'AR' ? r.itemNameAr : lang === 'HE' ? r.itemNameHe : null) || r.itemName}</span>}
+                {r.itemName && <span className="text-muted text-xs min-w-0 wrap-anywhere">· {(lang === 'AR' ? r.itemNameAr : lang === 'HE' ? r.itemNameHe : null) || r.itemName}</span>}
               </div>
-              {r.comment && <p className="text-ink text-sm mt-2">{r.comment}</p>}
+              {/* Long unbroken text (a URL) wraps instead of widening the page on a phone (QA run 11 PUB-60). */}
+              {r.comment && <p className="text-ink text-sm mt-2 wrap-anywhere">{r.comment}</p>}
 
               {r.ownerReply && replyingId !== r.id && (
                 <div className="mt-3 border-s-2 border-line ps-3">
                   <div className="text-xs text-muted">{t(lang, 'ownerReply')}</div>
-                  <p className="text-muted text-sm mt-0.5">{r.ownerReply}</p>
+                  <p className="text-muted text-sm mt-0.5 wrap-anywhere">{r.ownerReply}</p>
                 </div>
               )}
 

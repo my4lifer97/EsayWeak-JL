@@ -191,33 +191,79 @@ public class AuthControllerTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.BadRequest, replay.StatusCode);
     }
 
+    // QA run 11 OWN-22: resend and verify answered differently for unknown, verified and
+    // unverified emails (404 / 400 / 200), so anyone could tell which emails have an account.
+    // Now they answer like forgot-password: the same silent 200 with no code.
+    private record ResendResponse(string? DevCode);
+
     [Fact]
-    public async Task ResendVerification_ImmediateSecondRequest_IsRateLimited()
+    public async Task ResendVerification_ImmediateSecondRequest_IsSilentAndSendsNothing()
     {
         await RegisterAndGetDevCode("resend-cooldown@example.com", "resend-cooldown-shop");
 
         var resp = await Client.PostAsJsonAsync("/api/auth/resend-verification", new ResendVerificationRequest("resend-cooldown@example.com"));
 
-        Assert.Equal((HttpStatusCode)429, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Null((await resp.Content.ReadFromJsonAsync<ResendResponse>())!.DevCode);
+        using var db = Db();
+        Assert.Single(db.BusinessEmailOtps.Where(o => o.Email == "resend-cooldown@example.com"));
     }
 
     [Fact]
-    public async Task ResendVerification_ForAlreadyVerifiedEmail_ReturnsBadRequest()
+    public async Task ResendVerification_UnknownVerifiedAndUnverified_LookTheSame()
     {
         var code = await RegisterAndGetDevCode("resend-verified@example.com", "resend-verified-shop");
         await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("resend-verified@example.com", code));
+        await RegisterAndGetDevCode("resend-pending@example.com", "resend-pending-shop");
+        using (var db = Db())
+        {
+            // Past the cooldown, so this one really issues a new code.
+            foreach (var o in db.BusinessEmailOtps.Where(o => o.Email == "resend-pending@example.com"))
+                o.CreatedAt = DateTime.UtcNow.AddMinutes(-5);
+            db.SaveChanges();
+        }
 
-        var resp = await Client.PostAsJsonAsync("/api/auth/resend-verification", new ResendVerificationRequest("resend-verified@example.com"));
+        var unknown = await Client.PostAsJsonAsync("/api/auth/resend-verification", new ResendVerificationRequest("nobody@example.com"));
+        var verified = await Client.PostAsJsonAsync("/api/auth/resend-verification", new ResendVerificationRequest("resend-verified@example.com"));
+        var pending = await Client.PostAsJsonAsync("/api/auth/resend-verification", new ResendVerificationRequest("resend-pending@example.com"));
 
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, verified.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+        Assert.Null((await unknown.Content.ReadFromJsonAsync<ResendResponse>())!.DevCode);
+        Assert.Null((await verified.Content.ReadFromJsonAsync<ResendResponse>())!.DevCode);
+        using var verifyDb = Db();
+        Assert.Empty(verifyDb.BusinessEmailOtps.Where(o => o.Email == "nobody@example.com"));
+        Assert.Equal(2, verifyDb.BusinessEmailOtps.Count(o => o.Email == "resend-pending@example.com"));
     }
 
     [Fact]
-    public async Task ResendVerification_ForUnknownEmail_ReturnsNotFound()
+    public async Task VerifyEmail_UnknownEmail_AnswersLikeAWrongCode()
     {
-        var resp = await Client.PostAsJsonAsync("/api/auth/resend-verification", new ResendVerificationRequest("nobody@example.com"));
+        await RegisterAndGetDevCode("verify-known@example.com", "verify-known-shop");
 
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        var unknown = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("nobody-at-all@example.com", "123456"));
+        var wrong = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("verify-known@example.com", "000000"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        Assert.Equal(await wrong.Content.ReadAsStringAsync(), await unknown.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task VerifyEmail_DisabledAccount_SaysSoOnlyAfterTheRightCode()
+    {
+        var code = await RegisterAndGetDevCode("verify-disabled@example.com", "verify-disabled-shop");
+        using (var db = Db())
+        {
+            db.Businesses.Single(b => b.Email == "verify-disabled@example.com").IsDisabled = true;
+            db.SaveChanges();
+        }
+
+        var wrong = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("verify-disabled@example.com", code == "111111" ? "222222" : "111111"));
+        var right = await Client.PostAsJsonAsync("/api/auth/verify-email", new VerifyEmailRequest("verify-disabled@example.com", code));
+
+        Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, right.StatusCode);
     }
 
     private record ForgotPasswordResponse(string? DevCode);

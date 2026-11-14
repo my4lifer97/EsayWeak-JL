@@ -212,38 +212,39 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
     }
 
     [HttpPost("resend-verification")]
-    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req, [FromServices] RequestQuota quota)
+    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest req, [FromServices] RequestQuota quota,
+        [FromServices] NotificationOutbox notifications)
     {
         if (quota.RefuseIfOver(HttpContext, "resend-verification", quota.EmailCodesPerIpPerHour) is { } refused) return refused;
+        // Same silent 200 for an unknown, verified or disabled email and for the cooldown/hourly cap
+        // (nothing is sent; the last code still works), like forgot-password: 404/400/429 told
+        // anyone which emails have an account and whether it's verified (QA run 11 OWN-22).
         var email = EmailAddress.Normalize(req.Email);
         var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
-        if (business is null) return NotFound(new { error = "Not found" });
-        if (business.EmailVerified) return BadRequest(new { error = "Email is already verified" });
-
-        var since = DateTime.UtcNow.AddHours(-1);
-        var recent = await db.BusinessEmailOtps
-            .Where(o => o.Email == email && o.CreatedAt > since)
-            .OrderByDescending(o => o.CreatedAt)
-            .ToListAsync();
-
-        var last = recent.FirstOrDefault();
-        if (last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < EmailOtpCooldownSeconds)
-            return StatusCode(429, new { error = "Please wait before requesting another code" });
-
-        if (recent.Count >= EmailOtpMaxPerHour)
-            return StatusCode(429, new { error = "Too many requests. Try again later" });
-
-        string code;
-        try
+        var silent = business is null || business.EmailVerified || business.IsDisabled;
+        if (!silent)
         {
-            code = await IssueVerificationCode(email);
+            var since = DateTime.UtcNow.AddHours(-1);
+            var recent = await db.BusinessEmailOtps
+                .Where(o => o.Email == email && o.CreatedAt > since)
+                .OrderByDescending(o => o.CreatedAt)
+                .ToListAsync();
+            var last = recent.FirstOrDefault();
+            silent = (last is not null && (DateTime.UtcNow - last.CreatedAt).TotalSeconds < EmailOtpCooldownSeconds)
+                || recent.Count >= EmailOtpMaxPerHour;
         }
-        catch (Exception ex)
+        if (silent)
         {
-            logger.LogError(ex, "Failed to send verification email to {Email}", email);
-            return StatusCode(502, new { error = "Could not send the verification email. Please try again shortly." });
+            // The same BCrypt work as issuing a code, so the answer isn't faster.
+            BCrypt.Net.BCrypt.HashPassword(email);
+            return Ok(new { devCode = (string?)null });
         }
+
+        var code = AddVerificationCode(email);
         await db.SaveChangesAsync();
+        // Sent after the response, so a real account doesn't answer slower. A failed send is logged by the queue.
+        notifications.Add($"verification code email to {email}", sp => sp.GetRequiredService<IEmailSender>()
+            .SendAsync(email, VerificationSubject, VerificationBody(code)));
 
         string? devCode = env.IsDevelopment() ? code : null;
         return Ok(new { devCode });
@@ -256,10 +257,9 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
             return BadRequest(new { error = "Email and code are required" });
 
         var email = EmailAddress.Normalize(req.Email);
-        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
-        if (business is null) return NotFound(new { error = "Not found" });
-        if (business.IsDisabled) return AccountDisabled();
-
+        // The code is checked first: an unknown or already-verified email has no live code, so it
+        // gets the same "Invalid or expired code" as a wrong one -- a 404 for unknown emails told
+        // anyone which have an account (QA run 11 OWN-22). Disabled only after a right code.
         var entry = await db.BusinessEmailOtps
             .Where(o => o.Email == email && !o.Consumed && o.ExpiresAt > DateTime.UtcNow && o.Attempts < EmailOtpMaxAttempts)
             .OrderByDescending(o => o.CreatedAt)
@@ -272,8 +272,17 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
                 entry.Attempts++;
                 await db.SaveChangesAsync();
             }
+            else
+            {
+                // The same BCrypt work as checking a real code, so the answer isn't faster.
+                BCrypt.Net.BCrypt.Verify(req.Code, DummyCodeHash);
+            }
             return BadRequest(new { error = "Invalid or expired code" });
         }
+
+        var business = await db.Businesses.FirstOrDefaultAsync(b => b.Email.ToLower() == email);
+        if (business is null) return BadRequest(new { error = "Invalid or expired code" });
+        if (business.IsDisabled) return AccountDisabled();
 
         entry.Consumed = true;
         business.EmailVerified = true;
@@ -422,13 +431,6 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         return Ok(new LoginResponse(token, business.Id, business.Name, business.Email, business.Slug));
     }
 
-    private async Task<string> IssueVerificationCode(string email)
-    {
-        var code = AddVerificationCode(email);
-        await SendVerificationCode(email, code);
-        return code;
-    }
-
     private string AddVerificationCode(string email)
     {
         var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
@@ -441,7 +443,12 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         return code;
     }
 
+    private const string VerificationSubject = "Verify your EsayWeek email";
+    private static string VerificationBody(string code) =>
+        $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.";
+    // Compared against when there's no live code, so that answer costs the same BCrypt work.
+    private static readonly string DummyCodeHash = BCrypt.Net.BCrypt.HashPassword("000000");
+
     private Task SendVerificationCode(string email, string code) =>
-        emailSender.SendAsync(email, "Verify your EsayWeek email",
-            $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.");
+        emailSender.SendAsync(email, VerificationSubject, VerificationBody(code));
 }
