@@ -128,7 +128,7 @@ to WhatsApp).
   (`WhatsAppController.IssueBookingLink`), the conversation-state row is kept alive (not removed)
   with `AwaitingBookingCompletion = true` instead, valid for the same 24h the link itself is --
   any further message from that phone gets no automated reply at all, rather than re-sending the
-  opening prompt, except cancel/reschedule keywords and the answer to the cancel confirmation they start (2026-10-13; QA found "cancel" ignored for 24 h), while the customer finishes booking on the web page the link opened.
+  opening prompt, except cancel/reschedule keywords and the answer to the cancel confirmation they start (2026-10-13; QA found "cancel" ignored for 24 h), and a message that is only `#` or a word for menu (`menu`, `תפריט`, `قائمة`...; `IsMenuRequest`), which drops the pending link and shows the opening prompt again (QA run 11 BOT-65: a wrong pick was stuck for 24 h), while the customer finishes booking on the web page the link opened.
   `BookingController.BookAppointment` clears the flag once the appointment is actually created, and
   -- whenever `Business.WhatsAppNumber` is set, regardless of whether the booking came from
   WhatsApp at all -- sends the customer a `whatsapp.bookingConfirmed` confirmation message (service,

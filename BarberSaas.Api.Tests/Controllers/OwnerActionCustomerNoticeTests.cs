@@ -230,4 +230,27 @@ public class OwnerActionCustomerNoticeTests : IntegrationTestBase
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         Assert.DoesNotContain(MessagesTo(OtherPhone, "ended your weekly"), m => m.EndsWith("/notice-series-quiet"));
     }
+
+    // QA run 11 ST-62: a new series sent the customer nothing.
+    [Theory]
+    [InlineData(true, "+15553330101")]
+    [InlineData(false, "+15553330102")]
+    public async Task CreateSeries_TellsTheCustomerOnce_UnlessUnticked(bool notify, string phone)
+    {
+        var (_, _, itemId, date, _) = await Seed($"notice-series-new-{notify}".ToLower());
+        var day = (int)DateTime.Parse(date).DayOfWeek;
+
+        var resp = await Client.PostAsJsonAsync("/api/admin/recurring", new CreateRecurringSeriesRequest(
+            null, "Noa", phone, itemId, day, "11:00", null, NotifyCustomer: notify));
+
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+        var created = (await resp.Content.ReadFromJsonAsync<RecurringSeriesDto>())!;
+        var messages = MessagesTo(phone, "weekly");
+        if (!notify) { Assert.Empty(messages); return; }
+        var appointments = await Client.GetFromJsonAsync<List<DashboardAppointmentDto>>("/api/admin/appointments?filter=all");
+        var dates = appointments!.Where(a => a.RecurringSeriesId == created.Id).Select(a => a.Date).Order().ToList();
+        var message = Assert.Single(messages);
+        Assert.Contains("set up a weekly Cut appointment for you at 11:00", message);
+        Assert.Contains(string.Join(", ", dates), message);
+    }
 }

@@ -212,7 +212,7 @@ appointment that's already over sends nothing. Each request takes `notifyCustome
 `CancelOptionsModal`/`RescheduleModal`, shown only when the business has a linked number. Language:
 the customer's `LastMessageLanguage` (account matched by phone too), else `ChatbotDefaultLanguage ?? Language`.
 Owner-booked confirmations go through it as well. The customer's own booking confirmation (after the
-pending chat link's language) and the cron reminders use the same rule (QA run 4; they used `Language`). Deleting a recurring series sends one
+pending chat link's language) and the cron reminders use the same rule (QA run 4; they used `Language`). Creating a recurring series sends one `whatsapp.ownerBookedSeries` with its booked upcoming dates (`notifyCustomer` on the create body, QA run 11 ST-62). Deleting a recurring series sends one
 `whatsapp.ownerCancelledSeries` listing every cancelled upcoming date (`DELETE /api/admin/recurring/{id}?notifyCustomer=`,
 the checkbox in the delete confirm via `ConfirmDialog`'s `checkbox` option).
 

@@ -161,6 +161,40 @@ public class WhatsAppControllerTests : IntegrationTestBase
         Assert.DoesNotContain("<Message>", reply);
     }
 
+    // QA run 11 BOT-65: "#" did nothing for 24 h after a link; now it (or "menu") starts over.
+    [Theory]
+    [InlineData("#", "+15558880101")]
+    [InlineData("Menu", "+15558880102")]
+    [InlineData("תפריט", "+15558880103")]
+    [InlineData("قائمة", "+15558880104")]
+    public async Task AfterBookingLinkIssued_HashOrMenu_ShowsTheListAgain(string message, string phone)
+    {
+        var (businessId, slug, serviceIds) = await SeedBusinessWithServices($"wa-pending-menu-{phone[^3..]}@example.com", $"wa-pending-menu-{phone[^3..]}");
+        await SendWhatsAppMessage(phone, "hi");
+        await SendWhatsAppMessage(phone, "1");
+
+        var reply = await SendWhatsAppMessage(phone, message);
+        Assert.Contains("<Message>", reply);
+        Assert.DoesNotContain($"/{slug}/w/", reply);
+
+        // A new pick gets a new link, for the other service.
+        var link = await SendWhatsAppMessage(phone, "2");
+        Assert.Contains($"/{slug}/w/", link);
+        using var db = Db();
+        Assert.Contains(await db.WhatsAppBookingTokens.Where(t => t.BusinessId == businessId && t.Phone == phone).Select(t => t.ItemId).ToListAsync(), id => id == serviceIds[1]);
+    }
+
+    [Fact]
+    public async Task AfterBookingLinkIssued_MenuInsideASentence_StaysQuiet()
+    {
+        await SeedBusinessWithServices("wa-pending-menu-sentence@example.com", "wa-pending-menu-sentence");
+        var phone = "+15558880105";
+        await SendWhatsAppMessage(phone, "hi");
+        await SendWhatsAppMessage(phone, "1");
+
+        Assert.DoesNotContain("<Message>", await SendWhatsAppMessage(phone, "what's on the menu today"));
+    }
+
     [Fact]
     public async Task InvalidNumericReply_RepromptsAndKeepsState()
     {

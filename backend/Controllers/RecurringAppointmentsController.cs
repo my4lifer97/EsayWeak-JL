@@ -200,6 +200,20 @@ public class RecurringAppointmentsController(AppDbContext db, RecurringAppointme
             .Include(s => s.Customer).Include(s => s.Item).Include(s => s.Skips)
             .FirstAsync(s => s.Id == series.Id);
 
+        // QA run 11 ST-62: the customer heard nothing until the first day-before reminder (a
+        // single owner booking does confirm). One message listing the booked upcoming dates.
+        if (req.NotifyCustomer)
+        {
+            var now = AppClock.Now;
+            var nowTime = now.ToString("HH:mm");
+            var booked = await db.Appointments
+                .Where(a => a.RecurringSeriesId == series.Id && a.Status == AppointmentStatus.CONFIRMED
+                    && (a.Date > now.Date || (a.Date == now.Date && string.Compare(a.StartTime, nowTime) > 0)))
+                .OrderBy(a => a.Date).ThenBy(a => a.StartTime)
+                .ToListAsync();
+            if (booked.Count > 0) await customerNotifier.QueueSeriesBookedByOwner(booked);
+        }
+
         this.SetActivityDetail(
             $"Created recurring series: {item.NameEn} with {ActivityDetailExtensions.FullName(customer.Name, customer.FamilyName)} — every {(DayOfWeek)req.DayOfWeek}s at {req.StartTime}");
 

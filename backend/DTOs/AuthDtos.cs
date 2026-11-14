@@ -96,7 +96,7 @@ public record CreateRecurringSeriesRequest(
     string? CustomerId, string? CustomerName, string? CustomerPhone,
     string ItemId, int DayOfWeek, string StartTime, string? Notes,
     string? StartDate = null, string? EndDate = null, string? CustomerFamilyName = null,
-    bool Force = false);
+    bool Force = false, bool NotifyCustomer = true);
 
 public record TimeSlot(string Start, string End);
 public record BlockedDayInfo(string? Reason);

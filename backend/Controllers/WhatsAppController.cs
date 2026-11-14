@@ -708,6 +708,15 @@ public class WhatsAppController(
 
     private static bool IsUnlock(string message) => NormalizeDollarCommand(message) is UnlockKeyword or OldUnlockKeyword;
 
+    // The whole message is "#" or a word for "menu" (QA run 11 BOT-65).
+    private static readonly string[] MenuWords = ["menu", "main menu", "תפריט", "قائمة", "قائمه", "القائمة", "القائمه"];
+    private static bool IsMenuRequest(string message)
+    {
+        if (IsUnlock(message)) return true;
+        var text = new string(message.Where(c => !IsDirectionMark(c)).ToArray()).Trim().TrimEnd('.', '!', '?', '؟').Trim().ToLowerInvariant();
+        return MenuWords.Contains(text);
+    }
+
     // A numbered reply: "2", "٢", "２", "2.", "#2", "2)" or the keycap emoji "2️⃣" (QA run 4: those
     // counted toward the lockout). Null for anything else.
     private static int? ParseNumber(string message)
@@ -812,6 +821,18 @@ public class WhatsAppController(
             // appointment is actually created (or it just expires with the row).
             // Cancel and reschedule still get through (QA: for 24 h after a link the bot ignored
             // even "cancel"), as does the answer to the cancel confirmation they start.
+            // "#" or "menu" drops the pending link and starts over: a customer who picked the
+            // wrong service, or closed the link page, was stuck for 24 h (QA run 11 BOT-65).
+            if (conversationState.AwaitingBookingCompletion
+                && !IsCancelPrompt(conversationState.ChatbotMode)
+                && IsMenuRequest(incomingMsg))
+            {
+                db.WhatsAppConversationStates.Remove(conversationState);
+                await db.SaveChangesAsync();
+                return business.ChatbotInquiryEnabled
+                    ? await ShowModeGate(business, fromPhone, lang, null)
+                    : await PromptServiceSelection(business.Id, business.Name, fromPhone, lang, welcomeMessage, business.ChatbotInquiryEnabled);
+            }
             if (conversationState.AwaitingBookingCompletion
                 && !IsCancelPrompt(conversationState.ChatbotMode)
                 && !AsksToCancel(incomingMsg)

@@ -54,6 +54,7 @@ export default function RecurringAppointmentsPage() {
   const [customTime, setCustomTime] = useState('')
   const [forceBook, setForceBook] = useState(false)
   const [notes, setNotes] = useState('')
+  const [notifyCustomer, setNotifyCustomer] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -86,7 +87,7 @@ export default function RecurringAppointmentsPage() {
   function resetForm() {
     setServiceId(''); setCustomer(null); setDayOfWeek(null); setSlot(null)
     setShowCustomTime(false); setCustomTime(''); setForceBook(false)
-    setNotes(''); setError('')
+    setNotes(''); setNotifyCustomer(true); setError('')
   }
 
   async function submit() {
@@ -99,6 +100,7 @@ export default function RecurringAppointmentsPage() {
           : {}),
         itemId: serviceId, dayOfWeek, startTime, notes: notes || undefined,
         startDate: effectiveDate, force: showCustomTime ? forceBook : false,
+        notifyCustomer: !!settings?.whatsAppNumber && notifyCustomer,
       })
       queryClient.invalidateQueries({ queryKey: ['recurring-series'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -277,6 +279,13 @@ export default function RecurringAppointmentsPage() {
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
                   className="w-full bg-cream border border-line rounded-lg px-3 py-2 text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-coral resize-none" />
               </div>
+              {settings?.whatsAppNumber && (
+                <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
+                  <input type="checkbox" checked={notifyCustomer} onChange={(e) => setNotifyCustomer(e.target.checked)}
+                    className="w-4 h-4 accent-coral" />
+                  {t(lang, 'notifyCustomerWhatsApp')}
+                </label>
+              )}
               <button type="button" onClick={submit} disabled={!canSubmit || submitting}
                 className="w-full bg-coral hover:bg-coral-dark disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2">
                 {submitting ? t(lang, 'saving') : t(lang, 'createAppointment')}

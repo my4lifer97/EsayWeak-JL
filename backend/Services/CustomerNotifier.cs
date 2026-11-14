@@ -33,6 +33,12 @@ public class CustomerNotifier(AppDbContext db, NotificationOutbox notifications,
         Queue(cancelled[0], "whatsapp.ownerCancelledSeries", StorefrontUrl, "series-cancel notice",
             new() { ["dates"] = string.Join(", ", cancelled.Select(a => a.Date.ToString("yyyy-MM-dd"))) });
 
+    // The owner set up a weekly series for the customer: one message for its booked upcoming
+    // dates (soonest first), like the series-cancel notice.
+    public Task QueueSeriesBookedByOwner(IReadOnlyList<Appointment> booked) =>
+        Queue(booked[0], "whatsapp.ownerBookedSeries", null, "series-booked notice",
+            new() { ["dates"] = string.Join(", ", booked.Select(a => a.Date.ToString("yyyy-MM-dd"))) });
+
     // The owner booked for the customer (directly, or by giving them someone else's slot).
     public Task QueueBookedByOwner(Appointment appointment) =>
         Queue(appointment, "whatsapp.bookingConfirmed", null, "booking confirmation");
