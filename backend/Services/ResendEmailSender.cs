@@ -13,7 +13,7 @@ public class ResendEmailSender(HttpClient http, IConfiguration config) : IEmailS
     {
         var apiKey = config["Resend:ApiKey"]!;
         var fromEmail = config["Resend:FromEmail"] ?? "onboarding@resend.dev";
-        var fromName = config["Resend:FromName"] ?? "EsayWeek";
+        var fromName = config["Resend:FromName"] ?? Brand.Name;
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);

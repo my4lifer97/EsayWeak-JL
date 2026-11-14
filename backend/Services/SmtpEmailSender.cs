@@ -20,7 +20,7 @@ public class SmtpEmailSender(IConfiguration config, ILogger<SmtpEmailSender> log
         var username = config["Smtp:Username"]!;
         var password = config["Smtp:Password"]!;
         var fromEmail = config["Smtp:FromEmail"] ?? username;
-        var fromName = config["Smtp:FromName"] ?? "EsayWeek";
+        var fromName = config["Smtp:FromName"] ?? Brand.Name;
 
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(fromName, fromEmail));

@@ -7,6 +7,7 @@ import ThemeToggle from '../../components/ThemeToggle'
 import BackButton from '../../components/BackButton'
 import LegalLinks from '../../components/LegalLinks'
 import { useDocumentTitle } from '../../lib/documentTitle'
+import { BRAND_NAME } from '../../lib/brand'
 
 // /terms, /privacy, /accessibility. Public; uses the customer language like the home page.
 export default function LegalPage({ doc }: { doc: LegalDoc }) {
@@ -35,7 +36,7 @@ export default function LegalPage({ doc }: { doc: LegalDoc }) {
             <ThemeToggle lang={lang} />
           </div>
         </div>
-        <Link to="/" className="font-bold text-lg">📅 EsayWeek</Link>
+        <Link to="/" className="font-bold text-lg">📅 {BRAND_NAME}</Link>
         <h1 className="text-3xl font-bold mt-4 mb-2">{text.title}</h1>
         <p className="text-muted text-sm mb-6">{t(lang, 'legalUpdated')} <bdi dir="ltr">{LEGAL_UPDATED}</bdi></p>
         <p className="leading-relaxed mb-8">{text.intro}</p>

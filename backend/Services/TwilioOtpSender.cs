@@ -22,6 +22,6 @@ public class TwilioOtpSender(IConfiguration config) : IOtpSender
         return MessageResource.CreateAsync(
             from: new Twilio.Types.PhoneNumber(fromNumber),
             to: new Twilio.Types.PhoneNumber(PhoneNormalizer.ToE164(phone)),
-            body: $"Your EsayWeek verification code is {code}");
+            body: $"Your {Brand.Name} verification code is {code}");
     }
 }

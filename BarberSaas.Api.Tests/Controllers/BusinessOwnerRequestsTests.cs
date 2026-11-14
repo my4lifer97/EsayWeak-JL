@@ -333,7 +333,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
         var approved = await approveResp.Content.ReadFromJsonAsync<ApproveBusinessOwnerRequestResponse>();
 
         Assert.True(approved!.EmailSent);
-        var sent = Assert.Single(Factory.OwnerEmail.Sent, e => e.Subject == "Your EsayWeek account is ready");
+        var sent = Assert.Single(Factory.OwnerEmail.Sent, e => e.Subject == $"Your {Brand.Name} account is ready");
         Assert.Equal("mail-me@example.com", sent.Email);
         Assert.Contains(approved.TempPassword, sent.Body);
         Assert.Contains(approved.Username, sent.Body);
@@ -360,7 +360,7 @@ public class BusinessOwnerRequestsTests : IntegrationTestBase
 
         Assert.False(approved!.EmailSent);
         Assert.False(string.IsNullOrEmpty(approved.TempPassword));
-        Assert.DoesNotContain(Factory.OwnerEmail.Sent, e => e.Subject == "Your EsayWeek account is ready");
+        Assert.DoesNotContain(Factory.OwnerEmail.Sent, e => e.Subject == $"Your {Brand.Name} account is ready");
     }
 
     [Fact]

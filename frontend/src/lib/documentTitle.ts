@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
+import { BRAND_NAME } from './brand'
 
-// "<page> · EsayWeek" in the browser tab (QA run 11 PUB-61: every page was just "EsayWeek").
+// "<page> · <brand>" in the browser tab (QA run 11 PUB-61: every page was just the brand).
 export function pageTitle(name?: string | null): string {
-  return name ? `${name} · EsayWeek` : 'EsayWeek'
+  return name ? `${name} · ${BRAND_NAME}` : BRAND_NAME
 }
 
 // For pages whose title comes from data (a business's name); DocumentLanguage leaves those paths alone.

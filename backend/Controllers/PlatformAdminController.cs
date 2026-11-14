@@ -342,12 +342,12 @@ public class PlatformAdminController(
     private async Task<bool> SendPasswordResetEmailAsync(Business business, string tempPassword)
     {
         var appUrl = (config["AppUrl"] ?? "").TrimEnd('/');
-        var loginUrl = string.IsNullOrEmpty(appUrl) ? "the EsayWeek sign-in page" : $"{appUrl}/admin/login";
+        var loginUrl = string.IsNullOrEmpty(appUrl) ? $"the {Brand.Name} sign-in page" : $"{appUrl}/admin/login";
         try
         {
             // The owner Gmail sender, like every email to an owner: the system chain (Brevo) said
             // "Emailed" while the Gmail health banner reported owner emails failing (QA run 3).
-            await ownerEmailSender.SendAsync(business.Email, "Your EsayWeek password was reset",
+            await ownerEmailSender.SendAsync(business.Email, $"Your {Brand.Name} password was reset",
                 $"Hi {business.Name},\n\n" +
                 "Your password was reset by an administrator.\n\n" +
                 $"Sign in: {loginUrl}\n" +
@@ -816,10 +816,10 @@ public class PlatformAdminController(
     private async Task<bool> SendApprovalEmailAsync(BusinessOwnerRequest request, string username, string tempPassword)
     {
         var appUrl = (config["AppUrl"] ?? "").TrimEnd('/');
-        var loginUrl = string.IsNullOrEmpty(appUrl) ? "the EsayWeek sign-in page" : $"{appUrl}/admin/login";
+        var loginUrl = string.IsNullOrEmpty(appUrl) ? $"the {Brand.Name} sign-in page" : $"{appUrl}/admin/login";
         try
         {
-            await ownerEmailSender.SendAsync(request.Email, "Your EsayWeek account is ready",
+            await ownerEmailSender.SendAsync(request.Email, $"Your {Brand.Name} account is ready",
                 $"Hi {request.OwnerFirstName},\n\n" +
                 $"Your business account for \"{request.BusinessName}\" has been approved.\n\n" +
                 $"Sign in: {loginUrl}\n" +
@@ -874,9 +874,9 @@ public class PlatformAdminController(
 
         // Tell the requester (QA run 2: a rejection reached nobody). The rejection note is the
         // admin's own and stays internal. Owner-facing, so via Gmail like the credentials email.
-        notifications.AddOwnerEmail(request.Email, "About your EsayWeek account request",
+        notifications.AddOwnerEmail(request.Email, $"About your {Brand.Name} account request",
             $"Hi {request.OwnerFirstName},\n\n" +
-            $"Thank you for your interest in EsayWeek. After reviewing your request for \"{request.BusinessName}\", " +
+            $"Thank you for your interest in {Brand.Name}. After reviewing your request for \"{request.BusinessName}\", " +
             "we're unable to approve it at this time.\n\n" +
             "If you think this was a mistake or your details have changed, you're welcome to reply to this email.\n",
             $"rejection email for business-owner request {request.Id}");

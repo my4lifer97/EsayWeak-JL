@@ -16,7 +16,7 @@ public class BrevoEmailSender(HttpClient http, IConfiguration config) : IEmailSe
     {
         var apiKey = config["Brevo:ApiKey"]!;
         var fromEmail = config["Brevo:FromEmail"]!;
-        var fromName = config["Brevo:FromName"] ?? "EsayWeek";
+        var fromName = config["Brevo:FromName"] ?? Brand.Name;
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
         request.Headers.TryAddWithoutValidation("api-key", apiKey);

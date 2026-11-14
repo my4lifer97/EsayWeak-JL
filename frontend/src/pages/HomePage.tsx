@@ -4,6 +4,7 @@ import { t } from '../lib/i18n'
 import LanguageSwitcher from '../components/customer/LanguageSwitcher'
 import ThemeToggle from '../components/ThemeToggle'
 import LegalLinks from '../components/LegalLinks'
+import { BRAND_NAME } from '../lib/brand'
 
 export default function HomePage() {
   const { language: lang } = useCustomerAuth()
@@ -32,7 +33,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-cream text-ink" dir={dir}>
       <nav className="flex flex-wrap items-center justify-between gap-y-3 px-4 sm:px-6 py-4 border-b border-line max-w-6xl mx-auto">
-        <div className="font-bold text-xl">📅 EsayWeek</div>
+        <div className="font-bold text-xl">📅 {BRAND_NAME}</div>
         <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
           <LanguageSwitcher />
           <ThemeToggle />

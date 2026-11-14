@@ -337,7 +337,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         // email (the timing gave accounts away too). A failed send is logged by the queue.
         var body = $"Your password reset code is {code}. It expires in {EmailOtpExpiryMinutes} minutes. If you didn't request this, you can ignore this email.";
         notifications.Add($"password reset code email to {email}",
-            sp => sp.GetRequiredService<IEmailSender>().SendAsync(email, "Reset your EsayWeek password", body));
+            sp => sp.GetRequiredService<IEmailSender>().SendAsync(email, $"Reset your {Brand.Name} password", body));
 
         string? devCode = env.IsDevelopment() ? code : null;
         return Ok(new { devCode });
@@ -443,7 +443,7 @@ public class AuthController(AppDbContext db, JwtService jwt, IEmailSender emailS
         return code;
     }
 
-    private const string VerificationSubject = "Verify your EsayWeek email";
+    private const string VerificationSubject = $"Verify your {Brand.Name} email";
     private static string VerificationBody(string code) =>
         $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.";
     // Compared against when there's no live code, so that answer costs the same BCrypt work.

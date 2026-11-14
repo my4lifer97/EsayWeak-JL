@@ -30,7 +30,7 @@ public class BrevoOwnerEmailSender(HttpClient http, IConfiguration config, Owner
         using var request = NewRequest(HttpMethod.Post, "/smtp/email");
         request.Content = JsonContent.Create(new
         {
-            sender = new { name = config["Brevo:FromName"] ?? "EsayWeek", email = config["OwnerEmail:FromEmail"] },
+            sender = new { name = config["Brevo:FromName"] ?? Brand.Name, email = config["OwnerEmail:FromEmail"] },
             to = new[] { new { email = toEmail } },
             replyTo = string.IsNullOrEmpty(replyTo) ? null : new { email = replyTo },
             subject,

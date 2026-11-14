@@ -26,7 +26,7 @@ public class BrevoOwnerEmailSenderTests
             .Build();
 
     private static IConfiguration FullConfig() => Config(
-        ("OwnerEmail:Provider", "brevo"), ("Brevo:ApiKey", "key"), ("Brevo:FromName", "EsayWeek"),
+        ("OwnerEmail:Provider", "brevo"), ("Brevo:ApiKey", "key"), ("Brevo:FromName", Brand.Name),
         ("OwnerEmail:FromEmail", "hello@esayweek.co.il"), ("OwnerEmail:ReplyTo", "owner@example.com"));
 
     [Fact]
@@ -42,7 +42,7 @@ public class BrevoOwnerEmailSenderTests
         Assert.Equal("key", handler.Request.Headers.GetValues("api-key").Single());
         var json = JsonDocument.Parse(handler.RequestBody!).RootElement;
         Assert.Equal("hello@esayweek.co.il", json.GetProperty("sender").GetProperty("email").GetString());
-        Assert.Equal("EsayWeek", json.GetProperty("sender").GetProperty("name").GetString());
+        Assert.Equal(Brand.Name, json.GetProperty("sender").GetProperty("name").GetString());
         Assert.Equal("owner@example.com", json.GetProperty("replyTo").GetProperty("email").GetString());
         Assert.Equal("to@example.com", json.GetProperty("to")[0].GetProperty("email").GetString());
         Assert.Equal("ok", health.GetSnapshot().Status);

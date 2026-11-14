@@ -1,3 +1,4 @@
+import { BRAND_NAME } from './brand'
 const translations = {
   EN: {
     // public booking flow
@@ -442,7 +443,7 @@ const translations = {
     homePricingItem6: 'Admin dashboard',
     homePricingItem7: 'Cancel anytime',
     homePricingCta: 'Get Started',
-    homeFooter: '© 2026 EsayWeek. Built for service businesses.',
+    homeFooter: `© 2026 ${BRAND_NAME}. Built for service businesses.`,
     legalTerms: 'Terms of Use',
     legalPrivacy: 'Privacy Policy',
     legalAccessibility: 'Accessibility',
@@ -1113,7 +1114,7 @@ const translations = {
     homePricingItem6: 'لوحة تحكم الإدارة',
     homePricingItem7: 'إلغاء في أي وقت',
     homePricingCta: 'ابدأ الآن',
-    homeFooter: '© 2026 EsayWeek. صُنع لأصحاب الأعمال.',
+    homeFooter: `© 2026 ${BRAND_NAME}. صُنع لأصحاب الأعمال.`,
     legalTerms: 'شروط الاستخدام',
     legalPrivacy: 'سياسة الخصوصية',
     legalAccessibility: 'إمكانية الوصول',
@@ -1784,7 +1785,7 @@ const translations = {
     homePricingItem6: 'לוח בקרה לניהול',
     homePricingItem7: 'ביטול בכל עת',
     homePricingCta: 'התחל עכשיו',
-    homeFooter: '© 2026 EsayWeek. נבנה לבעלי עסקים.',
+    homeFooter: `© 2026 ${BRAND_NAME}. נבנה לבעלי עסקים.`,
     legalTerms: 'תנאי שימוש',
     legalPrivacy: 'מדיניות פרטיות',
     legalAccessibility: 'הצהרת נגישות',

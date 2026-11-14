@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import OwnerEmailComposer from './OwnerEmailComposer'
 import { platformAdminApi } from '../../lib/platformAdminApi'
+import { BRAND_NAME } from '../../lib/brand'
 
 vi.mock('../../lib/platformAdminApi', () => ({
   platformAdminApi: { post: vi.fn() },
@@ -167,7 +168,7 @@ describe('OwnerEmailComposer editing', () => {
       <OwnerEmailComposer businessId="b1" businessName="Shop" businessEmail="owner@example.com" username="ownersh" onClose={onClose} />
     )
   }
-  const bodyBox = () => screen.getByDisplayValue(/Here's your EsayWeek account/) as HTMLTextAreaElement
+  const bodyBox = () => screen.getByDisplayValue(new RegExp(`Here's your ${BRAND_NAME} account`)) as HTMLTextAreaElement
 
   it('Escape closes an untouched composer', async () => {
     const onClose = vi.fn()

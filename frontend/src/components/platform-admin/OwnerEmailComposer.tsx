@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { platformAdminApi } from '../../lib/platformAdminApi'
 import { useConfirmDialog } from '../ConfirmDialog'
+import { BRAND_NAME } from '../../lib/brand'
 
 type Props = {
   businessId: string
@@ -14,12 +15,12 @@ type Props = {
 const TEMPLATE_STORAGE_KEY = 'ownerEmailTemplate'
 const DEFAULT_TEMPLATE = `Hi,
 
-Here's your EsayWeek account information for {{businessName}}:
+Here's your ${BRAND_NAME} account information for {{businessName}}:
 
 {{fields}}
 
 Thanks,
-EsayWeek`
+${BRAND_NAME}`
 
 function loadTemplate(): string {
   try {
@@ -74,7 +75,7 @@ export default function OwnerEmailComposer({ businessId, businessName, businessE
   const [editingTemplate, setEditingTemplate] = useState(false)
   const [templateDraft, setTemplateDraft] = useState('')
 
-  const defaultSubject = `Your EsayWeek account — ${businessName}`
+  const defaultSubject = `Your ${BRAND_NAME} account — ${businessName}`
   const [subject, setSubject] = useState(defaultSubject)
   const initialFields = buildFields(username, !!username, password, !!initialPassword, null, false)
   const [body, setBody] = useState(() => applyTemplate(template, businessName, initialFields))

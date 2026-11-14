@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { t, type TKey } from '../../lib/i18n'
 import OwnerAuthShell from '../../components/admin/OwnerAuthShell'
 import WithEmail from '../../components/WithEmail'
+import { BRAND_NAME } from '../../lib/brand'
 
 type View = 'login' | 'verify'
 
@@ -94,7 +95,7 @@ export default function LoginPage() {
 
   return (
     <OwnerAuthShell>
-      <h1 className="text-2xl font-bold text-ink mb-2 text-center">EsayWeek</h1>
+      <h1 className="text-2xl font-bold text-ink mb-2 text-center">{BRAND_NAME}</h1>
       <p className="text-muted text-center mb-8">
         {view === 'login' ? t(lang, 'authSignInSubtitle') : <WithEmail text={t(lang, 'authCodeSentTo')} email={email} />}
       </p>

@@ -1,9 +1,17 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { readFileSync } from 'node:fs'
+
+// Read, not imported: this config is type-checked with node16 module resolution.
+const BRAND_NAME = /BRAND_NAME = '([^']+)'/.exec(readFileSync('src/lib/brand.ts', 'utf8'))![1]
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // index.html's <title> is the one place outside src/ that shows the product name.
+    { name: 'brand-title', transformIndexHtml: html => html.replace('%BRAND_NAME%', BRAND_NAME) },
+  ],
   server: {
     proxy: {
       '/api': 'http://localhost:5280',

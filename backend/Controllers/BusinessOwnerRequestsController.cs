@@ -74,7 +74,7 @@ public class BusinessOwnerRequestsController(
 
         try
         {
-            await ownerEmailSender.SendAsync(email, "Verify your email for EsayWeek",
+            await ownerEmailSender.SendAsync(email, $"Verify your email for {Brand.Name}",
                 $"Your verification code is {code}. It expires in {EmailOtpExpiryMinutes} minutes.\n\nEnter it on the account request form to continue.");
         }
         catch (Exception ex)

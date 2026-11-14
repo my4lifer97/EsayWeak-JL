@@ -6,6 +6,7 @@ import ThemeToggle from '../ThemeToggle'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import UnreadBadge, { CHATS_UNREAD_KEY } from './UnreadBadge'
+import { BRAND_NAME } from '../../lib/brand'
 
 const NAV: { to: string; key: TKey; icon: string }[] = [
   { to: '/admin/dashboard', key: 'dashboard', icon: '📅' },
@@ -67,7 +68,7 @@ function DesktopSidebar({ businessName }: { businessName: string }) {
     <aside className="w-56 bg-surface border-e border-line flex flex-col py-6 px-3 shrink-0">
       <div className="px-3 mb-8 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-ink font-bold text-lg">EsayWeek</div>
+          <div className="text-ink font-bold text-lg">{BRAND_NAME}</div>
           <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
         </div>
         <ThemeToggle lang={lang} />
@@ -105,7 +106,7 @@ function TouchSidebar({
       >
         <div className="px-3 mb-8 flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="text-ink font-bold text-lg">EsayWeek</div>
+            <div className="text-ink font-bold text-lg">{BRAND_NAME}</div>
             <div className="text-muted text-sm mt-0.5 truncate">{businessName}</div>
           </div>
           <div className="flex items-center gap-2">
